@@ -368,7 +368,7 @@ function UpdateCard() {
             <div className="flex flex-wrap items-center gap-2">
               {info.apkUrl ? (
                 <a href={info.apkUrl} className="inline-flex h-8 items-center gap-1.5 rounded-md bg-violet-600 px-3 text-xs font-medium text-white hover:bg-violet-700">
-                  <CloudDownload className="h-3.5 w-3.5" /> 下载 APK{info.apkSizeMB ? `（${info.apkSizeMB} MB）` : ""}
+                  <CloudDownload className="h-3.5 w-3.5" /> 下载 APK{info.apkSizeMB ? `（${info.apkSizeMB >= 1 ? `${info.apkSizeMB} MB` : `${Math.round((info.apkSizeMB ?? 0) * 1024)} KB`}）` : ""}
                 </a>
               ) : null}
               <a href={info.releasesPage ?? RELEASES_PAGE} target="_blank" rel="noreferrer" className="inline-flex h-8 items-center gap-1 rounded-md border border-zinc-200 bg-white px-3 text-xs font-medium text-zinc-700 hover:bg-zinc-50">

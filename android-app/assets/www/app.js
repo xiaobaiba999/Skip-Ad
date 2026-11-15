@@ -913,7 +913,7 @@ function renderUpdate(d) {
   const notes = (d.notes || "").split("\n").filter(l => l.trim()).slice(0, 6)
     .map(l => '<div class="muted small">· ' + esc(l.replace(/^#+\s*/, "").replace(/^[-*]\s*/, "").slice(0, 64)) + "</div>").join("");
   body.innerHTML =
-    '<div class="kv"><span>最新版本</span><b>' + esc(d.tag || latest) + (d.apkMB ? " · " + d.apkMB + " MB" : "") + "</b></div>" +
+    '<div class="kv"><span>最新版本</span><b>' + esc(d.tag || latest) + (d.apkMB ? " · " + (d.apkMB >= 1 ? d.apkMB + " MB" : Math.round(d.apkMB * 1024) + " KB") : "") + "</b></div>" +
     '<div class="kv"><span>当前版本</span><b>v' + esc(cur) + "</b></div>" +
     (isNewer
       ? '<div class="fb-msg ok">发现新版本！与当前版本同一签名，下载后直接安装即可覆盖升级，无需卸载，学习数据全部保留。</div>' +
