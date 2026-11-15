@@ -1,0 +1,46 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// 广告表：支持开屏(splash)与插屏(interstitial)两种广告位
+model Ad {
+  id         String   @id @default(cuid())
+  name       String // 广告计划名称（后台管理用）
+  type       String // splash | interstitial
+  title      String // 广告主标题
+  subtitle   String // 广告副标题
+  ctaText    String // 行动按钮文案
+  linkUrl    String // 落地页标识（演示用 key）
+  theme      String // 素材主题: ecommerce / game / finance / vip
+  strategy   String   @default("standard") // 2026 跳转策略: standard | timer(倒计时自动跳转) | shake(摇一摇) | anyclick(全屏隐藏热区)
+  weight     Int      @default(5) // 投放权重，越大被选中概率越高
+  active     Boolean  @default(true) // 投放开关
+  views      Int      @default(0) // 曝光数
+  clicks     Int      @default(0) // 点击数
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+// 智能学习事件表：判断引擎的每次「拦截/放行/纠正/跳过时机/停留反馈」都记录于此，
+// /api/learn 聚合这些事件生成用户画像（自动跳过时机、主题偏好、误触阈值）
+model AdEvent {
+  id         String   @id @default(cuid())
+  ts         DateTime @default(now())
+  kind       String // decision | correction | skip | engage | quickback | cancel
+  adId       String?
+  adName     String?
+  theme      String?
+  trigger    String? // timer | shake | tap | hotzone | content | landing-auto | landing-manual | engine
+  action     String? // blocked | allowed | would-block
+  score      Float?
+  reasons    String? // 判定依据 JSON 数组
+  pressMs    Int?
+  movePx     Int?
+  reactionMs Int?
+  dwellMs    Int?
+}

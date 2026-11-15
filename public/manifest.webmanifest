@@ -1,0 +1,15 @@
+{
+  "name": "Skip-Ad · 开屏广告与防跳转演示",
+  "short_name": "Skip-Ad",
+  "id": "/",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fafafa",
+  "theme_color": "#7c3aed",
+  "description": "开屏/跳转广告 2026 全策略演示 + 智能防跳转判断引擎（含智能学习）",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

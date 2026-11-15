@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<title>开屏卫士 · 广告策略演练与智能跳过</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- 顶栏 -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">⚡</div>
+      <div>
+        <div class="brand-name">开屏卫士</div>
+        <div class="brand-sub" id="brand-sub">广告策略演练 · 智能跳过引擎</div>
+      </div>
+    </div>
+    <span class="ver-badge" id="ver-badge">v?</span>
+  </header>
+
+  <main id="main">
+
+    <!-- ───────────── 页1：仪表盘 ───────────── -->
+    <section class="page active" id="page-home">
+      <div class="card status-card" id="service-card">
+        <div class="status-row">
+          <div>
+            <div class="status-title" id="service-status">检查中…</div>
+            <div class="status-desc" id="service-desc">无障碍跳过服务状态</div>
+          </div>
+          <div class="status-dot" id="service-dot"></div>
+        </div>
+        <button class="btn btn-primary btn-block" id="btn-open-a11y">开启无障碍服务</button>
+        <div class="hint">设置 → 无障碍 → 已下载的应用 → 开屏卫士·自动跳过服务</div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <span>智能学习总开关</span>
+          <label class="switch"><input type="checkbox" id="toggle-learning" checked><span class="slider"></span></label>
+        </div>
+        <div class="muted small">关闭后引擎完全静默（观察/学习/自动点击全部暂停）</div>
+        <div class="stat-grid">
+          <div class="stat"><div class="num" id="st-auto">0</div><div class="lbl">真实自动跳过</div></div>
+          <div class="stat"><div class="num" id="st-manual">0</div><div class="lbl">学习样本(手动)</div></div>
+          <div class="stat"><div class="num" id="st-rules">0</div><div class="lbl">已学习规则</div></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">⚡ 三步上手</div>
+        <ol class="steps">
+          <li><b>开启服务</b>：点击上方按钮授权无障碍（数据不出本机，App 无网络权限）</li>
+          <li><b>正常用手机</b>：打开带开屏广告的应用时，你手动点一次「跳过」，引擎就学会一次</li>
+          <li><b>越用越快</b>：学习中心可查看每个应用的规则与命中统计，误点可删规则</li>
+        </ol>
+      </div>
+
+      <div class="card warn-card">
+        <div class="card-title">⚖️ 合规与安全边界</div>
+        <ul class="mini-ul">
+          <li>本引擎只<b>替你点击「跳过」按钮</b>，不屏蔽广告本身（与 2024 年「拦精灵」案法院裁判边界一致）</li>
+          <li>使用支付/银行/政务类应用前，建议先关闭上方总开关</li>
+          <li>无障碍权限敏感，本应用开源可审计、零网络权限、数据仅存本机</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- ───────────── 页2：演练场 ───────────── -->
+    <section class="page" id="page-drill">
+      <div class="card">
+        <div class="card-title">广告策略演练 · 对抗演习</div>
+        <div class="muted small">选择策略 → 启动App → v1.2.0：广告主体点击会经「精准判断引擎」用按压/轨迹/反应时间区分误触与主动兴趣</div>
+        <div class="chips" id="strategy-chips"></div>
+
+        <div class="drill-row">
+          <button class="btn btn-primary" id="btn-launch">🚀 启动 App</button>
+          <label class="switch shield-switch"><input type="checkbox" id="toggle-shield" checked><span class="slider"></span></label>
+          <span class="shield-label">跳过引擎<br><b id="shield-state">已开启</b></span>
+        </div>
+      </div>
+
+      <!-- 手机模拟器 -->
+      <div class="phone-wrap">
+        <div class="phone">
+          <div class="screen" id="phone-screen">
+            <div class="statusbar"><span id="sb-time">--:--</span><span class="notch"></span><span class="sb-icons">▮▲🔋</span></div>
+            <div id="phone-body"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 学习进度 -->
+      <div class="card">
+        <div class="card-head"><span>当前策略学习进度</span><span class="tag" id="dp-conf">置信度 0%</span></div>
+        <div class="progress"><div class="progress-bar" id="dp-bar"></div></div>
+        <div class="stat-grid">
+          <div class="stat"><div class="num" id="dp-enc">0</div><div class="lbl">遭遇次数</div></div>
+          <div class="stat"><div class="num" id="dp-manual">0</div><div class="lbl">手动跳过</div></div>
+          <div class="stat"><div class="num" id="dp-auto">0</div><div class="lbl">自动跳过</div></div>
+        </div>
+        <div class="spark-wrap"><svg id="dp-spark" viewBox="0 0 300 60" preserveAspectRatio="none"></svg></div>
+        <div class="muted small">曲线 = 每次广告从出现到消失的耗时（秒）。自动跳过会让曲线快速下坠。</div>
+        <div class="vs-row">
+          <div class="vs"><span class="vs-lbl">广告方视角</span><span id="ad-side">曝光 0 · 点击 0</span></div>
+          <div class="vs"><span class="vs-lbl">你的视角</span><span id="user-side">平均耗时 --s</span></div>
+        </div>
+        <div class="log-box" id="dp-log"></div>
+      </div>
+    </section>
+
+    <!-- ───────────── 页3：策略情报站 ───────────── -->
+    <section class="page" id="page-intel">
+      <div class="card intro-card">
+        <div class="card-title">📡 2026-11 市场扫描 · 广告策略情报</div>
+        <div class="muted small">基于公开报道与开源项目（GKD / 李跳跳社区、中青报·中青网、法治日报、江苏省消保委等）整理。每条策略对应本引擎的反制手段。</div>
+      </div>
+      <div id="strategy-list"></div>
+
+      <div class="card">
+        <div class="card-title">🛡️ 防开屏广告方法全景（六路防线）</div>
+        <div id="defense-list"></div>
+      </div>
+
+      <div class="card source-card">
+        <div class="card-title">📎 资料来源</div>
+        <ul class="mini-ul muted small" id="source-list"></ul>
+      </div>
+    </section>
+
+    <!-- ───────────── 页4：学习中心 ───────────── -->
+    <section class="page" id="page-learn">
+      <div class="tabs">
+        <button class="tab active" data-tab="real">📱 真实数据</button>
+        <button class="tab" data-tab="demo">🎮 演练数据</button>
+      </div>
+
+      <div id="tab-real">
+        <div class="card">
+          <div class="card-head"><span>已学习规则</span><button class="btn btn-ghost btn-sm" id="btn-clear-rules">清空</button></div>
+          <div id="rules-list"></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><span>分应用统计</span></div>
+          <div id="byapp-list"></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><span>引擎日志</span><button class="btn btn-ghost btn-sm" id="btn-refresh-real">刷新</button></div>
+          <div class="log-box" id="real-log"></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><span>规则备份</span></div>
+          <div class="muted small">导出/导入学习成果（JSON），换机或重装后可恢复</div>
+          <div class="btn-row">
+            <button class="btn btn-outline" id="btn-export">导出规则</button>
+            <button class="btn btn-outline" id="btn-import">导入规则</button>
+          </div>
+          <textarea id="io-area" rows="4" placeholder="点击导出后此处显示 JSON；粘贴 JSON 后点击导入"></textarea>
+        </div>
+      </div>
+
+      <div id="tab-demo" style="display:none">
+        <div class="card">
+          <div class="card-head"><span>演练成绩单</span><button class="btn btn-ghost btn-sm" id="btn-reset-demo">重置演练</button></div>
+          <div id="demo-report"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ───────────── 页5：关于 ───────────── -->
+    <section class="page" id="page-about">
+      <div class="card">
+        <div class="card-title">📦 版本信息</div>
+        <div class="kv"><span>当前版本</span><b id="about-ver">--</b></div>
+        <div class="kv"><span>版本号(内部)</span><b id="about-code">--</b></div>
+        <div class="kv"><span>包名</span><b>com.zai.adshield</b></div>
+        <div class="kv"><span>体积</span><b>约 100KB 级别 · 零依赖</b></div>
+        <div class="kv"><span>网络权限</span><b>无（离线运行）</b></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">🔄 更新日志</div>
+        <div class="changelog">
+          <div class="cl-item"><span class="cl-ver">v1.2.0</span>新增精准判断引擎：按压/轨迹/反应时间多信号区分「广告诱导跳转」与「用户主动操作」，误判可一键纠正；真实服务新增「疑似误触」观察统计</div>
+          <div class="cl-item"><span class="cl-ver">v1.1.0</span>新增策略情报站、学习中心规则导入导出、演练场 4 种对抗策略</div>
+          <div class="cl-item"><span class="cl-ver">v1.0.0</span>初版：开屏广告演练场、无障碍自动跳过服务、习惯学习引擎</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">⬆️ 升级与卸载</div>
+        <ul class="mini-ul">
+          <li><b>覆盖升级</b>：新版 APK 与本版使用同一签名，直接安装即可覆盖，<b>无需卸载</b>，学习到的规则与统计数据全部保留</li>
+          <li><b>正常卸载</b>：系统设置 → 应用管理 → 开屏卫士 → 卸载；或长按桌面图标拖到卸载区。卸载会同时清除本地数据</li>
+          <li><b>安装方法</b>：下载 APK → 允许「安装未知应用」来源 → 安装。建议升级前先在学习中心导出一份规则备份</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-title">🔐 隐私与安全声明</div>
+        <ul class="mini-ul">
+          <li>本应用<b>未申请任何权限</b>（含网络），所有数据仅保存在本机 SharedPreferences</li>
+          <li>无障碍服务只读取当前屏幕控件树，用于定位「跳过」按钮，不上传任何内容</li>
+          <li>仅供个人学习研究；跳过开屏广告会减少开发者广告收入，请自行权衡使用范围</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-title">🧪 真机测试清单</div>
+        <ol class="steps">
+          <li>安装 v1.0.0 → 开启无障碍 → 打开 2~3 个带开屏广告的应用，手动点几次「跳过」</li>
+          <li>回到学习中心查看规则是否生成 → 再次打开同一应用验证自动跳过</li>
+          <li>安装 v1.1.0（不卸载 v1.0.0）→ 验证覆盖升级成功且数据保留</li>
+          <li>设置 → 应用管理 → 卸载 → 验证可正常卸载</li>
+        </ol>
+      </div>
+    </section>
+  </main>
+
+  <!-- 底部导航 -->
+  <nav class="tabbar">
+    <button class="tabbtn active" data-page="home"><span class="ti">🏠</span>首页</button>
+    <button class="tabbtn" data-page="drill"><span class="ti">🎮</span>演练场</button>
+    <button class="tabbtn" data-page="intel"><span class="ti">📡</span>情报站</button>
+    <button class="tabbtn" data-page="learn"><span class="ti">🧠</span>学习中心</button>
+    <button class="tabbtn" data-page="about"><span class="ti">ℹ️</span>关于</button>
+  </nav>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
