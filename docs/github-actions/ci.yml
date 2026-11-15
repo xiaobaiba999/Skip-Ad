@@ -1,0 +1,32 @@
+name: CI
+
+# 主分支推送 / PR 时检查：Web 端 ESLint + Android 端离线页 JS 语法
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: 安装依赖
+        run: bun install --frozen-lockfile
+
+      - name: Prisma Client 生成
+        run: bunx prisma generate
+
+      - name: ESLint（Web 端）
+        run: bun run lint
+
+      - name: Android 离线页 JS 语法检查
+        run: |
+          for f in android-app/assets/www/*.js; do
+            node -e "new Function(require('fs').readFileSync('$f','utf8'))" && echo "OK: $f"
+          done

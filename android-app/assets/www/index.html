@@ -53,7 +53,7 @@
       <div class="card">
         <div class="card-title">⚡ 三步上手</div>
         <ol class="steps">
-          <li><b>开启服务</b>：点击上方按钮授权无障碍（数据不出本机，App 无网络权限）</li>
+          <li><b>开启服务</b>：点击上方按钮授权无障碍（学习数据仅存本机，不上传）</li>
           <li><b>正常用手机</b>：打开带开屏广告的应用时，你手动点一次「跳过」，引擎就学会一次</li>
           <li><b>越用越快</b>：学习中心可查看每个应用的规则与命中统计，误点可删规则</li>
         </ol>
@@ -64,8 +64,39 @@
         <ul class="mini-ul">
           <li>本引擎只<b>替你点击「跳过」按钮</b>，不屏蔽广告本身（与 2024 年「拦精灵」案法院裁判边界一致）</li>
           <li>使用支付/银行/政务类应用前，建议先关闭上方总开关</li>
-          <li>无障碍权限敏感，本应用开源可审计、零网络权限、数据仅存本机</li>
+          <li>无障碍权限敏感，本应用开源可审计，学习数据仅存本机；联网仅用于「问题反馈」与「检查更新」</li>
         </ul>
+      </div>
+
+      <div class="card" id="feedback-card">
+        <div class="card-head">
+          <span>💬 问题反馈</span>
+          <span class="tag tag-violet">同步 GitHub Issues</span>
+        </div>
+        <div class="muted small">使用中遇到的问题会记录到开源仓库 Issues，成为下一版本迭代的依据；可自动附带引擎画像便于定位</div>
+        <select id="fb-type" class="fb-select">
+          <option value="false_block">误拦截：这是我要的操作却被拦了</option>
+          <option value="missed">漏拦截：广告诱导跳转没被拦住</option>
+          <option value="misclick">误触观察有误</option>
+          <option value="crash">闪退 / 卡顿</option>
+          <option value="suggestion">功能建议</option>
+          <option value="other">其他问题</option>
+        </select>
+        <textarea id="fb-desc" rows="3" placeholder="例：某App开屏广告倒计时结束自动跳转，没被拦住，跳到了应用商店……"></textarea>
+        <label class="fb-check"><input type="checkbox" id="fb-attach" checked>附带引擎画像与最近日志（不含个人数据）</label>
+        <button class="btn btn-primary btn-block" id="btn-feedback">提交并同步到 GitHub</button>
+        <div id="fb-result"></div>
+        <details class="fb-adv">
+          <summary>高级：全自动同步设置</summary>
+          <div class="muted small">填入你自己的 GitHub Token（需 issues 写权限）即可全自动创建 Issue；不填则一键跳转浏览器预填页提交。Token 仅保存在本机。</div>
+          <input type="text" id="fb-token" class="fb-token" placeholder="ghp_… / github_pat_…" autocomplete="off">
+          <div class="btn-row">
+            <button class="btn btn-outline btn-sm" id="btn-token-save">保存 Token</button>
+            <button class="btn btn-outline btn-sm" id="btn-token-clear">清除</button>
+          </div>
+          <div class="muted small" id="fb-token-state"></div>
+        </details>
+        <div id="fb-history"></div>
       </div>
     </section>
 
@@ -177,13 +208,24 @@
         <div class="kv"><span>当前版本</span><b id="about-ver">--</b></div>
         <div class="kv"><span>版本号(内部)</span><b id="about-code">--</b></div>
         <div class="kv"><span>包名</span><b>com.zai.adshield</b></div>
-        <div class="kv"><span>体积</span><b>约 100KB 级别 · 零依赖</b></div>
-        <div class="kv"><span>网络权限</span><b>无（离线运行）</b></div>
+        <div class="kv"><span>体积</span><b>约 56KB · 零第三方依赖</b></div>
+        <div class="kv"><span>网络权限</span><b>仅 INTERNET（反馈 / 检查更新）</b></div>
+      </div>
+
+      <div class="card" id="update-card">
+        <div class="card-head">
+          <span>⬆️ 检查更新</span>
+          <button class="btn btn-ghost btn-sm" id="btn-check-update">检查</button>
+        </div>
+        <div id="update-body">
+          <div class="muted small">每次迭代版本都会发布到 GitHub Releases；新版 APK 与本版同签名，下载后直接安装即可覆盖升级，无需卸载。</div>
+        </div>
       </div>
 
       <div class="card">
         <div class="card-title">🔄 更新日志</div>
         <div class="changelog">
+          <div class="cl-item"><span class="cl-ver">v1.3.0</span>新增联网能力：问题反馈一键同步 GitHub Issues（自动附带引擎画像，支持 Token 全自动提交）、关于页检查更新（GitHub Releases 新版本提醒与 APK 直接下载）</div>
           <div class="cl-item"><span class="cl-ver">v1.2.0</span>新增精准判断引擎：按压/轨迹/反应时间多信号区分「广告诱导跳转」与「用户主动操作」，误判可一键纠正；真实服务新增「疑似误触」观察统计</div>
           <div class="cl-item"><span class="cl-ver">v1.1.0</span>新增策略情报站、学习中心规则导入导出、演练场 4 种对抗策略</div>
           <div class="cl-item"><span class="cl-ver">v1.0.0</span>初版：开屏广告演练场、无障碍自动跳过服务、习惯学习引擎</div>
@@ -194,6 +236,7 @@
         <div class="card-title">⬆️ 升级与卸载</div>
         <ul class="mini-ul">
           <li><b>覆盖升级</b>：新版 APK 与本版使用同一签名，直接安装即可覆盖，<b>无需卸载</b>，学习到的规则与统计数据全部保留</li>
+          <li><b>下载渠道</b>：GitHub Releases（关于页可一键检查更新并下载 APK），或仓库 <b>Releases</b> 页面手动下载</li>
           <li><b>正常卸载</b>：系统设置 → 应用管理 → 开屏卫士 → 卸载；或长按桌面图标拖到卸载区。卸载会同时清除本地数据</li>
           <li><b>安装方法</b>：下载 APK → 允许「安装未知应用」来源 → 安装。建议升级前先在学习中心导出一份规则备份</li>
         </ul>
@@ -202,8 +245,9 @@
       <div class="card">
         <div class="card-title">🔐 隐私与安全声明</div>
         <ul class="mini-ul">
-          <li>本应用<b>未申请任何权限</b>（含网络），所有数据仅保存在本机 SharedPreferences</li>
-          <li>无障碍服务只读取当前屏幕控件树，用于定位「跳过」按钮，不上传任何内容</li>
+          <li>学习规则与统计仅保存在本机 SharedPreferences，不上传任何屏幕内容</li>
+          <li>联网仅两处出口：问题反馈（GitHub Issues）与检查更新（GitHub Releases），代码开源可审计</li>
+          <li>无障碍服务只读取当前屏幕控件树，用于定位「跳过」按钮</li>
           <li>仅供个人学习研究；跳过开屏广告会减少开发者广告收入，请自行权衡使用范围</li>
         </ul>
       </div>

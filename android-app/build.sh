@@ -7,10 +7,16 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
-TOOLS="${ANDROID_TOOLS:-/home/z/my-project/android-tools}"
-BT="$TOOLS/build-tools"
-AJ="$TOOLS/android-34/android.jar"
-JDK="$TOOLS/jdk"
+
+# 工具链定位：本地默认 android-tools/ 目录；CI（GitHub Actions）通过环境变量逐项覆盖。
+#   ANDROID_TOOLS        工具链根目录（build-tools/、android-34/、jdk/ 相对它解析）
+#   ANDROID_BUILD_TOOLS  aapt2/d8/zipalign/apksigner 所在目录（如 $SDK/build-tools/34.0.0）
+#   ANDROID_PLATFORM_JAR android.jar 完整路径（如 $SDK/platforms/android-34/android.jar）
+#   ANDROID_JDK          JDK 根目录（bin/javac）
+BASE="${ANDROID_TOOLS:-/home/z/my-project/android-tools}"
+BT="${ANDROID_BUILD_TOOLS:-$BASE/build-tools}"
+AJ="${ANDROID_PLATFORM_JAR:-$BASE/android-34/android.jar}"
+JDK="${ANDROID_JDK:-$BASE/jdk}"
 export PATH="$JDK/bin:$BT:$PATH"
 
 VC="${1:?versionCode 必填，如 1}"

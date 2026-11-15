@@ -18,7 +18,9 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Eye, MousePointerClick, Percent, Plus, Trash2, RefreshCw, Megaphone, Brain, ShieldCheck } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { Eye, MousePointerClick, Percent, Plus, Trash2, RefreshCw, Megaphone, Brain, ShieldCheck, MessageSquareWarning, CloudDownload, ExternalLink, CheckCircle2 } from "lucide-react";
+import { APP_VERSION, RELEASES_PAGE, ISSUES_PAGE } from "@/lib/version";
 
 const THEME_LABEL: Record<string, string> = {
   ecommerce: "电商促销",
@@ -175,7 +177,212 @@ export function AdminPanel({ refreshSignal }: { refreshSignal: number }) {
 
       {/* 智能学习报告 */}
       <LearningReport learn={learn} />
+
+      {/* 问题反馈（同步 GitHub Issues）与 版本更新（GitHub Releases） */}
+      <FeedbackCard learn={learn} />
+      <UpdateCard />
     </div>
+  );
+}
+
+/* ───────── 问题反馈：记录使用中遇到的问题，同步 GitHub Issues ───────── */
+
+interface FbHistoryItem { ts: number; type: string; desc: string; url?: string }
+
+function FeedbackCard({ learn }: { learn: LearnPanel | null }) {
+  const [type, setType] = useState("false_block");
+  const [desc, setDesc] = useState("");
+  const [contact, setContact] = useState("");
+  const [attaching, setAttaching] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [result, setResult] = useState<{ ok: boolean; url?: string; error?: string; fallbackUrl?: string } | null>(null);
+  const [history, setHistory] = useState<FbHistoryItem[]>([]);
+
+  useEffect(() => {
+    try { setHistory(JSON.parse(localStorage.getItem("skip-ad-feedback-history") ?? "[]")); } catch { /* 忽略 */ }
+  }, []);
+
+  const buildContext = () => {
+    const st = learn?.stats;
+    return [
+      `- 应用版本：v${APP_VERSION}（Web 演示端）`,
+      `- 判定引擎：拦截 ${st?.blocked ?? 0} · 放行 ${st?.allowed ?? 0} · 误判纠正 ${st?.corrections ?? 0} · 精准度 ${st ? Math.round(st.precision * 100) : "--"}%`,
+      `- 跳过样本：${learn?.rules?.samples ?? 0} · 自动跳过时机：${learn?.rules?.autoSkipDelayMs ? `${(learn.rules.autoSkipDelayMs / 1000).toFixed(1)}s` : "学习中"}`,
+      `- 平台：${navigator.userAgent.includes("Mobile") ? "移动端" : "桌面端"} · ${screen.width}×${screen.height}`,
+      `- 提交时间：${new Date().toLocaleString("zh-CN")}`,
+    ].join("\n");
+  };
+
+  const submit = async () => {
+    if (desc.trim().length < 5) { setResult({ ok: false, error: "请把问题描述得更具体一点（至少 5 个字）" }); return; }
+    setSubmitting(true); setResult(null);
+    try {
+      const res = await fetch("/api/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type, desc, contact, context: attaching ? buildContext() : "" }),
+      });
+      const data = await res.json();
+      setResult(data);
+      if (data.ok) {
+        const item: FbHistoryItem = { ts: Date.now(), type, desc: desc.trim().slice(0, 60), url: data.url };
+        const next = [item, ...history].slice(0, 20);
+        setHistory(next);
+        localStorage.setItem("skip-ad-feedback-history", JSON.stringify(next));
+        setDesc(""); setContact("");
+      }
+    } catch {
+      setResult({ ok: false, error: "网络异常，请稍后重试" });
+    } finally { setSubmitting(false); }
+  };
+
+  const TYPE_OPTIONS = [
+    { v: "false_block", l: "误拦截：这是我要的操作却被拦了" },
+    { v: "missed", l: "漏拦截：广告诱导跳转没被拦住" },
+    { v: "misclick", l: "误触观察有误" },
+    { v: "crash", l: "闪退 / 卡顿" },
+    { v: "suggestion", l: "功能建议" },
+    { v: "other", l: "其他问题" },
+  ];
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between py-4">
+        <CardTitle className="flex items-center gap-2 text-sm">
+          <MessageSquareWarning className="h-4 w-4 text-amber-500" /> 问题反馈 · 同步 GitHub Issues
+        </CardTitle>
+        <a href={ISSUES_PAGE} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-[11px] text-zinc-400 hover:text-violet-600">
+          查看全部 <ExternalLink className="h-3 w-3" />
+        </a>
+      </CardHeader>
+      <CardContent className="space-y-3 px-4 pb-4">
+        <p className="text-[11px] text-zinc-500">
+          使用中遇到的问题会以 Issue 形式记录到开源仓库，成为下一版本迭代的依据；可自动附带引擎画像便于定位问题。
+        </p>
+        <div className="grid gap-3 md:grid-cols-2">
+          <div className="grid gap-1.5">
+            <Label>问题类型</Label>
+            <Select value={type} onValueChange={setType}>
+              <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {TYPE_OPTIONS.map((o) => (
+                  <SelectItem key={o.v} value={o.v}>{o.l}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="fb-contact">联系方式（可选）</Label>
+            <Input id="fb-contact" value={contact} onChange={(e) => setContact(e.target.value)} placeholder="如 GitHub / 邮箱，便于回访" />
+          </div>
+        </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor="fb-desc">问题描述 *</Label>
+          <Textarea id="fb-desc" value={desc} onChange={(e) => setDesc(e.target.value)} rows={3}
+            placeholder="例：某 App 开屏广告倒计时结束自动跳转，拦截模式没有拦住，跳到了应用商店……" />
+        </div>
+        <label className="flex cursor-pointer items-center gap-2 text-xs text-zinc-600">
+          <input type="checkbox" checked={attaching} onChange={(e) => setAttaching(e.target.checked)}
+            className="h-3.5 w-3.5 accent-violet-600" />
+          附带引擎运行画像（版本 / 拦截放行统计 / 精准度，不含个人数据）
+        </label>
+        <div className="flex items-center gap-3">
+          <Button size="sm" onClick={submit} disabled={submitting} className="bg-violet-600 hover:bg-violet-700">
+            {submitting ? "同步中…" : "提交并同步到 GitHub"}
+          </Button>
+          {result?.ok && result.url && (
+            <a href={result.url} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs font-medium text-emerald-600 hover:underline">
+              <CheckCircle2 className="h-3.5 w-3.5" /> 已记录为 Issue #{result.url.split("/").pop()} <ExternalLink className="h-3 w-3" />
+            </a>
+          )}
+          {!result?.ok && result?.error && <span className="text-xs text-rose-500">{result.error}</span>}
+          {!result?.ok && result?.fallbackUrl && (
+            <a href={result.fallbackUrl} target="_blank" rel="noreferrer" className="text-xs text-violet-600 hover:underline">在浏览器中手动提交 →</a>
+          )}
+        </div>
+        {history.length > 0 && (
+          <div className="space-y-1 border-t border-zinc-100 pt-2">
+            <div className="text-[11px] font-semibold text-zinc-500">我的反馈记录（本地保存）</div>
+            {history.slice(0, 5).map((h) => (
+              <div key={h.ts} className="flex items-center gap-2 text-[11px] text-zinc-500">
+                <span className="tabular-nums text-zinc-400">{new Date(h.ts).toLocaleDateString("zh-CN")}</span>
+                <span className="min-w-0 flex-1 truncate">{h.desc}</span>
+                {h.url && <a href={h.url} target="_blank" rel="noreferrer" className="shrink-0 text-violet-600 hover:underline">#{h.url.split("/").pop()}</a>}
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/* ───────── 版本更新：检查 GitHub Releases 最新版本 ───────── */
+
+interface ReleaseInfo {
+  ok: boolean; hasRelease?: boolean; currentVersion: string; tag?: string; latest?: string; name?: string;
+  notes?: string; publishedAt?: string | null; apkUrl?: string | null; apkName?: string | null;
+  apkSizeMB?: number | null; upToDate?: boolean; releasesPage?: string; error?: string;
+}
+
+function UpdateCard() {
+  const [info, setInfo] = useState<ReleaseInfo | null>(null);
+  const [checking, setChecking] = useState(false);
+
+  const check = useCallback(async () => {
+    setChecking(true);
+    try { setInfo(await (await fetch("/api/releases")).json()); }
+    catch { setInfo({ ok: false, currentVersion: APP_VERSION, error: "网络异常，请稍后重试" }); }
+    finally { setChecking(false); }
+  }, []);
+
+  useEffect(() => { check(); }, [check]);
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between py-4">
+        <CardTitle className="flex items-center gap-2 text-sm">
+          <CloudDownload className="h-4 w-4 text-violet-600" /> 版本与更新 · GitHub Releases
+        </CardTitle>
+        <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px]" onClick={check} disabled={checking}>
+          <RefreshCw className={`mr-1 h-3 w-3 ${checking ? "animate-spin" : ""}`} /> {checking ? "检查中" : "检查更新"}
+        </Button>
+      </CardHeader>
+      <CardContent className="space-y-2.5 px-4 pb-4">
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="rounded-md bg-zinc-100 px-2 py-1 font-medium text-zinc-700">当前 v{APP_VERSION}</span>
+          {info?.ok && info.hasRelease && (
+            <span className={`rounded-md px-2 py-1 font-medium ${info.upToDate ? "bg-emerald-50 text-emerald-600" : "bg-amber-50 text-amber-600"}`}>
+              最新 {info.tag} {info.upToDate ? "· 已是最新" : "· 有新版本"}
+            </span>
+          )}
+          {info?.ok && !info.hasRelease && <span className="rounded-md bg-zinc-100 px-2 py-1 text-zinc-500">云端暂无发布版本</span>}
+          {info && !info.ok && <span className="text-xs text-rose-500">{info.error}</span>}
+        </div>
+        {info?.ok && info.hasRelease && !info.upToDate && (
+          <div className="space-y-2 rounded-xl bg-amber-50/60 p-3 ring-1 ring-amber-100">
+            <div className="text-xs font-semibold text-amber-700">发现新版本 {info.tag}（{info.publishedAt ? new Date(info.publishedAt).toLocaleDateString("zh-CN") : ""}）</div>
+            {info.notes && (
+              <pre className="max-h-28 overflow-y-auto whitespace-pre-wrap break-words font-sans text-[11px] leading-relaxed text-zinc-600">{info.notes}</pre>
+            )}
+            <div className="flex flex-wrap items-center gap-2">
+              {info.apkUrl ? (
+                <a href={info.apkUrl} className="inline-flex h-8 items-center gap-1.5 rounded-md bg-violet-600 px-3 text-xs font-medium text-white hover:bg-violet-700">
+                  <CloudDownload className="h-3.5 w-3.5" /> 下载 APK{info.apkSizeMB ? `（${info.apkSizeMB} MB）` : ""}
+                </a>
+              ) : null}
+              <a href={info.releasesPage ?? RELEASES_PAGE} target="_blank" rel="noreferrer" className="inline-flex h-8 items-center gap-1 rounded-md border border-zinc-200 bg-white px-3 text-xs font-medium text-zinc-700 hover:bg-zinc-50">
+                发布页 <ExternalLink className="h-3 w-3" />
+              </a>
+            </div>
+            <p className="text-[10px] text-amber-600/80">新版 APK 与当前版本同签名，下载后直接安装即可覆盖升级，无需卸载。</p>
+          </div>
+        )}
+        {info?.ok && info.hasRelease && info.upToDate && (
+          <p className="text-[11px] text-zinc-500">每次迭代都会发布到 GitHub Releases：手机端「开屏卫士」关于页同样支持一键检查更新与下载。</p>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

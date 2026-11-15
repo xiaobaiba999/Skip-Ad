@@ -64,3 +64,9 @@ android-app/build/
 
 # 工具输出缓存
 tool-results/
+# 沙箱脚手架（非项目代码，不入库）
+/.zscripts/
+/Caddyfile
+/examples/
+/mini-services/
+/upload/

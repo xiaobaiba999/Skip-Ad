@@ -273,3 +273,35 @@ textarea { width: 100%; border: 1px solid var(--line); border-radius: 10px; padd
 .page { display: none; animation: fadein .18s ease-out; }
 .page.active { display: block; }
 @keyframes fadein { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+/* ══════════ v1.3.0 问题反馈 + 检查更新 ══════════ */
+.fb-select {
+  width: 100%; border: 1.5px solid var(--line); border-radius: 10px;
+  padding: 9px 10px; font-size: 12.5px; background: #fff; color: var(--fg);
+  font-family: inherit; margin: 10px 0 8px; appearance: auto;
+}
+#fb-desc {
+  margin-bottom: 8px; font-size: 12.5px; font-family: inherit; line-height: 1.5;
+}
+.fb-check {
+  display: flex; align-items: center; gap: 7px; font-size: 11.5px; color: var(--muted);
+  margin: 4px 0 10px; cursor: pointer;
+}
+.fb-check input { accent-color: var(--violet); }
+.fb-adv { margin-top: 10px; border-top: 1px dashed var(--line); padding-top: 10px; }
+.fb-adv summary { font-size: 12px; color: var(--muted); cursor: pointer; user-select: none; }
+.fb-adv .muted.small { margin: 8px 0; }
+.fb-token {
+  width: 100%; border: 1.5px solid var(--line); border-radius: 10px; padding: 9px 10px;
+  font-size: 12px; font-family: monospace; background: #fafafa; margin: 6px 0;
+}
+.fb-msg {
+  font-size: 12px; line-height: 1.6; padding: 9px 12px; border-radius: 10px; margin-top: 10px;
+  background: #f4f4f5; color: var(--fg); word-break: break-all;
+}
+.fb-msg.ok { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
+.fb-msg.err { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+.gh-link { color: var(--violet); text-decoration: underline; font-size: 12px; word-break: break-all; }
+#fb-history .rule-item { padding: 8px 0; border-bottom: 1px solid #f4f4f5; }
+#fb-history .rule-item:last-child { border-bottom: none; }
+#update-body .kv b { word-break: break-all; }

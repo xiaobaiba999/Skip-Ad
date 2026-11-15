@@ -1,1 +1,21 @@
-Here are all the generated files.
+# 下载 · 开屏卫士（AdShield）
+
+> 推荐直接从 [GitHub Releases](https://github.com/xiaobaiba999/Skip-Ad/releases) 下载最新版 APK，
+> 历次迭代版本均归档在 Releases，且旧版 App「关于 → 检查更新」可直接下载升级。
+
+## 版本归档
+
+| 版本 | APK | versionCode | 说明 |
+| --- | --- | --- | --- |
+| v1.3.0 | `adshield-v1.3.0.apk` | 10300 | 联网能力：问题反馈同步 GitHub Issues、检查更新（GitHub Releases） |
+| v1.2.0 | `adshield-v1.2.0.apk` | 10200 | 精准判断引擎：多信号区分「广告诱导跳转」与「用户主动操作」 |
+| v1.1.0 | `adshield-v1.1.0.apk` | 10100 | 策略情报站、学习中心规则导入导出、演练场 4 种对抗策略 |
+| v1.0.0 | `adshield-v1.0.0.apk` | 10000 | 初版：开屏广告演练场、无障碍自动跳过服务、习惯学习引擎 |
+
+## 安装 / 升级 / 卸载
+
+- **新安装**：下载 APK → 允许「安装未知应用」→ 安装 → 首页「开启无障碍服务」
+- **覆盖升级**：直接安装更高版本（同一 `adshield.keystore` 签名 + versionCode 递增），无需卸载，学习数据保留
+- **正常卸载**：系统设置 → 应用管理 → 开屏卫士 → 卸载（普通用户应用，无任何锁定机制）
+
+`开屏卫士-源码与构建工具.zip` 为对应版本完整源码快照（含 keystore 与 build.sh）。

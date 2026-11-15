@@ -1,6 +1,6 @@
 # 开屏卫士（AdShield）· 源码与构建工具
 
-移动端「开屏广告 + 跳转广告」演示与智能跳过系统。APK 体积仅 48KB，零第三方依赖，零权限（无网络权限）。
+移动端「开屏广告 + 跳转广告」演示与智能跳过系统。APK 体积仅 58KB，零第三方依赖；v1.3.0 起申请 INTERNET 权限，但联网仅两处出口（问题反馈 GitHub Issues / 检查更新 GitHub Releases），学习数据仍全部本地保存。
 
 ## 一、目录说明
 
@@ -8,19 +8,21 @@
 android-app/
 ├── AndroidManifest.xml          # 应用清单（versionCode/versionName 在此注入）
 ├── src/com/zai/adshield/
-│   ├── MainActivity.java        # WebView 壳 + JSBridge（版本/存储/无障碍设置跳转）
-│   └── AdSkipService.java       # 无障碍智能跳过服务（学习引擎核心）
+│   ├── MainActivity.java        # WebView 壳 + JSBridge（版本/存储/无障碍设置/联网桥）
+│   ├── AdSkipService.java       # 无障碍智能跳过服务（学习引擎核心）
+│   └── Net.java                 # GitHub API 极简客户端（反馈 / 检查更新，零依赖）
 ├── res/                         # 布局/字符串/主题/无障碍配置/图标
-├── assets/www/                  # 离线页面（演练场/情报站/学习中心/关于）
+├── assets/www/                  # 离线页面（首页/演练场/情报站/学习中心/关于）
 ├── keystore/adshield.keystore   # 签名密钥（密码 adshield2026，请妥善保管）
-└── build.sh                     # 一键构建脚本
+└── build.sh                     # 一键构建脚本（本地/CI 通用，支持环境变量定位工具链）
 ```
 
 ## 二、安装到手机
 
-1. 将 `adshield-v1.0.0.apk` 传到手机（微信文件传输/QQ/USB 均可）
+1. 手机浏览器打开仓库 Releases 页下载最新 APK（推荐）：https://github.com/xiaobaiba999/Skip-Ad/releases
 2. 点击 APK → 系统提示「允许安装未知应用」→ 允许 → 安装
 3. 打开「开屏卫士」→ 首页点「开启无障碍服务」→ 设置 → 无障碍 → 已下载的应用 → 开屏卫士·自动跳过服务 → 开启
+   - Android 13+ 侧载应用首次开无障碍可能提示「受限设置」：应用信息 → 右上角菜单 → 允许受限设置，再回无障碍页开启
 
 ## 三、验证覆盖升级（无需卸载）
 
@@ -38,15 +40,22 @@ android-app/
 ## 五、迭代新版本
 
 ```bash
-# 前置：android-tools/（build-tools 34 + android-34 + jdk）已就位
+# 前置：android-tools/（build-tools 34 + android-34 + jdk）已就位（或用环境变量指向任意工具链）
 cd android-app
-./build.sh 3 1.2.0 dist/adshield-v1.2.0.apk   # versionCode 递增即可覆盖安装
+./build.sh 10400 1.4.0 dist/adshield-v1.4.0.apk   # versionCode 规则：major*10000+minor*100+patch
+```
+
+推荐启用 GitHub Actions 自动发版（工作流文件在仓库 `docs/github-actions/`，网页端一次性启用后生效）：
+
+```bash
+git tag v1.4.0 && git push origin v1.4.0   # 云端自动构建 + 签名 + 发布 Release 附 APK
 ```
 
 要点：
 - **必须**递增 versionCode（第 1 个参数），否则手机上会提示"无法降级安装"
 - **必须**使用同一 `keystore/adshield.keystore` 签名（签名不一致会要求先卸载）
 - 改代码位置：Java 在 `src/`，界面在 `assets/www/`（纯 HTML/CSS/JS，无需编译）
+- CI 环境变量：`ANDROID_BUILD_TOOLS` / `ANDROID_PLATFORM_JAR` / `ANDROID_JDK`（或 `ANDROID_TOOLS` 根目录）
 
 ## 六、真机测试清单
 
@@ -78,9 +87,17 @@ v1.2.0 新增「精准判断引擎」：
 - 真实服务：新增「疑似误触」观察统计（全屏热区 / 窗口切换后 700ms 内的异常点击），
   只记录不拦截——与「拦精灵」案边界一致：不屏蔽广告本身。
 
+v1.3.0 新增联网能力（联网仅两出口）：
+
+- **问题反馈**：首页「问题反馈」卡片，选择类型 + 描述 → 自动附带引擎画像（版本/规则数/最近日志，
+  不含个人数据）→ 一键同步 GitHub Issue；「高级」里可配置个人 GitHub Token（仅存本机）实现全自动提交，
+  未配置则生成浏览器预填页一键手动提交。
+- **检查更新**：「关于」页一键查询 GitHub Releases 最新版，版本比对后提醒下载；APK 直链下载，
+  同签名直接覆盖升级。历次版本均发布在 Releases，旧版 App 内即可完成升级。
+
 ## 八、合规与安全
 
 - 只「替用户点击跳过按钮」，不屏蔽广告本身（与 2024「拦精灵」案法院裁判边界一致）
-- 无网络权限，数据全部本地存储（SharedPreferences），卸载即清除
+- 联网仅两处出口（GitHub Issues 反馈 / GitHub Releases 检查更新），学习数据全部本地存储（SharedPreferences），卸载即清除
 - 无障碍权限较敏感：使用支付/银行/政务类应用前建议关闭学习总开关
 - 仅供个人学习研究；跳过开屏广告会减少开发者收入，请自行权衡使用范围

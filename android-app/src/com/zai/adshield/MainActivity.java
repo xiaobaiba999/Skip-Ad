@@ -5,6 +5,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
+import android.net.Uri;
 import android.os.Bundle;
 import android.provider.Settings;
 import android.view.KeyEvent;
@@ -94,7 +95,7 @@ public class MainActivity extends Activity {
                 PackageInfo pi = a.getPackageManager().getPackageInfo(a.getPackageName(), 0);
                 return pi.versionName;
             } catch (Exception e) {
-                return "1.1.0";
+                return "1.3.0";
             }
         }
 
@@ -104,7 +105,34 @@ public class MainActivity extends Activity {
                 PackageInfo pi = a.getPackageManager().getPackageInfo(a.getPackageName(), 0);
                 return pi.versionCode;
             } catch (Exception e) {
-                return 2;
+                return 10300;
+            }
+        }
+
+        /* ───── v1.3.0 联网能力：问题反馈（GitHub Issues）与检查更新（GitHub Releases）───── */
+
+        /** 创建反馈 Issue（同步阻塞，JSBridge 线程可执行网络请求）；Token 存于本地偏好 */
+        @JavascriptInterface
+        public String netPostIssue(String title, String body) {
+            String token = a.getSharedPreferences("adshield", Context.MODE_PRIVATE)
+                    .getString("gh_token", "");
+            return Net.postIssue(token == null ? "" : token, title, body);
+        }
+
+        /** 查询 GitHub 最新 Release（公共仓库匿名可读） */
+        @JavascriptInterface
+        public String netGetLatestRelease() {
+            return Net.latestRelease();
+        }
+
+        /** 用系统浏览器打开链接（发布页 / APK 下载 / Issue 页 / 预填反馈页） */
+        @JavascriptInterface
+        public void openUrl(String url) {
+            try {
+                Intent it = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                a.startActivity(it);
+            } catch (Exception ignored) {
             }
         }
     }

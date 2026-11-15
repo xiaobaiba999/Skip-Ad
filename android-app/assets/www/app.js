@@ -740,3 +740,221 @@ function tickClock() {
   $("#toggle-shield").checked = demo.shieldOn;
   $("#shield-state").textContent = demo.shieldOn ? "已开启" : "已暂停";
 })();
+
+/* ═════ v1.3.0 联网模块：问题反馈（GitHub Issues）+ 检查更新（GitHub Releases）═════
+   联网仅两处出口，且全部围绕开源仓库本身：
+   · 反馈：优先原生桥 netPostIssue（Token 存本机 SharedPreferences）；
+     浏览器预览时若配置了 Token 则直接 fetch（api.github.com 支持 CORS）；
+     无 Token 则生成 Issue 预填链接，由用户在浏览器一键提交。
+   · 更新：公共仓库匿名可读，查询最新 Release 并比对版本，提供 APK 直链下载。 */
+const REPO = "xiaobaiba999/Skip-Ad";
+const GH_API = "https://api.github.com/repos/" + REPO;
+const GH_RELEASES = "https://github.com/" + REPO + "/releases";
+const GH_NEW_ISSUE = "https://github.com/" + REPO + "/issues/new";
+const FB_TYPES = { false_block: "误拦截", missed: "漏拦截", misclick: "误触观察有误", crash: "闪退/卡顿", suggestion: "功能建议", other: "其他" };
+
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "1.3.0"; }
+function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "10300"; }
+
+function openLink(url) {
+  if (HAS_BRIDGE) { try { AndroidApp.openUrl(url); return; } catch (e) {} }
+  try { window.open(url, "_blank"); } catch (e) { location.href = url; }
+}
+/* 全局委托：所有 data-url 链接统一走 openLink（避免内联引号转义问题） */
+document.addEventListener("click", (e) => {
+  const a = e.target.closest("[data-url]");
+  if (a) { e.preventDefault(); openLink(decodeURIComponent(a.dataset.url)); }
+});
+function linkBtn(url, text) {
+  return '<a class="gh-link" data-url="' + encodeURIComponent(url) + '" href="javascript:void(0)">' + esc(text) + "</a>";
+}
+
+/* 引擎画像（自动附带，不含任何个人数据 / 屏幕内容） */
+function engineProfile() {
+  const st = getRealState();
+  let rules = 0, pkgs = 0;
+  try { Object.keys(st.rules || {}).forEach(k => { const n = (st.rules[k] || []).length; rules += n; if (n) pkgs++; }); } catch (e) {}
+  const j = demo.judge || { blocked: 0, allowed: 0, corrected: 0 };
+  const log = (st.log || []).slice(-8).map(l => "  - " + (l.msg || ""));
+  return [
+    "- 版本：v" + appVer() + " (code " + appCode() + ") · 环境：" + (HAS_BRIDGE ? "Android APK" : "浏览器预览"),
+    "- 真实引擎：自动跳过 " + (((st.stats || {}).auto) || 0) + " 次 · 手动样本 " + (((st.stats || {}).manual) || 0) + " · 已学规则 " + rules + " 条（" + pkgs + " 个应用）",
+    "- 演练引擎：拦截 " + (j.blocked || 0) + " · 放行 " + (j.allowed || 0) + " · 误判纠正 " + (j.corrected || 0) + " 次（判定门槛 " + ((j.corrected || 0) >= 2 ? 74 : 60) + "）",
+    "- 最近引擎日志：",
+    log.length ? log.join("\n") : "  - （暂无）",
+  ].join("\n");
+}
+
+/* ───── Token 管理（仅存本机；原生桥读写 SharedPreferences 的 gh_token）───── */
+function renderTokenState() {
+  const t = store.get("gh_token", "");
+  $("#fb-token-state").innerHTML = t
+    ? "已保存 Token（" + esc(t.slice(0, 7)) + "…· 仅存本机 · 反馈全自动提交）"
+    : "未配置：提交时将生成浏览器预填页链接，一键手动提交";
+}
+$("#btn-token-save").addEventListener("click", () => {
+  const t = $("#fb-token").value.trim();
+  if (t.length < 10) { toast("Token 格式不正确（ghp_… / github_pat_…）"); return; }
+  store.set("gh_token", t);
+  renderTokenState();
+  toast("Token 已保存到本机");
+});
+$("#btn-token-clear").addEventListener("click", () => {
+  store.set("gh_token", "");
+  $("#fb-token").value = "";
+  renderTokenState();
+  toast("已清除 Token");
+});
+
+/* ───── 反馈历史（本地记录）───── */
+function fbHistory() { return store.get("fb_history", []); }
+function renderFbHistory() {
+  const h = fbHistory();
+  if (!h.length) { $("#fb-history").innerHTML = ""; return; }
+  $("#fb-history").innerHTML =
+    '<div class="muted small" style="margin-top:12px">我的反馈记录（本地保存）</div>' +
+    h.slice(-6).reverse().map(x => `
+      <div class="rule-item">
+        <div style="flex:1;min-width:0">
+          <div class="rule-detail">[${esc(x.type)}] ${esc(x.desc)}</div>
+          <div class="muted small">${esc(x.date)}${x.url ? " · " + linkBtn(x.url, "Issue #" + x.no) : " · 未同步到 GitHub"}</div>
+        </div>
+      </div>`).join("");
+}
+
+/* ───── 提交反馈 ───── */
+function fbPrefillUrl(type, desc) {
+  const label = FB_TYPES[type] || "其他";
+  const title = "[反馈][" + label + "] " + desc.slice(0, 40);
+  const body = "## 问题描述\n" + desc + "\n\n## 环境信息\n" + engineProfile() + "\n\n— 由开屏卫士 v" + appVer() + " 反馈系统自动创建";
+  return GH_NEW_ISSUE + "?title=" + encodeURIComponent(title) + "&body=" + encodeURIComponent(body);
+}
+
+$("#btn-feedback").addEventListener("click", async () => {
+  const type = $("#fb-type").value;
+  const desc = $("#fb-desc").value.trim();
+  const box = $("#fb-result");
+  const btn = $("#btn-feedback");
+  if (desc.length < 5) { box.innerHTML = '<div class="fb-msg err">请把问题描述得更具体一点（至少 5 个字）</div>'; return; }
+
+  const label = FB_TYPES[type] || "其他";
+  const title = "[反馈][" + label + "] " + desc.slice(0, 40) + (desc.length > 40 ? "…" : "");
+  let body = "## 问题描述\n" + desc + "\n\n## 环境信息\n";
+  body += $("#fb-attach").checked ? engineProfile() + "\n" : "（用户未附加引擎画像）\n";
+  body += "\n— 由开屏卫士 v" + appVer() + " 反馈系统自动创建";
+
+  box.innerHTML = '<div class="fb-msg">正在同步到 GitHub…</div>';
+  btn.disabled = true;
+  let res = null;
+  try {
+    if (HAS_BRIDGE) {
+      res = JSON.parse(AndroidApp.netPostIssue(title, body));
+    } else {
+      const token = store.get("gh_token", "");
+      if (token) {
+        const r = await fetch(GH_API + "/issues", {
+          method: "POST",
+          headers: { Authorization: "Bearer " + token, Accept: "application/vnd.github+json", "Content-Type": "application/json" },
+          body: JSON.stringify({ title, body }),
+        });
+        const d = await r.json().catch(() => ({}));
+        res = r.ok ? { ok: true, url: d.html_url, number: d.number }
+                   : { ok: false, error: "GitHub 返回 " + r.status + "：" + (d.message || "未知"), fallbackUrl: fbPrefillUrl(type, desc) };
+      } else {
+        res = { ok: false, error: "浏览器预览未配置 Token", fallbackUrl: fbPrefillUrl(type, desc) };
+      }
+    }
+  } catch (e) {
+    res = { ok: false, error: "提交异常：" + (e.message || e), fallbackUrl: fbPrefillUrl(type, desc) };
+  }
+  btn.disabled = false;
+
+  const h = fbHistory();
+  h.push({ date: new Date().toLocaleString("zh-CN", { hour12: false }), type: label, desc: desc.slice(0, 50), url: res && res.ok ? res.url : "", no: (res && res.number) || 0 });
+  store.set("fb_history", h.slice(-30));
+  renderFbHistory();
+
+  if (res && res.ok) {
+    box.innerHTML = '<div class="fb-msg ok">已同步到 GitHub Issue ' + linkBtn(res.url, "#" + res.number + " · 点击查看") + "，感谢反馈，它会成为下一版迭代的依据</div>";
+    $("#fb-desc").value = "";
+    toast("反馈已同步到 GitHub Issues");
+  } else {
+    box.innerHTML = '<div class="fb-msg err">' + esc((res && res.error) || "未知错误") +
+      (res && res.fallbackUrl ? "<br>" + linkBtn(res.fallbackUrl, "在浏览器中预填提交 →") : "") + "</div>";
+  }
+});
+
+/* ───── 检查更新（GitHub Releases）───── */
+function cmpVer(a, b) {
+  const pa = String(a).replace(/^v/, "").split("."), pb = String(b).replace(/^v/, "").split(".");
+  for (let i = 0; i < 3; i++) {
+    const d = (parseInt(pa[i], 10) || 0) - (parseInt(pb[i], 10) || 0);
+    if (d) return d > 0 ? 1 : -1;
+  }
+  return 0;
+}
+
+function renderUpdate(d) {
+  const body = $("#update-body");
+  if (!d || !d.ok) {
+    body.innerHTML = '<div class="fb-msg err">查询失败：' + esc((d && d.error) || "未知错误") + "<br>" + linkBtn(GH_RELEASES, "手动打开 Releases 页 →") + "</div>";
+    return;
+  }
+  if (!d.hasRelease) {
+    body.innerHTML = '<div class="muted small">仓库尚未发布任何版本，发布后这里会第一时间提醒。</div>' + linkBtn(GH_RELEASES, "打开 Releases 页 →");
+    return;
+  }
+  const latest = String(d.tag || "").replace(/^v/, "");
+  const cur = appVer();
+  const isNewer = cmpVer(latest, cur) > 0;
+  const notes = (d.notes || "").split("\n").filter(l => l.trim()).slice(0, 6)
+    .map(l => '<div class="muted small">· ' + esc(l.replace(/^#+\s*/, "").replace(/^[-*]\s*/, "").slice(0, 64)) + "</div>").join("");
+  body.innerHTML =
+    '<div class="kv"><span>最新版本</span><b>' + esc(d.tag || latest) + (d.apkMB ? " · " + d.apkMB + " MB" : "") + "</b></div>" +
+    '<div class="kv"><span>当前版本</span><b>v' + esc(cur) + "</b></div>" +
+    (isNewer
+      ? '<div class="fb-msg ok">发现新版本！与当前版本同一签名，下载后直接安装即可覆盖升级，无需卸载，学习数据全部保留。</div>' +
+        (d.apkUrl ? '<button class="btn btn-primary btn-block" id="btn-dl-apk">下载新版 APK</button>' : "") +
+        linkBtn(d.url || GH_RELEASES, "查看完整发布说明 →")
+      : '<div class="fb-msg ok">已是最新版本。每次迭代都会发布到 GitHub Releases，可随时回来检查。</div>') +
+    (notes ? '<div style="margin-top:8px">' + notes + "</div>" : "");
+  const dl = $("#btn-dl-apk");
+  if (dl) dl.addEventListener("click", () => {
+    openLink(d.apkUrl);
+    toast("已开始下载，安装时选择「仍要安装」即可覆盖升级");
+  });
+}
+
+$("#btn-check-update").addEventListener("click", async () => {
+  const btn = $("#btn-check-update");
+  btn.disabled = true;
+  $("#update-body").innerHTML = '<div class="muted small">正在查询 GitHub Releases…</div>';
+  let d = null;
+  try {
+    if (HAS_BRIDGE) {
+      d = JSON.parse(AndroidApp.netGetLatestRelease());
+    } else {
+      const r = await fetch(GH_API + "/releases/latest", { headers: { Accept: "application/vnd.github+json" } });
+      if (r.status === 404) d = { ok: true, hasRelease: false };
+      else if (r.ok) {
+        const j = await r.json();
+        const apk = (j.assets || []).filter(a => a && a.name && a.name.endsWith(".apk"))[0];
+        d = {
+          ok: true, hasRelease: true, tag: j.tag_name, name: j.name, notes: j.body,
+          url: j.html_url, publishedAt: j.published_at,
+          apkUrl: apk ? apk.browser_download_url : "",
+          apkMB: apk ? Math.round(apk.size / 1048576 * 100) / 100 : 0,
+        };
+      } else d = { ok: false, error: "GitHub 返回 " + r.status };
+    }
+  } catch (e) { d = { ok: false, error: "网络异常：" + (e.message || e) }; }
+  btn.disabled = false;
+  renderUpdate(d);
+});
+
+/* v1.3.0 模块初始化 */
+renderTokenState();
+renderFbHistory();
