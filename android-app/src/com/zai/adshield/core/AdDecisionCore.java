@@ -3,8 +3,22 @@ package com.zai.adshield.core;
 import java.util.ArrayList;
 
 /**
- * 秒跳决策核心（v3.7.0 · 纯 Java · 零 Android 依赖 · JVM 可单测）
+ * 秒跳决策核心（v3.8.0 · 纯 Java · 零 Android 依赖 · JVM 可单测）
  * ─────────────────────────────────────────────────────────────
+ * v3.8.0 设计动机（issue#10 二轮真机反馈：喜马拉雅点击跳过键 4 次广告不关、
+ *  手动点立刻生效；微博找不到可点候选只能返回键，而返回键被广告拦截）——
+ *  网络调研 GKD（gkd-kit，同类最佳开源应用）最新全局规则与 API 文档，
+ *  三个方法论落地：
+ *  · visibleToUser 过滤：GKD 全局规则要求 [visibleToUser=true]——不可见节点
+ *    =陷阱/死区，点了白点（文本/vid/关闭/角落候选全部加 vis 门）；
+ *  · viewId 匹配：GKD 规则匹配 vid*="skip"（穿山甲 tt_splash_skip_btn /
+ *    微博 iv_skip 类零文本图片跳过键）和倒计时控件（vid 含 count+down
+ *    非 download）；
+ *  · clickCenter 方法论：「跳过」文案+大容器可点祖先时，标签自身坐标仍是
+ *    有效触点——手势直点即可（performAction 大容器=点开广告，绝不走）。
+ *  配套改造：假跳过手势候选梯子（L1 统一轮换）、walk 内候选排序（自身可点/
+ *  短文案/小面积优先）、角落键前置到 SDK 直断之前（CLS_BREAK_MS 500→700：
+ *  点击优先直断兜底）、跳过文案倒计时解析 parseCountdown。
  * v3.7.0 设计动机（四次真机反馈 issue#10：喜马拉雅「已点击跳过×4」仍不关，
  *  手动点同一按钮立刻生效；微博陀螺仪窗返回键直断无效果——广告拦截返回键）：
  *  · 喜马拉雅根因链：① 无障碍服务缺 canPerformGestures → 手势真实触点
@@ -90,6 +104,10 @@ public final class AdDecisionCore {
         NodeView child(int i);
 
         NodeView parent(); // 可空
+
+        boolean visible(); // v3.8.0：对用户可见（isVisibleToUser）——不可见=陷阱/死区，不点（GKD 全局规则同款）
+
+        String viewId();   // v3.8.0：viewIdResourceName（无返回空串）——vid 含 skip 的零文本图片跳过键
     }
 
     /* ── 动作常量 ── */
@@ -100,7 +118,7 @@ public final class AdDecisionCore {
     public static final String A_NONE = "none";
 
     /* ── 时序参数（ms） ── */
-    public static final long CLS_BREAK_MS = 500;          // SDK 窗直断时限
+    public static final long CLS_BREAK_MS = 700;          // SDK 窗直断时限（v3.8.0 500→700：先给角落键/vid 键 500ms 点击时机，点击优先直断兜底）
     public static final long CLS_LEARNED_BREAK_MS = 300;  // 学习指纹快断
     public static final long GYRO_IMMEDIATE_MS = 120;     // 无倒计时立即直断
     public static final long GYRO_BREAK_MS = 800;         // 带倒计时(假跳过)直断
@@ -111,6 +129,11 @@ public final class AdDecisionCore {
     public static final long HOT_ZONE_MS = 900;           // 热区直断
     public static final long COORD_TAP_MS = 900;          // 坐标兜底最早出手
     public static final long COORD_TAP_MAX_MS = 8000;     // 坐标兜底最晚（v3.6.0 4000→8000：覆盖晚出跳过键）
+
+    /* ── v3.8.0 参数（issue#10 二轮·GKD 方法论对齐） ── */
+    public static final double FAKE_TAP_AREA_MAX = 0.12; // v3.8.0：假跳过手势候选：标签自身面积上限（大标签=CTA 诱饵不点）
+    public static final long COUNTDOWN_EXTRA_MS = 500;   // v3.8.0：倒计时门控缓冲（标签渲染有延迟，留 0.5s）
+    public static final int COUNTDOWN_MAX_S = 15;        // v3.8.0：可识别的倒计时秒数上限
 
     /* ── v3.5.0 复验与候选参数 ── */
     public static final int MAX_CORNERS = 4;              // 角落候选上限（逐个换着点）
@@ -173,6 +196,8 @@ public final class AdDecisionCore {
         public NodeView clickNode;  // 可点祖先（performAction 目标）
         public int[] tapBounds;     // 手势点击边界（原标签坐标，v3.6.0）
         public String label;
+        public boolean gestureOnly; // v3.8.0：假跳过手势候选——只允许 dispatchGesture 点标签坐标，绝不 performAction 大容器祖先
+        public boolean selfClick;   // v3.8.0：节点自身可点（无祖先中转）——候选排序依据
     }
 
     public static final class ScanFind {
@@ -181,6 +206,8 @@ public final class AdDecisionCore {
         public int[] skipBounds;
         public String skipLabel;
         public final java.util.ArrayList<SkipCand> skipCands = new java.util.ArrayList<SkipCand>(); // v3.7.0 多候选
+        public final java.util.ArrayList<SkipCand> fakeCands = new java.util.ArrayList<SkipCand>(); // v3.8.0 假跳过手势候选（「跳过」文案+大容器可点祖先——微博实锤：isSmallClick 判假→从不点击只返回键，而返回键被广告拦截）
+        public int countdownN = 0; // v3.8.0：跳过文案中的倒计时秒数（「跳过 3」→3；0 无）
         public boolean fakeSkip;       // 假跳过热区（「跳过」字样但大面积/不可点）
         public boolean gyroHint;       // 翻转/摇一摇诱导文案
         public boolean adBadge;        // 广告角标
@@ -241,6 +268,18 @@ public final class AdDecisionCore {
         f.dialogForm = rootCls.contains("dialog") || rootCls.contains("popup");
         int[] budget = {ctx.budgetNodes};
         visit(root, 0, budget, f, ctx);
+        // v3.8.0 候选排序：真键优先——① 自身可点（无祖先中转）② 文案更短（精确「跳过」
+        // 优先于「5s后可跳过」类长文案）③ 面积更小。防「第 1 候选是广告图内假文本」
+        try {
+            java.util.Collections.sort(f.skipCands, (a, b) -> {
+                if (a.selfClick != b.selfClick) return a.selfClick ? -1 : 1;
+                int la = a.label == null ? 0 : a.label.length();
+                int lb = b.label == null ? 0 : b.label.length();
+                if (la != lb) return la - lb;
+                return Double.compare(areaRatio(a.tapBounds, ctx), areaRatio(b.tapBounds, ctx));
+            });
+        } catch (Throwable ignored) {
+        }
         return f;
     }
 
@@ -253,6 +292,7 @@ public final class AdDecisionCore {
             String desc = nz(node.desc());
             String label = text.length() > 0 ? text : desc;
             String cls = nz(node.cls()).toLowerCase();
+            boolean vis = node.visible();
             if (label.length() > LONG_TEXT_LEN) f.longText = true; // 长文本=正常内容页（v3.5.0）
             if (node.editable() || cls.contains("edittext")) f.editPresent = true;
             if (node.scrollable() || cls.contains("scrollview") || cls.contains("recyclerview")
@@ -267,8 +307,10 @@ public final class AdDecisionCore {
 
             if (label.length() > 0) {
                 if (label.length() <= 14 && matchesSkip(label)) {
+                    int cd = parseCountdown(label);
+                    if (cd > f.countdownN) f.countdownN = cd; // v3.8.0 倒计时解析（「跳过 3」→3，服务侧门控用）
                     NodeView click = resolveClickable(node, 4);
-                    if (click != null && isSmallClick(click, ctx)) {
+                    if (click != null && isSmallClick(click, ctx) && vis) {
                         if (!f.foundSkip) {
                             f.foundSkip = true;
                             f.skipNode = click;
@@ -285,16 +327,30 @@ public final class AdDecisionCore {
                             c.clickNode = click;
                             c.tapBounds = (b != null && areaRatio(b, ctx) < SKIP_AREA_MAX) ? b : click.bounds();
                             c.label = label;
+                            c.selfClick = (click == node);
                             f.skipCands.add(c);
                         }
                     } else {
                         f.fakeSkip = true; // 大面积/不可点 = 图内假跳过陷阱
+                        // v3.8.0：假跳过≠不可点——大容器可点祖先吞掉 performAction 时，
+                        // 标签自身坐标仍是有效触点（GKD clickCenter 方法论）：手势点标签
+                        // 位置，由应用按坐标分发到真跳过键。仅收角落形态小标签（防中央诱饵）
+                        if (vis && b != null && areaRatio(b, ctx) < FAKE_TAP_AREA_MAX
+                                && learnableSkipShape(b, ctx.screenW, ctx.screenH)
+                                && f.fakeCands.size() < SKIP_CANDS_MAX) {
+                            SkipCand c = new SkipCand();
+                            c.clickNode = click;
+                            c.tapBounds = b;
+                            c.label = label;
+                            c.gestureOnly = true;
+                            f.fakeCands.add(c);
+                        }
                     }
                 } else if (label.length() <= 22 && matchesAny(label, GYRO_HINTS)) {
                     f.gyroHint = true;
                 } else if (label.length() <= 6 && isCloseText(label)) {
                     NodeView click = resolveClickable(node, 4);
-                    if (click != null && isSmallClick(click, ctx) && !f.foundClose) {
+                    if (click != null && isSmallClick(click, ctx) && vis && !f.foundClose) {
                         f.foundClose = true;
                         f.closeNode = click;
                         // v3.6.0：同 L1——手势点原标签坐标，performAction 走可点祖先
@@ -307,7 +363,39 @@ public final class AdDecisionCore {
                 } else if (label.length() <= 14 && matchesAny(label, CTA_TEXTS)) {
                     f.ctaCount++;
                 }
-            } else if (b != null && f.corners.size() < MAX_CORNERS && isCornerControl(b, ctx)
+            } else if (b != null && vis && node.childCount() == 0 && isVidSkip(node)) {
+                // v3.8.0：viewId 跳过键（GKD 全局规则同款）：vid 含 skip（穿山甲 tt_splash_skip_btn /
+                // 微博 iv_skip 类零文本图片键）或倒计时控件（count+down 非 download）——
+                // 零文本图片跳过键的头号信号，此前只能靠角落形态猜，猜不中就只能返回键
+                NodeView click = resolveClickable(node, 4);
+                if (click != null && isSmallClick(click, ctx)) {
+                    if (!f.foundSkip) {
+                        f.foundSkip = true;
+                        f.skipNode = click;
+                        f.skipBounds = b;
+                        f.skipLabel = "跳过";
+                    }
+                    if (f.skipCands.size() < SKIP_CANDS_MAX) {
+                        SkipCand c = new SkipCand();
+                        c.clickNode = click;
+                        c.tapBounds = b;
+                        c.label = "跳过";
+                        c.selfClick = (click == node);
+                        f.skipCands.add(c);
+                    }
+                } else if (areaRatio(b, ctx) < FAKE_TAP_AREA_MAX
+                        && learnableSkipShape(b, ctx.screenW, ctx.screenH)
+                        && f.fakeCands.size() < SKIP_CANDS_MAX) {
+                    SkipCand c = new SkipCand();
+                    c.clickNode = click;
+                    c.tapBounds = b;
+                    c.label = "跳过";
+                    c.gestureOnly = true;
+                    f.fakeCands.add(c);
+                }
+                int cd = parseCountdown(node.viewId());
+                if (cd > f.countdownN) f.countdownN = cd;
+            } else if (b != null && vis && f.corners.size() < MAX_CORNERS && isCornerControl(b, ctx)
                     && !hasCornerChild(node, ctx)) {
                 // 【v3.5.0】角落无字小可点控件（多候选）：疑似图片跳过键
                 // （微博/喜马拉雅第一方开屏）；自身不可点时向上找可点祖先；
@@ -453,16 +541,22 @@ public final class AdDecisionCore {
                 d.reason = "learned_pos";
                 return d;
             }
-            // L1 文本跳过键（文本或 contentDescription）→ 代点
-            //     v3.7.0 多候选轮换：第 N 次出手点第 N 个候选（广告图内常嵌
-            //     假「跳过」文本，首选可能是陷阱/死区——不再同一坐标点四遍）
-            if (f.foundSkip && !f.skipCands.isEmpty()) {
-                int idx = Math.min(ctx.clickAttempts, f.skipCands.size() - 1);
-                SkipCand c = f.skipCands.get(idx);
-                return click(c.clickNode, c.tapBounds, "skip_text");
-            }
-            if (f.foundSkip && f.skipBounds != null) {
-                return click(f.skipNode, f.skipBounds, "skip_text");
+            /* L1 文本/vid 跳过键多候选轮换（真候选 → 假跳过手势候选统一梯子）
+             * v3.8.0（issue#10 二轮·GKD 方法论对齐）：
+             *  · 新增假跳过手势候选——「跳过」文案+大容器可点祖先（微博实锤：isSmallClick
+             *    判假→从不点击只返回键，返回键又被广告拦截）→ 手势直点标签自身坐标
+             *    （clickCenter），performAction 大容器=点开广告绝不走；
+             *  · walk 内候选排序：自身可点/短文案/小面积优先，真键排前 */
+            int R = f.skipCands.size();
+            int F = f.fakeCands.size();
+            if (R + F > 0) {
+                int idx = Math.min(ctx.clickAttempts, R + F - 1);
+                if (idx < R) {
+                    SkipCand c = f.skipCands.get(idx);
+                    return click(c.clickNode, c.tapBounds, "skip_text");
+                }
+                SkipCand c = f.fakeCands.get(idx - R);
+                return click(null, c.tapBounds, "fake_skip_tap"); // 手势专用：大容器祖先不 performAction
             }
             // L1.6 开屏×关闭键（v3.5.0）：顶部小关闭键 + 广告形态树（非长文本内容页）
             //     v3.7.0 树上限放宽（CORNER_TREE_MAX_NODES）：广告窗树常大，
@@ -472,6 +566,22 @@ public final class AdDecisionCore {
                     && inTopArea(f.closeBounds, ctx)
                     && ctx.elapsedMs >= SPLASH_CLOSE_MS) {
                 return click(f.closeNode, f.closeBounds, "splash_close");
+            }
+            // L4 角落无字小可点控件（图片跳过键，多候选）→ 手势点击其中心
+            //     v3.5.0：复验失败换下一个候选（第 N 次点击用第 N 个候选点）
+            //     v3.6.0：改纯手势（node=null）——performAction 可能落到大热区
+            //     祖先（=点开广告本体）；手势点子控件坐标=真实手指点跳过键
+            //     v3.7.0：① 前置到 L3 之前（微博根因：陀螺仪文案 120ms 抢先
+            //     返回键，角落键 500ms 才轮到——有点击候选先点击，点不到再断）；
+            //     ② 树上限放宽 CORNER_TREE_MAX_NODES=150（广告窗树常大）
+            //     v3.8.0：前置到 L2 直断之前——角落键 500ms 时机先于 700ms 直断，
+            //     有可点目标绝不先按返回键
+            if (!f.corners.isEmpty() && ctx.clickAttempts < f.corners.size()
+                    && !f.scrollPresent && !f.editPresent
+                    && f.nodeCount <= CORNER_TREE_MAX_NODES
+                    && ctx.elapsedMs >= CORNER_MIN_MS && ctx.elapsedMs <= CORNER_MAX_MS) {
+                CornerCand c = f.corners.get(ctx.clickAttempts);
+                return click(null, c.tapBounds, "corner_image_skip");
             }
             // L2 SDK / 学习 className 窗口指纹 → 返回键直断
             //    SDK 广告窗是独立 Activity，返回回到应用内页——根窗口也安全。
@@ -492,20 +602,6 @@ public final class AdDecisionCore {
              * 此后 L3/L4.5/L5 的返回键决策仅在应用内窗（返回回到应用内）
              * 或 SDK 广告窗上生效；根窗口只走点击梯子，用尽优雅收手。 */
             boolean backSafe = !ctx.rootWindow || ctx.sdkAdWin;
-            // L4 角落无字小可点控件（图片跳过键，多候选）→ 手势点击其中心
-            //     v3.5.0：复验失败换下一个候选（第 N 次点击用第 N 个候选点）
-            //     v3.6.0：改纯手势（node=null）——performAction 可能落到大热区
-            //     祖先（=点开广告本体）；手势点子控件坐标=真实手指点跳过键
-            //     v3.7.0：① 前置到 L3 之前（微博根因：陀螺仪文案 120ms 抢先
-            //     返回键，角落键 500ms 才轮到——有点击候选先点击，点不到再断）；
-            //     ② 树上限放宽 CORNER_TREE_MAX_NODES=150（广告窗树常大）
-            if (!f.corners.isEmpty() && ctx.clickAttempts < f.corners.size()
-                    && !f.scrollPresent && !f.editPresent
-                    && f.nodeCount <= CORNER_TREE_MAX_NODES
-                    && ctx.elapsedMs >= CORNER_MIN_MS && ctx.elapsedMs <= CORNER_MAX_MS) {
-                CornerCand c = f.corners.get(ctx.clickAttempts);
-                return click(null, c.tapBounds, "corner_image_skip");
-            }
             // L3 陀螺仪/假跳过：无倒计时立即直断；带倒计时(假跳过) 800ms 直断
             //     v3.6.0 加信息流安全门：可滚动/有输入框的页面出现「摇一摇/翻转」文案
             //     多为互动玩法或 feed 内容（如「摇一摇抽签」），绝不返回键（防主页误退）
@@ -513,7 +609,7 @@ public final class AdDecisionCore {
             //     「无任何可点目标」时的兜底（广告 Activity 常拦截返回键）；
             //     gyro_immediate 加「无可点候选」门——角落键 500ms 才到时机，
             //     有候选时等它，不 120ms 抢跑返回键
-            boolean clickableCand = !f.corners.isEmpty() || f.foundSkip || f.foundClose;
+            boolean clickableCand = !f.corners.isEmpty() || !f.skipCands.isEmpty() || !f.fakeCands.isEmpty() || f.foundClose;
             if (backSafe && f.gyroHint && !f.fakeSkip && !clickableCand
                     && !f.scrollPresent && !f.editPresent
                     && ctx.elapsedMs >= GYRO_IMMEDIATE_MS) {
@@ -633,6 +729,36 @@ public final class AdDecisionCore {
     }
 
     /* ═════════ 文案匹配 ═════════ */
+
+    /** v3.8.0：viewId 跳过键判定（GKD 全局规则 -1 同款）：vid 含 skip（大小写不敏感，
+     *  穿山甲 tt_splash_skip_btn / 微博 iv_skip 类），或倒计时控件（含 count 与 down 且非 download） */
+    static boolean isVidSkip(NodeView node) {
+        String vid = node.viewId();
+        if (vid == null || vid.length() < 4) return false;
+        String v = vid.toLowerCase();
+        if (v.contains("skip")) return true;
+        return v.contains("count") && v.contains("down") && !v.contains("download");
+    }
+
+    /** v3.8.0：解析跳过文案中的倒计时秒数（「跳过 3」「3s后可跳过」「跳过广告 5」→ 3/3/5）。
+     *  穿山甲类 SDK 倒计时结束前跳过键不响应点击（点了白点还占冷却）——服务侧据此
+     *  门控到「倒计时将尽」再出手，出手即命中。无倒计时返回 0。 */
+    public static int parseCountdown(String label) {
+        if (label == null) return 0;
+        for (int i = 0; i < label.length(); i++) {
+            char ch = label.charAt(i);
+            if (ch >= '1' && ch <= '9') {
+                int v = ch - '0';
+                if (i + 1 < label.length()) {
+                    char nx = label.charAt(i + 1);
+                    if (nx >= '0' && nx <= '9') v = v * 10 + (nx - '0');
+                }
+                return (v >= 1 && v <= COUNTDOWN_MAX_S) ? v : 0;
+            }
+            if (ch == '0') return 0; // 「0元领」类营销数字非倒计时
+        }
+        return 0;
+    }
 
     public static boolean matchesSkip(String s) {
         if (s == null) return false;

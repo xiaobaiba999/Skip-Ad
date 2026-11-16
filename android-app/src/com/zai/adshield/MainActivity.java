@@ -33,6 +33,8 @@ import org.json.JSONObject;
  * · v3.6.0 自动拉活：清理后台后服务被杀但系统设置仍登记时，打开 App
  *   自动 startService 拉起进程促系统重绑（tryAutoRevive），多数 ROM 无需手动去设置
  * · v3.7.0：拉活等待加长至 5s + 二次拉起；配合服务侧 onUnbind 保留 + 心跳闹钟
+ * · v3.8.0：手势真实触点首选（服务侧）+ 无障碍详情页直达一步恢复 +
+ *   WRITE_SECURE_SETTINGS 自愈重绑；移除无效的 startService 拉活路径
  */
 public class MainActivity extends Activity {
 
@@ -70,12 +72,31 @@ public class MainActivity extends Activity {
         }
     }
 
+    /* v3.8.0：Settings.ACTION_ACCESSIBILITY_DETAILS_SETTINGS（API 30+）的实际值。
+     *  构建环境 android-34 stub jar 未收录该符号，这里用与 SDK 常量完全等价的
+     *  字面值（平台 action 字符串属稳定公共 API，运行时行为与常量引用一致） */
+    private static final String ACTION_A11Y_DETAILS = "android.settings.ACCESSIBILITY_DETAILS_SETTINGS";
+
+    /** v3.8.0：直达本服务无障碍【详情页】（Android 11+ 只剩一个开关，一步恢复；
+     *  旧系统回退无障碍列表页） */
     private void openA11y() {
         try {
-            Intent it = new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS);
-            it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            startActivity(it);
-        } catch (Exception ignored) {
+            if (Build.VERSION.SDK_INT >= 30) {
+                Intent it = new Intent(ACTION_A11Y_DETAILS);
+                it.putExtra(Intent.EXTRA_COMPONENT_NAME,
+                        new android.content.ComponentName(this, AdSkipService.class));
+                it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(it);
+                return;
+            }
+            throw new IllegalStateException("pre-R");
+        } catch (Exception e) {
+            try {
+                Intent it = new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS);
+                it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(it);
+            } catch (Exception ignored) {
+            }
         }
     }
 
@@ -105,7 +126,7 @@ public class MainActivity extends Activity {
             PackageInfo pi = ctx.getPackageManager().getPackageInfo(ctx.getPackageName(), 0);
             return pi.versionName;
         } catch (Exception e) {
-            return "3.7.0";
+            return "3.8.0";
         }
     }
 
@@ -131,6 +152,30 @@ public class MainActivity extends Activity {
                 a.startActivity(it);
             } catch (Exception ignored) {
             }
+        }
+
+        /** v3.8.0：直达本服务无障碍详情页（Android 11+ 一个开关即恢复；旧系统回退列表页） */
+        @JavascriptInterface
+        public void openA11yDetail() {
+            try {
+                if (Build.VERSION.SDK_INT >= 30) {
+                    Intent it = new Intent(ACTION_A11Y_DETAILS);
+                    it.putExtra(Intent.EXTRA_COMPONENT_NAME,
+                            new android.content.ComponentName(a, AdSkipService.class));
+                    it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    a.startActivity(it);
+                    return;
+                }
+                throw new IllegalStateException("pre-R");
+            } catch (Exception e) {
+                openAccessibilitySettings();
+            }
+        }
+
+        /** v3.8.0：是否已授权 WRITE_SECURE_SETTINGS（adb 一次性授权后可全自动自愈恢复） */
+        @JavascriptInterface
+        public boolean hasSecureWrite() {
+            return AdSkipService.hasSecureWrite(a);
         }
 
         /* ───── v3.5.0 保活与诊断桥 ───── */
@@ -225,7 +270,7 @@ public class MainActivity extends Activity {
                 PackageInfo pi = a.getPackageManager().getPackageInfo(a.getPackageName(), 0);
                 return pi.versionCode;
             } catch (Exception e) {
-                return 30700;
+                return 30800;
             }
         }
 
@@ -247,10 +292,14 @@ public class MainActivity extends Activity {
             }
         }
 
-        /** 自动拉活重绑：系统设置仍登记本服务但进程被杀（清理后台/厂商省电）时，
-         *  startService 拉起进程促系统完成待处理的无障碍重绑（多数 ROM 直接生效）；
-         *  ROM 彻底解除登记时返回 ok:false，由页面引导两步手动恢复。
-         *  返回 JSON：{ok, running?, revived?, enabledInSettings?, reason?} */
+        /** 自动拉活（v3.8.0 重写）：
+         *  · 已授权 WRITE_SECURE_SETTINGS → 直接写系统设置自愈重绑（系统正道）；
+         *  · 设置仍登记且服务死 → 进程已随 App 打开拉起，AMS 通常自动重绑，观察 1.5s；
+         *  · 未登记 → need_toggle/disabled 由页面引导一步恢复。
+         *  （v3.6.0 的 startService 拉活实为 SecurityException——无障碍服务受
+         *   BIND_ACCESSIBILITY_SERVICE 保护，任何应用都不能 start/bind 它，
+         *   「自动恢复未成功」的真因；v3.8.0 已移除该无效路径）
+         *  返回 JSON：{ok, running?, revived?, enabledInSettings?, selfHeal?, reason?} */
         @JavascriptInterface
         public String tryAutoRevive() {
             org.json.JSONObject out = new org.json.JSONObject();
@@ -261,32 +310,27 @@ public class MainActivity extends Activity {
                 }
                 boolean enabled = a11yEnabledInSettings();
                 out.put("enabledInSettings", enabled);
+                if (AdSkipService.hasSecureWrite(a)) {
+                    boolean initiated = AdSkipService.selfHealBind(a);
+                    for (int i = 0; i < 16 && AdSkipService.instance == null; i++) {
+                        Thread.sleep(250); // ≤4s
+                    }
+                    boolean revived = AdSkipService.instance != null;
+                    out.put("ok", revived).put("revived", revived).put("selfHeal", initiated);
+                    if (!revived) out.put("reason", "heal_pending");
+                    return out.toString();
+                }
                 if (!enabled) {
                     out.put("ok", false).put("reason", "disabled");
                     return out.toString();
                 }
-                // 拉起进程促重绑（前台 Activity 内调用，不受后台启动限制）
-                try {
-                    a.startService(new Intent(a, AdSkipService.class));
-                } catch (Throwable ignored) {
-                }
-                // v3.7.0：等待系统完成重绑加长 2.5s→5s（部分 ROM 重绑慢）；
-                // 未连上再补一次 startService（AMS 重绑存在竞态，二次拉起成功率高）
-                for (int i = 0; i < 10 && AdSkipService.instance == null; i++) {
+                // 设置仍登记：进程已拉起，AMS 通常自动重绑——观察 1.5s（不再空转 10s）
+                for (int i = 0; i < 6 && AdSkipService.instance == null; i++) {
                     Thread.sleep(250);
-                }
-                if (AdSkipService.instance == null) {
-                    try {
-                        a.startService(new Intent(a, AdSkipService.class));
-                    } catch (Throwable ignored) {
-                    }
-                    for (int i = 0; i < 10 && AdSkipService.instance == null; i++) {
-                        Thread.sleep(250);
-                    }
                 }
                 boolean revived = AdSkipService.instance != null;
                 out.put("ok", revived).put("revived", revived);
-                if (!revived) out.put("reason", "rom_blocked");
+                if (!revived) out.put("reason", "need_toggle"); // 页面引导一步直达服务开关
             } catch (Throwable t) {
                 try {
                     out.put("ok", false).put("reason", "error");

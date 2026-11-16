@@ -6,7 +6,7 @@ import com.zai.adshield.core.AdDecisionCore.Decision;
 import com.zai.adshield.core.AdDecisionCore.ScanFind;
 
 /**
- * 决策核心 JVM 单测（v3.6.0 · 真实机型场景建模 · 发版前必绿）
+ * 决策核心 JVM 单测（v3.8.0 · 真实机型场景建模 · 发版前必绿）
  * ─────────────────────────────────────────────────────────────
  * 场景来源：2026-11 三轮真机反馈（微博/喜马拉雅拦截失败 → 点击被吞 →
  * 二次进入被连按返回键「模拟人操作退出」）+ 误报防护（正常界面绝不误点/误返回）。
@@ -18,6 +18,13 @@ import com.zai.adshield.core.AdDecisionCore.ScanFind;
  *  · L6 三位置坐标轮换：右上→右下→左上，用尽收手（W2/V1e）
  *  · L1/L1.6 手势点原标签控件坐标（S2）
  *  · learnableSkipShape：底部跳过键形态（G4）
+ * v3.8.0 新增重点（issue#10 二轮·GKD 方法论对齐）：
+ *  · visibleToUser 过滤：不可见「跳过」候选全过滤（v380-6）
+ *  · viewId 跳过键：vid 含 skip / count+down 非 download（v380-3/4/5）
+ *  · 假跳过手势直点：clickCenter 点标签自身坐标（v380-1；中央诱饵不点 v380-2）
+ *  · 候选排序：selfClick/短文案/小面积优先（v380-9；N1 断言随之调整）
+ *  · 角落键先于 SDK 直断：CLS_BREAK_MS 500→700（v380-8；X2b/X2d/F5b 时序随调）
+ *  · parseCountdown 倒计时解析（v380-7）
  * 用法：javac 编译后 java 运行；任何 FAIL 退出码 1，禁止发版。
  */
 public class DecisionCoreTest {
@@ -142,9 +149,10 @@ public class DecisionCoreTest {
         Ctx ctx = splash(400);
         ctx.sdkAdWin = true; // 服务侧由 isAdActivityClass(当前窗口类名) 判定
         check("X2a SDK 窗 400ms 未到直断时限应等待", run(root, ctx).action.equals(AdDecisionCore.A_NONE));
-        ctx.elapsedMs = 520;
+        ctx.elapsedMs = 720; // v3.8.0：CLS_BREAK_MS 500→700，720ms 才直断
         Decision d = run(root, ctx);
-        check("X2b SDK 窗 520ms 返回键直断", d.action.equals(AdDecisionCore.A_BACK) && d.reason.equals("sdk_window"));
+        check("X2b SDK 窗 720ms 返回键直断（v3.8.0 500→700 先点击后直断）",
+                d.action.equals(AdDecisionCore.A_BACK) && d.reason.equals("sdk_window"));
 
         Ctx learned = splash(320);
         learned.sdkAdWin = true;
@@ -153,7 +161,7 @@ public class DecisionCoreTest {
 
         // v3.6.0 关键：SDK 广告窗即便是入口窗也豁免（独立广告 Activity，
         // 返回回到应用内页——与第一方入口窗返回=退出应用不同）
-        Ctx rootSdk = rootSplash(520);
+        Ctx rootSdk = rootSplash(720); // v3.8.0：同 X2b 500→700
         rootSdk.sdkAdWin = true;
         Decision d2 = run(root, rootSdk);
         check("X2d SDK 窗在入口窗上返回仍安全（豁免）",
@@ -189,7 +197,10 @@ public class DecisionCoreTest {
                 "实际: " + dInApp.action + "/" + dInApp.reason);
     }
 
-    /** X4：假跳过陷阱（图内「跳过 5」大热区）→ 入口窗不返回键、不点陷阱 */
+    /** X4：假跳过陷阱（图内「跳过 5」+ 半屏可点容器）→ v3.8.0 手势直点标签坐标
+     *  （GKD clickCenter：标签位于底部小标签形态 learnableSkipShape 命中，isSmallClick
+     *  判假只挡 performAction 大容器，标签自身坐标仍是有效触点；中央诱饵形态另见
+     *  v380_centerBaitNoTap——那时才不点） */
     static void fakeSkipTrap() {
         FakeNode root = FakeNode.root("com.ximalaya.ting.android.host.activity.WelComeActivity");
         FakeNode trap = FakeNode.node("android.widget.TextView", 300, 2050, 780, 2160).txt("跳过 5");
@@ -197,15 +208,17 @@ public class DecisionCoreTest {
         trapWrap.add(trap);
         root.add(trapWrap);
 
-        // 应用内窗：800ms 直断（绝不点陷阱）
+        // v3.8.0：假跳过=手势直点（GKD clickCenter）——「跳过 5」标签位于底部小标签
+        // 形态，标签坐标仍是有效触点；应用内窗/入口窗都直点，绝不返回键（被广告拦截）
         Decision dInApp = run(root, splash(900));
-        check("X4a 应用内窗假跳过陷阱 → 返回键直断而非误点",
-                dInApp.action.equals(AdDecisionCore.A_BACK) && dInApp.reason.equals("gyro_break"),
+        check("X4a 应用内窗假跳过 → 手势直点标签坐标（v3.8.0 fake_skip_tap，GKD clickCenter）",
+                dInApp.action.equals(AdDecisionCore.A_CLICK_BOUNDS) && dInApp.reason.equals("fake_skip_tap")
+                        && dInApp.bounds != null && dInApp.bounds[0] == 300,
                 "实际: " + dInApp.action + "/" + dInApp.reason);
-        // 入口窗：禁返回键 → 坐标梯子（标准位不在陷阱区）
+        // 入口窗：同样手势直点（点击梯子不受根窗口安全门限制——安全门只挡返回键）
         Decision dRoot = run(root, rootSplash(900));
-        check("X4b 入口窗假跳过陷阱 → 坐标梯子（禁返回键、不点陷阱）",
-                dRoot.action.equals(AdDecisionCore.A_TAP_POINT),
+        check("X4b 入口窗假跳过 → 手势直点标签坐标（v3.8.0；原 v3.6.0 走坐标梯子）",
+                dRoot.action.equals(AdDecisionCore.A_CLICK_BOUNDS) && dRoot.reason.equals("fake_skip_tap"),
                 "实际: " + dRoot.action + "/" + dRoot.reason);
     }
 
@@ -304,7 +317,7 @@ public class DecisionCoreTest {
 
         // 但 SDK 窗（高精度）照拦
         ctx.sdkAdWin = true;
-        ctx.elapsedMs = 520;
+        ctx.elapsedMs = 720; // v3.8.0：同 X2b 500→700
         check("F5b 守护应用 SDK 窗照拦", run(root, ctx).action.equals(AdDecisionCore.A_BACK));
         check("F5c icbc 是守护包", AdDecisionCore.isGuardPkg("com.icbc"));
         check("F5d 微博非守护包", !AdDecisionCore.isGuardPkg("com.sina.weibo"));
@@ -586,8 +599,8 @@ public class DecisionCoreTest {
 
     /* ═══════ v3.7.0：issue#10 根因修复（多候选轮换/学习位置前置/点击优先/大树角落键/位置健全性） ═══════ */
 
-    /** N1：文本跳过键多候选轮换——广告图内假「跳过」文本在 DFS 先出现，真键在后；
-     *  第 1 次点候选 1，复验第 2 次换候选 2（v3.6.0 同一坐标点四遍，issue#10 根因③） */
+    /** N1：文本跳过键多候选轮换；v3.8.0 walk 内候选排序（selfClick/短文案/小面积）
+     *  后小面积真键（右上）排前——防「第 1 候选=图内假文本」；复验仍换第 2 个候选 */
     static void v370_candRotate() {
         FakeNode root = FakeNode.root("com.ximalaya.ting.android.SplashAdActivity");
         FakeNode adImage = FakeNode.node("android.widget.ImageView", 0, 0, 1080, 2400);
@@ -596,22 +609,22 @@ public class DecisionCoreTest {
         root.add(adImage).add(fake).add(real);
 
         Decision d1 = run(root, splash(600));
-        check("N1a 首次点候选 1（DFS 序首个「跳过」文本，行为与 v3.6.0 一致）",
-                d1.action.equals(AdDecisionCore.A_CLICK_BOUNDS) && d1.bounds[0] == 60,
+        check("N1a 首次点候选 1（v3.8.0 排序：小面积真键 880 在前，防首选=图内假文本）",
+                d1.action.equals(AdDecisionCore.A_CLICK_BOUNDS) && d1.bounds[0] == 880,
                 "实际: " + d1.action + " @" + (d1.bounds != null ? d1.bounds[0] : -1));
 
         Ctx retry = splash(1800);
         retry.clickAttempts = 1;
         Decision d2 = run(root, retry);
-        check("N1b 复验第 2 次换候选 2（右上真键坐标，不再盲点同一坐标）",
-                d2.action.equals(AdDecisionCore.A_CLICK_BOUNDS) && d2.bounds[0] == 880,
+        check("N1b 复验第 2 次换候选 2（左下坐标 60，不再盲点同一坐标）",
+                d2.action.equals(AdDecisionCore.A_CLICK_BOUNDS) && d2.bounds[0] == 60,
                 "实际: " + d2.action + " @" + (d2.bounds != null ? d2.bounds[0] : -1));
 
         Ctx retry2 = splash(3000);
         retry2.clickAttempts = 2;
         Decision d3 = run(root, retry2);
-        check("N1c 候选轮换用尽后停在最后一个候选（idx=min(N,size-1)）",
-                d3.action.equals(AdDecisionCore.A_CLICK_BOUNDS) && d3.bounds[0] == 880,
+        check("N1c 候选轮换用尽后停在最后一个候选（idx=min(N,size-1)，60）",
+                d3.action.equals(AdDecisionCore.A_CLICK_BOUNDS) && d3.bounds[0] == 60,
                 "实际: " + d3.action + " @" + (d3.bounds != null ? d3.bounds[0] : -1));
     }
 
@@ -699,6 +712,129 @@ public class DecisionCoreTest {
         check("N5d 贴边 0% 拒学（状态栏/边缘死区）", !AdDecisionCore.saneNormPos(0.0, 0.5));
     }
 
+    /* ═══════ v3.8.0：issue#10 二轮（GKD 方法论对齐） ═══════ */
+
+    /** v380-1：微博实锤——全屏可点大容器 + 不可点「跳过」标签：isSmallClick 判假
+     *  （v3.7.0 从不点击只返回键，返回键又被广告拦截）→ 假跳过手势候选：
+     *  dispatchGesture 直点标签自身坐标（clickCenter），绝不 performAction 大容器 */
+    static void v380_weiboFakeSkipGesture() {
+        FakeNode root = FakeNode.root("com.sina.weibo.SplashActivity");
+        FakeNode adImage = FakeNode.node("android.widget.ImageView", 0, 0, 1080, 2400).click();
+        FakeNode label = FakeNode.node("android.widget.TextView", 950, 80, 1050, 160).txt("跳过"); // 不可点
+        adImage.add(label);
+        root.add(adImage);
+
+        Decision d = run(root, splash(600)); // 非根窗口
+        check("v380-1a 微博假跳过 → 手势直点标签坐标（fake_skip_tap）",
+                d.action.equals(AdDecisionCore.A_CLICK_BOUNDS) && d.reason.equals("fake_skip_tap")
+                        && d.bounds != null && d.bounds[0] == 950 && d.bounds[1] == 80,
+                "实际: " + d.action + "/" + d.reason);
+    }
+
+    /** v380-2：中央「跳过」标签 = CTA 诱饵——不手势直点；fakeSkip=true →
+     *  应用内窗 800ms 走 gyro_break 返回键（实际决策），绝无 A_CLICK_BOUNDS */
+    static void v380_centerBaitNoTap() {
+        FakeNode root = FakeNode.root("com.sina.weibo.SplashActivity");
+        FakeNode adImage = FakeNode.node("android.widget.ImageView", 0, 0, 1080, 2400).click();
+        FakeNode label = FakeNode.node("android.widget.TextView", 400, 1100, 700, 1250).txt("跳过"); // 中央诱饵
+        adImage.add(label);
+        root.add(adImage);
+
+        Decision d = run(root, splash(900)); // 应用内窗
+        check("v380-2a 中央诱饵「跳过」不点（learnableSkipShape 拒收；实际走 gyro_break 返回键）",
+                !d.action.equals(AdDecisionCore.A_CLICK_BOUNDS),
+                "实际: " + d.action + "/" + d.reason);
+    }
+
+    /** v380-3：微博 iv_skip——零文本图片跳过键，vid 含 skip（GKD 全局规则同款） */
+    static void v380_vidSkipImage() {
+        FakeNode root = FakeNode.root("com.sina.weibo.SplashActivity");
+        root.add(FakeNode.node("android.widget.ImageView", 950, 80, 1050, 160).click()
+                .vid("com.sina.weibo:id/iv_skip")); // 零文本
+        Decision d = run(root, splash(600));
+        check("v380-3a vid=iv_skip 零文本图片跳过键 → skip_text 点击",
+                d.action.equals(AdDecisionCore.A_CLICK_BOUNDS) && d.reason.equals("skip_text"),
+                "实际: " + d.action + "/" + d.reason);
+    }
+
+    /** v380-4：穿山甲 tt_splash_skip_btn（vid 含 skip 的开屏官方跳过键） */
+    static void v380_ttSplashBtn() {
+        FakeNode root = FakeNode.root("com.bytedance.sdk.openadsdk.stub.activity.Stub_Standard_Portrait_Activity");
+        root.add(FakeNode.node("android.widget.TextView", 950, 80, 1050, 160).click()
+                .vid("com.bytedance.sdk.openadsdk:id/tt_splash_skip_btn"));
+        Decision d = run(root, splash(600));
+        check("v380-4a vid=tt_splash_skip_btn（穿山甲）→ skip_text 点击",
+                d.action.equals(AdDecisionCore.A_CLICK_BOUNDS) && d.reason.equals("skip_text"),
+                "实际: " + d.action + "/" + d.reason);
+    }
+
+    /** v380-5：倒计时控件 vid（count+down 非 download）——vid 跳过键第二形态 */
+    static void v380_countdownVid() {
+        FakeNode root = FakeNode.root("com.test.app.SplashActivity");
+        root.add(FakeNode.node("android.widget.TextView", 950, 80, 1050, 160).click()
+                .vid("com.test.app:id/splash_count_down"));
+        Decision d = run(root, splash(600));
+        check("v380-5a vid=splash_count_down 倒计时控件 → skip_text 点击",
+                d.action.equals(AdDecisionCore.A_CLICK_BOUNDS) && d.reason.equals("skip_text"),
+                "实际: " + d.action + "/" + d.reason);
+    }
+
+    /** v380-6：不可见「跳过」候选（visibleToUser=false）= 陷阱/死区——全过滤 */
+    static void v380_invisibleDecoy() {
+        FakeNode root = FakeNode.root("com.ximalaya.ting.android.host.activity.WelComeActivity");
+        root.add(FakeNode.node("android.widget.TextView", 950, 80, 1050, 160).txt("跳过").click().invisible());
+        Decision d = run(root, splash(600));
+        check("v380-6a 不可见「跳过」候选被过滤（GKD [visibleToUser=true] 同款）",
+                d.action.equals(AdDecisionCore.A_NONE),
+                "实际: " + d.action + "/" + d.reason);
+    }
+
+    /** v380-7：parseCountdown——跳过文案倒计时解析（服务侧门控到「倒计时将尽」再出手） */
+    static void v380_parseCountdown() {
+        check("v380-7a parseCountdown(\"跳过 3\")==3", AdDecisionCore.parseCountdown("跳过 3") == 3);
+        check("v380-7b parseCountdown(\"3s后可跳过\")==3", AdDecisionCore.parseCountdown("3s后可跳过") == 3);
+        check("v380-7c parseCountdown(\"跳过广告 5\")==5", AdDecisionCore.parseCountdown("跳过广告 5") == 5);
+        check("v380-7d parseCountdown(\"跳过\")==0", AdDecisionCore.parseCountdown("跳过") == 0);
+        check("v380-7e parseCountdown(\"0元领福利\")==0（营销 0 非倒计时）",
+                AdDecisionCore.parseCountdown("0元领福利") == 0);
+        check("v380-7f parseCountdown(\"跳过 15\")==15（上限内）",
+                AdDecisionCore.parseCountdown("跳过 15") == 15);
+        check("v380-7g parseCountdown(\"跳过 16\")==0（超上限拒识）",
+                AdDecisionCore.parseCountdown("跳过 16") == 0);
+        check("v380-7h parseCountdown(\"满300减50\")==0（满减营销数字）",
+                AdDecisionCore.parseCountdown("满300减50") == 0);
+        check("v380-7i parseCountdown(\"跳过 10\")==10", AdDecisionCore.parseCountdown("跳过 10") == 10);
+    }
+
+    /** v380-8：角落键先于 SDK 直断（v3.8.0 角落块前置到 L2 之前；
+     *  v3.7.0 时代 800ms 会先 BACK——「有可点目标绝不先按返回键」） */
+    static void v380_cornersBeforeSdkBack() {
+        FakeNode root = FakeNode.root("com.bytedance.sdk.openadsdk.stub.activity.Stub_Standard_Portrait_Activity");
+        root.add(FakeNode.node("android.widget.ImageView", 950, 80, 1050, 160).click()); // 角落形态无字
+        Ctx ctx = rootSplash(800);
+        ctx.sdkAdWin = true;   // SDK 窗豁免（backSafe）
+        ctx.clickAttempts = 0; // 800ms：已过 500ms 角落时机、也过 700ms 直断线
+        Decision d = run(root, ctx);
+        check("v380-8a 角落键先于 SDK 直断（800ms 点击而非 BACK）",
+                d.action.equals(AdDecisionCore.A_CLICK_BOUNDS) && d.reason.equals("corner_image_skip"),
+                "实际: " + d.action + "/" + d.reason);
+    }
+
+    /** v380-9：候选排序——短文案真键优先于长文案大标签（selfClick/短文案/小面积） */
+    static void v380_candidateOrdering() {
+        FakeNode root = FakeNode.root("com.ximalaya.ting.android.SplashAdActivity");
+        // 两个小可点「跳过」类 TextView 都在角落：短文案（右上）+ 长文案（左上，面积更大）
+        FakeNode shortKey = FakeNode.node("android.widget.TextView", 880, 90, 1030, 180).txt("跳过").click();
+        FakeNode longKey = FakeNode.node("android.widget.TextView", 60, 90, 300, 180).txt("跳过广告 5s后可跳过").click();
+        root.add(shortKey).add(longKey);
+
+        Decision d = run(root, splash(600));
+        check("v380-9a 候选排序：短文案真键（880）优先于长文案大标签（60）",
+                d.action.equals(AdDecisionCore.A_CLICK_BOUNDS) && d.reason.equals("skip_text")
+                        && d.bounds != null && d.bounds[0] == 880,
+                "实际: " + d.action + "/" + d.reason + " @" + (d.bounds != null ? d.bounds[0] : -1));
+    }
+
     /* ═══════ 断言工具 ═══════ */
 
     static void check(String name, boolean ok) {
@@ -716,7 +852,7 @@ public class DecisionCoreTest {
     }
 
     public static void main(String[] args) {
-        System.out.println("═══ AdDecisionCore JVM 单测（v3.6.0 · 真机场景建模 · 屏幕 1080x2400）═══\n");
+        System.out.println("═══ AdDecisionCore JVM 单测（v3.8.0 · 真机场景建模 · 屏幕 1080x2400）═══\n");
 
         System.out.println("── 微博类：第一方图片开屏（真机反馈主场景）──");
         weibo_cornerSkip();
@@ -769,6 +905,17 @@ public class DecisionCoreTest {
         v370_clickBeforeGyro();
         v370_bigTreeCorner();
         v370_sanePos();
+
+        System.out.println("── v3.8.0：issue#10 二轮（GKD 方法论对齐）──");
+        v380_weiboFakeSkipGesture();
+        v380_centerBaitNoTap();
+        v380_vidSkipImage();
+        v380_ttSplashBtn();
+        v380_countdownVid();
+        v380_invisibleDecoy();
+        v380_parseCountdown();
+        v380_cornersBeforeSdkBack();
+        v380_candidateOrdering();
 
         System.out.println("\n═══ 结果：" + pass + " PASS / " + fail + " FAIL ═══");
         if (fail > 0) {

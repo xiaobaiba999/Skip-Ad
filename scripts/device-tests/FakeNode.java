@@ -16,6 +16,8 @@ class FakeNode implements NodeView {
 
     String text = "", desc = "", cls = "android.view.View";
     boolean clickable, scrollable, editable;
+    String viewId = "";
+    boolean visible = true;
     int[] bounds;
     FakeNode parent;
     List<FakeNode> children = new ArrayList<FakeNode>();
@@ -45,6 +47,8 @@ class FakeNode implements NodeView {
     FakeNode click() { this.clickable = true; return this; }
     FakeNode scroll() { this.scrollable = true; return this; }
     FakeNode edit() { this.editable = true; return this; }
+    FakeNode vid(String s) { this.viewId = s; return this; }
+    FakeNode invisible() { this.visible = false; return this; }
 
     public String text() { return text; }
     public String desc() { return desc; }
@@ -56,4 +60,6 @@ class FakeNode implements NodeView {
     public int childCount() { return children.size(); }
     public NodeView child(int i) { return children.get(i); }
     public NodeView parent() { return parent; }
+    public boolean visible() { return visible; }
+    public String viewId() { return viewId; }
 }

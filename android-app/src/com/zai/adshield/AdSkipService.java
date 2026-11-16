@@ -6,6 +6,7 @@ import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -15,6 +16,7 @@ import android.graphics.Rect;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.provider.Settings;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.accessibility.AccessibilityWindowInfo;
@@ -165,6 +167,12 @@ public class AdSkipService extends AccessibilityService {
     private final java.util.HashMap<String, Long> landingBackAt = new java.util.HashMap<>();
     /* v3.5.0：点击复验——本窗已点击次数（换候选/真实触点重试/返回键兜底的依据） */
     private final java.util.HashMap<String, Integer> clickTries = new java.util.HashMap<>();
+    /* v3.8.0 倒计时门控（issue#10 二轮·喜马拉雅）：跳过文案带数字（「跳过 3」）
+     * 时穿山甲类 SDK 的跳过键尚未激活——提前点=白点还占 1.2s 冷却。锚点跟踪
+     * 文案数字变化，首击未关 → 门控到「锚点+剩余秒数-0.5s」再出手，出手即命中 */
+    private final java.util.HashMap<String, Integer> cdLastN = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Long> cdAnchorAt = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Long> cdWaitUntil = new java.util.HashMap<>();
 
     private volatile String lastAutoClickPkg;
     private volatile long lastAutoClickAt;
@@ -201,7 +209,7 @@ public class AdSkipService extends AccessibilityService {
         // v3.6.0：清理 v3.5.0 误学毒指纹（MainActivity/FrameLayout/Dialog 被
         // 学成「广告窗指纹」——用户二次进入被连按返回键退出的根因）
         int purged = purgePoisonFingerprints();
-        appendLog("服务已启动 · v3.7.0 手势能力修复+多候选轮换+学习位置前置+返回键复验"
+        appendLog("服务已启动 · v3.8.0 手势真实触点首选+假跳过手势直点+vid跳过键+倒计时门控+无障碍自愈重绑"
                 + (purged > 0 ? "｜已清理 " + purged + " 条误学窗口指纹" : ""));
     }
 
@@ -228,20 +236,31 @@ public class AdSkipService extends AccessibilityService {
     }
 
     /** v3.7.0：心跳自检闹钟（15 分钟重复，服务连上即撤） */
-    private static final long HEARTBEAT_MS = 15 * 60 * 1000;
+    public static final long HEARTBEAT_MS = 15 * 60 * 1000;
 
-    private void scheduleHeartbeat() {
+    /** v3.8.0：排下一次心跳（静态：KeepAliveReceiver 收到自检后自续期共用——
+     *  心跳链永不中断）。精确闹钟优先（Doze 中也能准点触发），未授予精确闹钟
+     *  权限（Android 12+）降级 setAndAllowWhileIdle——仍远优于 setInexactRepeating
+     *  （可被系统无限推迟，v3.7.0 心跳常不触发的根因） */
+    static void scheduleNextHeartbeat(Context ctx, long atMs) {
         try {
-            android.app.AlarmManager am = (android.app.AlarmManager) getSystemService(ALARM_SERVICE);
-            Intent it = new Intent(this, KeepAliveReceiver.class);
+            android.app.AlarmManager am = (android.app.AlarmManager) ctx.getSystemService(Context.ALARM_SERVICE);
+            Intent it = new Intent(ctx, KeepAliveReceiver.class);
             it.setAction(KeepAliveReceiver.ACTION_SELF_CHECK);
             android.app.PendingIntent pi = android.app.PendingIntent.getBroadcast(
-                    this, 8, it,
+                    ctx, 8, it,
                     android.app.PendingIntent.FLAG_UPDATE_CURRENT | android.app.PendingIntent.FLAG_IMMUTABLE);
-            am.setInexactRepeating(android.app.AlarmManager.RTC,
-                    System.currentTimeMillis() + HEARTBEAT_MS, HEARTBEAT_MS, pi);
+            try {
+                am.setExactAndAllowWhileIdle(android.app.AlarmManager.RTC, atMs, pi);
+            } catch (SecurityException se) {
+                am.setAndAllowWhileIdle(android.app.AlarmManager.RTC, atMs, pi);
+            }
         } catch (Throwable ignored) {
         }
+    }
+
+    private void scheduleHeartbeat() {
+        scheduleNextHeartbeat(this, System.currentTimeMillis() + HEARTBEAT_MS);
     }
 
     private void cancelHeartbeat() {
@@ -375,6 +394,9 @@ public class AdSkipService extends AccessibilityService {
                 if (entering) rootWinCls.put(pkg, cls); // v3.6.0：记录入口窗
                 backTries.put(pkg, 0);
                 clickTries.put(pkg, 0); // v3.5.0：新窗重置复验计数
+                cdLastN.remove(pkg);   // v3.8.0：新窗重置倒计时锚点
+                cdAnchorAt.remove(pkg);
+                cdWaitUntil.remove(pkg);
                 gaveUp.put(pkg, Boolean.FALSE); // v3.6.0：新窗重置收手标记
                 winClsLearned.remove(pkg);
                 if (isDialogClass(cls) && !isOemUtilityPkg(pkg)) {
@@ -497,6 +519,23 @@ public class AdSkipService extends AccessibilityService {
 
         public boolean editable() {
             return n.isEditable();
+        }
+
+        public boolean visible() {
+            try {
+                return n.isVisibleToUser();
+            } catch (Exception e) {
+                return true; // 旧 ROM 异常时放行
+            }
+        }
+
+        public String viewId() {
+            try {
+                CharSequence v = n.getViewIdResourceName();
+                return v == null ? "" : v.toString();
+            } catch (Exception e) {
+                return "";
+            }
         }
 
         public int[] bounds() {
@@ -638,6 +677,39 @@ public class AdSkipService extends AccessibilityService {
                     Long old = adFeatureUntil.get(pkg);
                     if (old == null || now > old) adFeatureUntil.put(pkg, now + CHAIN_GUARD_MS);
                 }
+                /* v3.8.0 倒计时门控（issue#10 二轮·喜马拉雅）：穿山甲类 SDK 倒计时
+                 * 结束前跳过键不响应——「已点击×4 不跳转」真凶之一（提前点全白点，
+                 * 还各占 1.2s 冷却）。文案数字变化→重新锚定；首击未关→等到
+                 * 锚点+剩余秒数-0.5s 再出手；倒计时走完（文案无数字）→立即恢复出手 */
+                boolean cdWait = false;
+                int cdN = f.countdownN;
+                if (cdN > 0) {
+                    Integer lastN = cdLastN.get(pkg);
+                    if (lastN == null || lastN.intValue() != cdN) {
+                        cdLastN.put(pkg, cdN);
+                        cdAnchorAt.put(pkg, now);
+                    }
+                    if (clickAttempts >= 1) {
+                        Long anchor = cdAnchorAt.get(pkg);
+                        long until = (anchor == null ? now : anchor.longValue())
+                                + cdN * 1000L - AdDecisionCore.COUNTDOWN_EXTRA_MS;
+                        if (now < until) {
+                            cdWait = true;
+                            if (cdWaitUntil.put(pkg, until) == null) {
+                                appendLog("⏳ 倒计时门控（" + shortPkg(pkg) + "）：跳过键 "
+                                        + cdN + "s 后才激活（提前点=白点）→ "
+                                        + (until - now) + "ms 后出手即命中");
+                            }
+                        }
+                    }
+                } else {
+                    Long w = cdWaitUntil.get(pkg);
+                    if (w != null) {
+                        cdWaitUntil.remove(pkg);
+                        appendLog("⏳ 倒计时结束（" + shortPkg(pkg) + "）：跳过键已激活 → 出手");
+                    }
+                }
+                if (cdWait) continue;
                 Decision d = AdDecisionCore.decide(f, ctx);
                 if (d.action.equals(AdDecisionCore.A_NONE)) continue;
                 if (execute(pkg, d, f, ctx, clickCoolOK, now)) return; // 命中即熔断
@@ -730,8 +802,9 @@ public class AdSkipService extends AccessibilityService {
         if (d.action.equals(AdDecisionCore.A_CLICK_BOUNDS) || d.action.equals(AdDecisionCore.A_CLOSE)) {
             if (!clickCoolOK) return false;
             int attempts = triesOfClick(pkg);
-            // v3.5.0 复验重试：第 1 次 performAction→手势降级；第 ≥2 次一律手势真实触点
-            if (clickNode(d, attempts >= 1)) {
+            // v3.8.0：手势真实触点【首选】——performAction 首点常被应用无声吞掉
+            //（喜马拉雅实锤）；派发失败才降级 performAction 兜底（见 clickNode）
+            if (clickNode(d)) {
                 lastClickAt.put(pkg, now);
                 lastAutoClickPkg = pkg;
                 lastAutoClickAt = now;
@@ -746,7 +819,7 @@ public class AdSkipService extends AccessibilityService {
                 } else {
                     if (attempts == 0) {
                         appendLog("⚡ 已点击跳过（" + shortPkg(pkg) + "）：" + reasonZh(d.reason)
-                                + "（" + (lastGesture ? "手势点击" : "无障碍代点") + "）→ 1.2s 后复验，未关将换候选重试");
+                                + "（" + (lastGesture ? "手势真实触点" : "无障碍代点兜底") + "）→ 1.2s 后复验，未关将换候选重试");
                     } else {
                         appendLog("🔁 复验未关闭 → 第 " + (attempts + 1) + " 次出手（" + shortPkg(pkg) + "）："
                                 + reasonZh(d.reason) + "（手势真实触点·换第 " + (attempts + 1) + " 个候选，不再盲点同一坐标）");
@@ -787,19 +860,15 @@ public class AdSkipService extends AccessibilityService {
 
     private boolean lastGesture = false;
 
-    /** 点击控件：performAction 优先，失效降级 dispatchGesture 手势点击（真实触点）；
-     *  v3.5.0：forceGesture=true（复验重试）跳过 performAction 直接真实触点——
-     *  performAction 返回 true 也可能被应用无声吞掉，真机「点了没反应」的主因 */
-    private boolean clickNode(Decision d, boolean forceGesture) {
+    /** v3.8.0：手势真实触点【首选】（GKD clickCenter 方法论）。
+     *  v3.4.0~v3.7.0 以 performAction 优先：无障碍代点返回 true 也可能被应用
+     *  无声吞掉——issue#10 二轮实锤「4 次点击成功，广告纹丝不动，手动点同一
+     *  按钮立刻生效」。performAction 走无障碍点击通道，广告 SDK/自绘控件普遍
+     *  只认真实触点。改为先 dispatchGesture 点【原标签控件】中心（=手动点击的
+     *  完全等价物），派发失败（系统手势限流）才降级 performAction 兜底。
+     *  假跳过候选（d.node=null）只走手势——大容器祖先 performAction=点开广告 */
+    private boolean clickNode(Decision d) {
         lastGesture = false;
-        if (!forceGesture && d.node instanceof NodeAdapter) {
-            try {
-                if (((NodeAdapter) d.node).n.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
-                    return true;
-                }
-            } catch (Exception ignored) {
-            }
-        }
         if (d.bounds != null) {
             int cx = (d.bounds[0] + d.bounds[2]) / 2;
             int cy = (d.bounds[1] + d.bounds[3]) / 2;
@@ -807,6 +876,14 @@ public class AdSkipService extends AccessibilityService {
                 lastGesture = true;
                 energyGestures++;
                 return true;
+            }
+        }
+        if (d.node instanceof NodeAdapter) {
+            try {
+                if (((NodeAdapter) d.node).n.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+                    return true;
+                }
+            } catch (Exception ignored) {
             }
         }
         return false;
@@ -842,7 +919,8 @@ public class AdSkipService extends AccessibilityService {
      *   ④ 结果回调——被系统取消不再静默（诊断日志供下轮迭代）。
      *   ⑤ 前提：accessibility_service_config 已补 canPerformGestures=true
      *    （v3.6.0 及之前【缺失】——手势从未真正触达屏幕，喜马拉雅复验重试
-     *    全部无效的头号根因） */
+     *    全部无效的头号根因）
+     *   ⑥ 触点时长 60→110ms——更接近真人触点（80-150ms），防 SDK 触点时长校验 */
     private boolean gestureTap(int x, int y) {
         try {
             if (x <= 0 || y <= 0) return false;
@@ -852,7 +930,7 @@ public class AdSkipService extends AccessibilityService {
             p.moveTo(x, y);
             p.lineTo(x + 1, y); // 非零长度路径：单点路径部分 ROM 不触发点击
             GestureDescription gd = new GestureDescription.Builder()
-                    .addStroke(new GestureDescription.StrokeDescription(p, 40, 60))
+                    .addStroke(new GestureDescription.StrokeDescription(p, 40, 110))
                     .build();
             return dispatchGesture(gd, new TapGestureCallback(lastGesturePkg), null);
         } catch (Throwable t) {
@@ -865,6 +943,7 @@ public class AdSkipService extends AccessibilityService {
 
     private static String reasonZh(String r) {
         if (r.equals("skip_text")) return "文本跳过键";
+        if (r.equals("fake_skip_tap")) return "假跳过手势直点（标签坐标）";
         if (r.equals("sdk_window")) return "SDK 广告窗指纹";
         if (r.equals("sdk_window_learned")) return "学习窗口指纹（快断）";
         if (r.equals("gyro_immediate")) return "翻转/摇一摇文案立即直断";
@@ -1472,6 +1551,61 @@ public class AdSkipService extends AccessibilityService {
 
     private String cs(CharSequence c) {
         return c == null ? "" : c.toString().trim();
+    }
+
+    /* ───────── v3.8.0 WRITE_SECURE_SETTINGS 自愈重绑（可选高级能力）─────────
+     * Android 安全设计：无障碍服务受 BIND_ACCESSIBILITY_SERVICE 签名级权限保护，
+     * 任何应用（含自己）都不能 startService/bindService 它——v3.6.0/v3.7.0 的
+     * 「startService 拉活重绑」实为 SecurityException，自动恢复从未真正生效。
+     * 系统提供的唯一正道（GKD 进阶玩法同款）：用户经 adb 一次性授权
+     *   adb shell pm grant com.zai.adshield android.permission.WRITE_SECURE_SETTINGS
+     * 之后本应用可直接写 Settings.Secure：
+     *  · 服务被杀未解绑 → 从 ENABLED_ACCESSIBILITY_SERVICES 摘除再写回 →
+     *    系统立刻重新 bind（进程随之拉起）——「清理后台重进要手动开」终结
+     *  · 覆盖安装被系统关闭（MY_PACKAGE_REPLACED 必关）→ 直接写回开启状态 */
+    public static boolean hasSecureWrite(Context ctx) {
+        try {
+            return ctx.checkPermission("android.permission.WRITE_SECURE_SETTINGS",
+                    android.os.Process.myPid(), android.os.Process.myUid())
+                    == android.content.pm.PackageManager.PERMISSION_GRANTED;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** 自愈重绑：true=已发起（重绑异步生效）；未授权返回 false */
+    public static boolean selfHealBind(Context ctx) {
+        if (!hasSecureWrite(ctx)) return false;
+        try {
+            final android.content.ContentResolver cr = ctx.getContentResolver();
+            final String key = Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES;
+            final ComponentName cn = new ComponentName(ctx, AdSkipService.class);
+            final String flat = cn.flattenToString();
+            final String cur = Settings.Secure.getString(cr, key);
+            if (cur == null || !cur.contains(flat)) {
+                // 未登记（被系统关闭/覆盖安装后清除）→ 直接写回开启
+                String next = (cur == null || cur.trim().isEmpty()) ? flat : cur + ":" + flat;
+                Settings.Secure.putString(cr, key, next);
+                Settings.Secure.putString(cr, Settings.Secure.ACCESSIBILITY_ENABLED, "1");
+                return true;
+            }
+            // 已登记但进程已死 → 摘除再写回，强制系统重绑（bind 会拉起进程）
+            StringBuilder keep = new StringBuilder();
+            for (String s : cur.split(":")) {
+                String t = s.trim();
+                if (t.length() == 0 || t.equals(flat)) continue;
+                if (keep.length() > 0) keep.append(':');
+                keep.append(t);
+            }
+            String without = keep.toString();
+            Settings.Secure.putString(cr, key, without); // 摘除 → 系统解绑
+            Thread.sleep(400);                            // 等解绑落地
+            Settings.Secure.putString(cr, key,            // 写回 → 系统 bind（拉起进程）
+                    without.isEmpty() ? flat : without + ":" + flat);
+            return true;
+        } catch (Throwable t) {
+            return false;
+        }
     }
 
     private String shortPkg(String pkg) {

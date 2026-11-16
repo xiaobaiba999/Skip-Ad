@@ -215,3 +215,13 @@ textarea { min-height: 72px; resize: none; }
 #page-progress-wrap .ub-progress { background: #ede9fe; }
 #page-progress-wrap .ub-progress-bar { background: linear-gradient(90deg, #8b5cf6, #d946ef); }
 #page-progress-wrap .ub-progress-text { color: #6d28d9; }
+
+/* ───── v3.8.0 ADB 自愈授权块（keep-box 内，电池白名单指引附近） ───── */
+.adb-box { margin-top: 10px; border-top: 1px dashed #e4e4e7; padding-top: 10px; }
+.code-line {
+  margin-top: 6px; padding: 8px 10px; border-radius: 10px;
+  background: #18181b; color: #a7f3d0;
+  font-family: "SF Mono", Menlo, Consolas, "Courier New", monospace;
+  font-size: 11px; line-height: 1.6; word-break: break-all;
+  user-select: text; -webkit-user-select: text; cursor: text;
+}

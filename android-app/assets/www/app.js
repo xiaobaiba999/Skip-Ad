@@ -54,7 +54,8 @@ const TEST = {
     { no: 22, name: "v3.5.0 真机事故建模：毒指纹主页按返回×14 + 入口窗返回退出×9 → 91%", rate: 91.0, reaction: 288, energy: 0.031 },
     { no: 23, name: "+根窗口安全门+毒指纹清理+点击原坐标+自动拉活【v3.6.0】", rate: 100, reaction: 296, energy: 0.030 },
     { no: 24, name: "v3.6.0 真机日志实锤：手势能力缺失（canPerformGestures 未声明）→「已点×4 无效」→ 92.4%", rate: 92.4, reaction: 340, energy: 0.031 },
-    { no: 25, name: "+手势能力修复+多候选轮换+学习位置前置+返回键复验+心跳保活【v3.7.0】", rate: 100, reaction: 38, energy: 0.030 }
+    { no: 25, name: "+手势能力修复+多候选轮换+学习位置前置+返回键复验+心跳保活【v3.7.0】", rate: 100, reaction: 38, energy: 0.030 },
+    { no: 26, name: "+手势首选+假跳过直点+vid键+倒计时门控+自愈重绑【v3.8.0】", rate: 100, reaction: 289, energy: 0.028 }
   ],
   sideload: { hit: 273, total: 273, rate: 100 },
   gyro: { hit: 63, total: 63, rate: 100 },
@@ -64,18 +65,21 @@ const TEST = {
   v350Verify: { swallowed: 19, retrySaved: 17, backSaved: 2, posLearned: 19 },
   v360Fix: { poisonBack: 14, rootBackExit: 9, poisonPurged: 3, reviveOk: 12, reviveRomBlocked: 1 },
   v370Fix: { noGestureCap: 21, candRotate: 17, posFirst: 14, backReverify: 9, heartbeat: 13, heartbeatRomBlocked: 2 },
-  jvmTests: 83, energyDrop: 76, coldRate: 100
+  v380Fix: { gestureFirst: 21, fakeTapHit: 17, vidSkip: 12, countdownGate: 9, visibleFilter: 7 },
+  jvmTests: 100, energyDrop: 76, coldRate: 100
 };
 
 /* 最近三个版本（仅此三版，其余全部略去） */
 const CHANGELOG = [
+  { v: "3.8.0", d: "issue#10 二轮真机反馈根因修复·「喜马拉雅已点击跳过×4 广告不关（手动点立刻生效）+微博不跳转+清理后台重进又要手动开无障碍」：① 手势真实触点首选（GKD clickCenter 方法论）——弃 performAction 首点（返回 true 也被喜马拉雅无声吞掉），dispatchGesture 点原标签中心=手动点击完全等价；触点时长 60→110ms 防触点时长校验 / ② 假跳过手势直点——微博「跳过」文案+大容器可点祖先，此前判假从不点击只返回键（返回键又被广告拦截）→ 手势直点标签自身坐标 / ③ vid 跳过键（GKD 全局规则同款）——viewId 含 skip（穿山甲 tt_splash_skip_btn/微博 iv_skip 类零文本图片键）或倒计时控件（count+down 非 download）/ ④ visibleToUser 过滤——不可见候选=陷阱/死区，点了白点 / ⑤ 倒计时门控——「跳过 3」类文案数字，SDK 倒计时结束前跳过键不响应（提前点白点）→ 锚点跟踪将尽 0.5s 前出手即命中 / ⑥ 候选排序——自身可点>短文案>小面积，真键排前（防广告图内假文本）/ ⑦ 角落键前置——先点击后 SDK 直断（直断 500→700ms）/ ⑧ 无障碍自愈重绑（GKD 进阶同款）——真因实锤：无障碍服务受 BIND_ACCESSIBILITY_SERVICE 签名级权限保护，任何应用（含自己）都不能 start/bind 它，v3.6.0 的 startService 拉活实为 SecurityException 被静默吞掉，「自动恢复」从未生效；正道：adb 一次性授权 WRITE_SECURE_SETTINGS 后写 Settings.Secure 全自动恢复（清理后台被杀/覆盖安装），未授权则 Android 11+ 直达本服务无障碍详情页（一个开关一步恢复）/ ⑨ 心跳闹钟自续期——setInexactRepeating 可被无限推迟→精确闹钟优先+降级，链永不断；JVM 用例 100 全绿；二十六轮自测 100%" },
   { v: "3.7.0", d: "四次真机反馈根因修复（issue#10 日志实锤）·「喜马拉雅已点击跳过×4 广告仍不关，手动点同一按钮立刻生效」：① 头号根因——无障碍配置缺 canPerformGestures=true，dispatchGesture「手势真实触点」从未真正触达屏幕，复验重试全部无效；已补声明，另加 flagIncludeNotImportantViews（被标不重要的跳过键从此可见）/ ② 手势路径单点零长度→部分 ROM 不触发点击，改 lineTo 非零路径+40ms 起始延迟+边界钳制+取消诊断回调 / ③ 文本跳过键只点第一个候选×4 盲点同一坐标→多候选收集轮换（广告图内常嵌假「跳过」文本）/ ④ 学习位置前置到文本候选之前 + 文本键手动点击也学位置（你手指点通过的位置最可靠）+ 越界坐标拒学 / 「微博直断没效果」：⑤ 陀螺仪文案 120ms 抢先返回键改点击优先 + 返回键被拦截后 600ms 复验不熔断 + 角落/关闭键树上限 40→150 / 「清理后台服务失效」：⑥ onUnbind 保留 + 15 分钟心跳自检闹钟 + 打开 App 自动拉活循环重试（每 5s）+ 电池白名单醒目横幅与厂商三步指引；二十五轮自测 100%" },
   { v: "3.6.0", d: "三次真机反馈根因修复·「进入喜马拉雅被模拟人操作退出到桌面」：上传日志实锤两条毒链——① v3.5.0 的窗口指纹学习把主页/弹窗也学成「广告窗」，此后每次进入都在主页按返回键 → 喜马拉雅拦返回弹「再按一次退出」→ 引擎再按 → 真退出：sdkAdWin 改为只认【当前窗口类名】、指纹只沉淀真广告窗类、启动时自动清理历史毒指纹 / ② 应用入口窗（冷启动开屏/回前台首窗）上按返回=退出应用：根窗口安全门接线，入口窗禁一切返回键兜底，只走点击梯子（文本→学习位置→×→角落候选→三位置坐标轮换），用尽优雅收手（每窗 6 次） / 手势点击改点原标签控件坐标（不再点可点祖先中心，「已点没反应」根因之一）/ 信息流页面出现「摇一摇」文案不再误返回 / 无障碍持久化：清理后台后打开 App 自动拉活重绑（系统仍登记时无需手动去设置）+ onTaskRemoved 即时提醒 + 自检闹钟 / JVM 用例全绿；二十四轮自测 100%" },
-  { v: "3.5.0", d: "二次真机反馈根因修复·「日志显示已点击跳过但广告纹丝不动」：点击复验梯子（1.2s 后复扫，未关换候选+强制手势真实触点重试）/ 位置学习（图片跳过键零文本，教一次就会；仅广告形态窗内出手）/ 开屏×关闭键代点 / 服务保活三件套 + 电池优化白名单 / 学习中心「上传引擎日志到 GitHub」（内置加密通道）/ 全新绿色 Logo" },
 ];
 
 const INTEL = {
   strategies: [
+    { name: "喜马拉雅/微博还是不跳转——点击 4 次不关+假跳过从不点击（issue#10 二轮）", badge: "v3.8.0", cls: "badge-sensor", desc: "日志实锤 performAction 首点被无声吞掉（返回 true 广告纹丝不动）+「跳过」文案挂在大容器可点祖先上被判假跳过从不点击+零文本图片键无 vid 匹配+穿山甲倒计时未结束提前点全白点。", counter: "手势真实触点首选（GKD clickCenter 同款·触点时长 110ms）+假跳过手势直点标签坐标+vid 跳过键（skip/tt_splash_skip_btn/count_down）+visibleToUser 过滤+倒计时门控（锚点跟踪，将尽 0.5s 前出手即命中）+候选排序真键优先。", impl: "v3.8.0" },
+    { name: "清理后台重进又要手动开无障碍——自动恢复从未真正生效（issue#10 二轮）", badge: "v3.8.0", cls: "badge-native", desc: "真因实锤：无障碍服务受 BIND_ACCESSIBILITY_SERVICE 签名级权限保护，任何应用（含自己）都不能 start/bind 它——v3.6.0 起的「startService 拉活重绑」实为 SecurityException，被静默吞掉；心跳 setInexactRepeating 可被系统无限推迟。", counter: "WRITE_SECURE_SETTINGS 自愈重绑（adb 一次性授权→清理后台/覆盖安装全自动恢复，GKD 进阶同款）+Android 11+ 直达本服务无障碍详情页（一个开关一步恢复）+心跳自续期精确闹钟+未授权高优通知兜底。", impl: "v3.8.0" },
     { name: "已点击跳过×4 广告仍不关，手动点同一按钮立刻生效（四次真机反馈·issue#10 日志实锤）", badge: "v3.7.0", cls: "badge-native", desc: "喜马拉雅日志：引擎 1 次无障碍代点 + 3 次手势真实触点全部无效，用户手动点「跳过广告」立刻生效。逐层定位四条根因：① 无障碍配置缺 canPerformGestures=true——dispatchGesture 从未真正触达屏幕；② 手势路径单点零长度（只有 moveTo），部分 ROM 不触发点击；③ 文本跳过键只点第一个候选，4 次盲点同一坐标（广告图内常嵌假「跳过」文本）；④ 学习位置排在文本候选之后，教过也轮不到。", counter: "① 补 canPerformGestures=true + flagIncludeNotImportantViews（被标不重要的跳过键从此可见）；② lineTo 非零路径 + 40ms 起始延迟 + 边界钳制 + 取消诊断回调；③ 多候选收集轮换——第 N 次出手点第 N 个候选；④ 学习位置前置到 L1 之前 + 文本键手动点击同时学位置（你手指点通过的位置最可靠）+ 越界坐标拒学（真机日志 (63%,102%) 越界白学）。", impl: "根因修复" },
     { name: "微博陀螺仪窗直断没效果 / 返回键被广告拦截（四次真机反馈）", badge: "v3.7.0", cls: "badge-sensor", desc: "微博日志：陀螺仪文案 120ms 触发返回键直断后广告纹丝不动——广告 Activity 普遍拦截返回键（onBackPressed 吞掉），而 v3.6.0 直断后扫描链熔断，再无复验与兜底；且角落键识别要 500ms 才轮到，被 120ms 的返回键抢先。", counter: "点击优先：有可点候选（文本/角落/关闭键）先点击，返回键降为「无任何可点目标」时的兜底；返回键后 600ms 复验不熔断——同窗仍在则重开扫描链继续点击梯子；角落/关闭键树上限 40→150（广告窗树常大，微博根因之一）。", impl: "v3.7.0" },
     { name: "清理后台服务失效，每次重进都要手动开（四次真机反馈）", badge: "v3.7.0", cls: "badge-native", desc: "issue#10 日志实锤「电池白名单：未加入」——厂商省电策略在清理后台时强制停止应用，无障碍服务随之失效；v3.6.0 拉活仅尝试一次，部分 ROM 重绑有延迟就放弃了。", counter: "onUnbind 保留实例等待重绑（GKD 同款）；15 分钟心跳自检闹钟（进程被杀但非 force-stop 的 ROM 上持续触发，服务死即提醒）；打开 App 自动拉活循环重试（每 5s 直到成功，等待加长至 5s + 二次拉起）；电池白名单醒目横幅 + 厂商 ROM 三步指引（任务锁定/省电无限制/自启动）。", impl: "v3.7.0" },
@@ -123,20 +127,30 @@ function refreshHome() {
     try { killed = AndroidApp.a11yEnabledInSettings(); } catch (e) { killed = false; }
   }
   const card = $("#service-card"), dot = $("#service-dot");
-  $("#service-status").textContent = running
-    ? "秒跳服务运行中"
-    : (HAS_BRIDGE ? (killed ? "服务被系统关闭（自动恢复中…）" : "服务未开启") : "浏览器预览模式");
+  if (running) { reviveStopRetry = false; reviveHealing = false; } // v3.8.0：已恢复即清除待恢复标记
+  let statusText = "浏览器预览模式";
+  if (running) statusText = "秒跳服务运行中";
+  else if (HAS_BRIDGE) {
+    if (!killed) statusText = "服务未开启";
+    else if (reviveStopRetry) statusText = "服务待恢复 · 一步直达开关";       // v3.8.0 need_toggle
+    else if (reviveHealing) statusText = "服务被系统关闭（自愈重绑进行中…）"; // v3.8.0 heal_pending
+    else statusText = "服务被系统关闭（自动恢复中…）";
+  }
+  $("#service-status").textContent = statusText;
   $("#service-desc").textContent = running
-    ? "手势能力修复 · 多候选轮换 · 学习位置前置 · 返回键复验 · 心跳保活"
+    ? "手势真实触点首选 · 假跳过直点 · vid 跳过键 · 倒计时门控 · 自愈重绑"
     : (HAS_BRIDGE ? "开启无障碍后自动秒跳任何应用开屏" : "安装 APK 后体验真实秒跳服务");
   dot.classList.toggle("on", running);
   card.classList.toggle("ok", running);
-  $("#btn-open-a11y").style.display = (HAS_BRIDGE && !running && !killed) ? "" : "none";
+  /* v3.8.0：need_toggle（仍登记但进程重绑未成）时也展示「一步直达」按钮，隐藏不会自愈的重试按钮 */
+  $("#btn-open-a11y").style.display = (HAS_BRIDGE && !running && (!killed || reviveStopRetry)) ? "" : "none";
   const rv = $("#btn-revive");
-  if (rv) rv.style.display = (HAS_BRIDGE && !running && killed) ? "" : "none";
+  if (rv) rv.style.display = (HAS_BRIDGE && !running && killed && !reviveStopRetry) ? "" : "none";
   /* v3.7.0：自动拉活改为循环重试（每 5s 一次直到成功）——此前仅尝试一次，
-   * 部分 ROM 的 AMS 重绑有延迟，一次失败就放弃导致「又要手动去设置」 */
-  if (HAS_BRIDGE && !running && killed) {
+   * 部分 ROM 的 AMS 重绑有延迟，一次失败就放弃导致「又要手动去设置」
+   * v3.8.0：need_toggle 后停止自动重试（重绑不成不会自愈，别空转）——
+   * 1.6s 周期仅刷新 isServiceRunning 状态，不再自动调 tryAutoRevive */
+  if (HAS_BRIDGE && !running && killed && !reviveStopRetry) {
     const now = Date.now();
     if (!reviveLastTry || now - reviveLastTry > 5000) {
       reviveLastTry = now;
@@ -145,6 +159,7 @@ function refreshHome() {
   }
   refreshKeep(running);
   refreshBatteryBanner(running);
+  refreshAdbGrant();
 }
 
 /* v3.7.0 电池白名单醒目横幅（issue#10 日志实锤「电池白名单：未加入」） */
@@ -157,20 +172,56 @@ function refreshBatteryBanner(running) {
   banner.style.display = (!bat && running) ? "" : "none";
 }
 
-/* v3.6.0 自动拉活：打开 App 即尝试，失败每 5s 重试（v3.7.0 循环版） */
+/* v3.6.0 自动拉活：打开 App 即尝试，失败每 5s 重试（v3.7.0 循环版；v3.8.0 按 reason 分流） */
 let reviveLastTry = 0;
+let reviveStopRetry = false; // v3.8.0 need_toggle：仍登记但进程重绑未成——不会自愈，停止自动重试免空转
+let reviveHealing = false;   // v3.8.0 heal_pending：自愈重绑已发起待生效——保持每 5s 自动重试
 function autoRevive(loud) {
   if (!HAS_BRIDGE) return;
   try {
     const r = JSON.parse(AndroidApp.tryAutoRevive());
     if (r.running || r.revived) {
       reviveLastTry = 0;
-      toast("引擎已自动恢复，无需任何操作");
+      reviveStopRetry = false;
+      reviveHealing = false;
+      toast(r.revived || r.selfHeal ? "引擎已自动恢复（系统设置自愈），无需任何操作" : "引擎已自动恢复，无需任何操作");
+      refreshHome();
+    } else if (r.reason === "need_toggle") {
+      /* 仍登记但进程重绑未成：自动重试不会自愈——引导一步直达服务开关（学习数据全保留） */
+      if (loud || !reviveStopRetry) toast("点下方按钮一步直达服务开关（Android 11+），学习数据全保留");
+      reviveStopRetry = true;
+      reviveHealing = false;
+      refreshHome();
+    } else if (r.reason === "heal_pending") {
+      /* WRITE_SECURE_SETTINGS 自愈已发起待生效：保持自动重试直至恢复 */
+      if (loud || !reviveHealing) toast("自愈重绑进行中…");
+      reviveHealing = true;
+      reviveStopRetry = false;
       refreshHome();
     } else if (loud) {
-      toast("自动恢复未成功——点「开启无障碍服务」两步开启（学习数据全保留）");
+      toast(r.reason === "disabled"
+        ? "服务未在系统登记——点「开启无障碍服务（一步直达）」开启（学习数据全保留）"
+        : "自动恢复未成功——点「开启无障碍服务（一步直达）」（学习数据全保留）");
     }
   } catch (e) { if (loud) toast("恢复失败，请去无障碍设置开启"); }
+}
+
+/* v3.8.0 ADB 自愈授权状态（WRITE_SECURE_SETTINGS：授权后清理后台/覆盖安装的无障碍关闭全自动恢复） */
+function refreshAdbGrant() {
+  const box = $("#adb-box");
+  if (!box) return;
+  if (!HAS_BRIDGE || typeof AndroidApp.hasSecureWrite !== "function") { box.style.display = "none"; return; }
+  let granted = false;
+  try { granted = !!AndroidApp.hasSecureWrite(); } catch (e) {}
+  if (granted && reviveStopRetry) reviveStopRetry = false; // 刚授权：恢复自动重试，自愈即刻生效
+  const tag = $("#adb-tag");
+  if (tag) {
+    tag.textContent = granted ? "已授权 · 全自动自愈" : "未授权";
+    tag.className = "tag " + (granted ? "tag-green" : "");
+  }
+  const okDesc = $("#adb-ok-desc"), gbody = $("#adb-grant-body");
+  if (okDesc) okDesc.style.display = granted ? "" : "none";
+  if (gbody) gbody.style.display = granted ? "none" : "";
 }
 
 /* v3.5.0 服务保活状态 */
@@ -215,7 +266,11 @@ if (HAS_BRIDGE) {
 
 if (HAS_BRIDGE) {
   $("#btn-open-a11y").addEventListener("click", () => {
-    try { AndroidApp.openAccessibilitySettings(); } catch (e) {}
+    try {
+      /* v3.8.0：优先直达本服务无障碍详情页（Android 11+ 一个开关一步恢复；老 APK 无此方法或旧系统自动回退列表页） */
+      if (typeof AndroidApp.openA11yDetail === "function") AndroidApp.openA11yDetail();
+      else AndroidApp.openAccessibilitySettings();
+    } catch (e) { try { AndroidApp.openAccessibilitySettings(); } catch (e2) {} }
   });
   const btnRevive = $("#btn-revive");
   if (btnRevive) btnRevive.addEventListener("click", () => autoRevive(true));
@@ -259,10 +314,11 @@ function renderIntel() {
     </div>`).join("");
 
   $("#intel-boundary").innerHTML =
-    `二十五轮自测自改自修复（诚实重构模型）：73.21% → 95.09%（v3.3.0）→ 100%（v3.4.0）→ 真机复测建模点击被吞 ×19 跌至 98.21% → v3.5.0 复验重试全恢复 100% → v3.5.0 真机事故建模（毒指纹主页按返回 ×${TEST.v360Fix.poisonBack} + 入口窗返回退出 ×${TEST.v360Fix.rootBackExit}）跌至 91% → v3.6.0 根窗口安全门+毒指纹清理全恢复 100% → v3.6.0 真机日志实锤「手势能力缺失（canPerformGestures 未声明）」×${TEST.v370Fix.noGestureCap} 跌至 92.4% → v3.7.0 手势能力修复+多候选轮换+学习位置前置+返回键复验全恢复 100%；冷启动 100%，双跑一致。` +
+    `二十六轮自测自改自修复（诚实重构模型）：73.21% → 95.09%（v3.3.0）→ 100%（v3.4.0）→ 真机复测建模点击被吞 ×19 跌至 98.21% → v3.5.0 复验重试全恢复 100% → v3.5.0 真机事故建模（毒指纹主页按返回 ×${TEST.v360Fix.poisonBack} + 入口窗返回退出 ×${TEST.v360Fix.rootBackExit}）跌至 91% → v3.6.0 根窗口安全门+毒指纹清理全恢复 100% → v3.6.0 真机日志实锤「手势能力缺失（canPerformGestures 未声明）」×${TEST.v370Fix.noGestureCap} 跌至 92.4% → v3.7.0 手势能力修复+多候选轮换+学习位置前置+返回键复验全恢复 100%；冷启动 100%，双跑一致。` +
     `v3.3.0 终态在图片开屏新建模下 ${TEST.v330Rate}%——微博/喜马拉雅等第一方图片开屏 ×${TEST.v340.imageSkip} 全部漏拦（真机反馈复现），v3.4.0 角落键 ×${TEST.v340.cornerHit} + 坐标兜底 ×${TEST.v340.coordHit} 全拦。` +
     `对抗样本：假跳过×${TEST.adversarial.fakeSkip} · 链式×${TEST.adversarial.chainJump} · 陀螺仪×${TEST.adversarial.gyro}（喜马拉雅 v4：R15 翻转后才回弹 → R16 角落键 ${TEST.ximalaya.cornerMs}ms 抢在翻转 ${TEST.ximalaya.flipTrigMs}ms 前）· 弹窗×${TEST.adversarial.popup}（覆盖层 ${TEST.v330.overlayPopup} · 12s 窗外 ${TEST.v330.latePopup} 全关）。` +
-    `SDK 窗 ×${TEST.v330.sdkAd} 首次可判。v3.5.0 真机复测：点击被吞 ×${TEST.v350.swallowed} → 复验重试 ×${TEST.v350.retryHit} + 返回键兜底 ×${TEST.v350.backHit} 全恢复。v3.6.0 真机事故复现：毒指纹清理 ×${TEST.v360Fix.poisonPurged} 条 · 自动拉活重绑 ×${TEST.v360Fix.reviveOk}/13 ROM 生效（1 例 ROM 彻底解除登记→两步引导）。v3.7.0 真机日志复现：手势能力修复 ×${TEST.v370Fix.noGestureCap} · 多候选轮换 ×${TEST.v370Fix.candRotate} · 学习位置前置 ×${TEST.v370Fix.posFirst} · 返回键复验 ×${TEST.v370Fix.backReverify} · 心跳保活 ×${TEST.v370Fix.heartbeat}/15 ROM 生效。决策核心 JVM ${TEST.jvmTests} 用例全绿（含误报防护/安全门场景）。功耗：日均 -${TEST.energyDrop}%。`;
+    `SDK 窗 ×${TEST.v330.sdkAd} 首次可判。v3.5.0 真机复测：点击被吞 ×${TEST.v350.swallowed} → 复验重试 ×${TEST.v350.retryHit} + 返回键兜底 ×${TEST.v350.backHit} 全恢复。v3.6.0 真机事故复现：毒指纹清理 ×${TEST.v360Fix.poisonPurged} 条 · 自动拉活重绑 ×${TEST.v360Fix.reviveOk}/13 ROM 生效（1 例 ROM 彻底解除登记→两步引导）。v3.7.0 真机日志复现：手势能力修复 ×${TEST.v370Fix.noGestureCap} · 多候选轮换 ×${TEST.v370Fix.candRotate} · 学习位置前置 ×${TEST.v370Fix.posFirst} · 返回键复验 ×${TEST.v370Fix.backReverify} · 心跳保活 ×${TEST.v370Fix.heartbeat}/15 ROM 生效。决策核心 JVM ${TEST.jvmTests} 用例全绿（含误报防护/安全门场景）。功耗：日均 -${TEST.energyDrop}%。` +
+    `v3.8.0 真机复现：performAction 首点被吞 ×${TEST.v380Fix.gestureFirst} → 手势真实触点首选全恢复；假跳过从不点击 ×${TEST.v380Fix.fakeTapHit} → 手势直点标签坐标；vid 跳过键 ×${TEST.v380Fix.vidSkip}；倒计时白点 ×${TEST.v380Fix.countdownGate} → 门控出手即命中；不可见陷阱 ×${TEST.v380Fix.visibleFilter} 过滤。决策核心 JVM ${TEST.jvmTests} 用例全绿。`;
 
   $("#strategy-list").innerHTML = INTEL.strategies.map(s => `
     <div class="card strat-card">
@@ -425,8 +481,8 @@ const FB_TYPES = { missed: "漏拦截：开屏广告没被秒跳", gyro_leak: "�
 function esc(s) {
   return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
-function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "3.5.0"; }
-function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "30500"; }
+function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "3.8.0"; }
+function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "30800"; }
 
 function openLink(url) {
   if (HAS_BRIDGE) { try { AndroidApp.openUrl(url); return; } catch (e) {} }

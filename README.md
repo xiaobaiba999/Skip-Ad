@@ -1,5 +1,7 @@
 # Skip-Ad · 秒跳引擎
 
+> **v3.8.0 要点**：手势真实触点首选（performAction 首点被广告 SDK 无声吞掉——「点击 4 次不跳转」根因，GKD clickCenter 方法论）· 假跳过手势直点（「跳过」文案+大容器祖先→手势点标签坐标）· vid 跳过键（skip/tt_splash_skip_btn/count_down，GKD 全局规则同款）· visibleToUser 过滤 · 倒计时门控（「跳过 3」将尽 0.5s 前出手即命中）· 候选排序真键优先 · 角落键先于 SDK 直断（500→700ms）· 无障碍自愈重绑（adb 授权 WRITE_SECURE_SETTINGS 后清理后台/覆盖安装全自动恢复；未授权 Android 11+ 一步直达服务详情页）· 心跳精确闹钟自续期 · JVM 100 用例全绿。
+>
 > **角落图片跳过键 + 坐标级点击兜底（第一方图片开屏根因修复）+ SDK 广告窗识别 + 陀螺仪四层防线 + 链式回弹扩充 + 弹窗广告 v2 + 守护模式 + 习惯学习夜间同步。决策核心纯 Java 可单测（JVM 38 用例发版前必绿）。**
 > v2.0.0 起为 Web App（PWA，可「添加到主屏幕」当独立 App 使用）；历次安卓真机版 APK 归档于 `android-app/dist/` 与 [Releases](https://github.com/xiaobaiba999/Skip-Ad/releases)。
 

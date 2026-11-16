@@ -12,27 +12,24 @@ import android.os.Handler;
 import android.os.Looper;
 
 /**
- * 保活接收器（v3.6.0）——「开启后不手动关闭就一直保持开启」
+ * 保活接收器（v3.8.0）——「开启后不手动关闭就一直保持开启」
  * ─────────────────────────────────────────────────────────────
- * 背景（真机反馈）：App 被后台清理/覆盖安装新版本后，系统会关闭无障碍服务，
- * 每次都得重新去设置里开。Android 出于安全设计禁止应用自行重开无障碍服务
- * （WRITE_SECURE_SETTINGS 需 adb 授权），业界（GKD/李跳跳）同样无法绕过。
- *
- * 本接收器做到系统允许的极限：
- *  · MY_PACKAGE_REPLACED（覆盖安装后）：系统必然已关服务 → 立即发高优先级
- *    通知「秒跳引擎待恢复」，点按直达 App 并自动跳无障碍设置页（两步恢复）；
- *  · BOOT_COMPLETED（重启后）：延迟 8s 等系统拉起已启用的服务，仍未连上
- *    才提醒（服务正常自启则不打扰）；
- *  · SELF_CHECK（v3.6.0 自检闹钟）：AdSkipService.onTaskRemoved 后台清理时
- *    排的自检——进程被杀但非 force-stop 的 ROM 上仍能触发，服务已死即提醒；
- *  · keepOn 偏好控制：用户在 App 内手动关闭保活提醒后不再发。
- * 配合 AdSkipService 的前台常驻通知、onTaskRemoved 即时提醒、
- * 打开 App 自动拉活重绑（tryAutoRevive）与电池优化白名单引导。
+ * v3.8.0 三项升级（issue#10 二轮「清理后台重进又要手动开无障碍」）：
+ *  · 心跳自续期：每次自检闹钟触发后由接收器排下一轮（v3.7.0 的
+ *    setInexactRepeating 可被系统无限推迟）——精确闹钟优先，未授权降级
+ *    setAndAllowWhileIdle，心跳链永不断；
+ *  · WRITE_SECURE_SETTINGS 自愈（GKD 进阶玩法同款）：adb 一次性授权后，
+ *    服务被杀/覆盖安装被系统关闭 → 直接写 Settings.Secure 重绑/写回开启，
+ *    全自动无需手动；未授权 → 高优通知引导一步恢复（Android 11+ 直达
+ *    本服务详情页，只剩一个开关）；
+ *  · startService 拉活已移除——无障碍服务受 BIND_ACCESSIBILITY_SERVICE
+ *    签名级权限保护，任何应用（含自己）都不能 start/bind 它，v3.6.0 起
+ *    的「自动拉活重绑」实为 SecurityException，从未真正生效。
  */
 public class KeepAliveReceiver extends BroadcastReceiver {
 
     private static final String CHANNEL_ALERT = "keep_alert";
-    /** v3.6.0：清理后台后的延迟自检（onTaskRemoved 排闹钟） */
+    /** 自检闹钟（服务心跳 + 清理后台后 15s 自检共用此 action） */
     public static final String ACTION_SELF_CHECK = "com.zai.adshield.SELF_CHECK";
 
     @Override
@@ -47,11 +44,20 @@ public class KeepAliveReceiver extends BroadcastReceiver {
                 .getBoolean("keepOn", false)) {
             return; // 用户已手动关闭保活提醒
         }
-        if (AdSkipService.instance != null) return; // 服务活着，无需提醒
+
+        if (selfCheck) {
+            // v3.8.0：先续期心跳（无论服务死活，心跳链永不中断），再自检
+            AdSkipService.scheduleNextHeartbeat(ctx, System.currentTimeMillis() + AdSkipService.HEARTBEAT_MS);
+            if (AdSkipService.instance != null) return; // 服务活着，无需动作
+            healOrNotify(ctx);
+            return;
+        }
+        if (AdSkipService.instance != null) return;
 
         if (replaced) {
-            // 覆盖安装：系统必然已关闭服务，立即提醒
-            notifyAlert(ctx);
+            // 覆盖安装：系统必然已关闭无障碍服务（Android 安全设计）
+            // v3.8.0：授权过 WRITE_SECURE_SETTINGS → 写回开启状态全自动恢复
+            healOrNotify(ctx);
             return;
         }
         // 开机：系统要拉起仍启用的无障碍服务，给 8s（goAsync 预算内）再查
@@ -59,15 +65,37 @@ public class KeepAliveReceiver extends BroadcastReceiver {
         final PendingResult result = goAsync();
         new Handler(Looper.getMainLooper()).postDelayed(() -> {
             try {
-                if (AdSkipService.instance == null) notifyAlert(ctx);
+                if (AdSkipService.instance == null) healOrNotify(ctx);
             } finally {
                 if (result != null) result.finish();
             }
         }, 8000);
     }
 
-    /** 高优先级「待恢复」通知：点按打开 App（自动跳无障碍设置）；
-     *  v3.6.0 提升为包内可见静态方法——AdSkipService.onTaskRemoved 即时调用 */
+    /** v3.8.0：服务已死 → 有 WRITE_SECURE_SETTINGS 走系统正道自愈重绑；
+     *  无授权 → 高优「待恢复」通知（Android 11+ 点按直达本服务详情页一个开关） */
+    private void healOrNotify(final Context ctx) {
+        if (!AdSkipService.hasSecureWrite(ctx)) {
+            notifyAlert(ctx);
+            return;
+        }
+        final PendingResult result = goAsync();
+        new Thread(() -> {
+            try {
+                AdSkipService.selfHealBind(ctx);
+                // 等系统完成重绑（bind 拉起进程 + onServiceConnected）
+                for (int i = 0; i < 16 && AdSkipService.instance == null; i++) {
+                    Thread.sleep(300); // ≤4.8s（goAsync 10s 预算内）
+                }
+                if (AdSkipService.instance == null) notifyAlert(ctx); // 自愈未成 → 提醒兜底
+            } catch (Throwable ignored) {
+            } finally {
+                if (result != null) result.finish();
+            }
+        }).start();
+    }
+
+    /** 高优先级「待恢复」通知：点按打开 App（自动直达本服务无障碍详情页） */
     static void notifyAlert(Context ctx) {
         try {
             NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
