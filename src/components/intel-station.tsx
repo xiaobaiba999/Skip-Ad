@@ -4,10 +4,11 @@ import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
+import { TEST_SUMMARY } from "@/lib/test-summary";
 import {
   ShieldAlert, Timer, EyeOff, MousePointerClick, Vibrate, LayoutGrid, Layers, Link2,
   Zap, Gauge, BrainCircuit, ShieldCheck, Landmark, Globe, Ban, Wrench, RefreshCw,
-  ExternalLink, ListChecks, Newspaper,
+  ExternalLink, ListChecks, Newspaper, FlaskConical, BatteryCharging, PackageOpen, TrendingDown,
 } from "lucide-react";
 
 interface RuleRow {
@@ -146,6 +147,74 @@ export function IntelStation({ onFeedback }: { onFeedback: () => void }) {
           </div>
         ))}
       </div>
+
+      {/* 千款自测 · 能耗 · 侧载（v3.0.0） */}
+      <section className="rounded-2xl border border-zinc-200 bg-white p-4 lg:p-5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="flex items-center gap-2 text-base font-bold text-zinc-900">
+            <FlaskConical className="h-5 w-5 text-emerald-600" /> 千款语料自测 · 自查自改 ×3
+          </h2>
+          <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-bold text-emerald-700 ring-1 ring-emerald-200">
+            {TEST_SUMMARY.total} 款 · 拦截率 {TEST_SUMMARY.latest.rate}% ≥ 90%
+          </span>
+        </div>
+
+        {/* 三轮演进 */}
+        <div className="mt-4 grid gap-2.5 md:grid-cols-3">
+          {TEST_SUMMARY.rounds.map((r, i) => (
+            <div key={r.round} className={cn("rounded-xl border p-3.5", i === TEST_SUMMARY.rounds.length - 1 ? "border-emerald-200 bg-emerald-50/50" : "border-zinc-100 bg-zinc-50/60")}>
+              <div className="flex items-center gap-2">
+                <span className={cn("flex h-6 w-6 items-center justify-center rounded-lg text-[11px] font-black", i === TEST_SUMMARY.rounds.length - 1 ? "bg-emerald-500 text-white" : "bg-zinc-300 text-white")}>{r.round}</span>
+                <span className="text-xs font-bold text-zinc-800">{["预置全局规则（3.5s 窗口）", "+学习规则（viewId/时机 12s）", "+仅前台/预算 260/去抖"][i]}</span>
+                <span className={cn("ml-auto text-lg font-black tabular-nums", i === TEST_SUMMARY.rounds.length - 1 ? "text-emerald-600" : "text-zinc-400")}>{r.rate}%</span>
+              </div>
+              <div className="mt-2 grid grid-cols-3 gap-1 text-center">
+                <div><div className="text-[13px] font-black tabular-nums text-zinc-700">{r.reactionMs}ms</div><div className="text-[9px] text-zinc-400">引擎反应</div></div>
+                <div><div className="text-[13px] font-black tabular-nums text-zinc-700">{r.p95Ms}ms</div><div className="text-[9px] text-zinc-400">端到端 p95</div></div>
+                <div><div className="text-[13px] font-black tabular-nums text-zinc-700">{r.energyMWh}mWh</div><div className="text-[9px] text-zinc-400">日均能耗</div></div>
+              </div>
+              {i === 0 && <p className="mt-2 text-[10px] leading-relaxed text-zinc-400">短板：时间窗外跳过键 miss ×281、侧载冷启动无专属规则、能耗偏高</p>}
+              {i === 1 && <p className="mt-2 text-[10px] leading-relaxed text-zinc-400">修复①：R1 全部 miss 沉淀学习规则，延迟跳过键与侧载冷启动恢复</p>}
+              {i === 2 && <p className="mt-2 text-[10px] leading-relaxed text-zinc-400">修复②：能耗治理 -{TEST_SUMMARY.latest.energyDropPct}%，命中不回退</p>}
+            </div>
+          ))}
+        </div>
+
+        {/* 能耗与侧载两枚指标 */}
+        <div className="mt-3 grid gap-2.5 md:grid-cols-2">
+          <div className="flex items-start gap-2.5 rounded-xl border border-zinc-100 bg-zinc-50/60 p-3.5">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 text-white">
+              <BatteryCharging className="h-4 w-4" />
+            </span>
+            <div className="min-w-0">
+              <div className="text-xs font-bold text-zinc-800">能耗：事件驱动 · 零轮询</div>
+              <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
+                无障碍事件驱动，无任何后台轮询：日均仅 {TEST_SUMMARY.latest.energyMWh}mWh（4500mAh 电池的百万分之十七）。
+                优化手段：仅响应前台窗口事件 / 扫描预算 600→260 / 去抖 250ms 合并重复内容变化 / 凌晨空闲静默。
+              </p>
+            </div>
+          </div>
+          <div className="flex items-start gap-2.5 rounded-xl border border-zinc-100 bg-zinc-50/60 p-3.5">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500 to-fuchsia-600 text-white">
+              <PackageOpen className="h-4 w-4" />
+            </span>
+            <div className="min-w-0">
+              <div className="text-xs font-bold text-zinc-800">侧载应用：官方商店与非官方渠道一视同仁</div>
+              <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
+                非官方商店/官网 APK 装的第三方应用（占语料 25.4%）：无预置规则 → 通用规则兜底 + 学习沉淀。
+                最新一轮侧载覆盖 {TEST_SUMMARY.sideload.hit}/{TEST_SUMMARY.sideload.total}（{TEST_SUMMARY.latest.sideloadRate}%）。
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* 诚实边界 */}
+        <p className="mt-3 flex items-start gap-1.5 rounded-lg bg-zinc-900 p-2.5 text-[11px] leading-relaxed text-zinc-300">
+          <TrendingDown className="mt-0.5 h-3.5 w-3.5 shrink-0 text-rose-400" />
+          诚实边界：{TEST_SUMMARY.latest.missInvisible} 款（WebView 未暴露无障碍内容 / 纯自绘无控件）在代点边界内无解——
+          已由反馈通道自动上报，并建议配合系统权限治理（关联启动 / 传感器权限）。
+        </p>
+      </section>
 
       {/* 市场套路 vs 反制 */}
       <section className="rounded-2xl border border-zinc-200 bg-white p-4 lg:p-5">

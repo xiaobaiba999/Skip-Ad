@@ -131,8 +131,8 @@ export async function createRelease(input: {
   tag: string;
   name: string;
   body: string;
-}): Promise<{ ok: boolean; url?: string; message?: string }> {
-  const r = await gh<{ html_url?: string }>(`/repos/${GITHUB_REPO}/releases`, {
+}): Promise<{ ok: boolean; url?: string; id?: number; message?: string }> {
+  const r = await gh<{ html_url?: string; id?: number }>(`/repos/${GITHUB_REPO}/releases`, {
     method: "POST",
     body: JSON.stringify({
       tag_name: input.tag,
@@ -143,5 +143,27 @@ export async function createRelease(input: {
     }),
   });
   if (!r.ok) return { ok: false, message: r.message ?? `HTTP ${r.status}` };
-  return { ok: true, url: r.data.html_url };
+  return { ok: true, url: r.data.html_url, id: r.data.id };
+}
+
+/** 上传 Release 附件（APK），返回 browser_download_url（应用内更新直下用） */
+export async function uploadReleaseAsset(input: {
+  releaseId: number;
+  name: string;
+  bytes: Buffer;
+}): Promise<{ ok: boolean; url?: string; message?: string }> {
+  const res = await fetch(`https://uploads.github.com/repos/${GITHUB_REPO}/releases/${input.releaseId}/assets?name=${encodeURIComponent(input.name)}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${getGithubToken()}`,
+      Accept: "application/vnd.github+json",
+      "Content-Type": "application/octet-stream",
+      "Content-Length": String(input.bytes.length),
+      "User-Agent": "skip-ad-instant-engine",
+    },
+    body: new Uint8Array(input.bytes),
+  });
+  const data = (await res.json().catch(() => ({}))) as { browser_download_url?: string; message?: string };
+  if (!res.ok) return { ok: false, message: data?.message ?? `HTTP ${res.status}` };
+  return { ok: true, url: data.browser_download_url };
 }

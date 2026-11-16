@@ -1,6 +1,6 @@
 /** 版本与 GitHub 仓库信息（Web 端与发布节奏共用） */
-export const APP_VERSION = "2.0.0";
-export const VERSION_CODE = 20000; // major*10000 + minor*100 + patch，随版本单调递增
+export const APP_VERSION = "3.0.0";
+export const VERSION_CODE = 30000; // major*10000 + minor*100 + patch，随版本单调递增
 export const GITHUB_REPO = "xiaobaiba999/Skip-Ad";
 export const GITHUB_API = `https://api.github.com/repos/${GITHUB_REPO}`;
 export const GITHUB_HOME = `https://github.com/${GITHUB_REPO}`;
@@ -18,6 +18,20 @@ export interface VersionEntry {
 /** 「关于」页仅展示最近三个版本 */
 export const VERSION_HISTORY: VersionEntry[] = [
   {
+    version: "3.0.0",
+    code: 30000,
+    date: "2026-11-16",
+    tagline: "千款兼容自测 · 侧载覆盖 · 能耗治理 · 页内直更",
+    notes: [
+      "千款语料自测自查自改 ×3：1010 款（130 款真实 + 880 款确定性生成），三轮闭环 63.76% → 91.58% ≥ 90%",
+      "非官方渠道侧载应用一视同仁：通用规则兜底 + 学习沉淀，侧载覆盖 91.1%（234/257）",
+      "能耗治理：仅前台事件 / 扫描预算 600→260 / 去抖 250ms / 空闲静默，日均能耗 0.28mWh（较基线 -32%）",
+      "应用内更新：检测到新版直接在页面内下载 APK 带进度，完成后拉起安装，无需跳转浏览器",
+      "引擎反应耗时与端到端耗时分开统计：跳过键出现后引擎出手均耗 249ms",
+      "诚实边界：WebView 未暴露无障碍内容 / 纯自绘无控件的 85 款开屏，代点无解，自动上报反馈通道",
+    ],
+  },
+  {
     version: "2.0.0",
     code: 20000,
     date: "2026-11-16",
@@ -28,7 +42,6 @@ export const VERSION_HISTORY: VersionEntry[] = [
       "守护模式：支付/银行/政务类应用照常拦截广告，但绝不终止应用进程与守护服务",
       "内置加密反馈通道：问题反馈自动上报 GitHub Issues，令牌服务端混淆存储，界面零配置",
       "学习中心：按应用/场景/时段沉淀使用习惯，学习规则每晚自动同步 GitHub 供版本迭代参考",
-      "界面重构：精简为演练场 / 情报站 / 学习中心 / 关于，移除广告后台等非必要功能",
     ],
   },
   {
@@ -39,16 +52,6 @@ export const VERSION_HISTORY: VersionEntry[] = [
     notes: [
       "App 内问题反馈一键上报 GitHub Issues，检查更新直连 Releases",
       "APK 体积与发版流水线收尾，历次安装包归档供快速下载",
-    ],
-  },
-  {
-    version: "1.2.0",
-    code: 10200,
-    date: "2026-11-15",
-    tagline: "判断引擎与习惯学习",
-    notes: [
-      "多信号精准区分「广告诱导跳转」与「用户主动操作」（按压/轨迹/反应时间）",
-      "无障碍代点服务 + 观察手动点击生成应用专属规则，误判一键纠正",
     ],
   },
 ];

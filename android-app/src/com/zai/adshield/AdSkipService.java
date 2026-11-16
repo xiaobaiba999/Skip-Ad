@@ -1,6 +1,7 @@
 package com.zai.adshield;
 
 import android.accessibilityservice.AccessibilityService;
+import android.content.Context;
 import android.content.SharedPreferences;
 import android.graphics.Rect;
 import android.os.Handler;
@@ -38,11 +39,19 @@ public class AdSkipService extends AccessibilityService {
     // 只识别「跳过」类控件 —— 合规边界：代点跳过，不屏蔽广告
     private static final String[] SKIP_TEXTS = {"跳过", "关闭广告"};
 
-    private static final long WINDOW_MS = 12000;   // 开屏时间窗：窗口切换后 12 秒内行动
+    private static final long WINDOW_MS = 12000;   // 开屏时间窗（v3.0.0：3.5s→12s，覆盖延迟跳过键）
     private static final long COOLDOWN_MS = 1500;  // 同一应用两次自动点击的最小间隔
     private static final long LEARN_WINDOW_MS = 30000; // 手动点击学习的宽时间窗
     private static final int MAX_RULES_PER_APP = 8;
     private static final int MAX_LOG = 60;
+
+    /* v3.0.0 能耗治理：内存聚合 + 延迟落盘（合并闪存写入） */
+    private static final long FLUSH_DELAY_MS = 15000;
+    private boolean flushScheduled = false;
+
+    /* v3.0.0 能耗画像（开机累计，供学习中心「能耗面板」展示） */
+    public long energyEvents = 0;   // 处理的无障碍事件数
+    public long energyScans = 0;    // 控件树扫描次数
 
     private final Object lock = new Object();
     private final Handler handler = new Handler(Looper.getMainLooper());
@@ -57,6 +66,20 @@ public class AdSkipService extends AccessibilityService {
     private int screenWidth;
     private int screenHeight;
 
+    /** 状态快照（含缓存）：Bridge 读 state 时走这里，保证 UI 永远拿到最新内存态 */
+    public static String snapshotState(Context ctx) {
+        AdSkipService s = instance;
+        if (s != null) {
+            synchronized (s.lock) {
+                try {
+                    return s.stateInMemory.toString();
+                } catch (Exception ignored) {
+                }
+            }
+        }
+        return ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_STATE, null);
+    }
+
     @Override
     protected void onServiceConnected() {
         super.onServiceConnected();
@@ -68,6 +91,7 @@ public class AdSkipService extends AccessibilityService {
 
     @Override
     public void onDestroy() {
+        flushNow();
         instance = null;
         super.onDestroy();
     }
@@ -86,6 +110,7 @@ public class AdSkipService extends AccessibilityService {
         if (isSystemNoise(pkg)) return;
 
         long now = System.currentTimeMillis();
+        energyEvents++; // v3.0.0 能耗画像：仅统计有效事件（噪声已前置过滤）
 
         switch (event.getEventType()) {
             case AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED: {
@@ -143,6 +168,7 @@ public class AdSkipService extends AccessibilityService {
         if (now - winAt(pkg) > WINDOW_MS) return; // 超出开屏时间窗不动作
         Long last = lastClickAt.get(pkg);
         if (last != null && now - last < COOLDOWN_MS) return; // 点击冷却
+        energyScans++; // v3.0.0 能耗画像：每次控件树扫描计数
 
         try {
             AccessibilityNodeInfo root = getRootInActiveWindow();
@@ -228,7 +254,8 @@ public class AdSkipService extends AccessibilityService {
             }
         }
         // ③ 通用规则：遍历控件树找含「跳过」的小面积可点控件
-        int[] budget = {600};
+        // v3.0.0 能耗治理：扫描节点预算 600→260（未命中时提前剪枝，覆盖绝大多数开屏树）
+        int[] budget = {260};
         return findGeneric(root, 0, budget);
     }
 
@@ -514,16 +541,47 @@ public class AdSkipService extends AccessibilityService {
         return getSharedPreferences(PREFS, MODE_PRIVATE);
     }
 
-    private JSONObject loadState() {
+    /* ───────── v3.0.0 内存聚合 + 延迟落盘（能耗治理） ─────────
+       原实现每次日志/统计变更即写 SharedPreferences（闪存写入是最主要耗电源）；
+       现改为内存态 + 15s 合并落盘，onDestroy / UI 快照读取时立即 flush。 */
+
+    private org.json.JSONObject stateInMemory;
+
+    private org.json.JSONObject loadState() {
+        synchronized (lock) {
+            if (stateInMemory != null) return stateInMemory;
+        }
         try {
             String raw = prefs().getString(KEY_STATE, null);
-            if (raw != null) return new JSONObject(raw);
-        } catch (Exception ignored) {
+            stateInMemory = raw != null ? new org.json.JSONObject(raw) : new org.json.JSONObject();
+        } catch (Exception e) {
+            stateInMemory = new org.json.JSONObject();
         }
-        return new JSONObject();
+        return stateInMemory;
     }
 
-    private void saveState(JSONObject st) {
+    /** 只改内存 + 调度合并落盘（15s 内多次写合并为一次闪存写入） */
+    private void saveState(org.json.JSONObject st) {
+        stateInMemory = st;
+        scheduleFlush();
+    }
+
+    private void scheduleFlush() {
+        synchronized (lock) {
+            if (flushScheduled) return;
+            flushScheduled = true;
+        }
+        // lambda 由 d8 脱糖（与 requestScan 同路径，已验证）
+        handler.postDelayed(() -> flushNow(), FLUSH_DELAY_MS);
+    }
+
+    /** 立即落盘（幂等；onDestroy 与 UI 读取前调用） */
+    public void flushNow() {
+        synchronized (lock) {
+            flushScheduled = false;
+        }
+        org.json.JSONObject st = stateInMemory;
+        if (st == null) return;
         try {
             prefs().edit().putString(KEY_STATE, st.toString()).apply();
         } catch (Exception ignored) {
