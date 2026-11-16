@@ -3,9 +3,18 @@ package com.zai.adshield.core;
 import java.util.ArrayList;
 
 /**
- * 秒跳决策核心（v3.5.0 · 纯 Java · 零 Android 依赖 · JVM 可单测）
+ * 秒跳决策核心（v3.6.0 · 纯 Java · 零 Android 依赖 · JVM 可单测）
  * ─────────────────────────────────────────────────────────────
- * 设计动机（2026-11 二次真机反馈：日志显示「已点击跳过」但广告纹丝不动，
+ * v3.6.0 设计动机（三次真机反馈：喜马拉雅二次进入被引擎连按两次返回键
+ *  「模拟人操作退出」到桌面——v3.5.0 的返回键兑底在第一方开屏窗=退出应用）：
+ *  · 返回键只在「返回后仍在应用内」的窗口上安全：SDK 广告窗（独立广告
+ *    Activity，下面是应用主页）与应用内窗（主页之上拉起的广告页）。
+ *    应用入口窗（rootWindow：冷启动开屏/从后台回前台首窗）上按返回
+ *    = 退出应用（喜马拉雅拦截返回弹「再按一次退出」，第二次直接退出）。
+ *  · 对策：根窗口禁一切返回键兑底（L3/L4.5/L5），只走点击梯子（文本→
+ *    学习位置→×关闭键→角落候选→三位置坐标轮换），用尽优雅收手。
+ *
+ * v3.5.0 设计动机（二次真机反馈：日志显示「已点击跳过」但广告纹丝不动，
  *  手动点两次也没学下来——微博/喜马拉雅还是得手动关）：
  *  · v3.4.0 点击后立即熔断扫描链，从不复验：performAction 返回 true 但被
  *    应用拦截、手势点偏、按钮尚未可点——点了等于白点，且无第二次机会。
@@ -19,14 +28,22 @@ import java.util.ArrayList;
  *    L2   SDK/学习 className 窗口指纹 → 返回键直断（500ms / 学习指纹 300ms）
  *    L3 无倒计时翻转/摇一摇文案 → 120ms 立即直断；带倒计时(假跳过) → 800ms 直断
  *    L4   角落无字小可点控件（多候选）：第 N 次复验换第 N 个候选点，
- *         而不是同一个错位置点三遍；自身不可点时向上找可点祖先
- *    L4.5 【新】点击复验失败升级：同一广告窗内点击 ≥3 次仍未关闭 →
- *         返回键兑底（「点了没反应」的最终兑底）
+ *         而不是同一个错位置点三遍；v3.6.0 改纯手势点击子控件坐标
+ *         （performAction 可能落到大热区祖先=点开广告本体）
+ *    L4.5 点击复验失败升级：同一广告窗内点击 ≥3 次仍未关闭 →
+ *         返回键兑底【仅应用内窗】（v3.6.0 根窗口豁免，见下）
  *    L5 全屏热区（自绘图片广告三条件）→ 900ms 返回键直断（守护名单豁免）
  *    L6 开屏窗坐标级点击兜底：简单树(无滚动/无输入框/节点少)且无任何
- *        信号 → dispatchGesture 点击标准跳过位(88%宽,7%高)，每次启动一次，
- *        守护名单豁免（防误点；v3.5.0 改用长文本豁免替 foundClose 屏蔽）
+ *        信号 → dispatchGesture 点击标准跳过位，v3.6.0 三位置轮换：
+ *         右上(88%,7%) → 右下(90%,92%) → 左上(8%,7%)，第 N 次点第 N 个，
+ *         守护名单豁免（防误点；长文本豁免）
  *    P  弹窗窗期：角标强信号 / Dialog+≥2营销话术弱信号 → 代点关闭
+ *  · v3.6.0 根窗口返回键安全门（三次真机反馈：喜马拉雅二次进入被
+ *    「模拟人操作退出」——引擎在第一方开屏窗用返回键兑底，喜马拉雅拦截
+ *    返回键弹「再按一次退出到桌面」，引擎再按 → 真退到桌面）：
+ *    rootWindow=应用入口窗（从前台其他应用/桌面切来的首个窗口）时，
+ *    返回键=退出应用，L3/L4.5/L5 全部禁用；仅 SDK 广告窗（独立广告
+ *    Activity，返回回到应用内页）豁免。根窗口只走点击梯子，用尽即收手。
  *  · 决策输出与执行分离：本类只产出 Decision（动作+坐标+原因），
  *    服务侧负责 performAction / dispatchGesture / GLOBAL_ACTION_BACK，
  *    以及点击后的复验调度（扫描链不熔断，窗未变即换候选/真实触点重试）。
@@ -73,20 +90,21 @@ public final class AdDecisionCore {
     public static final long GYRO_BREAK_MS = 800;         // 带倒计时(假跳过)直断
     public static final long LEARNED_POS_MS = 500;        // 学习位置点击出手（v3.5.0）
     public static final long SPLASH_CLOSE_MS = 600;       // 开屏×关闭键出手（v3.5.0）
-    public static final long CORNER_MIN_MS = 600;         // 角落控件最早出手
-    public static final long CORNER_MAX_MS = 3500;        // 角落控件最晚（过窗防误点）
+    public static final long CORNER_MIN_MS = 500;         // 角落控件最早出手（v3.6.0 600→500）
+    public static final long CORNER_MAX_MS = 6500;        // 角落控件最晚（v3.6.0 3500→6500：部分开屏 3-5s 才出跳过键）
     public static final long HOT_ZONE_MS = 900;           // 热区直断
     public static final long COORD_TAP_MS = 900;          // 坐标兜底最早出手
-    public static final long COORD_TAP_MAX_MS = 4000;     // 坐标兜底最晚
+    public static final long COORD_TAP_MAX_MS = 8000;     // 坐标兜底最晚（v3.6.0 4000→8000：覆盖晚出跳过键）
 
     /* ── v3.5.0 复验与候选参数 ── */
     public static final int MAX_CORNERS = 4;              // 角落候选上限（逐个换着点）
-    public static final int CLICK_VERIFY_MAX = 3;         // 同窗点击次数达到即升级返回键
+    public static final int CLICK_VERIFY_MAX = 3;         // 同窗点击次数达到即升级返回键（仅应用内窗，v3.6.0）
+    public static final int MAX_CLICKS_PER_WIN = 6;       // 同窗点击总预算（用尽优雅收手，服务侧执行）
     public static final double CLOSE_TOP_MAX = 0.35;      // 开屏×关闭键须在顶部 35% 内
     public static final int LONG_TEXT_LEN = 40;           // 长文本（正常内容页特征）
 
     /* ── 阈值参数 ── */
-    public static final double POS_LEARN_AREA_MAX = 0.20; // 位置学习：控件面积上限（v3.5.0）
+    public static final double POS_LEARN_AREA_MAX = 0.25; // 位置学习：控件面积上限（v3.6.0 0.20→0.25：手动教学点击事件源可能是稍大的容器）
     public static final double HOT_ZONE_AREA = 0.55;   // 热区：≥55% 屏幕面积
     public static final int HOT_ZONE_MAX_NODES = 12;
     public static final double SKIP_AREA_MAX = 0.35;   // 真跳过键面积上限
@@ -96,8 +114,10 @@ public final class AdDecisionCore {
     public static final double CORNER_LEFT_MAX = 0.28;  // 或左缘 ≤28% 宽
     public static final int CORNER_MIN_PX = 24;        // 角落控件最小像素
     public static final int AD_LIKE_MAX_NODES = 40;    // 简单树节点上限
-    public static final double COORD_X = 0.88;         // 标准跳过位
-    public static final double COORD_Y = 0.07;
+    /* v3.6.0 坐标轮换三标准位：右上（最常见）→ 右下（部分应用）→ 左上（少数）；
+       第 N 次兜底点第 N 个，三个都点不中即收手（绝不返回键退出应用） */
+    public static final double[] COORD_XS = {0.88, 0.90, 0.08};
+    public static final double[] COORD_YS = {0.07, 0.92, 0.07};
 
     /* ── 文案特征库（与 2026-11 市场调研同步） ── */
     public static final String[] SKIP_TEXTS = {"跳过", "关闭广告"};
@@ -160,9 +180,9 @@ public final class AdDecisionCore {
         public boolean splashLive;    // 开屏窗内（≤12s）
         public boolean popupLive;     // 弹窗窗期内
         public boolean guard;         // 守护名单（银行/政务/支付）
-        public boolean coordTapUsed;  // 本次启动已用过坐标兜底
         public boolean sdkAdWin;      // 窗口类名命中 SDK 指纹
         public boolean learnedCls;    // className 学习指纹命中
+        public boolean rootWindow;    // v3.6.0：应用入口窗（冷启动开屏/回前台首窗）——按返回键=退出应用
         public int clickAttempts;     // 本窗已点击次数（v3.5.0 复验：≥1 强制手势真实触点）
         public int tapHintX = -1;     // 学习位置点击（v3.5.0：手动教学指纹，-1 无）
         public int tapHintY = -1;
@@ -326,7 +346,7 @@ public final class AdDecisionCore {
         return area / ((double) ctx.screenW * ctx.screenH);
     }
 
-    /* ═════════ 服务侧学习辅助（v3.5.0 位置学习） ═════════ */
+    /* ═════════ 服务侧学习辅助（v3.5.0 位置学习 / v3.6.0 放宽） ═════════ */
 
     /** 控件面积占比（服务侧手动点击位置学习用） */
     public static double areaOf(int[] b, int screenW, int screenH) {
@@ -342,6 +362,24 @@ public final class AdDecisionCore {
         c.screenW = screenW;
         c.screenH = screenH;
         return isCornerControl(b, c);
+    }
+
+    /**
+     * v3.6.0 学习形状判定（比扫描用的 isCornerControl 更宽）：
+     * 手动点击教学时，跳过键可能是——
+     *  · 顶部 25% 区域内的小控件（最常见：右上「跳过」图片键）；
+     *  · 底部 20% 区域内的小控件（部分应用跳过键在右下角，真机反馈）；
+     *  · 标准角落形态（顶部 14% + 贴左/右缘）。
+     * 面积上限由调用方按 POS_LEARN_AREA_MAX 校验（大热区=CTA，不学）。
+     */
+    public static boolean learnableSkipShape(int[] b, int screenW, int screenH) {
+        if (b == null || screenW <= 0 || screenH <= 0) return false;
+        if (cornerLike(b, screenW, screenH)) return true;
+        int cy = (b[1] + b[3]) / 2;
+        boolean topArea = cy <= screenH * 0.25;
+        boolean bottomArea = cy >= screenH * 0.80;
+        boolean small = (b[2] - b[0]) <= screenW * 0.5 && (b[3] - b[1]) <= screenH * 0.15;
+        return (topArea || bottomArea) && small;
     }
 
     /* ═════════ 决策阶梯 ═════════ */
@@ -374,45 +412,60 @@ public final class AdDecisionCore {
                 return click(f.closeNode, f.closeBounds, "splash_close");
             }
             // L2 SDK / 学习 className 窗口指纹 → 返回键直断
+            //    （SDK 广告窗是独立 Activity，返回回到应用内页——根窗口也安全）
             long clsBreak = ctx.learnedCls ? CLS_LEARNED_BREAK_MS : CLS_BREAK_MS;
             if ((ctx.sdkAdWin || ctx.learnedCls) && ctx.elapsedMs >= clsBreak) {
                 return back(ctx.learnedCls ? "sdk_window_learned" : "sdk_window");
             }
+            /* v3.6.0 根窗口返回键安全门 ─────────────────────────────
+             * 应用入口窗（冷启动开屏/回前台首窗）上按返回键 = 退出应用。
+             * 真机事故（喜马拉雅）：v3.5.0 返回键兑底 → 喜马拉雅拦截返回
+             * 弹「再按一次退出到桌面」→ 引擎 600ms 后再按 → 真退到桌面，
+             * 用户「第二次进入就被模拟人操作退出来」。
+             * 此后 L3/L4.5/L5 的返回键决策仅在应用内窗（返回回到应用内）
+             * 或 SDK 广告窗上生效；根窗口只走点击梯子，用尽优雅收手。 */
+            boolean backSafe = !ctx.rootWindow || ctx.sdkAdWin;
             // L3 陀螺仪/假跳过：无倒计时立即直断；带倒计时(假跳过) 800ms 直断
-            if (f.gyroHint && !f.fakeSkip && ctx.elapsedMs >= GYRO_IMMEDIATE_MS) {
+            if (backSafe && f.gyroHint && !f.fakeSkip && ctx.elapsedMs >= GYRO_IMMEDIATE_MS) {
                 return back("gyro_immediate");
             }
-            if ((f.gyroHint || f.fakeSkip) && ctx.elapsedMs >= GYRO_BREAK_MS) {
+            if (backSafe && (f.gyroHint || f.fakeSkip) && ctx.elapsedMs >= GYRO_BREAK_MS) {
                 return back("gyro_break");
             }
             // L4 角落无字小可点控件（图片跳过键，多候选）→ 手势点击其中心
             //     v3.5.0：复验失败换下一个候选（第 N 次点击用第 N 个候选点）
-            if (!f.corners.isEmpty() && !f.scrollPresent && !f.editPresent
+            //     v3.6.0：改纯手势（node=null）——performAction 可能落到大热区
+            //     祖先（=点开广告本体）；手势点子控件坐标=真实手指点跳过键
+            if (!f.corners.isEmpty() && ctx.clickAttempts < f.corners.size()
+                    && !f.scrollPresent && !f.editPresent
                     && f.nodeCount <= AD_LIKE_MAX_NODES
                     && ctx.elapsedMs >= CORNER_MIN_MS && ctx.elapsedMs <= CORNER_MAX_MS) {
-                int idx = Math.min(ctx.clickAttempts, f.corners.size() - 1);
-                CornerCand c = f.corners.get(idx);
-                return click(c.clickNode, c.tapBounds, "corner_image_skip");
+                CornerCand c = f.corners.get(ctx.clickAttempts);
+                return click(null, c.tapBounds, "corner_image_skip");
             }
-            // L4.5 点击复验失败升级（v3.5.0）：同窗点击 ≥3 次广告仍未关闭 → 返回键兑底
-            //     「日志显示已点击、实际没反应」的最终兑底
-            if (ctx.clickAttempts >= CLICK_VERIFY_MAX && isAdLike(f)
+            // L4.5 点击复验失败升级（v3.5.0）：同窗点击 ≥3 次仍未关闭 → 返回键兑底
+            //     v3.6.0：仅应用内窗（返回回到应用内）；根窗口绝不返回键（防退出）
+            if (ctx.clickAttempts >= CLICK_VERIFY_MAX && backSafe && isAdLike(f)
                     && ctx.elapsedMs >= GYRO_BREAK_MS) {
                 return back("click_verify_fail");
             }
-            // L5 全屏热区（自绘图片广告）→ 返回键直断（守护名单豁免）
-            if (f.hotZone && !ctx.guard && !f.editPresent && f.nodeCount <= HOT_ZONE_MAX_NODES
+            // L5 全屏热区（自绘图片广告）→ 返回键直断（守护名单豁免；v3.6.0 根窗口豁免）
+            if (f.hotZone && backSafe && !ctx.guard && !f.editPresent && f.nodeCount <= HOT_ZONE_MAX_NODES
                     && ctx.elapsedMs >= HOT_ZONE_MS) {
                 return back("hot_zone");
             }
-            // L6 坐标级点击兜底：开屏窗内简单树且零信号 → 点标准跳过位
-            //    v3.5.0：长文本内容页豁免（替代原 foundClose 屏蔽，更精准）
-            if (isAdLike(f) && !f.longText && !ctx.guard && !ctx.coordTapUsed
-                    && ctx.elapsedMs >= COORD_TAP_MS && ctx.elapsedMs <= COORD_TAP_MAX_MS) {
+            // L6 坐标级点击兜底：开屏窗内简单树且无信号 → 点标准跳过位
+            //    v3.6.0 三位置轮换：右上(88%,7%) → 右下(90%,92%) → 左上(8%,7%)，
+            //    第 N 次兜底点第 N 个（角落候选用尽后接续计数），三个用尽即收手
+            int coordIdx = f.corners.isEmpty() ? ctx.clickAttempts
+                    : ctx.clickAttempts - f.corners.size();
+            if (coordIdx >= 0 && coordIdx < COORD_XS.length && isAdLike(f) && !f.longText
+                    && !ctx.guard && ctx.elapsedMs >= COORD_TAP_MS
+                    && ctx.elapsedMs <= COORD_TAP_MAX_MS) {
                 Decision d = new Decision();
                 d.action = A_TAP_POINT;
-                d.x = (int) (ctx.screenW * COORD_X);
-                d.y = (int) (ctx.screenH * COORD_Y);
+                d.x = (int) (ctx.screenW * COORD_XS[coordIdx]);
+                d.y = (int) (ctx.screenH * COORD_YS[coordIdx]);
                 d.reason = "coord_fallback";
                 return d;
             }
