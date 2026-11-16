@@ -1,0 +1,1483 @@
+     1→package com.zai.adshield;
+     2→
+     3→import android.accessibilityservice.AccessibilityService;
+     4→import android.accessibilityservice.GestureDescription;
+     5→import android.app.Notification;
+     6→import android.app.NotificationChannel;
+     7→import android.app.NotificationManager;
+     8→import android.app.PendingIntent;
+     9→import android.content.Context;
+    10→import android.content.Intent;
+    11→import android.content.SharedPreferences;
+    12→import android.content.pm.ServiceInfo;
+    13→import android.graphics.Path;
+    14→import android.graphics.Rect;
+    15→import android.os.Build;
+    16→import android.os.Handler;
+    17→import android.os.Looper;
+    18→import android.view.accessibility.AccessibilityEvent;
+    19→import android.view.accessibility.AccessibilityNodeInfo;
+    20→import android.view.accessibility.AccessibilityWindowInfo;
+    21→
+    22→import com.zai.adshield.core.AdDecisionCore;
+    23→import com.zai.adshield.core.AdDecisionCore.Ctx;
+    24→import com.zai.adshield.core.AdDecisionCore.Decision;
+    25→import com.zai.adshield.core.AdDecisionCore.NodeView;
+    26→import com.zai.adshield.core.AdDecisionCore.ScanFind;
+    27→
+    28→import org.json.JSONArray;
+    29→import org.json.JSONObject;
+    30→
+    31→import java.util.List;
+    32→import java.util.Map;
+    33→
+    34→/**
+    35→ * 开屏广告智能跳过服务（无障碍服务实现 · v3.7.0 · 十一层纵深）
+    36→ * ─────────────────────────────────────────────────────────────
+    37→ * v3.7.0（四次真机反馈 issue#10：喜马拉雅「已点击跳过×4」广告不关，用户手点
+    38→ * 同一按钮立刻生效；微博陀螺仪窗返回键直断无效果；清理后台服务失效）：
+    39→ *  · 根因①（头号）：无障碍配置缺 canPerformGestures=true——dispatchGesture
+    40→ *    「手势真实触点」从未真正触达屏幕，复验重试全部无效。已补配置。
+    41→ *  · 根因②：手势路径单点零长度（只有 moveTo）——部分 ROM 不触发点击。
+    42→ *    已改 lineTo 非零路径 + 40ms 起始延迟 + 边界钳制 + 取消诊断回调。
+    43→ *  · 根因③：文本跳过键只点第一个候选，复验 4 次盲点同一坐标——广告图内
+    44→ *    常嵌假「跳过」文本。已改多候选收集轮换（决策核心 skipCands）。
+    45→ *  · 根因④：学习位置排在文本候选之后，教过也轮不到。已前置到 L1 之前；
+    46→ *    且文本键手动点击【同时学位置】（用户手指点通过的位置最可靠）；
+    47→ *    位置健全性校验拒学越界坐标（真机日志 (63%,102%) 越界白学）。
+    48→ *  · 根因⑤（微博）：陀螺仪文案 120ms 抢先返回键、角落键 500ms 才轮到；
+    49→ *    返回键被广告 Activity 拦截后扫描链熔断再无兑底。已改「点击优先、
+    50→ *    返回键兑底」+ 返回键后 600ms 复验不熔断；角落/关闭键树上限 40→150。
+    51→ *  · 根因⑥（保活）：服务解绑即销毁、无心跳。已改 onUnbind 保留 + 15 分钟
+    52→ *    心跳自检闹钟 + 打开 App 自动拉活循环重试（此前仅一次）。
+    53→ *  · 兼容：flagIncludeNotImportantViews（部分广告跳过键被标 not-important，
+    54→ *    不加此标志无障碍树里根本看不到——微博角落键扫不到的帮凶）。
+    55→ *
+    56→ * v3.5.0（二次真机反馈驱动）：点击复验梯子 + 位置学习 + 保活三件套。
+    57→ * v3.6.0（三次真机反馈：喜马拉雅二次进入被引擎连按两次返回键「模拟人
+    58→ * 操作退出」到桌面，上传日志实锤两条毒链）：
+    59→ *  · 毒链① 窗口指纹污染：v3.5.0 的 learnClass 在 L2 直断时把【当时窗口】
+    60→ *    类名一律沉淀；且广告窗关闭后 SDK 资格 12s 不清，L2 在主页继续出手
+    61→ *    → MainActivity/FrameLayout/Dialog 全被学成「广告窗指纹」，此后每次
+    62→ *    进入该应用 500ms 内就在主页按返回键 → 喜马拉雅拦返回弹「再按一次
+    63→ *    退出」→ 复验扫描再按 → 真退到桌面（用户被「模拟人操作退出」）。
+    64→ *    对策：sdkAdWin 只认【当前窗口类名】是 SDK 广告窗（12s TTL 废除）；
+    65→ *    learnClass 只沉淀真广告窗类；启动时清理历史毒指纹（只清 cls 规则）。
+    66→ *  · 毒链② 根窗口返回键：应用入口窗（冷启动开屏/回前台首窗）按返回
+    67→ *    = 退出应用。rootWindow 接线（前台入口窗追踪）：入口窗上 L3/L4.5/L5
+    68→ *    返回键全禁（决策核心安全门 + 服务侧双保险），只走点击梯子，用尽
+    69→ *    优雅收手（每窗 6 次点击预算）。
+    70→ *  · 手势点击改点【原标签控件】坐标（v3.5.0 点可点祖先中心——祖先常是
+    71→ *    全屏容器，「已点击跳过但广告纹丝不动」根因之一）。
+    72→ *  · 保活新增：onTaskRemoved 即时提醒 + 自检闹钟 + 打开 App 自动拉活重绑。
+    73→ *    一个角落候选点并强制 dispatchGesture 真实触点重试；同窗点击 ≥3 次
+    74→ *    仍未关 → 返回键兜底（「点了没反应」的最终兜底）。
+    75→ *  · 位置学习：手动点击图片跳过键（零文本）也能学——归一化坐标 + 窗口
+    76→ *    类名指纹，次启同窗 500ms 直点（教一次就会）。
+    77→ *  · 保活：前台常驻通知 + keepOn 持久化 + KeepAliveReceiver 断连提醒——
+    78→ *    开启后除非手动关闭不再静默失效（更新/重启后一键恢复）。
+    79→ *  · 架构：识别/决策逻辑全部在 AdDecisionCore（纯 Java，JVM 用例必绿）；
+    80→ *    本类只负责：
+    81→ *  · 事件调度（0ms 首扫 + 前密后疏重试链；点击后转入复验调度，不熔断）
+    82→ *  · 决策执行：performAction(ACTION_CLICK) 失效自动降级 dispatchGesture 手势点击
+    83→ *    （v3.4.0 关键：许多应用拦截 performAction，但拦不住真实触点；
+    84→ *    v3.5.0 复验重试一律直接手势真实触点）
+    85→ *  · 多窗口扫描：getRootInActiveWindow 之外遍历 getWindows()（弹窗/覆盖层）
+    86→ *  · 坐标级点击兜底执行（L6，决策核心判定后执行）
+    87→ *  · 链式跳转回弹 / 同包落地页弹回 / 学习 / 统计 / 能耗画像
+    88→ *
+    89→ * 真机反馈修复（2026-11：微博/喜马拉雅等主流应用仍拦截失败）：
+    90→ *  根因：第一方图片开屏——窗口类名是应用自己的 Activity（不匹配 SDK 指纹）、
+    91→ *  跳过按钮是纯图片（零文本零 desc）、倒计时烧在图里 → v3.3.0 零信号不出手。
+    92→ *  对策：L4 角落无字小可点控件点击（图片跳过键正解）+ L6 坐标级点击兜底
+    93→ *  （dispatchGesture 真实触点，点击标准跳过位 88%宽/7%高，防误点六重约束）。
+    94→ *
+    95→ * 合规边界（沿用）：只代点「跳过/关闭」类控件、返回键温和关闭广告窗，
+    96→ * 不碰网络层、不终止任何进程与服务（「拦精灵」案司法边界）。
+    97→ */
+    98→public class AdSkipService extends AccessibilityService {
+    99→
+   100→    public static volatile AdSkipService instance;
+   101→
+   102→    private static final String PREFS = "adshield";
+   103→    private static final String KEY_STATE = "state";
+   104→    private static final String KEY_KEEPON = "keepOn";
+   105→
+   106→    private static final int NOTIF_KEEP = 1;   // 前台保活常驻通知
+   107→    public static final int NOTIF_ALERT = 2;   // 服务断开提醒（KeepAliveReceiver 发，服务连上即撤）
+   108→
+   109→    private static final long WINDOW_MS = 12000;       // 开屏时间窗
+   110→    private static final long COOLDOWN_MS = 1200;      // 同一应用两次自动点击最小间隔
+   111→    private static final long LEARN_WINDOW_MS = 30000; // 手动点击学习宽时间窗
+   112→    private static final int MAX_RULES_PER_APP = 8;
+   113→    private static final int MAX_LOG = 60;
+   114→
+   115→    /* 极速链：相对窗口起点的扫描节奏（前密后疏，命中即熔断） */
+   116→    private static final long[] SCAN_AT =
+   117→            {0, 120, 240, 400, 650, 1000, 1500, 2200, 3200, 4500, 6000, 8000, 10500};
+   118→    /* 返回键重试：每个窗口最多直断次数（个别广告拦截第一次返回键） */
+   119→    private static final int BACK_RETRY_MAX = 2;
+   120→    /* 广告特征有效期（链式回弹依据） */
+   121→    private static final long CHAIN_GUARD_MS = 6000;
+   122→    /* 同包落地页弹回：仅限广告判定后此时长内拉起的 WebView */
+   123→    private static final long LANDING_GUARD_MS = 3000;
+   124→    /* 弹窗窗期与冷却 */
+   125→    private static final long POPUP_WINDOW_MS = 10000;
+   126→    private static final long POPUP_COOLDOWN_MS = 2500;
+   127→    private static final long POPUP_SCAN_THROTTLE_MS = 700;
+   128→    private static final int BURST_COUNT = 3;
+   129→    private static final long BURST_WIN_MS = 1500;
+   130→    /* 多窗口扫描上限（能耗） */
+   131→    private static final int MAX_WINDOWS_SCAN = 3;
+   132→
+   133→    /* 能耗治理：内存聚合 + 延迟落盘 */
+   134→    private static final long FLUSH_DELAY_MS = 15000;
+   135→    private boolean flushScheduled = false;
+   136→
+   137→    /* 能耗画像（开机累计，学习中心展示） */
+   138→    public long energyEvents = 0;
+   139→    public long energyScans = 0;
+   140→    public long energyBacks = 0;
+   141→    public long energyGestures = 0;
+   142→    public long popupBlocks = 0;
+   143→    public long chainRebounds = 0;
+   144→
+   145→    private final Object lock = new Object();
+   146→    private final Handler handler = new Handler(Looper.getMainLooper());
+   147→    private final java.util.HashMap<String, Long> windowAt = new java.util.HashMap<>();
+   148→    private final java.util.HashMap<String, Long> lastClickAt = new java.util.HashMap<>();
+   149→    private final java.util.HashMap<String, Long> lastPopupAt = new java.util.HashMap<>();
+   150→    private final java.util.HashMap<String, Long> adFeatureUntil = new java.util.HashMap<>();
+   151→    private final java.util.HashMap<String, Integer> scanGen = new java.util.HashMap<>();
+   152→    private final java.util.HashMap<String, String> winClass = new java.util.HashMap<>();
+   153→    private final java.util.HashMap<String, Boolean> winClsLearned = new java.util.HashMap<>();
+   154→    /* v3.6.0 根窗口安全门：应用入口窗（冷启动开屏/回前台首窗）类名——
+   155→     * 入口窗上按返回键 = 退出应用，返回键决策全部禁用 */
+   156→    private final java.util.HashMap<String, String> rootWinCls = new java.util.HashMap<>();
+   157→    /* v3.6.0：前台包名追踪（判断应用是否【新进入前台】→ 记录入口窗） */
+   158→    private volatile String lastFgPkg = null;
+   159→    /* v3.6.0：本窗点击梯子已优雅收手（预算用尽后不再动作，新窗口重置） */
+   160→    private final java.util.HashMap<String, Boolean> gaveUp = new java.util.HashMap<>();
+   161→    private final java.util.HashMap<String, Integer> backTries = new java.util.HashMap<>();
+   162→    private final java.util.HashMap<String, Long> popupUntil = new java.util.HashMap<>();
+   163→    private final java.util.HashMap<String, Long> lastPopupScanAt = new java.util.HashMap<>();
+   164→    private final java.util.HashMap<String, long[]> burstWin = new java.util.HashMap<>();
+   165→    private final java.util.HashMap<String, Long> landingBackAt = new java.util.HashMap<>();
+   166→    /* v3.5.0：点击复验——本窗已点击次数（换候选/真实触点重试/返回键兜底的依据） */
+   167→    private final java.util.HashMap<String, Integer> clickTries = new java.util.HashMap<>();
+   168→
+   169→    private volatile String lastAutoClickPkg;
+   170→    private volatile long lastAutoClickAt;
+   171→
+   172→    private int screenWidth;
+   173→    private int screenHeight;
+   174→
+   175→    /** 状态快照（含缓存）：Bridge 读 state 走这里，UI 永远拿最新内存态 */
+   176→    public static String snapshotState(Context ctx) {
+   177→        AdSkipService s = instance;
+   178→        if (s != null) {
+   179→            synchronized (s.lock) {
+   180→                try {
+   181→                    return s.stateInMemory.toString();
+   182→                } catch (Exception ignored) {
+   183→                }
+   184→            }
+   185→        }
+   186→        return ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_STATE, null);
+   187→    }
+   188→
+   189→    @Override
+   190→    protected void onServiceConnected() {
+   191→        super.onServiceConnected();
+   192→        instance = this;
+   193→        screenWidth = getResources().getDisplayMetrics().widthPixels;
+   194→        screenHeight = getResources().getDisplayMetrics().heightPixels;
+   195→        // v3.5.0 保活：服务连上即记「用户要求保持开启」；仅用户在 App 内手动
+   196→        // 关闭保活提醒（Bridge.setKeepOn(false)）才置 false
+   197→        prefs().edit().putBoolean(KEY_KEEPON, true).apply();
+   198→        startKeepAliveForeground();
+   199→        cancelAlertNotification();
+   200→        cancelHeartbeat(); // 服务活着，心跳自检不再需要
+   201→        // v3.6.0：清理 v3.5.0 误学毒指纹（MainActivity/FrameLayout/Dialog 被
+   202→        // 学成「广告窗指纹」——用户二次进入被连按返回键退出的根因）
+   203→        int purged = purgePoisonFingerprints();
+   204→        appendLog("服务已启动 · v3.7.0 手势能力修复+多候选轮换+学习位置前置+返回键复验"
+   205→                + (purged > 0 ? "｜已清理 " + purged + " 条误学窗口指纹" : ""));
+   206→    }
+   207→
+   208→    /* ───────── v3.7.0 保活：onUnbind 保留 + 心跳自检闹钟 ─────────
+   209→     * 「开启后不手动关闭就一直保持开启」（issue#10：清理后台重进又要手动开）：
+   210→     *  · onUnbind 返回 true：系统解绑（非用户主动关闭）时服务实例保留，
+   211→     *    AMS 重绑无需重建——GKD 同款方案；
+   212→     *  · 心跳闹钟（15 分钟 inexact）：进程被杀但非 force-stop 的 ROM 上仍会触发，
+   213→     *    服务已死即发恢复提醒；服务连上即自动撤；
+   214→     *  · force-stop 后闹钟会被系统清除（任何应用无法绕过）——唯一出路是
+   215→     *    电池白名单（App 内醒目引导）+ 打开 App 自动拉活重绑（tryAutoRevive）。 */
+   216→    @Override
+   217→    public boolean onUnbind(Intent intent) {
+   218→        // 系统解绑但非用户主动关闭：保留服务等待 AMS 重绑，并排自检 + 心跳
+   219→        try {
+   220→            if (prefs().getBoolean(KEY_KEEPON, false)) {
+   221→                appendLog("🔌 服务被系统解绑（非手动关闭）→ 保留实例等待重绑，已排自检与心跳");
+   222→                scheduleSelfCheckAlarm(3000);
+   223→                scheduleHeartbeat();
+   224→            }
+   225→        } catch (Throwable ignored) {
+   226→        }
+   227→        return true; // 关键：true = 不销毁服务，下次 AMS 重绑直接复用
+   228→    }
+   229→
+   230→    /** v3.7.0：心跳自检闹钟（15 分钟重复，服务连上即撤） */
+   231→    private static final long HEARTBEAT_MS = 15 * 60 * 1000;
+   232→
+   233→    private void scheduleHeartbeat() {
+   234→        try {
+   235→            android.app.AlarmManager am = (android.app.AlarmManager) getSystemService(ALARM_SERVICE);
+   236→            Intent it = new Intent(this, KeepAliveReceiver.class);
+   237→            it.setAction(KeepAliveReceiver.ACTION_SELF_CHECK);
+   238→            android.app.PendingIntent pi = android.app.PendingIntent.getBroadcast(
+   239→                    this, 8, it,
+   240→                    android.app.PendingIntent.FLAG_UPDATE_CURRENT | android.app.PendingIntent.FLAG_IMMUTABLE);
+   241→            am.setInexactRepeating(android.app.AlarmManager.RTC,
+   242→                    System.currentTimeMillis() + HEARTBEAT_MS, HEARTBEAT_MS, pi);
+   243→        } catch (Throwable ignored) {
+   244→        }
+   245→    }
+   246→
+   247→    private void cancelHeartbeat() {
+   248→        try {
+   249→            android.app.AlarmManager am = (android.app.AlarmManager) getSystemService(ALARM_SERVICE);
+   250→            Intent it = new Intent(this, KeepAliveReceiver.class);
+   251→            it.setAction(KeepAliveReceiver.ACTION_SELF_CHECK);
+   252→            android.app.PendingIntent pi = android.app.PendingIntent.getBroadcast(
+   253→                    this, 8, it,
+   254→                    android.app.PendingIntent.FLAG_UPDATE_CURRENT | android.app.PendingIntent.FLAG_IMMUTABLE);
+   255→            am.cancel(pi);
+   256→        } catch (Throwable ignored) {
+   257→        }
+   258→    }
+   259→
+   260→    @Override
+   261→    public void onTaskRemoved(Intent rootIntent) {
+   262→        super.onTaskRemoved(rootIntent);
+   263→        // v3.6.0：后台清理（滑掉最近任务）时，部分 ROM 会连无障碍服务一起杀。
+   264→        // ① 若进程幸存：4s 后自检，服务真死了才发「待恢复」提醒（防误报）
+   265→        // ② 自检闹钟（15s）：进程被杀但非 force-stop 的 ROM 上仍可触发提醒
+   266→        // v3.7.0：追加 15 分钟心跳闹钟——进程被杀后持续自检，
+   267→        //    服务一旦真死即提醒恢复（用户手动关闭 keepOn 时不排）
+   268→        try {
+   269→            if (!prefs().getBoolean(KEY_KEEPON, false)) return;
+   270→            handler.postDelayed(() -> {
+   271→                if (instance == null) KeepAliveReceiver.notifyAlert(AdSkipService.this);
+   272→            }, 4000);
+   273→            scheduleSelfCheckAlarm(15000);
+   274→            scheduleHeartbeat();
+   275→        } catch (Throwable ignored) {
+   276→        }
+   277→    }
+   278→
+   279→    /** v3.6.0：自检闹钟——清理后台后若服务已死（且非 force-stop 状态），发恢复提醒 */
+   280→    private void scheduleSelfCheckAlarm(long delayMs) {
+   281→        try {
+   282→            android.app.AlarmManager am = (android.app.AlarmManager) getSystemService(ALARM_SERVICE);
+   283→            Intent it = new Intent(this, KeepAliveReceiver.class);
+   284→            it.setAction(KeepAliveReceiver.ACTION_SELF_CHECK);
+   285→            android.app.PendingIntent pi = android.app.PendingIntent.getBroadcast(
+   286→                    this, 7, it,
+   287→                    android.app.PendingIntent.FLAG_UPDATE_CURRENT | android.app.PendingIntent.FLAG_IMMUTABLE);
+   288→            am.set(android.app.AlarmManager.RTC, System.currentTimeMillis() + delayMs, pi);
+   289→        } catch (Throwable ignored) {
+   290→        }
+   291→    }
+   292→
+   293→    /** v3.6.0：清理误学窗口指纹——只删 cls 规则中非广告窗类的（保留位置/文本规则） */
+   294→    private int purgePoisonFingerprints() {
+   295→        synchronized (lock) {
+   296→            try {
+   297→                JSONObject st = loadState();
+   298→                JSONObject rules = st.optJSONObject("rules");
+   299→                if (rules == null) return 0;
+   300→                int purged = 0;
+   301→                java.util.Iterator<String> it = rules.keys();
+   302→                while (it.hasNext()) {
+   303→                    String pkg = it.next();
+   304→                    JSONArray list = rules.optJSONArray(pkg);
+   305→                    if (list == null) continue;
+   306→                    JSONArray kept = new JSONArray();
+   307→                    for (int i = 0; i < list.length(); i++) {
+   308→                        JSONObject r = list.optJSONObject(i);
+   309→                        if (r == null) continue;
+   310→                        String cls = r.optString("cls", "");
+   311→                        boolean poison = cls.length() > 0
+   312→                                && !r.optBoolean("pos", false)
+   313→                                && !AdDecisionCore.isAdActivityClass(cls);
+   314→                        if (poison) {
+   315→                            purged++;
+   316→                        } else {
+   317→                            kept.put(r);
+   318→                        }
+   319→                    }
+   320→                    if (kept.length() == 0) it.remove();
+   321→                    else rules.put(pkg, kept);
+   322→                }
+   323→                if (purged > 0) saveState(st);
+   324→                return purged;
+   325→            } catch (Exception e) {
+   326→                return 0;
+   327→            }
+   328→        }
+   329→    }
+   330→
+   331→    @Override
+   332→    public void onDestroy() {
+   333→        flushNow();
+   334→        instance = null;
+   335→        super.onDestroy();
+   336→    }
+   337→
+   338→    @Override
+   339→    public void onInterrupt() {
+   340→    }
+   341→
+   342→    @Override
+   343→    public void onAccessibilityEvent(AccessibilityEvent event) {
+   344→        if (event == null) return;
+   345→        CharSequence pkgCs = event.getPackageName();
+   346→        if (pkgCs == null) return;
+   347→        String pkg = pkgCs.toString();
+   348→        if (pkg.equals(getPackageName())) return;
+   349→        if (isSystemNoise(pkg)) return;
+   350→
+   351→        long now = System.currentTimeMillis();
+   352→        energyEvents++;
+   353→
+   354→        switch (event.getEventType()) {
+   355→            case AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED: {
+   356→                String cls = cs(event.getClassName());
+   357→                // v3.6.0 根窗口追踪：新进入前台的应用，其首个窗口 = 入口窗
+   358→                //（冷启动开屏 / 从桌面·其他应用回前台的首窗）——入口窗上
+   359→                // 按返回键 = 退出应用，安全门据此禁一切返回键兜底
+   360→                boolean entering = !pkg.equals(lastFgPkg);
+   361→                lastFgPkg = pkg;
+   362→                if (reboundChainJump(pkg, now)) break;
+   363→                if (reboundLanding(pkg, cls, now)) break;
+   364→                // v3.5.0 复验通过：上一窗点过东西且窗口已切走 → 广告已关
+   365→                Integer prevTries = clickTries.get(pkg);
+   366→                if (prevTries != null && prevTries > 0 && !cls.equals(winClassOf(pkg))) {
+   367→                    appendLog("✓ 复验通过（" + shortPkg(pkg) + "）：广告窗已关闭"
+   368→                            + (prevTries > 1 ? "（共 " + prevTries + " 次尝试，重试梯子兜底）" : ""));
+   369→                    // v3.6.0 毒链① 根治：广告已关，学习窗快断资格同步作废
+   370→                    //（防止后续窗口还拿着旧资格按返回键）
+   371→                    winClsLearned.remove(pkg);
+   372→                }
+   373→                windowAt.put(pkg, now);
+   374→                winClass.put(pkg, cls);
+   375→                if (entering) rootWinCls.put(pkg, cls); // v3.6.0：记录入口窗
+   376→                backTries.put(pkg, 0);
+   377→                clickTries.put(pkg, 0); // v3.5.0：新窗重置复验计数
+   378→                gaveUp.put(pkg, Boolean.FALSE); // v3.6.0：新窗重置收手标记
+   379→                winClsLearned.remove(pkg);
+   380→                if (isDialogClass(cls) && !isOemUtilityPkg(pkg)) {
+   381→                    popupUntil.put(pkg, now + POPUP_WINDOW_MS);
+   382→                }
+   383→                if (AdDecisionCore.isAdActivityClass(cls)) {
+   384→                    adFeatureUntil.put(pkg, now + CHAIN_GUARD_MS);
+   385→                    appendLog("🎯 SDK 广告窗识别（" + shortPkg(pkg) + "）：" + cls
+   386→                            + " → 500ms 内无真跳过键将温和直断");
+   387→                } else if (learnedClassHit(pkg, cls)) {
+   388→                    adFeatureUntil.put(pkg, now + CHAIN_GUARD_MS);
+   389→                    winClsLearned.put(pkg, Boolean.TRUE);
+   390→                }
+   391→                bumpScanChain(pkg);
+   392→                break;
+   393→            }
+   394→            case AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED: {
+   395→                if (now - winAt(pkg) < WINDOW_MS) {
+   396→                    nudgeScan(pkg, now);
+   397→                    break;
+   398→                }
+   399→                if (now < popupUntilGet(pkg)) {
+   400→                    nudgePopupScan(pkg, now);
+   401→                    break;
+   402→                }
+   403→                detectPopupBurst(pkg, now);
+   404→                break;
+   405→            }
+   406→            case AccessibilityEvent.TYPE_VIEW_CLICKED: {
+   407→                if (isOwnAutoClick(pkg, now)) return;
+   408→                learnFromManualClick(pkg, event, now);
+   409→                observeMisclick(pkg, event, now);
+   410→                break;
+   411→            }
+   412→        }
+   413→    }
+   414→
+   415→    /* ───────── 基础判断 ───────── */
+   416→
+   417→    private boolean isSystemNoise(String pkg) {
+   418→        return pkg.startsWith("com.android.systemui")
+   419→                || pkg.equals("android")
+   420→                || pkg.contains("inputmethod")
+   421→                || pkg.contains("packageinstaller")
+   422→                || pkg.equals("com.android.settings");
+   423→    }
+   424→
+   425→    /** v3.6.0：厂商系统工具包（安全中心/系统管家类）——弹窗突发检测不适用
+   426→     *（真机日志：securitycenter/keep 的系统弹窗被误开弹窗识别窗） */
+   427→    private boolean isOemUtilityPkg(String pkg) {
+   428→        String p = pkg.toLowerCase();
+   429→        return p.contains("miui") || p.contains("securitycenter") || p.contains("systemmanager")
+   430→                || p.contains("safecenter") || p.contains("permissionmanager") || p.contains("finddevice");
+   431→    }
+   432→
+   433→    private static boolean isDialogClass(String cls) {
+   434→        if (cls == null) return false;
+   435→        String c = cls.toLowerCase();
+   436→        return c.contains("dialog") || c.contains("popup");
+   437→    }
+   438→
+   439→    private long winAt(String pkg) {
+   440→        Long t = windowAt.get(pkg);
+   441→        return t == null ? 0L : t;
+   442→    }
+   443→
+   444→    private long popupUntilGet(String pkg) {
+   445→        Long t = popupUntil.get(pkg);
+   446→        return t == null ? 0L : t;
+   447→    }
+   448→
+   449→    private boolean isOwnAutoClick(String pkg, long now) {
+   450→        return pkg.equals(lastAutoClickPkg) && (now - lastAutoClickAt) < 900;
+   451→    }
+   452→
+   453→    private String winClassOf(String pkg) {
+   454→        String c = winClass.get(pkg);
+   455→        return c == null ? "" : c;
+   456→    }
+   457→
+   458→    /** v3.6.0：应用入口窗类名（无记录返回空串 = 非入口窗） */
+   459→    private String rootWinClsOf(String pkg) {
+   460→        String c = rootWinCls.get(pkg);
+   461→        return c == null ? "" : c;
+   462→    }
+   463→
+   464→    private int triesOf(String pkg) {
+   465→        Integer n = backTries.get(pkg);
+   466→        return n == null ? 0 : n.intValue();
+   467→    }
+   468→
+   469→    /* ───────── AccessibilityNodeInfo → 决策核心适配 ───────── */
+   470→
+   471→    private static final class NodeAdapter implements NodeView {
+   472→        final AccessibilityNodeInfo n;
+   473→
+   474→        NodeAdapter(AccessibilityNodeInfo n) {
+   475→            this.n = n;
+   476→        }
+   477→
+   478→        public String text() {
+   479→            return n.getText() == null ? "" : n.getText().toString().trim();
+   480→        }
+   481→
+   482→        public String desc() {
+   483→            return n.getContentDescription() == null ? "" : n.getContentDescription().toString().trim();
+   484→        }
+   485→
+   486→        public String cls() {
+   487→            return n.getClassName() == null ? "" : n.getClassName().toString();
+   488→        }
+   489→
+   490→        public boolean clickable() {
+   491→            return n.isClickable();
+   492→        }
+   493→
+   494→        public boolean scrollable() {
+   495→            return n.isScrollable();
+   496→        }
+   497→
+   498→        public boolean editable() {
+   499→            return n.isEditable();
+   500→        }
+   501→
+   502→        public int[] bounds() {
+   503→            try {
+   504→                Rect r = new Rect();
+   505→                n.getBoundsInScreen(r);
+   506→                return new int[]{r.left, r.top, r.right, r.bottom};
+   507→            } catch (Exception e) {
+   508→                return null;
+   509→            }
+   510→        }
+   511→
+   512→        public int childCount() {
+   513→            return n.getChildCount();
+   514→        }
+   515→
+   516→        public NodeView child(int i) {
+   517→            AccessibilityNodeInfo c = n.getChild(i);
+   518→            return c == null ? null : new NodeAdapter(c);
+   519→        }
+   520→
+   521→        public NodeView parent() {
+   522→            AccessibilityNodeInfo p = n.getParent();
+   523→            return p == null ? null : new NodeAdapter(p);
+   524→        }
+   525→    }
+   526→
+   527→    /* ───────── 扫描调度：0ms 首扫 + 前密后疏重试链 ───────── */
+   528→
+   529→    private void bumpScanChain(final String pkg) {
+   530→        final long winStart = winAt(pkg);
+   531→        Integer g = scanGen.get(pkg);
+   532→        final int gen = g == null ? 1 : g + 1;
+   533→        scanGen.put(pkg, gen);
+   534→        for (int i = 0; i < SCAN_AT.length; i++) {
+   535→            final long at = SCAN_AT[i];
+   536→            handler.postDelayed(() -> {
+   537→                Integer cur = scanGen.get(pkg);
+   538→                if (cur == null || cur.intValue() != gen) return;
+   539→                tryScan(pkg, winStart, at);
+   540→            }, at);
+   541→        }
+   542→    }
+   543→
+   544→    private void nudgeScan(final String pkg, long now) {
+   545→        Integer gen = scanGen.get(pkg);
+   546→        if (gen == null) {
+   547→            bumpScanChain(pkg);
+   548→            return;
+   549→        }
+   550→        final long winStart = winAt(pkg);
+   551→        if (now - winStart < 150) return;
+   552→        final int g = gen.intValue();
+   553→        handler.post(() -> {
+   554→            Integer cur = scanGen.get(pkg);
+   555→            if (cur == null || cur.intValue() != g) return;
+   556→            tryScan(pkg, winStart, -1);
+   557→        });
+   558→    }
+   559→
+   560→    private void nudgePopupScan(final String pkg, long now) {
+   561→        Long last = lastPopupScanAt.get(pkg);
+   562→        if (last != null && now - last < POPUP_SCAN_THROTTLE_MS) return;
+   563→        lastPopupScanAt.put(pkg, now);
+   564→        final long winStart = winAt(pkg);
+   565→        handler.post(() -> {
+   566→            if (instance == null) return;
+   567→            tryScan(pkg, winStart, -2);
+   568→        });
+   569→    }
+   570→
+   571→    private void detectPopupBurst(String pkg, long now) {
+   572→        if (!popupShieldEnabled() || isOemUtilityPkg(pkg)) return;
+   573→        long[] w = burstWin.get(pkg);
+   574→        if (w == null || now - w[0] > BURST_WIN_MS) {
+   575→            burstWin.put(pkg, new long[]{now, 1});
+   576→            return;
+   577→        }
+   578→        w[1]++;
+   579→        if (w[1] >= BURST_COUNT) {
+   580→            burstWin.remove(pkg);
+   581→            popupUntil.put(pkg, now + POPUP_WINDOW_MS);
+   582→            appendLog("🪟 检测到内容突发（" + shortPkg(pkg) + "）：疑似覆盖层弹窗 → 开启弹窗识别窗");
+   583→            nudgePopupScan(pkg, now);
+   584→        }
+   585→    }
+   586→
+   587→    private void fuseChain(String pkg) {
+   588→        Integer g = scanGen.get(pkg);
+   589→        scanGen.put(pkg, g == null ? 1 : g + 1);
+   590→    }
+   591→
+   592→    /* ───────── 扫描与决策执行（逻辑全部在 AdDecisionCore） ───────── */
+   593→
+   594→    private void tryScan(String pkg, long winStart, long atMs) {
+   595→        if (instance == null) return;
+   596→        long now = System.currentTimeMillis();
+   597→        long elapsed = now - winStart;
+   598→        boolean splashLive = learningEnabled() && elapsed <= WINDOW_MS;
+   599→        boolean popupLive = popupShieldEnabled() && now < popupUntilGet(pkg) && popupCooldownOK(pkg, now);
+   600→        if (!splashLive && !popupLive) return;
+   601→
+   602→        try {
+   603→            /* 多窗口扫描：活动窗口优先，其次 getWindows() 同包窗口（弹窗/覆盖层） */
+   604→            AccessibilityNodeInfo[] roots = collectRoots(pkg);
+   605→            if (roots.length == 0) return;
+   606→
+   607→            Long lastClick = lastClickAt.get(pkg);
+   608→            boolean clickCoolOK = lastClick == null || now - lastClick >= COOLDOWN_MS;
+   609→            // v3.5.0：学习位置指纹（手动教过的坐标）与复验次数
+   610→            int[] tapHint = learnedPos(pkg);
+   611→            Integer triesBox = clickTries.get(pkg);
+   612→            int clickAttempts = triesBox == null ? 0 : triesBox.intValue();
+   613→
+   614→            for (int ri = 0; ri < roots.length; ri++) {
+   615→                energyScans++;
+   616→                Ctx ctx = new Ctx();
+   617→                ctx.screenW = screenWidth;
+   618→                ctx.screenH = screenHeight;
+   619→                ctx.elapsedMs = Math.max(0, elapsed - ri * 30);
+   620→                ctx.splashLive = splashLive;
+   621→                ctx.popupLive = popupLive;
+   622→                ctx.guard = AdDecisionCore.isGuardPkg(pkg);
+   623→                // v3.6.0 毒链① 根治：sdkAdWin 只认【当前窗口类名】是 SDK 广告窗
+   624→                //（v3.5.0 的 12s TTL 让主页还拿着 SDK 资格按返回键 → 退出应用）
+   625→                ctx.sdkAdWin = AdDecisionCore.isAdActivityClass(winClassOf(pkg));
+   626→                Boolean learned = winClsLearned.get(pkg);
+   627→                ctx.learnedCls = learned != null && learned.booleanValue();
+   628→                // v3.6.0 毒链② 根治：根窗口（入口窗）标记——返回键=退出应用，
+   629→                // L3/L4.5/L5 决策核心禁用 + execute() 双保险拦截
+   630→                ctx.rootWindow = winClassOf(pkg).equals(rootWinClsOf(pkg));
+   631→                ctx.clickAttempts = clickAttempts;
+   632→                ctx.tapHintX = tapHint[0];
+   633→                ctx.tapHintY = tapHint[1];
+   634→                ctx.budgetNodes = splashLive ? 600 : 280; // 开屏窗预算扩容（重树）
+   635→
+   636→                ScanFind f = AdDecisionCore.walk(new NodeAdapter(roots[ri]), ctx);
+   637→                if (f.foundSkip || f.gyroHint || f.fakeSkip || f.hotZone || ctx.sdkAdWin || ctx.learnedCls) {
+   638→                    Long old = adFeatureUntil.get(pkg);
+   639→                    if (old == null || now > old) adFeatureUntil.put(pkg, now + CHAIN_GUARD_MS);
+   640→                }
+   641→                Decision d = AdDecisionCore.decide(f, ctx);
+   642→                if (d.action.equals(AdDecisionCore.A_NONE)) continue;
+   643→                if (execute(pkg, d, f, ctx, clickCoolOK, now)) return; // 命中即熔断
+   644→            }
+   645→        } catch (Exception ignored) {
+   646→        }
+   647→    }
+   648→
+   649→    /** 收集同包可扫描窗口根节点（活动窗口优先，最多 3 个） */
+   650→    private AccessibilityNodeInfo[] collectRoots(String pkg) {
+   651→        java.util.ArrayList<AccessibilityNodeInfo> out = new java.util.ArrayList<>();
+   652→        AccessibilityNodeInfo active = getRootInActiveWindow();
+   653→        if (active != null) {
+   654→            CharSequence rp = active.getPackageName();
+   655→            if (rp != null && pkg.contentEquals(rp)) out.add(active);
+   656→        }
+   657→        if (out.isEmpty()) {
+   658→            try {
+   659→                List<AccessibilityWindowInfo> wins = getWindows();
+   660→                if (wins != null) {
+   661→                    for (AccessibilityWindowInfo w : wins) {
+   662→                        if (out.size() >= MAX_WINDOWS_SCAN) break;
+   663→                        CharSequence wp = w == null ? null : w.getRoot() == null ? null : w.getRoot().getPackageName();
+   664→                        if (wp != null && pkg.contentEquals(wp)) {
+   665→                            AccessibilityNodeInfo r = w.getRoot();
+   666→                            if (r != null) out.add(r);
+   667→                        }
+   668→                    }
+   669→                }
+   670→            } catch (Exception ignored) {
+   671→            }
+   672→        }
+   673→        return out.toArray(new AccessibilityNodeInfo[0]);
+   674→    }
+   675→
+   676→    /** 执行决策；返回 true = 已出手（熔断扫描链） */
+   677→    private boolean execute(String pkg, Decision d, ScanFind f, Ctx ctx, boolean clickCoolOK, long now) {
+   678→        String how = d.action + "/" + d.reason;
+   679→        lastGesturePkg = pkg; // v3.7.0：手势取消诊断日志用
+   680→        // v3.6.0：点击梯子预算——同窗点击 ≥MAX_CLICKS_PER_WIN 即优雅收手
+   681→        //（绝不无限重试，更绝不升级返回键；等用户手动跳过，手动点击仍会被学习）
+   682→        if ((d.action.equals(AdDecisionCore.A_CLICK_BOUNDS) || d.action.equals(AdDecisionCore.A_CLOSE)
+   683→                || d.action.equals(AdDecisionCore.A_TAP_POINT))
+   684→                && triesOfClick(pkg) >= AdDecisionCore.MAX_CLICKS_PER_WIN) {
+   685→            Boolean done = gaveUp.get(pkg);
+   686→            if (done == null || !done.booleanValue()) {
+   687→                gaveUp.put(pkg, Boolean.TRUE);
+   688→                appendLog("🤲 点击梯子已用尽（" + shortPkg(pkg) + "）：" + AdDecisionCore.MAX_CLICKS_PER_WIN
+   689→                        + " 次尝试未关闭广告 → 优雅收手（本窗不再动作；你的手动跳过仍会被学习）");
+   690→            }
+   691→            return false;
+   692→        }
+   693→        if (d.action.equals(AdDecisionCore.A_BACK)) {
+   694→            // v3.6.0 根窗口安全门（双保险，决策核心已先拦一道）：
+   695→            // 入口窗上按返回键 = 退出应用（喜马拉雅「再按一次退出到桌面」事故）
+   696→            if (ctx.rootWindow && !ctx.sdkAdWin) {
+   697→                appendLog("⛔ 根窗口安全门（" + shortPkg(pkg) + "）：入口窗禁返回键（防退出应用），只走点击梯子");
+   698→                return false;
+   699→            }
+   700→            if (triesOf(pkg) >= BACK_RETRY_MAX || !backAllowed(now)) return false;
+   701→            performGlobalAction(GLOBAL_ACTION_BACK);
+   702→            energyBacks++;
+   703→            backTries.put(pkg, triesOf(pkg) + 1);
+   704→            adFeatureUntil.put(pkg, now + CHAIN_GUARD_MS);
+   705→            if (d.reason.startsWith("sdk_window")) learnClass(pkg, winClassOf(pkg));
+   706→            if ("click_verify_fail".equals(d.reason)) {
+   707→                appendLog("🛡 点击复验失败升级（" + shortPkg(pkg) + "）：同窗 " + ctx.clickAttempts
+   708→                        + " 次点击仍未关闭 → 返回键兜底温和关闭（不碰进程与服务）");
+   709→            } else {
+   710→                appendLog("🛡 广告窗直断（" + shortPkg(pkg) + "）：" + reasonZh(d.reason)
+   711→                        + " · " + ctx.elapsedMs + "ms → 返回键温和关闭（不碰进程与服务）");
+   712→            }
+   713→            bumpStat(pkg, "back");
+   714→            /* v3.7.0（issue#10 微博根因）：返回键直断后【不熔断】——广告 Activity
+   715→             * 常拦截返回键（按了没反应）。600ms 后复验：同包窗口仍在则重开扫描链
+   716→             * 继续点击梯子（角落候选/坐标轮换），不再「按完就睡」 */
+   717→            handler.postDelayed(() -> {
+   718→                if (instance == null) return;
+   719→                try {
+   720→                    AccessibilityNodeInfo[] roots = collectRoots(pkg);
+   721→                    if (roots.length > 0) {
+   722→                        appendLog("🔁 返回键复验（" + shortPkg(pkg) + "）：广告窗仍在（返回键被拦截）→ 继续点击梯子");
+   723→                        bumpScanChain(pkg);
+   724→                    }
+   725→                } catch (Throwable ignored) {
+   726→                }
+   727→            }, 600);
+   728→            return true;
+   729→        }
+   730→        if (d.action.equals(AdDecisionCore.A_CLICK_BOUNDS) || d.action.equals(AdDecisionCore.A_CLOSE)) {
+   731→            if (!clickCoolOK) return false;
+   732→            int attempts = triesOfClick(pkg);
+   733→            // v3.5.0 复验重试：第 1 次 performAction→手势降级；第 ≥2 次一律手势真实触点
+   734→            if (clickNode(d, attempts >= 1)) {
+   735→                lastClickAt.put(pkg, now);
+   736→                lastAutoClickPkg = pkg;
+   737→                lastAutoClickAt = now;
+   738→                clickTries.put(pkg, attempts + 1);
+   739→                if (d.action.equals(AdDecisionCore.A_CLOSE)) {
+   740→                    popupBlocks++;
+   741→                    lastPopupAt.put(pkg, now);
+   742→                    appendLog("🪟 弹窗广告已关闭（" + shortPkg(pkg) + "）："
+   743→                            + (f.adBadge ? "「" + f.badgeLabel + "」角标" : "Dialog+营销话术")
+   744→                            + " + 关闭键「" + f.closeLabel + "」");
+   745→                    bumpStat(pkg, "popup");
+   746→                } else {
+   747→                    if (attempts == 0) {
+   748→                        appendLog("⚡ 已点击跳过（" + shortPkg(pkg) + "）：" + reasonZh(d.reason)
+   749→                                + "（" + (lastGesture ? "手势点击" : "无障碍代点") + "）→ 1.2s 后复验，未关将换候选重试");
+   750→                    } else {
+   751→                        appendLog("🔁 复验未关闭 → 第 " + (attempts + 1) + " 次出手（" + shortPkg(pkg) + "）："
+   752→                                + reasonZh(d.reason) + "（手势真实触点·换第 " + (attempts + 1) + " 个候选，不再盲点同一坐标）");
+   753→                    }
+   754→                    bumpStat(pkg, "auto");
+   755→                    adFeatureUntil.put(pkg, now + CHAIN_GUARD_MS);
+   756→                }
+   757→                // v3.5.0 关键：点击后【不熔断】扫描链——由后续扫描复验；
+   758→                // 广告关掉会触发新窗口事件（计数清零）；仍在则换候选/升级兜底
+   759→                return true;
+   760→            }
+   761→            return false;
+   762→        }
+   763→        if (d.action.equals(AdDecisionCore.A_TAP_POINT)) {
+   764→            if (!clickCoolOK) return false;
+   765→            boolean isLearned = "learned_pos".equals(d.reason);
+   766→            if (gestureTap(d.x, d.y)) {
+   767→                lastClickAt.put(pkg, now);
+   768→                lastAutoClickPkg = pkg;
+   769→                lastAutoClickAt = now;
+   770→                clickTries.put(pkg, triesOfClick(pkg) + 1);
+   771→                energyGestures++;
+   772→                if (isLearned) {
+   773→                    appendLog("🎯 学习位置点击（" + shortPkg(pkg) + "）：你手动教过的位置指纹 ("
+   774→                            + d.x + "," + d.y + ")（手势真实触点）→ 1.2s 后复验");
+   775→                    bumpPosRule(pkg);
+   776→                } else {
+   777→                    appendLog("🎯 坐标级点击兜底（" + shortPkg(pkg) + "）：开屏窗内零信号简单树"
+   778→                            + " → 点击标准跳过位 (" + d.x + "," + d.y + ")，本次启动仅一次 → 1.2s 后复验");
+   779→                }
+   780→                bumpStat(pkg, "auto");
+   781→                return true; // 不熔断：交由复验扫描确认
+   782→            }
+   783→            return false;
+   784→        }
+   785→        return false;
+   786→    }
+   787→
+   788→    private boolean lastGesture = false;
+   789→
+   790→    /** 点击控件：performAction 优先，失效降级 dispatchGesture 手势点击（真实触点）；
+   791→     *  v3.5.0：forceGesture=true（复验重试）跳过 performAction 直接真实触点——
+   792→     *  performAction 返回 true 也可能被应用无声吞掉，真机「点了没反应」的主因 */
+   793→    private boolean clickNode(Decision d, boolean forceGesture) {
+   794→        lastGesture = false;
+   795→        if (!forceGesture && d.node instanceof NodeAdapter) {
+   796→            try {
+   797→                if (((NodeAdapter) d.node).n.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+   798→                    return true;
+   799→                }
+   800→            } catch (Exception ignored) {
+   801→            }
+   802→        }
+   803→        if (d.bounds != null) {
+   804→            int cx = (d.bounds[0] + d.bounds[2]) / 2;
+   805→            int cy = (d.bounds[1] + d.bounds[3]) / 2;
+   806→            if (gestureTap(cx, cy)) {
+   807→                lastGesture = true;
+   808→                energyGestures++;
+   809→                return true;
+   810→            }
+   811→        }
+   812→        return false;
+   813→    }
+   814→
+   815→    /** v3.7.0 手势结果回调（静态内部类，规避 d8 8.2 匿名类 bug）：
+   816→     *  手势被系统中断时记诊断日志——「手势派发成功但被取消」不再静默 */
+   817→    private static final class TapGestureCallback extends GestureResultCallback {
+   818→        private final String pkg;
+   819→
+   820→        TapGestureCallback(String pkg) {
+   821→            this.pkg = pkg;
+   822→        }
+   823→
+   824→        @Override
+   825→        public void onCancelled(GestureDescription gestureDescription) {
+   826→            try {
+   827→                AdSkipService s = instance;
+   828→                if (s != null) {
+   829→                    s.appendLog("⚠ 手势被系统中断（" + s.shortPkg(pkg) + "）：真实触点未触达（系统手势限流/冲突），下轮扫描重试");
+   830→                }
+   831→            } catch (Throwable ignored) {
+   832→            }
+   833→        }
+   834→    }
+   835→
+   836→    /** dispatchGesture 坐标点击（API 24+；真实触点，performAction 拦不住）。
+   837→     *  v3.7.0 根因修复（issue#10：「已点击跳过×4 无效果」）：
+   838→     *   ① 路径非零长度——单点路径（只有 moveTo）在部分 ROM 上不触发点击
+   839→     *    （业界验证：需 lineTo 形成真实触点轨迹）；
+   840→     *   ② 起始延迟 40ms——给前一帧渲染/事件处理留时间，立即派发易被丢弃；
+   841→     *   ③ 坐标边界钳制——越界坐标（学习位置/旧指纹）直接被系统丢弃；
+   842→     *   ④ 结果回调——被系统取消不再静默（诊断日志供下轮迭代）。
+   843→     *   ⑤ 前提：accessibility_service_config 已补 canPerformGestures=true
+   844→     *    （v3.6.0 及之前【缺失】——手势从未真正触达屏幕，喜马拉雅复验重试
+   845→     *    全部无效的头号根因） */
+   846→    private boolean gestureTap(int x, int y) {
+   847→        try {
+   848→            if (x <= 0 || y <= 0) return false;
+   849→            if (screenWidth > 0 && x >= screenWidth) x = screenWidth - 2; // 边界钳制
+   850→            if (screenHeight > 0 && y >= screenHeight) y = screenHeight - 2;
+   851→            Path p = new Path();
+   852→            p.moveTo(x, y);
+   853→            p.lineTo(x + 1, y); // 非零长度路径：单点路径部分 ROM 不触发点击
+   854→            GestureDescription gd = new GestureDescription.Builder()
+   855→                    .addStroke(new GestureDescription.StrokeDescription(p, 40, 60))
+   856→                    .build();
+   857→            return dispatchGesture(gd, new TapGestureCallback(lastGesturePkg), null);
+   858→        } catch (Throwable t) {
+   859→            return false;
+   860→        }
+   861→    }
+   862→
+   863→    /** 手势诊断用包名（gestureTap 调用前由 execute 设置） */
+   864→    private volatile String lastGesturePkg = "";
+   865→
+   866→    private static String reasonZh(String r) {
+   867→        if (r.equals("skip_text")) return "文本跳过键";
+   868→        if (r.equals("sdk_window")) return "SDK 广告窗指纹";
+   869→        if (r.equals("sdk_window_learned")) return "学习窗口指纹（快断）";
+   870→        if (r.equals("gyro_immediate")) return "翻转/摇一摇文案立即直断";
+   871→        if (r.equals("gyro_break")) return "陀螺仪诱导/假跳过直断";
+   872→        if (r.equals("corner_image_skip")) return "角落图片跳过键";
+   873→        if (r.equals("learned_pos")) return "学习位置（你手动教过）";
+   874→        if (r.equals("splash_close")) return "开屏×关闭键";
+   875→        if (r.equals("hot_zone")) return "全屏热区自绘广告";
+   876→        if (r.equals("coord_fallback")) return "坐标级兜底";
+   877→        return r;
+   878→    }
+   879→
+   880→    /** 返回键全局节流：600ms 内最多一次 */
+   881→    private long lastBackAt = 0;
+   882→
+   883→    private boolean backAllowed(long now) {
+   884→        if (now - lastBackAt < 600) return false;
+   885→        lastBackAt = now;
+   886→        return true;
+   887→    }
+   888→
+   889→    private boolean popupCooldownOK(String pkg, long now) {
+   890→        Long t = lastPopupAt.get(pkg);
+   891→        return t == null || now - t >= POPUP_COOLDOWN_MS;
+   892→    }
+   893→
+   894→    /* ───────── 链式跳转回弹（跨应用） ───────── */
+   895→
+   896→    private boolean reboundChainJump(String newPkg, long now) {
+   897→        try {
+   898→            if (!chainReboundEnabled()) return false;
+   899→            if (isSystemNoise(newPkg) || isLauncherLike(newPkg)) return false;
+   900→            if (!AdDecisionCore.isAdTarget(newPkg)) return false;
+   901→
+   902→            String host = null;
+   903→            for (Map.Entry<String, Long> e : adFeatureUntil.entrySet()) {
+   904→                String k = e.getKey();
+   905→                if (k.equals(newPkg)) continue;
+   906→                if (now < e.getValue().longValue()) {
+   907→                    if (now - winAt(k) <= WINDOW_MS + CHAIN_GUARD_MS) {
+   908→                        host = k;
+   909→                        break;
+   910→                    }
+   911→                }
+   912→            }
+   913→            if (host == null) return false;
+   914→            if (!backAllowed(now)) return false;
+   915→
+   916→            performGlobalAction(GLOBAL_ACTION_BACK);
+   917→            chainRebounds++;
+   918→            appendLog("⛓ 链式跳转已弹回：" + shortPkg(host) + " 的广告试图拉起 " + shortPkg(newPkg)
+   919→                    + " → 返回键送回原应用（" + (now - winAt(host)) + "ms 内）");
+   920→            bumpStat(host, "chain");
+   921→            windowAt.put(host, now);
+   922→            bumpScanChain(host);
+   923→            return true;
+   924→        } catch (Exception ignored) {
+   925→            return false;
+   926→        }
+   927→    }
+   928→
+   929→    /* ───────── 同包落地页弹回 ───────── */
+   930→
+   931→    private boolean reboundLanding(String pkg, String cls, long now) {
+   932→        try {
+   933→            if (!chainReboundEnabled()) return false;
+   934→            if (cls == null || cls.length() == 0) return false;
+   935→            String c = cls.toLowerCase();
+   936→            if (!c.contains("webview") && !c.contains("h5")) return false;
+   937→            Long until = adFeatureUntil.get(pkg);
+   938→            if (until == null || now >= until.longValue()) return false;
+   939→            long judgedAt = until.longValue() - CHAIN_GUARD_MS;
+   940→            if (now - judgedAt > LANDING_GUARD_MS) return false;
+   941→            Long last = landingBackAt.get(pkg);
+   942→            if (last != null && now - last.longValue() < CHAIN_GUARD_MS) return false;
+   943→            if (!backAllowed(now)) return false;
+   944→
+   945→            landingBackAt.put(pkg, now);
+   946→            performGlobalAction(GLOBAL_ACTION_BACK);
+   947→            chainRebounds++;
+   948→            appendLog("⛓ 广告落地页已弹回（" + shortPkg(pkg) + "）：广告拉起内置 WebView 落地页 → 返回键送回");
+   949→            bumpStat(pkg, "chain");
+   950→            return true;
+   951→        } catch (Exception ignored) {
+   952→            return false;
+   953→        }
+   954→    }
+   955→
+   956→    private boolean isLauncherLike(String pkg) {
+   957→        return pkg.contains("launcher") || pkg.contains("home")
+   958→                || pkg.equals("com.miui.home") || pkg.equals("com.huawei.android.launcher");
+   959→    }
+   960→
+   961→    /* ───────── 智能学习：观察手动点击 + className 指纹 ───────── */
+   962→
+   963→    private void learnFromManualClick(String pkg, AccessibilityEvent event, long now) {
+   964→        if (now - winAt(pkg) > LEARN_WINDOW_MS) return;
+   965→
+   966→        String text = "";
+   967→        String viewId = "";
+   968→        AccessibilityNodeInfo srcNode = null;
+   969→        try {
+   970→            StringBuilder sb = new StringBuilder();
+   971→            if (event.getText() != null) {
+   972→                for (CharSequence c : event.getText()) {
+   973→                    if (c != null) sb.append(c);
+   974→                }
+   975→            }
+   976→            text = sb.toString().trim();
+   977→            AccessibilityNodeInfo src = event.getSource();
+   978→            if (src != null) {
+   979→                srcNode = src;
+   980→                if (text.length() == 0) text = cs(src.getContentDescription());
+   981→                viewId = cs(src.getViewIdResourceName());
+   982→            }
+   983→        } catch (Exception ignored) {
+   984→        }
+   985→        if (!AdDecisionCore.matchesSkip(text) && !AdDecisionCore.isCloseText(text)) {
+   986→            // v3.5.0 位置学习：图片跳过键零文本也要学（真机痛点：「手动记录两次
+   987→            // 还是不能跳过」——v3.4.0 只认文本，图片键永远学不到）
+   988→            learnPositionFromManualClick(pkg, srcNode, now);
+   989→            return;
+   990→        }
+   991→
+   992→        synchronized (lock) {
+   993→            try {
+   994→                JSONObject st = loadState();
+   995→                JSONObject rules = st.optJSONObject("rules");
+   996→                if (rules == null) {
+   997→                    rules = new JSONObject();
+   998→                    st.put("rules", rules);
+   999→                }
+  1000→                JSONArray list = rules.optJSONArray(pkg);
+  1001→                if (list == null) {
+  1002→                    list = new JSONArray();
+  1003→                    rules.put(pkg, list);
+  1004→                }
+  1005→                boolean merged = false;
+  1006→                for (int i = 0; i < list.length(); i++) {
+  1007→                    JSONObject r = list.optJSONObject(i);
+  1008→                    if (r == null) continue;
+  1009→                    boolean sameId = viewId.length() > 0 && viewId.equals(r.optString("viewId", ""));
+  1010→                    boolean sameText = text.length() > 0 && text.equals(r.optString("text", ""));
+  1011→                    if (sameId || sameText) {
+  1012→                        r.put("manual", r.optInt("manual", 0) + 1);
+  1013→                        r.put("ts", now);
+  1014→                        if (r.optString("viewId", "").length() == 0 && viewId.length() > 0) {
+  1015→                            r.put("viewId", viewId);
+  1016→                        }
+  1017→                        merged = true;
+  1018→                        break;
+  1019→                    }
+  1020→                }
+  1021→                if (!merged) {
+  1022→                    if (list.length() >= MAX_RULES_PER_APP) return;
+  1023→                    JSONObject r = new JSONObject();
+  1024→                    r.put("text", text);
+  1025→                    r.put("viewId", viewId);
+  1026→                    r.put("manual", 1);
+  1027→                    r.put("auto", 0);
+  1028→                    r.put("ts", now);
+  1029→                    list.put(r);
+  1030→                }
+  1031→                bumpManualStat(st, pkg);
+  1032→                saveState(st);
+  1033→            } catch (Exception ignored) {
+  1034→            }
+  1035→        }
+  1036→        /* v3.7.0（issue#10 喜马拉雅根因）：文本键手动点击【同时学位置】——
+  1037→         * 用户手指点通过的坐标 = 真实触点真正生效的位置（文本候选可能点不中，
+  1038→         * 教过的位置下次同窗 500ms 直点，优先于文本候选盲点） */
+  1039→        learnPositionFromManualClick(pkg, srcNode, now);
+  1040→        appendLog("已学习：" + shortPkg(pkg) + " 中你手动点击了「" + text + "」→ 下次优先直点此位置（" + shortPkg(pkg) + " 同窗）");
+  1041→    }
+  1042→
+  1043→    private boolean learnedClassHit(String pkg, String cls) {
+  1044→        if (cls == null || cls.length() == 0) return false;
+  1045→        try {
+  1046→            JSONObject rules = loadState().optJSONObject("rules");
+  1047→            if (rules == null) return false;
+  1048→            JSONArray list = rules.optJSONArray(pkg);
+  1049→            if (list == null) return false;
+  1050→            for (int i = 0; i < list.length(); i++) {
+  1051→                JSONObject r = list.optJSONObject(i);
+  1052→                if (r == null) continue;
+  1053→                if (r.optBoolean("pos", false)) continue; // v3.5.0：位置规则走「点位置」而非快断
+  1054→                if (cls.equals(r.optString("cls", ""))) return true;
+  1055→            }
+  1056→        } catch (Exception ignored) {
+  1057→        }
+  1058→        return false;
+  1059→    }
+  1060→
+  1061→    private void learnClass(String pkg, String cls) {
+  1062→        if (cls == null || cls.length() == 0) return;
+  1063→        // v3.6.0 毒链① 断源：只沉淀真正的广告窗类（SDK 广告 Activity）。
+  1064→        // v3.5.0 无此校验 → MainActivity/FrameLayout/Dialog 全被学成
+  1065→        // 「广告窗指纹」→ 每次进应用都在主页按返回键 → 退出应用
+  1066→        if (!AdDecisionCore.isAdActivityClass(cls)) return;
+  1067→        synchronized (lock) {
+  1068→            try {
+  1069→                JSONObject st = loadState();
+  1070→                JSONObject rules = st.optJSONObject("rules");
+  1071→                if (rules == null) {
+  1072→                    rules = new JSONObject();
+  1073→                    st.put("rules", rules);
+  1074→                }
+  1075→                JSONArray list = rules.optJSONArray(pkg);
+  1076→                if (list == null) {
+  1077→                    list = new JSONArray();
+  1078→                    rules.put(pkg, list);
+  1079→                }
+  1080→                for (int i = 0; i < list.length(); i++) {
+  1081→                    JSONObject r = list.optJSONObject(i);
+  1082→                    if (r != null && cls.equals(r.optString("cls", ""))) {
+  1083→                        r.put("auto", r.optInt("auto", 0) + 1);
+  1084→                        r.put("ts", System.currentTimeMillis());
+  1085→                        saveState(st);
+  1086→                        return;
+  1087→                    }
+  1088→                }
+  1089→                if (list.length() >= MAX_RULES_PER_APP) return;
+  1090→                JSONObject r = new JSONObject();
+  1091→                r.put("text", "");
+  1092→                r.put("viewId", "");
+  1093→                r.put("cls", cls);
+  1094→                r.put("manual", 0);
+  1095→                r.put("auto", 1);
+  1096→                r.put("ts", System.currentTimeMillis());
+  1097→                list.put(r);
+  1098→                saveState(st);
+  1099→            } catch (Exception ignored) {
+  1100→            }
+  1101→        }
+  1102→    }
+  1103→
+  1104→    /* ───────── 误触观察 ───────── */
+  1105→
+  1106→    private void observeMisclick(String pkg, AccessibilityEvent event, long now) {
+  1107→        try {
+  1108→            if (screenWidth <= 0 || screenHeight <= 0) return;
+  1109→            if (now - winAt(pkg) > WINDOW_MS) return;
+  1110→            AccessibilityNodeInfo src = event.getSource();
+  1111→            if (src == null) return;
+  1112→            String label = cs(src.getText());
+  1113→            if (label.length() == 0) label = cs(src.getContentDescription());
+  1114→            if (AdDecisionCore.matchesSkip(label) || AdDecisionCore.isCloseText(label)) return;
+  1115→            Rect r = new Rect();
+  1116→            src.getBoundsInScreen(r);
+  1117→            if (r.isEmpty()) return;
+  1118→            double area = (double) r.width() * r.height();
+  1119→            double screen = (double) screenWidth * screenHeight;
+  1120→            boolean huge = (area / screen > 0.35) && (r.width() > screenWidth * 0.55);
+  1121→            boolean tooFast = (now - winAt(pkg)) < 700;
+  1122→            if (!huge && !tooFast) return;
+  1123→            synchronized (lock) {
+  1124→                JSONObject st = loadState();
+  1125→                JSONObject stats = st.optJSONObject("stats");
+  1126→                if (stats == null) { stats = new JSONObject(); st.put("stats", stats); }
+  1127→                stats.put("misclick", stats.optInt("misclick", 0) + 1);
+  1128→                saveState(st);
+  1129→            }
+  1130→            appendLog("⚠️ 疑似误触（" + shortPkg(pkg) + "）："
+  1131→                    + (huge ? "全屏热区控件，轻微触碰即跳转" : "窗口切换后 " + (now - winAt(pkg)) + "ms 内点击，快于人类反应")
+  1132→                    + " → 已记入观察统计");
+  1133→        } catch (Exception ignored) {
+  1134→        }
+  1135→    }
+  1136→
+  1137→    /* ───────── 开关 ───────── */
+  1138→
+  1139→    private boolean learningEnabled() {
+  1140→        try {
+  1141→            JSONObject st = loadState();
+  1142→            return !st.has("learning") || st.optBoolean("learning", true);
+  1143→        } catch (Exception e) {
+  1144→            return true;
+  1145→        }
+  1146→    }
+  1147→
+  1148→    private boolean popupShieldEnabled() {
+  1149→        try {
+  1150→            JSONObject st = loadState();
+  1151→            return !st.has("popupShield") || st.optBoolean("popupShield", true);
+  1152→        } catch (Exception e) {
+  1153→            return true;
+  1154→        }
+  1155→    }
+  1156→
+  1157→    private boolean chainReboundEnabled() {
+  1158→        try {
+  1159→            JSONObject st = loadState();
+  1160→            return !st.has("chainRebound") || st.optBoolean("chainRebound", true);
+  1161→        } catch (Exception e) {
+  1162→            return true;
+  1163→        }
+  1164→    }
+  1165→
+  1166→    /* ───────── v3.5.0 位置学习：图片跳过键（零文本）教一次就会 ───────── */
+  1167→
+  1168→    /**
+  1169→     * 手动点击小角落/顶部/底部控件（零文本或跳过/关闭文本键）→ 记录归一化坐标 + 窗口类名指纹。
+  1170→     * 次启同窗 500ms 手势直点该位置（决策核心 L1.4 前置，优先于文本候选盲点）。
+  1171→     */
+  1172→    private void learnPositionFromManualClick(String pkg, AccessibilityNodeInfo src, long now) {
+  1173→        if (src == null || screenWidth <= 0 || screenHeight <= 0) return;
+  1174→        if (now - winAt(pkg) > 10000) return; // 仅窗口切换后 10s 内（开屏期）
+  1175→        try {
+  1176→            Rect r = new Rect();
+  1177→            src.getBoundsInScreen(r);
+  1178→            if (r.isEmpty()) return;
+  1179→            int[] b = new int[]{r.left, r.top, r.right, r.bottom};
+  1180→            double area = AdDecisionCore.areaOf(b, screenWidth, screenHeight);
+  1181→            if (area > AdDecisionCore.POS_LEARN_AREA_MAX) return; // 大热区=CTA，不学
+  1182→            // v3.6.0：可学形状扩至底部（部分应用跳过键在右下角，真机反馈）
+  1183→            if (!AdDecisionCore.learnableSkipShape(b, screenWidth, screenHeight)) return;
+  1184→            final double x = ((b[0] + b[2]) / 2.0) / screenWidth;
+  1185→            final double y = ((b[1] + b[3]) / 2.0) / screenHeight;
+  1186→            // v3.7.0：位置健全性校验（真机日志：微信学出 (63%,102%) 越界位置，
+  1187→            // 点击事件源节点 bounds 中心在屏幕外——点了也是死区，直接拒学）
+  1188→            if (!AdDecisionCore.saneNormPos(x, y)) {
+  1189→                appendLog("🚫 位置学习已拒绝（" + shortPkg(pkg) + "）：坐标 ("
+  1190→                        + Math.round(x * 100) + "%," + Math.round(y * 100) + "%) 越界/贴边，点了也是死区");
+  1191→                return;
+  1192→            }
+  1193→            final String cls = winClassOf(pkg);
+  1194→            synchronized (lock) {
+  1195→                try {
+  1196→                    JSONObject st = loadState();
+  1197→                    JSONObject rules = st.optJSONObject("rules");
+  1198→                    if (rules == null) {
+  1199→                        rules = new JSONObject();
+  1200→                        st.put("rules", rules);
+  1201→                    }
+  1202→                    JSONArray list = rules.optJSONArray(pkg);
+  1203→                    if (list == null) {
+  1204→                        list = new JSONArray();
+  1205→                        rules.put(pkg, list);
+  1206→                    }
+  1207→                    boolean merged = false;
+  1208→                    for (int i = 0; i < list.length(); i++) {
+  1209→                        JSONObject rr = list.optJSONObject(i);
+  1210→                        if (rr == null || !rr.optBoolean("pos", false)) continue;
+  1211→                        double dx = Math.abs(rr.optDouble("x", -1) - x);
+  1212→                        double dy = Math.abs(rr.optDouble("y", -1) - y);
+  1213→                        boolean sameCls = cls.length() == 0 || cls.equals(rr.optString("cls", ""));
+  1214→                        if (dx <= 0.02 && dy <= 0.02 && sameCls) {
+  1215→                            rr.put("manual", rr.optInt("manual", 0) + 1);
+  1216→                            rr.put("ts", now);
+  1217→                            rr.put("cls", cls);
+  1218→                            merged = true;
+  1219→                            break;
+  1220→                        }
+  1221→                    }
+  1222→                    if (!merged) {
+  1223→                        if (list.length() >= MAX_RULES_PER_APP) return;
+  1224→                        JSONObject rr = new JSONObject();
+  1225→                        rr.put("pos", 1);
+  1226→                        rr.put("x", Math.round(x * 1000) / 1000.0);
+  1227→                        rr.put("y", Math.round(y * 1000) / 1000.0);
+  1228→                        rr.put("cls", cls);
+  1229→                        rr.put("text", "");
+  1230→                        rr.put("viewId", "");
+  1231→                        rr.put("manual", 1);
+  1232→                        rr.put("auto", 0);
+  1233→                        rr.put("ts", now);
+  1234→                        list.put(rr);
+  1235→                    }
+  1236→                    bumpManualStat(st, pkg);
+  1237→                    saveState(st);
+  1238→                } catch (Exception ignored) {
+  1239→                }
+  1240→            }
+  1241→            appendLog("📍 位置已学习（" + shortPkg(pkg) + "）：图片跳过键零文本，已记住位置 ("
+  1242→                    + Math.round(x * 100) + "%," + Math.round(y * 100) + "%) → 下次启动同窗 500ms 直点");
+  1243→        } catch (Exception ignored) {
+  1244→        }
+  1245→    }
+  1246→
+  1247→    /** 学习位置指纹（当前窗口类名匹配、manual>0、最新优先）；无则 {-1,-1} */
+  1248→    private int[] learnedPos(String pkg) {
+  1249→        try {
+  1250→            String cls = winClassOf(pkg);
+  1251→            if (cls.length() == 0) return new int[]{-1, -1};
+  1252→            JSONObject rules = loadState().optJSONObject("rules");
+  1253→            if (rules == null) return new int[]{-1, -1};
+  1254→            JSONArray list = rules.optJSONArray(pkg);
+  1255→            if (list == null) return new int[]{-1, -1};
+  1256→            JSONObject best = null;
+  1257→            long bestTs = -1;
+  1258→            for (int i = 0; i < list.length(); i++) {
+  1259→                JSONObject r = list.optJSONObject(i);
+  1260→                if (r == null || !r.optBoolean("pos", false)) continue;
+  1261→                if (r.optInt("manual", 0) < 1) continue;
+  1262→                if (!cls.equals(r.optString("cls", ""))) continue;
+  1263→                long ts = r.optLong("ts", 0);
+  1264→                if (ts > bestTs) {
+  1265→                    bestTs = ts;
+  1266→                    best = r;
+  1267→                }
+  1268→            }
+  1269→            if (best == null) return new int[]{-1, -1};
+  1270→            int x = (int) Math.round(best.optDouble("x", -1) * screenWidth);
+  1271→            int y = (int) Math.round(best.optDouble("y", -1) * screenHeight);
+  1272→            if (x <= 0 || y <= 0 || x >= screenWidth || y >= screenHeight) return new int[]{-1, -1};
+  1273→            return new int[]{x, y};
+  1274→        } catch (Exception ignored) {
+  1275→            return new int[]{-1, -1};
+  1276→        }
+  1277→    }
+  1278→
+  1279→    /** 学习位置命中沉淀 auto 次数 */
+  1280→    private void bumpPosRule(String pkg) {
+  1281→        try {
+  1282→            String cls = winClassOf(pkg);
+  1283→            synchronized (lock) {
+  1284→                JSONObject st = loadState();
+  1285→                JSONObject rules = st.optJSONObject("rules");
+  1286→                if (rules == null) return;
+  1287→                JSONArray list = rules.optJSONArray(pkg);
+  1288→                if (list == null) return;
+  1289→                for (int i = 0; i < list.length(); i++) {
+  1290→                    JSONObject r = list.optJSONObject(i);
+  1291→                    if (r == null || !r.optBoolean("pos", false)) continue;
+  1292→                    if (cls.equals(r.optString("cls", ""))) {
+  1293→                        r.put("auto", r.optInt("auto", 0) + 1);
+  1294→                        saveState(st);
+  1295→                        return;
+  1296→                    }
+  1297→                }
+  1298→            }
+  1299→        } catch (Exception ignored) {
+  1300→        }
+  1301→    }
+  1302→
+  1303→    private int triesOfClick(String pkg) {
+  1304→        Integer n = clickTries.get(pkg);
+  1305→        return n == null ? 0 : n.intValue();
+  1306→    }
+  1307→
+  1308→    /* ───────── v3.5.0 保活：前台常驻通知（系统不杀）+ 断连提醒撤销 ───────── */
+  1309→
+  1310→    private void startKeepAliveForeground() {
+  1311→        try {
+  1312→            NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+  1313→            Notification.Builder b;
+  1314→            if (Build.VERSION.SDK_INT >= 26) {
+  1315→                NotificationChannel ch = new NotificationChannel("keep", "秒跳引擎守护中",
+  1316→                        NotificationManager.IMPORTANCE_MIN);
+  1317→                ch.setDescription("服务保持开启，直到你手动关闭");
+  1318→                ch.setShowBadge(false);
+  1319→                nm.createNotificationChannel(ch);
+  1320→                b = new Notification.Builder(this, "keep");
+  1321→            } else {
+  1322→                b = new Notification.Builder(this);
+  1323→            }
+  1324→            Intent it = new Intent(this, MainActivity.class);
+  1325→            it.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+  1326→            PendingIntent pi = PendingIntent.getActivity(this, 0, it,
+  1327→                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+  1328→            b.setContentTitle("秒跳引擎守护中")
+  1329→                    .setContentText("保持开启直到你手动关闭 · 点击进入开屏卫士")
+  1330→                    .setSmallIcon(R.drawable.ic_stat)
+  1331→                    .setContentIntent(pi)
+  1332→                    .setOngoing(true)
+  1333→                    .setShowWhen(false)
+  1334→                    .setColor(0xFF10B981);
+  1335→            Notification notif = b.build();
+  1336→            if (Build.VERSION.SDK_INT >= 34) {
+  1337→                startForeground(NOTIF_KEEP, notif, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
+  1338→            } else {
+  1339→                startForeground(NOTIF_KEEP, notif);
+  1340→            }
+  1341→        } catch (Throwable ignored) {
+  1342→        }
+  1343→    }
+  1344→
+  1345→    private void cancelAlertNotification() {
+  1346→        try {
+  1347→            NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+  1348→            nm.cancel(NOTIF_ALERT);
+  1349→        } catch (Exception ignored) {
+  1350→        }
+  1351→    }
+  1352→
+  1353→    /* ───────── 统计与日志 ───────── */
+  1354→
+  1355→    private void bumpManualStat(JSONObject st, String pkg) {
+  1356→        try {
+  1357→            JSONObject stats = st.optJSONObject("stats");
+  1358→            if (stats == null) {
+  1359→                stats = new JSONObject();
+  1360→                st.put("stats", stats);
+  1361→            }
+  1362→            stats.put("manual", stats.optInt("manual", 0) + 1);
+  1363→            JSONObject byApp = stats.optJSONObject("byApp");
+  1364→            if (byApp == null) {
+  1365→                byApp = new JSONObject();
+  1366→                stats.put("byApp", byApp);
+  1367→            }
+  1368→            JSONObject a = byApp.optJSONObject(pkg);
+  1369→            if (a == null) {
+  1370→                a = new JSONObject();
+  1371→                byApp.put(pkg, a);
+  1372→            }
+  1373→            a.put("manual", a.optInt("manual", 0) + 1);
+  1374→        } catch (Exception ignored) {
+  1375→        }
+  1376→    }
+  1377→
+  1378→    private void bumpStat(String pkg, String kind) {
+  1379→        synchronized (lock) {
+  1380→            try {
+  1381→                JSONObject st = loadState();
+  1382→                JSONObject stats = st.optJSONObject("stats");
+  1383→                if (stats == null) {
+  1384→                    stats = new JSONObject();
+  1385→                    st.put("stats", stats);
+  1386→                }
+  1387→                stats.put(kind, stats.optInt(kind, 0) + 1);
+  1388→                JSONObject byApp = stats.optJSONObject("byApp");
+  1389→                if (byApp == null) {
+  1390→                    byApp = new JSONObject();
+  1391→                    stats.put("byApp", byApp);
+  1392→                }
+  1393→                JSONObject a = byApp.optJSONObject(pkg);
+  1394→                if (a == null) {
+  1395→                    a = new JSONObject();
+  1396→                    byApp.put(pkg, a);
+  1397→                }
+  1398→                a.put(kind, a.optInt(kind, 0) + 1);
+  1399→                saveState(st);
+  1400→            } catch (Exception ignored) {
+  1401→            }
+  1402→        }
+  1403→    }
+  1404→
+  1405→    private void appendLog(String msg) {
+  1406→        synchronized (lock) {
+  1407→            try {
+  1408→                JSONObject st = loadState();
+  1409→                JSONArray log = st.optJSONArray("log");
+  1410→                if (log == null) {
+  1411→                    log = new JSONArray();
+  1412→                    st.put("log", log);
+  1413→                }
+  1414→                JSONObject entry = new JSONObject();
+  1415→                entry.put("t", System.currentTimeMillis());
+  1416→                entry.put("msg", msg);
+  1417→                log.put(entry);
+  1418→                while (log.length() > MAX_LOG) {
+  1419→                    log.remove(0);
+  1420→                }
+  1421→                saveState(st);
+  1422→            } catch (Exception ignored) {
+  1423→            }
+  1424→        }
+  1425→    }
+  1426→
+  1427→    private SharedPreferences prefs() {
+  1428→        return getSharedPreferences(PREFS, MODE_PRIVATE);
+  1429→    }
+  1430→
+  1431→    /* ───────── 内存聚合 + 延迟落盘 ───────── */
+  1432→
+  1433→    private org.json.JSONObject stateInMemory;
+  1434→
+  1435→    private org.json.JSONObject loadState() {
+  1436→        synchronized (lock) {
+  1437→            if (stateInMemory != null) return stateInMemory;
+  1438→        }
+  1439→        try {
+  1440→            String raw = prefs().getString(KEY_STATE, null);
+  1441→            stateInMemory = raw != null ? new org.json.JSONObject(raw) : new org.json.JSONObject();
+  1442→        } catch (Exception e) {
+  1443→            stateInMemory = new org.json.JSONObject();
+  1444→        }
+  1445→        return stateInMemory;
+  1446→    }
+  1447→
+  1448→    private void saveState(org.json.JSONObject st) {
+  1449→        stateInMemory = st;
+  1450→        scheduleFlush();
+  1451→    }
+  1452→
+  1453→    private void scheduleFlush() {
+  1454→        synchronized (lock) {
+  1455→            if (flushScheduled) return;
+  1456→            flushScheduled = true;
+  1457→        }
+  1458→        handler.postDelayed(() -> flushNow(), FLUSH_DELAY_MS);
+  1459→    }
+  1460→
+  1461→    public void flushNow() {
+  1462→        synchronized (lock) {
+  1463→            flushScheduled = false;
+  1464→        }
+  1465→        org.json.JSONObject st = stateInMemory;
+  1466→        if (st == null) return;
+  1467→        try {
+  1468→            prefs().edit().putString(KEY_STATE, st.toString()).apply();
+  1469→        } catch (Exception ignored) {
+  1470→        }
+  1471→    }
+  1472→
+  1473→    private String cs(CharSequence c) {
+  1474→        return c == null ? "" : c.toString().trim();
+  1475→    }
+  1476→
+  1477→    private String shortPkg(String pkg) {
+  1478→        if (pkg == null) return "";
+  1479→        int i = pkg.lastIndexOf('.');
+  1480→        return i >= 0 && pkg.length() - i - 1 > 1 ? pkg.substring(i + 1) : pkg;
+  1481→    }
+  1482→}
+  1483→
