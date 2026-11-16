@@ -158,7 +158,7 @@ export function AboutPanel() {
         </div>
         <h1 className="mt-4 text-xl font-black text-zinc-900">Skip-Ad · 秒跳引擎</h1>
         <p className="mt-1.5 text-xs leading-relaxed text-zinc-500">
-          P0 预拦截（广告未及呈现）· SDK 广告窗识别 · 假跳过甄别 · 链式直断 · 守护模式 · 十四轮自测 100%
+          P0 预拦截（广告未及呈现）· SDK 广告窗识别 · 假跳过甄别 · 链式二跳前置直断 · 守护模式 · 十四轮自测 100%
         </p>
         <div className="mt-3 flex flex-wrap items-center justify-center gap-2 text-[11px]">
           <span className="rounded-full bg-violet-50 px-2.5 py-1 font-bold text-violet-700 ring-1 ring-violet-200">v{APP_VERSION}</span>

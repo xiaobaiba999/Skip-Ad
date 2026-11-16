@@ -180,7 +180,7 @@ export function Arena({ onFeedback }: { onFeedback: () => void }) {
         }, 1700),
       );
     } else if (isAdversarial) {
-      // 喜马拉雅类：SDK 广告窗 className 识别 → 极速链复核无真跳过键 → 500ms 直断 + 回弹
+      // 喜马拉雅类：SDK 广告窗 className 识别 → 极速链复核无真跳过键 → 500ms 直断（v3.12.0：不再回弹）
       timers.push(setTimeout(() => setFakePhase("scanning"), 400));
       timers.push(setTimeout(() => setFakePhase("ignored"), 1100));
       timers.push(setTimeout(() => setFakePhase("chain"), 1900));
@@ -188,8 +188,8 @@ export function Arena({ onFeedback }: { onFeedback: () => void }) {
         setTimeout(() => {
           setBlocks((n) => n + 1);
           setMsSum((s) => s + plan.totalMs);
-          pushLog({ app: app.name, kind: "block", text: `${plan.ruleName} · ${app.traits?.sdkWindow ? "SDK 广告窗指纹直断 + 回弹" : "陀螺仪诱导直断 + 回弹"}`, ms: plan.totalMs });
-          void postEvent(plan, app.traits?.sdkWindow ? "SDK 广告窗指纹直断 + 链式回弹" : "假跳过甄别 + 链式直断");
+          pushLog({ app: app.name, kind: "block", text: `${plan.ruleName} · ${app.traits?.sdkWindow ? "SDK 广告窗指纹直断" : "陀螺仪诱导直断"}`, ms: plan.totalMs });
+          void postEvent(plan, app.traits?.sdkWindow ? "SDK 广告窗指纹直断（抢先关闭）" : "假跳过甄别 + 链式前置直断");
           setStage("flash");
         }, 2700),
       );
@@ -273,7 +273,7 @@ export function Arena({ onFeedback }: { onFeedback: () => void }) {
                 <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-bold text-white">十一层纵深</span>
               </div>
               <p className="mt-0.5 text-[11px] text-zinc-500">
-                P0 预拦截 → 学习位置点击 → 角落键多候选+坐标轮换 → 点击复验换候选重试（原标签坐标） → SDK 窗指纹 → 热区/立即直断 → 链式回弹 → 弹窗 v2 → 返回键兜底（仅应用内窗） → 根窗口安全门（入口窗绝不返回键，防退出应用）；守护应用只拦广告、不碰服务
+                P0 预拦截 → 学习位置点击 → 角落键多候选+坐标轮换 → 点击复验换候选重试（原标签坐标） → SDK 窗指纹 → 热区/立即直断 → 链式二跳前置直断（不回弹，v3.12.0） → 弹窗 v2 → 返回键兜底（仅应用内窗） → 根窗口安全门（入口窗绝不返回键，防退出应用）；守护应用只拦广告、不碰服务
               </p>
             </div>
             <div className="ml-auto hidden shrink-0 items-center gap-1 text-[10px] font-bold text-emerald-700 sm:flex">
@@ -320,7 +320,7 @@ export function Arena({ onFeedback }: { onFeedback: () => void }) {
               </div>
               {plan.waitMs > 0 && (
                 <p className="mt-1 text-[10px] leading-relaxed text-amber-600">
-                  含等待广告方 { (plan.waitMs / 1000).toFixed(1) }s 显示真跳过（引擎出手仅 {plan.engineMs}ms）——链式二跳广告已升级为直接阻断，无需等待
+                  含等待广告方 { (plan.waitMs / 1000).toFixed(1) }s 显示真跳过（引擎出手仅 {plan.engineMs}ms）——假跳过陷阱甄别中，真跳过一挂载即出手
                 </p>
               )}
               <ol className="mt-3 space-y-1.5">
@@ -522,8 +522,8 @@ function AdStage({
             : "已忽略假「跳过」陷阱 · 监听中"
     : fakePhase === "chain"
       ? isGyro
-        ? "陀螺仪诱导 → 返回键直断 + 二跳回弹"
-        : "链式二跳识别 → 升级直接阻断"
+        ? "陀螺仪诱导 → 返回键抢先直断（翻转触发前）"
+        : "链式二跳识别 → 广告窗前置直断"
     : "秒跳引擎拦截中…";
 
   /* 应用内弹窗广告：主页内容 + 底部弹层广告（角标 + 小号关闭键） */

@@ -61,7 +61,7 @@ export const SCENARIO_APPS: ScenarioApp[] = [
     category: "音频",
     adType: "splash",
     guard: false,
-    ruleName: "专案 v3·SDK 广告窗指纹直断 + 回弹",
+    ruleName: "专案 v3·SDK 广告窗指纹直断（v3.12.0：不回弹）",
     icon: "headphones",
     gradient: "from-orange-500 to-amber-400",
     screen: "audio",

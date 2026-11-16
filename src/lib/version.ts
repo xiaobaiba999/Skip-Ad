@@ -1,6 +1,6 @@
 /** 版本与 GitHub 仓库信息（Web 端与发布节奏共用） */
-export const APP_VERSION = "3.11.0";
-export const VERSION_CODE = 31100; // major*10000 + minor*100 + patch，随版本单调递增
+export const APP_VERSION = "3.12.0";
+export const VERSION_CODE = 31200; // major*10000 + minor*100 + patch，随版本单调递增
 export const GITHUB_REPO = "xiaobaiba999/Skip-Ad";
 export const GITHUB_API = `https://api.github.com/repos/${GITHUB_REPO}`;
 export const GITHUB_HOME = `https://github.com/${GITHUB_REPO}`;
@@ -17,6 +17,19 @@ export interface VersionEntry {
 
 /** 「关于」页仅展示最近三个版本 */
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "3.12.0",
+    code: 31200,
+    date: "2026-11-17",
+    tagline: "纯跳过引擎 · 链式拦截整体移除",
+    notes: [
+      "issue#14 日志实锤：v3.11.0 三重放行安全门仍拦下了两类用户主动跳转——NFC 碰一碰拉起的支付链（securitycenter→支付组件）与「分享到微信」，被 1.5s 内连按 3 次返回键弹回（日志 ⛓×3）。用户意图场景无法穷举，任何安全门都有漏网时刻",
+      "链式拦截机制【整体移除】：reboundChainJump（跨应用弹回）/ reboundLanding（同包落地页弹回）/ chainBounceVerdict 三重放行 / isChooserHint / isAdTarget+AD_TARGET_HINTS 广告目标名单 / adFeatureUntil 广告特征追踪状态全部删除。三轮事故（#12 闪退 → #13 分享被拦 → 本次 NFC 支付被拦）证明：回弹收益远小于代价，同类头部应用并无此功能",
+      "引擎职责回归纯跳过（同类头部应用同款哲学）：只点「跳过/关闭」类控件，绝不对抗用户的任何跳转；点商品/文章详情跳内置 WebView 页不再被误弹回",
+      "issue#14 日志另一发现：connectivity 连接检查窗 2 分钟内被循环误点 ×10——并入系统噪音过滤（connectivity/captiveportal 家族），系统连接诊断页绝不扫描",
+      "界面同步精简：撤下「跳转回弹」开关与统计卡；能耗画像移除回弹字段；反馈类型移除「正常浏览被误弹回」",
+    ],
+  },
   {
     version: "3.11.0",
     code: 31100,

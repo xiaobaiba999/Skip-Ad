@@ -15,9 +15,9 @@
  *  · P2.7 根窗口安全门（v3.6.0）：应用入口窗（冷启动开屏/回前台首窗）上
  *    按返回键 = 退出应用——入口窗禁一切返回键兑底，只走点击梯子，
  *    用尽优雅收手（每窗 6 次）；信息流「摇一摇」文案不误返回。
- *  · P2.5 链式回弹：广告窗 6s 保护期内被电商/商店/短视频/微信/支付宝/
- *    浏览器抢占 → 返回键弹回；广告窗仍活跃时任意目标都弹回；广告判定 3s
- *    内同包拉起 WebView 落地页同样弹回。
+ *  · P2.5 广告窗抢先直断：链式二跳/陀螺仪诱导类广告在窗口层直接关闭（抢在
+ *    跳转触发前）。v3.12.0 起「跳转已发生后的回弹」整体移除（issue#14：
+ *    NFC 支付链与主动分享被误弹回）——绝不弹回用户已进入的页面。
  *  · P2.6 弹窗广告 v2：角标（广告/推广/赞助/AD/Sponsored）+ 关闭键双信号；
  *    Dialog 形态 + ≥2 条营销话术弱信号；弹窗窗期独立于开屏窗；覆盖层
  *    内容突发检测（1.5s 内 ≥3 次内容变化）。
@@ -78,8 +78,8 @@ export const ACTION_LABEL: Record<BlockAction, string> = {
   intent_block: "跳转意图拦截",
   guard_skip: "守护模式代点",
   preempt_block: "P0 预拦截",
-  chain_block: "链式跳转直接阻断",
-  gyro_block: "陀螺仪诱导直断 + 回弹",
+  chain_block: "链式二跳前置直断",
+  gyro_block: "陀螺仪诱导直断",
   coord_tap: "角落控件/坐标级点击",
   sdk_window_cut: "SDK 广告窗指纹直断",
   popup_close: "弹窗广告代点关闭",
@@ -266,8 +266,8 @@ export function planInstantBlock(
           atMs: jitter(522, 8),
         },
         {
-          label: "回弹 + 指纹沉淀",
-          detail: "若跳转已发起：任意目标（含浏览器/微信）弹回原应用；沉淀窗口 className 指纹，次启 300ms 快断",
+          label: "指纹沉淀",
+          detail: "沉淀窗口 className 指纹，次启 300ms 快断；若跳转已发起则不再弹回（v3.12.0：绝不对抗用户已进入的页面）",
           atMs: jitter(640, 12),
         },
       );
@@ -288,8 +288,8 @@ export function planInstantBlock(
           atMs: jitter(42, 10),
         },
         {
-          label: "回弹兜底",
-          detail: "若跳转已发起：广告宿主 6s 保护期内被电商/商店/短视频/微信/浏览器抢占 → 返回键弹回原应用，链路彻底断开",
+          label: "抢先直断完成",
+          detail: "广告窗已关闭，二跳链路提前掐断；若跳转已发起则不再弹回（v3.12.0：绝不弹回用户已进入的页面）",
           atMs: jitter(56, 12),
         },
       );
@@ -337,7 +337,7 @@ export function planInstantBlock(
     : traits.gyroFlip
     ? "陀螺仪诱导已直断 · 翻转跳转零机会"
     : traits.chainJump
-      ? "链式跳转已直接阻断 · 二跳零机会"
+      ? "链式二跳已前置直断 · 广告窗提前关闭"
       : traits.fakeSkip
         ? "假跳过陷阱已甄别 · 真跳过秒点"
         : app.guard

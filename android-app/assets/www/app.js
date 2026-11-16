@@ -1,4 +1,4 @@
-/* 开屏卫士 v3.11.0 · 离线逻辑（首页 / 学习中心 / 关于 · 应用内页内直更 + 多通道下载） */
+/* 开屏卫士 v3.12.0 · 离线逻辑（首页 / 学习中心 / 关于 · 应用内页内直更 + 多通道下载） */
 "use strict";
 
 /* ══════════ 环境与存储 ══════════ */
@@ -22,10 +22,11 @@ const store = {
   }
 };
 
-/* ══════════ 静态数据（v3.11.0 · 精简重构：每版一句话） ══════════ */
+/* ══════════ 静态数据（v3.12.0 · 精简重构：每版一句话） ══════════ */
 
 /* 最近三个版本 */
 const CHANGELOG = [
+  { v: "3.12.0", d: "链式拦截机制整体移除（issue#14 实锤）：v3.11.0 的三重放行安全门仍拦下了 NFC 碰一碰支付链与「分享到微信」（1.5s 内连按 3 次返回键弹回）——用户意图场景无法穷举，任何安全门都有漏网时刻。引擎职责回归纯跳过：只点「跳过/关闭」，绝不对抗你的任何跳转；同包落地页弹回一并移除（点商品/文章详情跳内置页不再被误弹回）；connectivity 连接检查窗循环误点归零；界面撤下「跳转回弹」开关与统计。" },
   { v: "3.11.0", d: "链式回弹用户意图安全门（issue#13 实锤修复）：你 2.2s 内刚点过（分享/登录按钮）、系统分享选择器刚出现过、同一目标刚弹回又立刻拉起（你的重试）——三重任一命中即放行，绝不与你对抗；点商品/文章详情跳内置页不再被误弹回；分享面板噪音归零；学习规则明细撤出界面（学习引擎照常工作，界面更清爽）。" },
   { v: "3.10.0", d: "内置规则库大扩充 + 界面精简重构：五层全局规则（19 条精确文案大小写归一 / 倒计时形态严格正则——营销话术数学上无法混入 / 短包含 8 字上限 + 17 诱导词否决 / vid skip 族 + SDK 窗 close 族边缘带）+ 28 款主流应用分应用规则表；桌面黑名单与广告窗指纹扩充；UI 去除大段说明文字，页签精简为三页。" },
   { v: "3.9.0", d: "QQ/微信/抖音「进去就被退出来」根因修复（桌面误判→盲点坐标→回弹踢出，三刀根治）；内嵌规则引擎主路径化，事件驱动 0ms 露头秒跳；扫描链前段加密与点击冷却提速。" },
@@ -193,7 +194,6 @@ if (HAS_BRIDGE) {
   $("#st-auto").textContent = stats.auto || 0;
   $("#st-back").textContent = stats.back || 0;
   $("#st-popup").textContent = stats.popup || 0;
-  $("#st-chain").textContent = stats.chain || 0;
   $("#st-manual").textContent = stats.manual || 0;
   $("#st-rules").textContent = rules;
 }
@@ -211,12 +211,12 @@ if (HAS_BRIDGE) {
   setInterval(refreshHome, 1600);
 }
 
-/* ══════════ 防护开关（学习 / 弹窗屏蔽 / 跳转回弹） ══════════ */
+/* ══════════ 防护开关（学习 / 弹窗屏蔽） ══════════ */
 function renderToggles() {
   const st = getRealState();
   $("#toggle-learning").checked = st.learning !== false;
   $("#toggle-popup").checked = st.popupShield === true; // v3.9.0 默认关闭（issue#12 内容突发误报整治），学习中心可开启
-  $("#toggle-chain").checked = st.chainRebound !== false;
+  // v3.12.0：chainRebound（诱导跳转回弹）开关已随机制整体移除（issue#14）
 }
 
 function bindToggle(id, key, onMsg, offMsg) {
@@ -229,7 +229,6 @@ function bindToggle(id, key, onMsg, offMsg) {
 }
 bindToggle("toggle-learning", "learning", "智能学习已开启", "智能学习已暂停（引擎保持通用规则）");
 bindToggle("toggle-popup", "popupShield", "弹窗广告屏蔽已开启（默认关闭防误判，可随时关）", "弹窗广告屏蔽已关闭（默认状态：只跳开屏，绝不乱点弹窗）");
-bindToggle("toggle-chain", "chainRebound", "诱导跳转回弹已开启", "诱导跳转回弹已关闭");
 
 /* ══════════ 学习中心（v3.11.0：学习规则明细撤出界面——引擎照常学习，
    界面只留分应用统计与引擎日志；明细仅随日志上传进 GitHub 诊断） ══════════ */
@@ -247,7 +246,7 @@ function renderReal() {
   $("#byapp-list").innerHTML = apps.length ? apps.map(p => `
     <div class="rule-item">
       <div class="rule-pkg">${p}</div>
-      <div class="rule-stat"><b>${byApp[p].auto || 0}</b><span>秒跳 · 直断 ${byApp[p].back || 0} · 弹窗 ${byApp[p].popup || 0} · 回弹 ${byApp[p].chain || 0}</span></div>
+      <div class="rule-stat"><b>${byApp[p].auto || 0}</b><span>秒跳 · 直断 ${byApp[p].back || 0} · 弹窗 ${byApp[p].popup || 0}</span></div>
     </div>`).join("") : '<div class="log-box" style="margin-top:8px"><div class="empty">暂无统计</div></div>';
 
   const log = st.log || [];
@@ -304,7 +303,7 @@ $("#btn-upload-log").addEventListener("click", () => {
     "## 环境信息（自动附加）",
     "- 设备：" + (dev.brand || "?") + " " + (dev.model || "?") + " · " + (dev.os || "?") + "（SDK " + (dev.sdk || "?") + "）",
     "- 版本：v" + appVer() + "（code " + appCode() + "）· 服务：" + (running ? "运行中" : "未运行") + " · 电池白名单：" + (bat ? "已加入" : "未加入"),
-    "- 战绩：秒跳 " + (s.auto || 0) + " · 直断 " + (s.back || 0) + " · 弹窗 " + (s.popup || 0) + " · 回弹 " + (s.chain || 0) + " · 手动样本 " + (s.manual || 0) + " · 误触观察 " + (s.misclick || 0),
+    "- 战绩：秒跳 " + (s.auto || 0) + " · 直断 " + (s.back || 0) + " · 弹窗 " + (s.popup || 0) + " · 手动样本 " + (s.manual || 0) + " · 误触观察 " + (s.misclick || 0),
     "- 学习规则：" + ruleCount + " 条（" + pkgCount + " 个应用）",
     "",
     "## 学习规则明细",
@@ -362,13 +361,13 @@ function renderEnergy() {
 }
 
 /* ══════════ 问题反馈（内置加密通道，零配置） ══════════ */
-const FB_TYPES = { missed: "漏拦截：开屏广告没被秒跳", gyro_leak: "翻转/摇一摇仍被跳转", popup_leak: "弹窗广告没被关闭", landing_fp: "正常浏览被误弹回", false_block: "误拦截：正常操作被拦", crash: "闪退 / 卡顿", suggestion: "功能建议", other: "其他" };
+const FB_TYPES = { missed: "漏拦截：开屏广告没被秒跳", gyro_leak: "翻转/摇一摇仍被跳转", popup_leak: "弹窗广告没被关闭", false_block: "误拦截：正常操作被拦", crash: "闪退 / 卡顿", suggestion: "功能建议", other: "其他" };
 
 function esc(s) {
   return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
-function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "3.11.0"; }
-function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "31100"; }
+function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "3.12.0"; }
+function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "31200"; }
 
 function openLink(url) {
   if (HAS_BRIDGE) { try { AndroidApp.openUrl(url); return; } catch (e) {} }
@@ -390,7 +389,7 @@ function engineProfile() {
   const s = st.stats || {};
   return [
     "- 版本：v" + appVer() + " (code " + appCode() + ") · 环境：" + (HAS_BRIDGE ? "Android APK" : "浏览器预览"),
-    "- 真实引擎：秒跳 " + (s.auto || 0) + " · 诱导直断 " + (s.back || 0) + " · 弹窗关闭 " + (s.popup || 0) + " · 跳转回弹 " + (s.chain || 0) + " · 手动样本 " + (s.manual || 0) + " · 学习规则 " + rules + " 条（" + pkgs + " 个应用）",
+    "- 真实引擎：秒跳 " + (s.auto || 0) + " · 诱导直断 " + (s.back || 0) + " · 弹窗关闭 " + (s.popup || 0) + " · 手动样本 " + (s.manual || 0) + " · 学习规则 " + rules + " 条（" + pkgs + " 个应用）",
     "- 引擎日志：",
     log.length ? log.join("\n") : "  - （暂无）",
   ].join("\n");
