@@ -1,29 +1,24 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { ensureSeed } from "@/lib/ad-seed";
+import { getProfile } from "@/lib/learning";
 
-// GET /api/stats —— 数据看板：各广告曝光/点击/CTR 汇总
+export const dynamic = "force-dynamic";
+
+/** GET /api/stats —— 情报站数据看板（拦截统计 + 规则库概览） */
 export async function GET() {
   try {
-    await ensureSeed();
-    const ads = await db.ad.findMany({ orderBy: [{ type: "asc" }, { views: "desc" }] });
-    const stats = ads.map((a) => ({
-      id: a.id,
-      name: a.name,
-      type: a.type,
-      strategy: a.strategy,
-      active: a.active,
-      views: a.views,
-      clicks: a.clicks,
-      ctr: a.views > 0 ? a.clicks / a.views : 0,
-    }));
-    const totals = {
-      views: stats.reduce((s, x) => s + x.views, 0),
-      clicks: stats.reduce((s, x) => s + x.clicks, 0),
-    };
+    const profile = await getProfile();
+    const [presetCount, learnedCount, feedbackCount] = await Promise.all([
+      db.rule.count({ where: { source: "preset" } }),
+      db.rule.count({ where: { source: "learned" } }),
+      db.feedbackIssue.count(),
+    ]);
     return NextResponse.json({
-      stats,
-      totals: { ...totals, ctr: totals.views > 0 ? totals.clicks / totals.views : 0 },
+      totals: profile.totals,
+      perApp: profile.perApp,
+      scenarios: profile.scenarios,
+      rules: { preset: presetCount, learned: learnedCount },
+      feedbackCount,
     });
   } catch (e) {
     console.error("[stats GET]", e);

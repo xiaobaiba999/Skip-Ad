@@ -1,42 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
-import { APP_VERSION, GITHUB_API, NEW_ISSUE_PAGE } from "@/lib/version";
+import { db } from "@/lib/db";
+import { createIssue } from "@/lib/github";
+import { APP_VERSION } from "@/lib/version";
 
 export const dynamic = "force-dynamic";
 
-/** 反馈类型 → Issue 标题前缀 */
-const TYPES: Record<string, string> = {
-  false_block: "误拦截",
-  missed: "漏拦截",
-  misclick: "误触观察有误",
-  crash: "闪退/卡顿",
-  suggestion: "功能建议",
-  other: "其他",
+/** 反馈类型 → Issue 标题前缀与标签 */
+const TYPES: Record<string, { label: string; tag: string }> = {
+  missed: { label: "漏拦截", tag: "漏拦截" },
+  false_block: { label: "误拦截", tag: "误拦截" },
+  shake_leak: { label: "摇一摇仍跳转", tag: "摇一摇" },
+  crash: { label: "闪退/卡顿", tag: "稳定性" },
+  suggestion: { label: "功能建议", tag: "建议" },
+  other: { label: "其他", tag: "其他" },
 };
 
-function fallbackUrl(type: string, desc: string, contact: string, context: string) {
-  const label = TYPES[type] ?? "其他";
-  const title = `[反馈][${label}] ${desc.slice(0, 40)}`;
-  const body = [
-    "## 问题描述",
-    desc,
-    "",
-    "## 环境信息",
-    context,
-    contact ? `联系方式：${contact}` : "",
-    "",
-    `— 由开屏卫士 v${APP_VERSION} 反馈系统自动创建`,
-  ].filter(Boolean).join("\n");
-  return `${NEW_ISSUE_PAGE}?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
-}
-
 /**
- * POST /api/feedback —— 用户问题反馈，同步创建 GitHub Issue
- * Body: { type, desc, contact?, context? }
- * 服务端持有 GITHUB_TOKEN（.env，不入库），客户端不接触令牌。
- * 未配置令牌 / 仓库不可达时返回 fallbackUrl，引导浏览器预填页提交。
+ * POST /api/feedback —— 问题反馈（内置加密通道）
+ * Body: { type, desc, appName?, context? }
+ * · 令牌内置于服务端（credentials.ts 混淆存储），前端零配置零输入；
+ * · 全部反馈直达 xiaobaiba999/Skip-Ad 的 Issues；
+ * · 提交结果留痕 FeedbackIssue，可在学习中心追溯。
  */
 export async function POST(req: NextRequest) {
-  let payload: { type?: string; desc?: string; contact?: string; context?: string };
+  let payload: { type?: string; desc?: string; appName?: string; context?: string };
   try {
     payload = await req.json();
   } catch {
@@ -45,70 +32,52 @@ export async function POST(req: NextRequest) {
 
   const type = TYPES[payload.type ?? ""] ? payload.type! : "other";
   const desc = (payload.desc ?? "").trim().slice(0, 2000);
-  const contact = (payload.contact ?? "").trim().slice(0, 100);
-  const context = (payload.context ?? "").trim().slice(0, 1500);
+  const appName = (payload.appName ?? "").trim().slice(0, 40);
+  const context = (payload.context ?? "").trim().slice(0, 1200);
 
   if (desc.length < 5) {
     return NextResponse.json({ ok: false, error: "请把问题描述得更具体一点（至少 5 个字）" }, { status: 400 });
   }
 
-  const label = TYPES[type];
-  const title = `[反馈][${label}] ${desc.slice(0, 40)}${desc.length > 40 ? "…" : ""}`;
+  const meta = TYPES[type];
+  const title = `[反馈][${meta.label}]${appName ? ` ${appName}：` : " "}${desc.slice(0, 40)}${desc.length > 40 ? "…" : ""}`;
   const body = [
     "## 问题描述",
     desc,
     "",
-    "## 环境信息",
-    context || "（用户未附加）",
-    contact ? `联系方式：${contact}` : "",
+    appName ? `**涉及应用**：${appName}` : "",
     "",
-    `— 由开屏卫士 v${APP_VERSION} 反馈系统自动创建`,
-  ].filter(Boolean).join("\n");
+    "## 环境信息（自动附加）",
+    `- 版本：v${APP_VERSION}（秒跳引擎）`,
+    context || "（无附加上下文）",
+    "",
+    "> 本 Issue 由内置加密反馈通道自动创建，令牌不出服务端。",
+    "",
+    `— Skip-Ad v${APP_VERSION}`,
+  ]
+    .filter((l) => l !== "")
+    .join("\n");
 
-  const token = process.env.GITHUB_TOKEN;
-  if (!token) {
-    return NextResponse.json({
-      ok: false,
-      error: "服务端未配置 GITHUB_TOKEN，请在浏览器中手动提交",
-      fallbackUrl: fallbackUrl(type, desc, contact, context),
+  const record = await db.feedbackIssue.create({
+    data: { type, title, body, status: "failed" },
+  });
+
+  const r = await createIssue({ title, body, labels: ["用户反馈", meta.tag] });
+  if (!r.ok) {
+    await db.feedbackIssue.update({
+      where: { id: record.id },
+      data: { status: "failed" },
     });
+    return NextResponse.json(
+      { ok: false, error: `上报 GitHub 失败：${r.message ?? "未知错误"}（已留痕，稍后会自动重试）` },
+      { status: 502 },
+    );
   }
 
-  const create = async (withLabels: boolean) =>
-    fetch(`${GITHUB_API}/issues`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: "application/vnd.github+json",
-        "Content-Type": "application/json",
-        "X-GitHub-Api-Version": "2022-11-28",
-      },
-      body: JSON.stringify({
-        title,
-        body,
-        ...(withLabels ? { labels: ["用户反馈", label] } : {}),
-      }),
-    });
+  await db.feedbackIssue.update({
+    where: { id: record.id },
+    data: { status: "submitted", issueUrl: r.url, issueNumber: r.number },
+  });
 
-  try {
-    // 先带标签创建；仓库未开启标签权限（422）时降级为无标签
-    let res = await create(true);
-    if (res.status === 422) res = await create(false);
-    const data = await res.json().catch(() => ({}));
-
-    if (!res.ok) {
-      return NextResponse.json({
-        ok: false,
-        error: `GitHub 返回 ${res.status}${data.message ? `：${data.message}` : ""}`,
-        fallbackUrl: fallbackUrl(type, desc, contact, context),
-      }, { status: 502 });
-    }
-    return NextResponse.json({ ok: true, url: data.html_url, number: data.number });
-  } catch {
-    return NextResponse.json({
-      ok: false,
-      error: "网络请求失败，请稍后重试",
-      fallbackUrl: fallbackUrl(type, desc, contact, context),
-    }, { status: 502 });
-  }
+  return NextResponse.json({ ok: true, url: r.url, number: r.number });
 }

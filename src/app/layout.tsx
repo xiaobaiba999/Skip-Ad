@@ -14,10 +14,10 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Skip-Ad · 开屏广告与跳转广告演示系统",
+  title: "Skip-Ad · 秒跳引擎",
   description:
-    "移动端开屏/插屏广告 2026 全策略演示 + 智能防跳转引擎：多信号精准区分广告诱导跳转与用户主动操作，含智能学习、PWA 安装与投放管理后台。",
-  keywords: ["开屏广告", "跳转广告", "防跳转", "摇一摇", "广告策略", "Skip-Ad", "GKD", "智能学习"],
+    "开屏广告毫秒级秒跳 + 摇一摇/Deeplink 拦截 + 支付/银行/政务守护模式；按使用习惯智能学习，规则每晚自动同步 GitHub。",
+  keywords: ["开屏广告", "秒跳", "摇一摇拦截", "Skip-Ad", "GKD", "无障碍", "守护模式", "智能学习"],
   manifest: "/manifest.webmanifest",
   icons: {
     icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
