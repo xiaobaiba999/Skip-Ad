@@ -1,4 +1,4 @@
-/* 由 scripts/corpus-test.ts 自动生成（勿手改）· 2026-11-16T03:57:37 UTC */
+/* 由 scripts/corpus-test.ts 自动生成（勿手改）· 2026-11-16T04:17:11 UTC */
 export interface TestSummaryRound {
   round: number; name: string; rate: number; weightedRate: number;
   reactionMs: number; p95Ms: number; adVisibleMs: number; energyMWh: number;
