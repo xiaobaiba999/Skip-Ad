@@ -4,7 +4,7 @@ import { getProfile } from "@/lib/learning";
 
 export const dynamic = "force-dynamic";
 
-/** GET /api/stats —— 情报站数据看板（拦截统计 + 规则库概览） */
+/** GET /api/stats —— 数据看板（拦截统计 + 规则库概览） */
 export async function GET() {
   try {
     const profile = await getProfile();

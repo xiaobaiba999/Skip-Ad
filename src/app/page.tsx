@@ -2,7 +2,6 @@
 
 import { useCallback, useState } from "react";
 import { Arena } from "@/components/arena";
-import { IntelStation } from "@/components/intel-station";
 import { LearningCenter } from "@/components/learning-center";
 import { AboutPanel } from "@/components/about-panel";
 import { FeedbackDialog } from "@/components/feedback-dialog";
@@ -11,12 +10,11 @@ import { Button } from "@/components/ui/button";
 import { APP_VERSION, GITHUB_HOME } from "@/lib/version";
 import { cn } from "@/lib/utils";
 import {
-  Zap, Swords, Radar, BrainCircuit, Info, MessageSquareWarning, Github, ShieldCheck,
+  Zap, Swords, BrainCircuit, Info, MessageSquareWarning, Github, ShieldCheck,
 } from "lucide-react";
 
 const TABS = [
   { key: "arena", label: "演练场", icon: Swords },
-  { key: "intel", label: "情报站", icon: Radar },
   { key: "learning", label: "学习中心", icon: BrainCircuit },
   { key: "about", label: "关于", icon: Info },
 ] as const;
@@ -44,7 +42,7 @@ export default function Home() {
                   v{APP_VERSION}
                 </span>
               </h1>
-              <p className="text-[11px] text-zinc-500">点击复验+位置学习 · 角落键+坐标点击 · SDK 窗指纹 · 链式回弹 · 弹窗 v2 · 保活</p>
+              <p className="text-[11px] text-zinc-500">内置五层规则引擎 · 0ms 露头秒跳 · 学习中心 · 保活</p>
             </div>
           </div>
 
@@ -84,7 +82,6 @@ export default function Home() {
       {/* 内容区 */}
       <main className="mx-auto w-full max-w-7xl flex-1 p-4 lg:p-6">
         {tab === "arena" && <Arena onFeedback={openFeedback} />}
-        {tab === "intel" && <IntelStation onFeedback={openFeedback} />}
         {tab === "learning" && <LearningCenter />}
         {tab === "about" && <AboutPanel />}
       </main>

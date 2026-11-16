@@ -21,7 +21,7 @@ android-app/
 │   ├── core/AdDecisionCore.java # 决策核心（纯 Java 零 Android 依赖，JVM 可单测）
 │   └── Net.java                 # GitHub API 极简客户端（反馈 / 检查更新，零依赖）
 ├── res/                         # 布局/字符串/主题/无障碍配置/图标
-├── assets/www/                  # 离线页面（首页/情报站/学习中心/关于；首页无任何演示模块）
+├── assets/www/                  # 离线页面（首页/学习中心/关于）
 │   （src 下另有 Downloader.java  # 系统下载器封装：应用内页内直更 + 多通道切换）
 ├── keystore/adshield.keystore   # 签名密钥（密码 adshield2026，请妥善保管）
 └── build.sh                     # 一键构建脚本（本地/CI 通用，支持环境变量定位工具链）

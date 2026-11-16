@@ -36,10 +36,16 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 开屏广告智能跳过服务（无障碍服务实现 · v3.9.0 · 李跳跳方法论重构）
+ * 开屏广告智能跳过服务（无障碍服务实现 · v3.10.0 · 内嵌规则库大扩充）
  * ─────────────────────────────────────────────────────────────
- * v3.9.0（issue#11/#12 真机日志实锤三条毒链整改，用户指令「一比一模仿
- * 李跳跳最新版实现逻辑」）：
+ * v3.10.0（规则直接内嵌、覆盖面大扩充、绝不乱点）：
+ *  · RuleEngine 五层规则：分应用表（28 款主流应用真实文案）/ 全局精确
+ *    文案（19 条，大小写归一）/ 倒计时形态（严格正则，营销话术数学上
+ *    无法混入）/ 短包含（≤8 字 + 诱导词 17 词黑名单否决）/ vid（skip 族
+ *    任意窗口 + close/exit/dismiss 族仅 SDK 广告窗/学习窗+屏幕边缘带）；
+ *  · Ctx 新增 pkg；服务启动日志带规则库统计。
+ *
+ * v3.9.0（issue#11/#12 真机日志实锤三条毒链整改，内嵌规则引擎主路径化）：
  *  · 毒链①（issue#12 闪退元凶）根治：桌面（com.miui.home）被误判为开屏
  *    广告窗 → 坐标兜底盲点固定坐标点中桌面图标 → 拉起微信/QQ/抖音 →
  *    链式回弹把用户踢出应用「进去就被退出来」。对策三刀：
@@ -49,7 +55,7 @@ import java.util.Map;
  *       百分比坐标必然乱点；只点【规则命中的控件自身 bounds 中心】
  *       （应用按实际屏幕渲染，天然适配任意分辨率）；
  *    ③ 链式回弹加宿主校验：host 必须非桌面且真有广告窗资格。
- *  · 李跳跳主路径落地（RuleEngine 内嵌规则引擎，规则内嵌 APK 零云端）：
+ *  · 主路径落地（RuleEngine 内嵌规则引擎，规则内嵌 APK 零云端）：
  *    窗口/内容一变 → 按包名查全局规则（「跳过/跳过广告/Skip」精确+短包含
  *    +vid skip）→ 命中即 0ms 手势点控件中心——「露头就秒跳」（Keep 开屏
  *    同级速度）。决策核心退居复杂信号兜底（关闭键/角落键/SDK 窗/陀螺仪）。
@@ -244,7 +250,8 @@ public class AdSkipService extends AccessibilityService {
         // v3.6.0：清理 v3.5.0 误学毒指纹（MainActivity/FrameLayout/Dialog 被
         // 学成「广告窗指纹」——用户二次进入被连按返回键退出的根因）
         int purged = purgePoisonFingerprints();
-        appendLog("服务已启动 · v3.9.0 李跳跳方法论重构：内嵌规则引擎 0ms 秒跳+桌面黑名单+盲点移除+回弹校验"
+        appendLog("服务已启动 · v3.10.0 内嵌规则库大扩充：五层全局规则+28 款分应用表+SDK 图片关闭键，0ms 秒跳+桌面黑名单（"
+                + RuleEngine.stats() + ")"
                 + (purged > 0 ? "｜已清理 " + purged + " 条误学窗口指纹" : ""));
         // v3.9.0：清理毒位置规则（issue#12 实锤：桌面 com.miui.home 学出位置
         //(39%,18%)——桌面点击被误学成「跳过键」，下次启动直点桌面图标=乱点）
@@ -752,6 +759,7 @@ public class AdSkipService extends AccessibilityService {
                 Ctx ctx = new Ctx();
                 ctx.screenW = screenWidth;
                 ctx.screenH = screenHeight;
+                ctx.pkg = pkg; // v3.10.0：分应用规则表
                 ctx.elapsedMs = Math.max(0, elapsed - ri * 30);
                 ctx.splashLive = splashLive;
                 ctx.popupLive = popupLive;
@@ -769,10 +777,12 @@ public class AdSkipService extends AccessibilityService {
                 ctx.tapHintY = tapHint[1];
                 ctx.budgetNodes = splashLive ? 600 : 280; // 开屏窗预算扩容（重树）
 
-                /* ═══ v3.9.0 主路径：内嵌规则引擎（李跳跳式）0ms 出手 ═══
+                /* ═══ v3.9.0 主路径：内嵌规则引擎 0ms 出手 ═══
                  * 规则只认控件属性（text/desc/vid），点击的是控件自身 bounds 中心
                  * ——应用按实际屏幕渲染，适配任意分辨率，绝无固定坐标盲点。
-                 * Keep 开屏「跳过」文本键：窗口事件 0ms 首扫即中即点=露头秒跳。 */
+                 * Keep 开屏「跳过」文本键：窗口事件 0ms 首扫即中即点=露头秒跳。
+                 * v3.10.0：五层规则（分应用表/全局精确/倒计时形态/短包含+诱导否决/
+                 * vid skip 族+SDK 窗 close 族） */
                 if (splashLive) {
                     Hit hit = RuleEngine.match(new NodeAdapter(roots[ri]), ctx);
                     if (hit != null) {
@@ -1070,9 +1080,12 @@ public class AdSkipService extends AccessibilityService {
     private volatile String lastGesturePkg = "";
 
     private static String reasonZh(String r) {
-        if (r.equals("rule_global_exact")) return "内嵌规则·文案精确命中（李跳跳式 0ms）";
+        if (r.equals("rule_global_exact")) return "内嵌规则·文案精确命中（0ms 即点）";
+        if (r.equals("rule_app_exact")) return "内嵌规则·分应用文案命中";
+        if (r.equals("rule_global_pattern")) return "内嵌规则·倒计时形态命中（门控后出手）";
         if (r.equals("rule_global_contains")) return "内嵌规则·文案包含命中";
         if (r.equals("rule_global_vid")) return "内嵌规则·vid 跳过键（零文本图片键）";
+        if (r.equals("rule_sdk_close_vid")) return "内嵌规则·SDK 窗图片关闭键";
         if (r.equals("skip_text")) return "文本跳过键";
         if (r.equals("fake_skip_tap")) return "假跳过手势直点（标签坐标）";
         if (r.equals("sdk_window")) return "SDK 广告窗指纹";

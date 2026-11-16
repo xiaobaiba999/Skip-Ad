@@ -24,7 +24,7 @@ import org.json.JSONObject;
     /**
  * 主界面（v3.7.0）
  * ─────────────────────────────────────────────
- * · WebView 装载离线页面 assets/www（演示场 / 情报站 / 学习中心 / 关于）
+ * · WebView 装载离线页面 assets/www（首页 / 学习中心 / 关于）
  * · 启动即静默检查 GitHub Releases：发现新版 → 页面顶部弹出更新横幅，
  *   页内直接下载（系统 DownloadManager）→ 进度条 → 完成后拉起安装，全程不跳浏览器
  * · 问题反馈 / 引擎日志上传使用内置混淆令牌（Net.builtInToken），界面零 Token 输入

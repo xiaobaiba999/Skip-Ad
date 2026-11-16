@@ -3,14 +3,14 @@ package com.zai.adshield.core;
 import java.util.ArrayList;
 
 /**
- * 秒跳决策核心（v3.9.0 · 纯 Java · 零 Android 依赖 · JVM 可单测）
+ * 秒跳决策核心（v3.10.0 · 纯 Java · 零 Android 依赖 · JVM 可单测）
  * ─────────────────────────────────────────────────────────────
  * v3.9.0 设计动机（issue#12 真机日志实锤：QQ/微信/抖音「进去就被退出来」）
- *  ——李跳跳实现方法论对齐，用户指令「一比一模仿李跳跳」：
+ *  ——内嵌规则引擎主路径化（规则只认控件属性+点控件自身 bounds 中心）：
  *  · 【删除】L6 坐标级点击兜底（coord_fallback）：它点的是固定百分比坐标
  *    (88%,7%) 等——每台手机屏幕大小不一样，位置肯定不一样（用户原话）。
  *    桌面简单树被误判后盲点桌面图标拉起微信→回弹狂按返回键踢出用户
- *    =issue#12 闪退完整毒链。主路径改由 RuleEngine（李跳跳式内嵌规则，
+ *    =issue#12 闪退完整毒链。主路径改由 RuleEngine（内嵌规则引擎，
  *    控件属性匹配+点控件自身 bounds 中心）接管，本类退居复杂信号兑底；
  *  · 【提速】露头就秒跳（以 Keep 开屏为标杆）：学习位置 500→100ms、
  *    开屏×关闭键 600→250ms、角落键 500→300ms（但增加广告形态确认门，
@@ -19,6 +19,9 @@ import java.util.ArrayList;
  *    学习窗/节点≤60 五选一——普通应用主页右上角的设置齿轮不再被误点；
  *  · 【新增】isLauncherLike：桌面/Launcher 包识别（服务侧黑名单用——
  *    桌面绝不扫描/学习/回弹，issue#12 根治）。
+ * v3.10.0：isLauncherLike 扩充（lawnchair/trebuchet 等第三方桌面）；
+ *  isAdActivityClass 扩充（小米 zeus/adview/youmi/domob/doubleclick
+ *  等广告窗指纹）；Ctx 新增 pkg（分应用规则表用）。
  * v3.8.0 设计动机（issue#10 二轮真机反馈：喜马拉雅点击跳过键 4 次广告不关、
  *  手动点立刻生效；微博找不到可点候选只能返回键，而返回键被广告拦截）——
  *  网络调研 GKD（gkd-kit，同类最佳开源应用）最新全局规则与 API 文档，
@@ -243,6 +246,7 @@ public final class AdDecisionCore {
     public static final class Ctx {
         public int screenW;
         public int screenH;
+        public String pkg;          // v3.10.0：当前应用包名（RuleEngine 分应用规则表用）
         public long elapsedMs;        // 距窗口切换
         public boolean splashLive;    // 开屏窗内（≤12s）
         public boolean popupLive;     // 弹窗窗期内
@@ -704,7 +708,9 @@ public final class AdDecisionCore {
         String c = cls.toLowerCase();
         if (c.contains("qq.e.ads") || c.contains("gms.ads") || c.contains("bytedance.sdk")
                 || c.contains(".ad.activity") || c.contains(".ads.activity")
-                || c.contains("baidu.mobads") || c.contains("csjad") || c.contains("unionad")) return true;
+                || c.contains("baidu.mobads") || c.contains("csjad") || c.contains("unionad")
+                || c.contains("miui.zeus") || c.contains("doubleclick")
+                || c.contains("adview") || c.contains("youmi") || c.contains("domob")) return true;
         String[] seg = c.split("[.$]");
         for (String s : seg) {
             if (s.length() < 3) continue;
@@ -714,7 +720,8 @@ public final class AdDecisionCore {
                     || s.contains("adcolony") || s.contains("applovin") || s.contains("vungle")
                     || s.contains("mbridge") || s.contains("tanx") || s.contains("mobads")
                     || s.contains("splashad") || s.contains("adsplash") || s.contains("landingpage")
-                    || s.contains("adpage") || s.contains("adlanding")) return true;
+                    || s.contains("adpage") || s.contains("adlanding")
+                    || s.contains("xiaomi.ad") || s.contains("zeus")) return true;
         }
         return false;
     }
@@ -728,6 +735,7 @@ public final class AdDecisionCore {
         String p = pkg.toLowerCase();
         if (p.contains("launcher")) return true;
         if (p.endsWith(".home") || p.equals("home")) return true;
+        if (p.contains("lawnchair") || p.contains("trebuchet")) return true; // 第三方桌面
         return p.equals("com.miui.home") || p.equals("com.google.android.apps.nexuslauncher");
     }
 

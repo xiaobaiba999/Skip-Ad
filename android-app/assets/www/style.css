@@ -1,4 +1,4 @@
-/* 开屏卫士 v3.2.0 · 极简版式（首页 / 情报站 / 学习中心 / 关于） */
+/* 开屏卫士 v3.10.0 · 极简版式（首页 / 学习中心 / 关于） */
 * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { height: 100%; }
 body {
@@ -162,7 +162,7 @@ textarea { min-height: 72px; resize: none; }
 .fb-msg.err { background: #fef2f2; color: #b91c1c; }
 .gh-link { color: #7c3aed; font-weight: 700; text-decoration: underline; background: none; border: 0; font-size: 11px; padding: 0; }
 
-/* 情报站 */
+/* 引擎数据（历史区块，v3.10.0 起未使用） */
 .strat-card { margin-bottom: 10px; }
 .strat-head { display: flex; align-items: center; justify-content: space-between; }
 .strat-name { font-size: 12px; font-weight: 800; }
