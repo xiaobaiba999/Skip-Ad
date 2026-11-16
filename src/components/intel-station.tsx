@@ -207,11 +207,11 @@ export function IntelStation({ onFeedback }: { onFeedback: () => void }) {
         ))}
       </div>
 
-      {/* 二十三轮自测 · 诚实重构 · 根窗口安全门/毒指纹清理专案（v3.6.0） */}
+      {/* 二十五轮自测 · 诚实重构 · 手势能力修复专案（v3.7.0） */}
       <section className="rounded-2xl border border-zinc-200 bg-white p-4 lg:p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="flex items-center gap-2 text-base font-bold text-zinc-900">
-            <FlaskConical className="h-5 w-5 text-emerald-600" /> 千款语料二十三轮自测 · 诚实重构 · 自改自修复 ×23
+            <FlaskConical className="h-5 w-5 text-emerald-600" /> 千款语料二十五轮自测 · 诚实重构 · 自改自修复 ×25
           </h2>
           <span className="flex flex-wrap items-center gap-1.5">
             <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-600 ring-1 ring-rose-200">
@@ -309,7 +309,7 @@ export function IntelStation({ onFeedback }: { onFeedback: () => void }) {
         {/* 七层纵深 + 真机反馈闭环 */}
         <div className="mt-3 grid gap-2.5 md:grid-cols-2">
           <div className="rounded-xl border border-zinc-100 bg-zinc-50/60 p-3.5">
-            <div className="text-xs font-bold text-zinc-800">十层纵深防线（能力只增不减）</div>
+            <div className="text-xs font-bold text-zinc-800">十一层纵深防线（能力只增不减）</div>
             <ol className="mt-2 space-y-1.5 text-[11px] leading-relaxed text-zinc-500">
               <li><span className="mr-1.5 rounded bg-fuchsia-100 px-1.5 py-0.5 text-[9px] font-bold text-fuchsia-700">P0</span>预拦截：学习指纹命中 → 窗口附加即断，广告未及呈现（日均 {Math.round(TEST_SUMMARY.latest.preemptShare * 100)}% 启动）</li>
               <li><span className="mr-1.5 rounded bg-rose-100 px-1.5 py-0.5 text-[9px] font-bold text-rose-600">P0.7</span>SDK 广告窗识别：className 指纹零文本可判（500ms 直断）+ 指纹学习（次启 300ms 快断）</li>
@@ -320,6 +320,7 @@ export function IntelStation({ onFeedback }: { onFeedback: () => void }) {
               <li><span className="mr-1.5 rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-700">P2.6</span>弹窗广告 v2：角标/营销话术 + 覆盖层突发检测，开屏窗外弹窗照关</li>
               <li><span className="mr-1.5 rounded bg-sky-100 px-1.5 py-0.5 text-[9px] font-bold text-sky-700">P3</span>返回键重试（仅应用内窗）+ 广告窗活跃回弹：拦返回键的广告补一次，任意目标跳转都弹回</li>
               <li><span className="mr-1.5 rounded bg-emerald-100 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700">P2.7</span>【v3.6.0】根窗口安全门：应用入口窗（冷启动开屏/回前台首窗）绝不返回键（防「再按一次退出」），只走点击梯子优雅收手</li>
+              <li><span className="mr-1.5 rounded bg-emerald-100 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700">P2.8</span>【v3.7.0】点击优先+返回键复验：陀螺仪窗先点可点候选再返回键；返回键被拦后 600ms 复验重开扫描链，绝不「按完就睡」</li>
               <li><span className="mr-1.5 rounded bg-emerald-100 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700">S</span>守护模式：支付/银行/政务广告照拦、服务零干预</li>
             </ol>
           </div>
@@ -328,10 +329,11 @@ export function IntelStation({ onFeedback }: { onFeedback: () => void }) {
               <CheckCircle2 className="h-3.5 w-3.5" /> 真机反馈 → 复现 → 修复闭环
             </div>
             <p className="mt-1.5">
-              四轮真机反馈逐项复现并修复：① 微博/喜马拉雅第一方图片开屏仍完整展示（v3.4.0 角落键 ×{TEST_SUMMARY.v340.cornerHit} + 坐标兜底 ×{TEST_SUMMARY.v340.coordHit} 全拦）；②
+              五轮真机反馈逐项复现并修复：① 微博/喜马拉雅第一方图片开屏仍完整展示（v3.4.0 角落键 ×{TEST_SUMMARY.v340.cornerHit} + 坐标兜底 ×{TEST_SUMMARY.v340.coordHit} 全拦）；②
               「日志已点击、广告没关」点击被吞 ×{TEST_SUMMARY.v350.swallowed}（v3.5.0 复验换候选重试 ×{TEST_SUMMARY.v350.retryHit} + 返回键兜底 ×{TEST_SUMMARY.v350.backHit} 全恢复；手动位置学习 ×{TEST_SUMMARY.v350.posLearned} 教一次就会）；③ SDK 窗零文本 ×{TEST_SUMMARY.v330.sdkAd} → className 指纹；④
               「二次进入被模拟人操作退出」真机日志实锤：毒指纹把主页学成广告窗（按返回 ×{TEST_SUMMARY.v360.poisonBack}）+ 入口窗返回退出 ×{TEST_SUMMARY.v360.rootBackExit} → v3.6.0 毒指纹清理 ×{TEST_SUMMARY.v360.poisonPurged} 条 + 根窗口安全门 + 点击原坐标全恢复；无障碍自动拉活 {TEST_SUMMARY.v360.reviveOk}/{TEST_SUMMARY.v360.reviveTotal} ROM 生效；
-              陀螺仪 ×{TEST_SUMMARY.adversarial.gyro} 全断 · 链式跳转回弹扩充 · 弹窗 ×{TEST_SUMMARY.adversarial.popup} 全关（含覆盖层/窗外）。决策核心 JVM 70 用例（含 15 个误报防护/安全门场景）。
+              「已点×4 仍不关」issue#10 日志实锤：无障碍配置缺 canPerformGestures（手势从未真正触达屏幕）×{TEST_SUMMARY.v370.noGestureCap} + 文本候选盲点同一坐标 → v3.7.0 手势能力修复 + 多候选轮换 ×{TEST_SUMMARY.v370.candRotate} + 学习位置前置 ×{TEST_SUMMARY.v370.posFirst} + 返回键复验 ×{TEST_SUMMARY.v370.backReverify}；心跳保活 {TEST_SUMMARY.v370.heartbeat}/{TEST_SUMMARY.v370.heartbeatTotal} ROM 生效；⑤
+              陀螺仪 ×{TEST_SUMMARY.adversarial.gyro} 全断 · 链式跳转回弹扩充 · 弹窗 ×{TEST_SUMMARY.adversarial.popup} 全关（含覆盖层/窗外）。决策核心 JVM 83 用例（含误报防护/安全门场景）。
               侧载 {TEST_SUMMARY.sideload.hit}/{TEST_SUMMARY.sideload.total}（{TEST_SUMMARY.latest.sideloadRate}%）· 守护 {TEST_SUMMARY.guardApps} 款零干预 · 冷启动 {TEST_SUMMARY.latest.coldRate}%。
             </p>
           </div>

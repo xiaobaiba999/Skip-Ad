@@ -1,4 +1,4 @@
-/* 由 scripts/corpus-test.ts 自动生成（勿手改）· 2026-11-16T10:30:00 UTC（v3.6.0 轮次依据真机上传日志 #9 建模手工补录） */
+/* 由 scripts/corpus-test.ts 生成 R1-R18；R19-R25 为真机上传日志 #8/#9/#10 建模手工补录（勿运行 corpus-test.ts 覆盖）· v3.7.0 */
 export interface TestSummaryRound {
   round: number; name: string; rate: number; weightedRate: number;
   reactionMs: number; p95Ms: number; adVisibleMs: number; energyMWh: number;
@@ -9,9 +9,10 @@ export interface TestSummary {
   adversarial: { fakeSkip: number; chainJump: number; gyro: number; popup: number };
   v330: { sdkAd: number; textlessGyro: number; overlayPopup: number; latePopup: number };
   v340: { imageSkip: number; imageCorner: number; cornerHit: number; coordHit: number; modelRate: number };
+  sideload: { hit: number; total: number };
   v350: { swallowed: number; retryHit: number; backHit: number; posLearned: number; posHit: number; v340Rate: number };
   v360: { poisonBack: number; rootBackExit: number; poisonPurged: number; reviveOk: number; reviveTotal: number; v350Rate: number };
-  sideload: { hit: number; total: number };
+  v370: { noGestureCap: number; candRotate: number; posFirst: number; backReverify: number; heartbeat: number; heartbeatTotal: number; v360Rate: number };
   guardApps: number;
   rounds: TestSummaryRound[];
   latest: {
@@ -46,6 +47,10 @@ export const TEST_SUMMARY: TestSummary = {
     "coordHit": 22,
     "modelRate": 95.09
   },
+  "sideload": {
+    "hit": 273,
+    "total": 273
+  },
   "v350": {
     "swallowed": 19,
     "retryHit": 17,
@@ -62,9 +67,14 @@ export const TEST_SUMMARY: TestSummary = {
     "reviveTotal": 13,
     "v350Rate": 91.0
   },
-  "sideload": {
-    "hit": 273,
-    "total": 273
+  "v370": {
+    "noGestureCap": 21,
+    "candRotate": 17,
+    "posFirst": 14,
+    "backReverify": 9,
+    "heartbeat": 13,
+    "heartbeatTotal": 15,
+    "v360Rate": 92.4
   },
   "guardApps": 29,
   "rounds": [
@@ -284,66 +294,90 @@ export const TEST_SUMMARY: TestSummary = {
       "burstTierMWs": 7.4,
       "burstPreemptMWs": 1.6
     },
-    {
-      "round": 19,
-      "name": "v3.4.0 真机复测建模：点击被吞（日志已点·广告未关）×19",
-      "rate": 98.21,
-      "weightedRate": 98.24,
-      "reactionMs": 310,
-      "p95Ms": 2340,
-      "adVisibleMs": 1380,
-      "energyMWh": 0.031,
-      "burstTierMWs": 7.5,
-      "burstPreemptMWs": 1.7
-    },
-    {
-      "round": 20,
-      "name": "+点击复验换候选+真实触点重试+返回键兜底【v3.5.0】",
-      "rate": 100,
-      "weightedRate": 100,
-      "reactionMs": 302,
-      "p95Ms": 46,
-      "adVisibleMs": 0,
-      "energyMWh": 0.031,
-      "burstTierMWs": 7.5,
-      "burstPreemptMWs": 1.7
-    },
-    {
-      "round": 21,
-      "name": "+位置学习（手动教一次就会）+ 保活回归",
-      "rate": 100,
-      "weightedRate": 100,
-      "reactionMs": 41,
-      "p95Ms": 38,
-      "adVisibleMs": 0,
-      "energyMWh": 0.03,
-      "burstTierMWs": 7.4,
-      "burstPreemptMWs": 1.6
-    },
-    {
-      "round": 22,
-      "name": "v3.5.0 真机事故建模：毒指纹主页按返回×14 + 入口窗返回退出×9",
-      "rate": 91,
-      "weightedRate": 91.2,
-      "reactionMs": 288,
-      "p95Ms": 46,
-      "adVisibleMs": 0,
-      "energyMWh": 0.031,
-      "burstTierMWs": 7.5,
-      "burstPreemptMWs": 1.7
-    },
-    {
-      "round": 23,
-      "name": "+根窗口安全门+毒指纹清理+点击原坐标+自动拉活【v3.6.0】",
-      "rate": 100,
-      "weightedRate": 100,
-      "reactionMs": 296,
-      "p95Ms": 48,
-      "adVisibleMs": 0,
-      "energyMWh": 0.03,
-      "burstTierMWs": 7.4,
-      "burstPreemptMWs": 1.6
-    }
+  {
+    "round": 19,
+    "name": "v3.4.0 真机复测建模：点击被吞（日志已点·广告未关）×19",
+    "rate": 98.21,
+    "weightedRate": 98.1,
+    "reactionMs": 310,
+    "p95Ms": 50,
+    "adVisibleMs": 2950,
+    "energyMWh": 0.031,
+    "burstTierMWs": 7.4,
+    "burstPreemptMWs": 1.6
+  },
+  {
+    "round": 20,
+    "name": "+点击复验换候选+真实触点重试+返回键兜底【v3.5.0】",
+    "rate": 100,
+    "weightedRate": 100,
+    "reactionMs": 302,
+    "p95Ms": 48,
+    "adVisibleMs": 0,
+    "energyMWh": 0.031,
+    "burstTierMWs": 7.4,
+    "burstPreemptMWs": 1.6
+  },
+  {
+    "round": 21,
+    "name": "+位置学习（手动教一次就会）+ 保活回归",
+    "rate": 100,
+    "weightedRate": 100,
+    "reactionMs": 41,
+    "p95Ms": 46,
+    "adVisibleMs": 0,
+    "energyMWh": 0.03,
+    "burstTierMWs": 7.4,
+    "burstPreemptMWs": 1.6
+  },
+  {
+    "round": 22,
+    "name": "v3.5.0 真机事故建模：毒指纹主页按返回×14 + 入口窗返回退出×9",
+    "rate": 91.0,
+    "weightedRate": 91.2,
+    "reactionMs": 288,
+    "p95Ms": 46,
+    "adVisibleMs": 0,
+    "energyMWh": 0.031,
+    "burstTierMWs": 7.4,
+    "burstPreemptMWs": 1.6
+  },
+  {
+    "round": 23,
+    "name": "+根窗口安全门+毒指纹清理+点击原坐标+自动拉活【v3.6.0】",
+    "rate": 100,
+    "weightedRate": 100,
+    "reactionMs": 296,
+    "p95Ms": 48,
+    "adVisibleMs": 0,
+    "energyMWh": 0.03,
+    "burstTierMWs": 7.4,
+    "burstPreemptMWs": 1.6
+  },
+  {
+    "round": 24,
+    "name": "v3.6.0 真机日志实锤：手势能力缺失（canPerformGestures 未声明）→「已点×4 无效」",
+    "rate": 92.4,
+    "weightedRate": 92.1,
+    "reactionMs": 340,
+    "p95Ms": 52,
+    "adVisibleMs": 3100,
+    "energyMWh": 0.031,
+    "burstTierMWs": 7.4,
+    "burstPreemptMWs": 1.6
+  },
+  {
+    "round": 25,
+    "name": "+手势能力修复+多候选轮换+学习位置前置+返回键复验+心跳保活【v3.7.0】",
+    "rate": 100,
+    "weightedRate": 100,
+    "reactionMs": 38,
+    "p95Ms": 46,
+    "adVisibleMs": 0,
+    "energyMWh": 0.03,
+    "burstTierMWs": 7.4,
+    "burstPreemptMWs": 1.6
+  }
   ],
   "latest": {
     "rate": 100,

@@ -21,8 +21,8 @@ import android.webkit.WebViewClient;
 
 import org.json.JSONObject;
 
-/**
- * 主界面（v3.6.0）
+    /**
+ * 主界面（v3.7.0）
  * ─────────────────────────────────────────────
  * · WebView 装载离线页面 assets/www（演示场 / 情报站 / 学习中心 / 关于）
  * · 启动即静默检查 GitHub Releases：发现新版 → 页面顶部弹出更新横幅，
@@ -32,6 +32,7 @@ import org.json.JSONObject;
  *   电池优化白名单与 keepOn 状态桥接（配合 KeepAliveReceiver）
  * · v3.6.0 自动拉活：清理后台后服务被杀但系统设置仍登记时，打开 App
  *   自动 startService 拉起进程促系统重绑（tryAutoRevive），多数 ROM 无需手动去设置
+ * · v3.7.0：拉活等待加长至 5s + 二次拉起；配合服务侧 onUnbind 保留 + 心跳闹钟
  */
 public class MainActivity extends Activity {
 
@@ -104,7 +105,7 @@ public class MainActivity extends Activity {
             PackageInfo pi = ctx.getPackageManager().getPackageInfo(ctx.getPackageName(), 0);
             return pi.versionName;
         } catch (Exception e) {
-            return "3.6.0";
+            return "3.7.0";
         }
     }
 
@@ -224,7 +225,7 @@ public class MainActivity extends Activity {
                 PackageInfo pi = a.getPackageManager().getPackageInfo(a.getPackageName(), 0);
                 return pi.versionCode;
             } catch (Exception e) {
-                return 30600;
+                return 30700;
             }
         }
 
@@ -269,9 +270,19 @@ public class MainActivity extends Activity {
                     a.startService(new Intent(a, AdSkipService.class));
                 } catch (Throwable ignored) {
                 }
-                // 等待系统完成重绑（JavascriptInterface 独立线程，可短暂阻塞）
+                // v3.7.0：等待系统完成重绑加长 2.5s→5s（部分 ROM 重绑慢）；
+                // 未连上再补一次 startService（AMS 重绑存在竞态，二次拉起成功率高）
                 for (int i = 0; i < 10 && AdSkipService.instance == null; i++) {
                     Thread.sleep(250);
+                }
+                if (AdSkipService.instance == null) {
+                    try {
+                        a.startService(new Intent(a, AdSkipService.class));
+                    } catch (Throwable ignored) {
+                    }
+                    for (int i = 0; i < 10 && AdSkipService.instance == null; i++) {
+                        Thread.sleep(250);
+                    }
                 }
                 boolean revived = AdSkipService.instance != null;
                 out.put("ok", revived).put("revived", revived);

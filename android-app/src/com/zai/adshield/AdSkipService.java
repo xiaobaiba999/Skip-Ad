@@ -32,8 +32,27 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 开屏广告智能跳过服务（无障碍服务实现 · v3.6.0）
+ * 开屏广告智能跳过服务（无障碍服务实现 · v3.7.0 · 十一层纵深）
  * ─────────────────────────────────────────────────────────────
+ * v3.7.0（四次真机反馈 issue#10：喜马拉雅「已点击跳过×4」广告不关，用户手点
+ * 同一按钮立刻生效；微博陀螺仪窗返回键直断无效果；清理后台服务失效）：
+ *  · 根因①（头号）：无障碍配置缺 canPerformGestures=true——dispatchGesture
+ *    「手势真实触点」从未真正触达屏幕，复验重试全部无效。已补配置。
+ *  · 根因②：手势路径单点零长度（只有 moveTo）——部分 ROM 不触发点击。
+ *    已改 lineTo 非零路径 + 40ms 起始延迟 + 边界钳制 + 取消诊断回调。
+ *  · 根因③：文本跳过键只点第一个候选，复验 4 次盲点同一坐标——广告图内
+ *    常嵌假「跳过」文本。已改多候选收集轮换（决策核心 skipCands）。
+ *  · 根因④：学习位置排在文本候选之后，教过也轮不到。已前置到 L1 之前；
+ *    且文本键手动点击【同时学位置】（用户手指点通过的位置最可靠）；
+ *    位置健全性校验拒学越界坐标（真机日志 (63%,102%) 越界白学）。
+ *  · 根因⑤（微博）：陀螺仪文案 120ms 抢先返回键、角落键 500ms 才轮到；
+ *    返回键被广告 Activity 拦截后扫描链熔断再无兑底。已改「点击优先、
+ *    返回键兑底」+ 返回键后 600ms 复验不熔断；角落/关闭键树上限 40→150。
+ *  · 根因⑥（保活）：服务解绑即销毁、无心跳。已改 onUnbind 保留 + 15 分钟
+ *    心跳自检闹钟 + 打开 App 自动拉活循环重试（此前仅一次）。
+ *  · 兼容：flagIncludeNotImportantViews（部分广告跳过键被标 not-important，
+ *    不加此标志无障碍树里根本看不到——微博角落键扫不到的帮凶）。
+ *
  * v3.5.0（二次真机反馈驱动）：点击复验梯子 + 位置学习 + 保活三件套。
  * v3.6.0（三次真机反馈：喜马拉雅二次进入被引擎连按两次返回键「模拟人
  * 操作退出」到桌面，上传日志实锤两条毒链）：
@@ -178,11 +197,64 @@ public class AdSkipService extends AccessibilityService {
         prefs().edit().putBoolean(KEY_KEEPON, true).apply();
         startKeepAliveForeground();
         cancelAlertNotification();
+        cancelHeartbeat(); // 服务活着，心跳自检不再需要
         // v3.6.0：清理 v3.5.0 误学毒指纹（MainActivity/FrameLayout/Dialog 被
         // 学成「广告窗指纹」——用户二次进入被连按返回键退出的根因）
         int purged = purgePoisonFingerprints();
-        appendLog("服务已启动 · v3.6.0 根窗口安全门+毒指纹清理+点击原坐标"
+        appendLog("服务已启动 · v3.7.0 手势能力修复+多候选轮换+学习位置前置+返回键复验"
                 + (purged > 0 ? "｜已清理 " + purged + " 条误学窗口指纹" : ""));
+    }
+
+    /* ───────── v3.7.0 保活：onUnbind 保留 + 心跳自检闹钟 ─────────
+     * 「开启后不手动关闭就一直保持开启」（issue#10：清理后台重进又要手动开）：
+     *  · onUnbind 返回 true：系统解绑（非用户主动关闭）时服务实例保留，
+     *    AMS 重绑无需重建——GKD 同款方案；
+     *  · 心跳闹钟（15 分钟 inexact）：进程被杀但非 force-stop 的 ROM 上仍会触发，
+     *    服务已死即发恢复提醒；服务连上即自动撤；
+     *  · force-stop 后闹钟会被系统清除（任何应用无法绕过）——唯一出路是
+     *    电池白名单（App 内醒目引导）+ 打开 App 自动拉活重绑（tryAutoRevive）。 */
+    @Override
+    public boolean onUnbind(Intent intent) {
+        // 系统解绑但非用户主动关闭：保留服务等待 AMS 重绑，并排自检 + 心跳
+        try {
+            if (prefs().getBoolean(KEY_KEEPON, false)) {
+                appendLog("🔌 服务被系统解绑（非手动关闭）→ 保留实例等待重绑，已排自检与心跳");
+                scheduleSelfCheckAlarm(3000);
+                scheduleHeartbeat();
+            }
+        } catch (Throwable ignored) {
+        }
+        return true; // 关键：true = 不销毁服务，下次 AMS 重绑直接复用
+    }
+
+    /** v3.7.0：心跳自检闹钟（15 分钟重复，服务连上即撤） */
+    private static final long HEARTBEAT_MS = 15 * 60 * 1000;
+
+    private void scheduleHeartbeat() {
+        try {
+            android.app.AlarmManager am = (android.app.AlarmManager) getSystemService(ALARM_SERVICE);
+            Intent it = new Intent(this, KeepAliveReceiver.class);
+            it.setAction(KeepAliveReceiver.ACTION_SELF_CHECK);
+            android.app.PendingIntent pi = android.app.PendingIntent.getBroadcast(
+                    this, 8, it,
+                    android.app.PendingIntent.FLAG_UPDATE_CURRENT | android.app.PendingIntent.FLAG_IMMUTABLE);
+            am.setInexactRepeating(android.app.AlarmManager.RTC,
+                    System.currentTimeMillis() + HEARTBEAT_MS, HEARTBEAT_MS, pi);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private void cancelHeartbeat() {
+        try {
+            android.app.AlarmManager am = (android.app.AlarmManager) getSystemService(ALARM_SERVICE);
+            Intent it = new Intent(this, KeepAliveReceiver.class);
+            it.setAction(KeepAliveReceiver.ACTION_SELF_CHECK);
+            android.app.PendingIntent pi = android.app.PendingIntent.getBroadcast(
+                    this, 8, it,
+                    android.app.PendingIntent.FLAG_UPDATE_CURRENT | android.app.PendingIntent.FLAG_IMMUTABLE);
+            am.cancel(pi);
+        } catch (Throwable ignored) {
+        }
     }
 
     @Override
@@ -191,12 +263,15 @@ public class AdSkipService extends AccessibilityService {
         // v3.6.0：后台清理（滑掉最近任务）时，部分 ROM 会连无障碍服务一起杀。
         // ① 若进程幸存：4s 后自检，服务真死了才发「待恢复」提醒（防误报）
         // ② 自检闹钟（15s）：进程被杀但非 force-stop 的 ROM 上仍可触发提醒
+        // v3.7.0：追加 15 分钟心跳闹钟——进程被杀后持续自检，
+        //    服务一旦真死即提醒恢复（用户手动关闭 keepOn 时不排）
         try {
             if (!prefs().getBoolean(KEY_KEEPON, false)) return;
             handler.postDelayed(() -> {
                 if (instance == null) KeepAliveReceiver.notifyAlert(AdSkipService.this);
             }, 4000);
             scheduleSelfCheckAlarm(15000);
+            scheduleHeartbeat();
         } catch (Throwable ignored) {
         }
     }
@@ -601,6 +676,7 @@ public class AdSkipService extends AccessibilityService {
     /** 执行决策；返回 true = 已出手（熔断扫描链） */
     private boolean execute(String pkg, Decision d, ScanFind f, Ctx ctx, boolean clickCoolOK, long now) {
         String how = d.action + "/" + d.reason;
+        lastGesturePkg = pkg; // v3.7.0：手势取消诊断日志用
         // v3.6.0：点击梯子预算——同窗点击 ≥MAX_CLICKS_PER_WIN 即优雅收手
         //（绝不无限重试，更绝不升级返回键；等用户手动跳过，手动点击仍会被学习）
         if ((d.action.equals(AdDecisionCore.A_CLICK_BOUNDS) || d.action.equals(AdDecisionCore.A_CLOSE)
@@ -635,7 +711,20 @@ public class AdSkipService extends AccessibilityService {
                         + " · " + ctx.elapsedMs + "ms → 返回键温和关闭（不碰进程与服务）");
             }
             bumpStat(pkg, "back");
-            fuseChain(pkg);
+            /* v3.7.0（issue#10 微博根因）：返回键直断后【不熔断】——广告 Activity
+             * 常拦截返回键（按了没反应）。600ms 后复验：同包窗口仍在则重开扫描链
+             * 继续点击梯子（角落候选/坐标轮换），不再「按完就睡」 */
+            handler.postDelayed(() -> {
+                if (instance == null) return;
+                try {
+                    AccessibilityNodeInfo[] roots = collectRoots(pkg);
+                    if (roots.length > 0) {
+                        appendLog("🔁 返回键复验（" + shortPkg(pkg) + "）：广告窗仍在（返回键被拦截）→ 继续点击梯子");
+                        bumpScanChain(pkg);
+                    }
+                } catch (Throwable ignored) {
+                }
+            }, 600);
             return true;
         }
         if (d.action.equals(AdDecisionCore.A_CLICK_BOUNDS) || d.action.equals(AdDecisionCore.A_CLOSE)) {
@@ -660,7 +749,7 @@ public class AdSkipService extends AccessibilityService {
                                 + "（" + (lastGesture ? "手势点击" : "无障碍代点") + "）→ 1.2s 后复验，未关将换候选重试");
                     } else {
                         appendLog("🔁 复验未关闭 → 第 " + (attempts + 1) + " 次出手（" + shortPkg(pkg) + "）："
-                                + reasonZh(d.reason) + "（手势真实触点）");
+                                + reasonZh(d.reason) + "（手势真实触点·换第 " + (attempts + 1) + " 个候选，不再盲点同一坐标）");
                     }
                     bumpStat(pkg, "auto");
                     adFeatureUntil.put(pkg, now + CHAIN_GUARD_MS);
@@ -723,20 +812,56 @@ public class AdSkipService extends AccessibilityService {
         return false;
     }
 
-    /** dispatchGesture 坐标点击（API 24+；真实触点，performAction 拦不住） */
+    /** v3.7.0 手势结果回调（静态内部类，规避 d8 8.2 匿名类 bug）：
+     *  手势被系统中断时记诊断日志——「手势派发成功但被取消」不再静默 */
+    private static final class TapGestureCallback extends GestureResultCallback {
+        private final String pkg;
+
+        TapGestureCallback(String pkg) {
+            this.pkg = pkg;
+        }
+
+        @Override
+        public void onCancelled(GestureDescription gestureDescription) {
+            try {
+                AdSkipService s = instance;
+                if (s != null) {
+                    s.appendLog("⚠ 手势被系统中断（" + s.shortPkg(pkg) + "）：真实触点未触达（系统手势限流/冲突），下轮扫描重试");
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+    }
+
+    /** dispatchGesture 坐标点击（API 24+；真实触点，performAction 拦不住）。
+     *  v3.7.0 根因修复（issue#10：「已点击跳过×4 无效果」）：
+     *   ① 路径非零长度——单点路径（只有 moveTo）在部分 ROM 上不触发点击
+     *    （业界验证：需 lineTo 形成真实触点轨迹）；
+     *   ② 起始延迟 40ms——给前一帧渲染/事件处理留时间，立即派发易被丢弃；
+     *   ③ 坐标边界钳制——越界坐标（学习位置/旧指纹）直接被系统丢弃；
+     *   ④ 结果回调——被系统取消不再静默（诊断日志供下轮迭代）。
+     *   ⑤ 前提：accessibility_service_config 已补 canPerformGestures=true
+     *    （v3.6.0 及之前【缺失】——手势从未真正触达屏幕，喜马拉雅复验重试
+     *    全部无效的头号根因） */
     private boolean gestureTap(int x, int y) {
         try {
             if (x <= 0 || y <= 0) return false;
+            if (screenWidth > 0 && x >= screenWidth) x = screenWidth - 2; // 边界钳制
+            if (screenHeight > 0 && y >= screenHeight) y = screenHeight - 2;
             Path p = new Path();
             p.moveTo(x, y);
+            p.lineTo(x + 1, y); // 非零长度路径：单点路径部分 ROM 不触发点击
             GestureDescription gd = new GestureDescription.Builder()
-                    .addStroke(new GestureDescription.StrokeDescription(p, 0, 60))
+                    .addStroke(new GestureDescription.StrokeDescription(p, 40, 60))
                     .build();
-            return dispatchGesture(gd, null, null);
+            return dispatchGesture(gd, new TapGestureCallback(lastGesturePkg), null);
         } catch (Throwable t) {
             return false;
         }
     }
+
+    /** 手势诊断用包名（gestureTap 调用前由 execute 设置） */
+    private volatile String lastGesturePkg = "";
 
     private static String reasonZh(String r) {
         if (r.equals("skip_text")) return "文本跳过键";
@@ -908,7 +1033,11 @@ public class AdSkipService extends AccessibilityService {
             } catch (Exception ignored) {
             }
         }
-        appendLog("已学习：" + shortPkg(pkg) + " 中你手动点击了「" + text + "」→ 下次将自动点击");
+        /* v3.7.0（issue#10 喜马拉雅根因）：文本键手动点击【同时学位置】——
+         * 用户手指点通过的坐标 = 真实触点真正生效的位置（文本候选可能点不中，
+         * 教过的位置下次同窗 500ms 直点，优先于文本候选盲点） */
+        learnPositionFromManualClick(pkg, srcNode, now);
+        appendLog("已学习：" + shortPkg(pkg) + " 中你手动点击了「" + text + "」→ 下次优先直点此位置（" + shortPkg(pkg) + " 同窗）");
     }
 
     private boolean learnedClassHit(String pkg, String cls) {
@@ -1037,8 +1166,8 @@ public class AdSkipService extends AccessibilityService {
     /* ───────── v3.5.0 位置学习：图片跳过键（零文本）教一次就会 ───────── */
 
     /**
-     * 手动点击小角落/顶部控件（零文本）→ 记录归一化坐标 + 窗口类名指纹。
-     * 次启同窗 500ms 手势直点该位置（仅广告形态窗内出手，见决策核心 L1.5 安全门）。
+     * 手动点击小角落/顶部/底部控件（零文本或跳过/关闭文本键）→ 记录归一化坐标 + 窗口类名指纹。
+     * 次启同窗 500ms 手势直点该位置（决策核心 L1.4 前置，优先于文本候选盲点）。
      */
     private void learnPositionFromManualClick(String pkg, AccessibilityNodeInfo src, long now) {
         if (src == null || screenWidth <= 0 || screenHeight <= 0) return;
@@ -1054,6 +1183,13 @@ public class AdSkipService extends AccessibilityService {
             if (!AdDecisionCore.learnableSkipShape(b, screenWidth, screenHeight)) return;
             final double x = ((b[0] + b[2]) / 2.0) / screenWidth;
             final double y = ((b[1] + b[3]) / 2.0) / screenHeight;
+            // v3.7.0：位置健全性校验（真机日志：微信学出 (63%,102%) 越界位置，
+            // 点击事件源节点 bounds 中心在屏幕外——点了也是死区，直接拒学）
+            if (!AdDecisionCore.saneNormPos(x, y)) {
+                appendLog("🚫 位置学习已拒绝（" + shortPkg(pkg) + "）：坐标 ("
+                        + Math.round(x * 100) + "%," + Math.round(y * 100) + "%) 越界/贴边，点了也是死区");
+                return;
+            }
             final String cls = winClassOf(pkg);
             synchronized (lock) {
                 try {

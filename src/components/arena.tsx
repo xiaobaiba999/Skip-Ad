@@ -270,14 +270,14 @@ export function Arena({ onFeedback }: { onFeedback: () => void }) {
             <div className="min-w-0">
               <div className="flex items-center gap-2 text-sm font-bold text-zinc-900">
                 秒跳引擎 · 运行中
-                <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-bold text-white">十层纵深</span>
+                <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-bold text-white">十一层纵深</span>
               </div>
               <p className="mt-0.5 text-[11px] text-zinc-500">
                 P0 预拦截 → 学习位置点击 → 角落键多候选+坐标轮换 → 点击复验换候选重试（原标签坐标） → SDK 窗指纹 → 热区/立即直断 → 链式回弹 → 弹窗 v2 → 返回键兜底（仅应用内窗） → 根窗口安全门（入口窗绝不返回键，防退出应用）；守护应用只拦广告、不碰服务
               </p>
             </div>
             <div className="ml-auto hidden shrink-0 items-center gap-1 text-[10px] font-bold text-emerald-700 sm:flex">
-              <Layers className="h-3.5 w-3.5" /> 1060 款语料 100% · 二十三轮
+              <Layers className="h-3.5 w-3.5" /> 1060 款语料 100% · 二十五轮
             </div>
           </div>
         </div>

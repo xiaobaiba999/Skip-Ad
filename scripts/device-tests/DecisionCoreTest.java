@@ -584,6 +584,121 @@ public class DecisionCoreTest {
         check("G4e 半屏宽按钮不学", !AdDecisionCore.learnableSkipShape(new int[]{100, 2100, 980, 2200}, 1080, 2400));
     }
 
+    /* ═══════ v3.7.0：issue#10 根因修复（多候选轮换/学习位置前置/点击优先/大树角落键/位置健全性） ═══════ */
+
+    /** N1：文本跳过键多候选轮换——广告图内假「跳过」文本在 DFS 先出现，真键在后；
+     *  第 1 次点候选 1，复验第 2 次换候选 2（v3.6.0 同一坐标点四遍，issue#10 根因③） */
+    static void v370_candRotate() {
+        FakeNode root = FakeNode.root("com.ximalaya.ting.android.SplashAdActivity");
+        FakeNode adImage = FakeNode.node("android.widget.ImageView", 0, 0, 1080, 2400);
+        FakeNode fake = FakeNode.node("android.widget.TextView", 60, 1800, 260, 1900).txt("跳过广告").click(); // 图内假跳过（DFS 先出现）
+        FakeNode real = FakeNode.node("android.widget.TextView", 880, 90, 1030, 180).txt("跳过广告").click(); // 右上真键
+        root.add(adImage).add(fake).add(real);
+
+        Decision d1 = run(root, splash(600));
+        check("N1a 首次点候选 1（DFS 序首个「跳过」文本，行为与 v3.6.0 一致）",
+                d1.action.equals(AdDecisionCore.A_CLICK_BOUNDS) && d1.bounds[0] == 60,
+                "实际: " + d1.action + " @" + (d1.bounds != null ? d1.bounds[0] : -1));
+
+        Ctx retry = splash(1800);
+        retry.clickAttempts = 1;
+        Decision d2 = run(root, retry);
+        check("N1b 复验第 2 次换候选 2（右上真键坐标，不再盲点同一坐标）",
+                d2.action.equals(AdDecisionCore.A_CLICK_BOUNDS) && d2.bounds[0] == 880,
+                "实际: " + d2.action + " @" + (d2.bounds != null ? d2.bounds[0] : -1));
+
+        Ctx retry2 = splash(3000);
+        retry2.clickAttempts = 2;
+        Decision d3 = run(root, retry2);
+        check("N1c 候选轮换用尽后停在最后一个候选（idx=min(N,size-1)）",
+                d3.action.equals(AdDecisionCore.A_CLICK_BOUNDS) && d3.bounds[0] == 880,
+                "实际: " + d3.action + " @" + (d3.bounds != null ? d3.bounds[0] : -1));
+    }
+
+    /** N2：学习位置前置到 L1 之前（issue#10 根因④）——教过的位置
+     *  （用户手指点通过的坐标）优先于文本候选盲点 */
+    static void v370_learnedPosFirst() {
+        FakeNode root = FakeNode.root("com.ximalaya.ting.android.SplashAdActivity");
+        FakeNode adImage = FakeNode.node("android.widget.ImageView", 0, 0, 1080, 2400);
+        FakeNode skip = FakeNode.node("android.widget.TextView", 880, 90, 1030, 180).txt("跳过广告").click();
+        root.add(adImage).add(skip);
+
+        Ctx ctx = splash(600);
+        ctx.tapHintX = 955;
+        ctx.tapHintY = 135;
+        Decision d = run(root, ctx);
+        check("N2a 学习位置优先于文本候选（教过的位置先直点）",
+                d.action.equals(AdDecisionCore.A_TAP_POINT) && d.reason.equals("learned_pos") && d.x == 955,
+                "实际: " + d.action + "/" + d.reason + " @" + d.x);
+
+        // 学习位置也点过没关（attempts≥1）→ 回到文本候选轮换
+        Ctx retry = splash(1800);
+        retry.tapHintX = 955;
+        retry.tapHintY = 135;
+        retry.clickAttempts = 1;
+        Decision d2 = run(root, retry);
+        check("N2b 学习位置点过未关 → 复验走文本候选（多候选轮换）",
+                d2.action.equals(AdDecisionCore.A_CLICK_BOUNDS) && d2.reason.equals("skip_text"),
+                "实际: " + d2.action + "/" + d2.reason);
+    }
+
+    /** N3：点击优先于陀螺仪返回键（issue#10 微博根因⑤）——
+     *  v3.6.0 陀螺仪文案 120ms 抢先返回键、角落键 500ms 才轮到 */
+    static void v370_clickBeforeGyro() {
+        FakeNode root = FakeNode.root("com.sina.weibo.ad.AdActivity");
+        FakeNode adImage = FakeNode.node("android.widget.ImageView", 0, 0, 1080, 2400);
+        adImage.click();
+        FakeNode gyroHint = FakeNode.node("android.widget.TextView", 240, 2200, 840, 2280).txt("摇一摇或翻转手机查看详情");
+        FakeNode corner = FakeNode.node("android.widget.ImageView", 940, 90, 1030, 180).click(); // 角落图片跳过键
+        root.add(adImage).add(gyroHint).add(corner);
+
+        // 200ms：角落未到时机（500ms）但有候选 → 等待（v3.6.0 会被 gyro_immediate 120ms 抢先返回键）
+        check("N3a 200ms 有角落候选时不抢跑返回键（等点击时机）",
+                run(root, splash(200)).action.equals(AdDecisionCore.A_NONE),
+                "实际: " + run(root, splash(200)).action + "/" + run(root, splash(200)).reason);
+
+        // 700ms：角落候选命中 → 点击（不是返回键）
+        Decision d = run(root, splash(700));
+        check("N3b 700ms 角落候选优先于陀螺仪返回键（点击优先）",
+                d.action.equals(AdDecisionCore.A_CLICK_BOUNDS) && d.reason.equals("corner_image_skip"),
+                "实际: " + d.action + "/" + d.reason);
+
+        // 无任何可点候选的纯翻转文案 → 120ms 立即直断仍生效（翻转抢在 ~600ms 触发前）
+        FakeNode root2 = FakeNode.root("com.sina.weibo.ad.AdActivity");
+        FakeNode ad2 = FakeNode.node("android.widget.ImageView", 0, 0, 1080, 2400);
+        FakeNode g2 = FakeNode.node("android.widget.TextView", 240, 2200, 840, 2280).txt("翻转手机，跳转详情页或第三方应用");
+        root2.add(ad2).add(g2);
+        Decision d3 = run(root2, splash(150));
+        check("N3c 无可点候选的纯翻转文案 → 120ms 立即直断保留",
+                d3.action.equals(AdDecisionCore.A_BACK) && d3.reason.equals("gyro_immediate"),
+                "实际: " + d3.action + "/" + d3.reason);
+    }
+
+    /** N4：大广告树（>40 节点）角落键照点——v3.6.0 被 AD_LIKE_MAX_NODES=40
+     *  误伤（issue#10 微博根因：广告窗树常大，真角落键被挡在门外） */
+    static void v370_bigTreeCorner() {
+        FakeNode root = FakeNode.root("com.sina.weibo.ad.AdActivity");
+        FakeNode adImage = FakeNode.node("android.widget.ImageView", 0, 0, 1080, 2400);
+        FakeNode corner = FakeNode.node("android.widget.ImageView", 940, 90, 1030, 180).click();
+        root.add(adImage).add(corner);
+        // 塞 60 个零文本不可点装饰节点 → 总节点 63 > 40（v3.6.0 上限）
+        for (int i = 0; i < 60; i++) {
+            root.add(FakeNode.node("android.view.View", 100 + i, 2000, 160 + i, 2060));
+        }
+        Decision d = run(root, splash(700));
+        check("N4 大树（63 节点 > 40）角落键照点（v3.7.0 放宽至 150）",
+                d.action.equals(AdDecisionCore.A_CLICK_BOUNDS) && d.reason.equals("corner_image_skip"),
+                "实际: " + d.action + "/" + d.reason);
+    }
+
+    /** N5：学习位置健全性——越界/贴边坐标拒学（issue#10 真机日志 (63%,102%) 越界白学） */
+    static void v370_sanePos() {
+        check("N5a 屏内有效位置可学（(63%,5%) 右上跳过键）", AdDecisionCore.saneNormPos(0.63, 0.05));
+        check("N5b 越界 Y=102% 拒学（真机日志实锤）", !AdDecisionCore.saneNormPos(0.63, 1.02));
+        check("N5c 越界 X=104% 拒学", !AdDecisionCore.saneNormPos(1.04, 0.5));
+        check("N5d 贴边 0% 拒学（状态栏/边缘死区）", !AdDecisionCore.saneNormPos(0.0, 0.5));
+    }
+
     /* ═══════ 断言工具 ═══════ */
 
     static void check(String name, boolean ok) {
@@ -647,6 +762,13 @@ public class DecisionCoreTest {
 
         System.out.println("── v3.6.0 可学形状（位置学习安全门）──");
         learnableShapes();
+
+        System.out.println("── v3.7.0：issue#10 根因修复（多候选轮换/学习位置前置/点击优先/大树/位置健全性）──");
+        v370_candRotate();
+        v370_learnedPosFirst();
+        v370_clickBeforeGyro();
+        v370_bigTreeCorner();
+        v370_sanePos();
 
         System.out.println("\n═══ 结果：" + pass + " PASS / " + fail + " FAIL ═══");
         if (fail > 0) {

@@ -45,6 +45,15 @@
 
     <!-- ───────── 页1：首页 ───────── -->
     <section class="page active" id="page-drill">
+      <!-- v3.7.0 电池白名单醒目横幅（issue#10 日志实锤「电池白名单：未加入」是清理后台被杀主因） -->
+      <div class="card" id="battery-banner" style="display:none;border-color:#f59e0b;background:#fffbeb">
+        <div class="card-head" style="border:none;padding-bottom:0">
+          <span style="color:#b45309">⚠ 电池白名单未开启</span>
+          <span class="tag tag-amber">清理后台易被系统杀服务</span>
+        </div>
+        <div class="hint" style="margin-top:6px;color:#92400e">未加白名单时，厂商省电策略会在清理后台时强制停止应用（无障碍服务随之失效）。这是「每次清理后台要重新开启服务」的头号原因。</div>
+        <button class="btn btn-primary btn-block" id="btn-battery-big" style="margin-top:8px">🔋 一键加入电池白名单（强烈建议）</button>
+      </div>
       <div class="card status-card" id="service-card">
         <div class="status-row">
           <div>
@@ -64,7 +73,15 @@
             </div>
           </div>
           <button class="btn btn-ghost btn-sm btn-block" id="btn-battery" style="margin-top:8px">🔋 加入电池优化白名单（防厂商省电杀服务）</button>
-          <div class="hint">Android 会在覆盖安装新版本/重启后关闭无障碍服务（系统安全设计，任何应用无法绕过）。开启保活后：前台常驻通知降低被杀概率；万一断连立即发通知提醒，点按两步恢复，学习数据全部保留。</div>
+          <details style="margin-top:8px">
+            <summary style="font-size:12px;color:#71717a;cursor:pointer">厂商 ROM 保活三步指引（小米/华为/OPPO/vivo）</summary>
+            <div class="hint" style="margin-top:6px">
+              ① 最近任务卡片下拉「锁定」（或长按卡片 → 锁定），防止清理误杀；<br>
+              ② 系统设置 → 应用 → 开屏卫士 → 省电策略 → <b>无限制</b>（默认「智能限制」会杀后台服务）；<br>
+              ③ 开启「自启动」权限（MIUI：设置 → 应用管理 → 自启动管理）。GKD/李跳跳同款建议，系统层限制任何应用都无法绕过。
+            </div>
+          </details>
+          <div class="hint">Android 会在覆盖安装新版本/重启后关闭无障碍服务（系统安全设计，任何应用无法绕过）。开启保活后：前台常驻通知 + onUnbind 保留 + 15 分钟心跳自检；万一断连立即发通知提醒，点按两步恢复，学习数据全部保留。</div>
         </div>
         <div class="stat-grid">
           <div class="stat"><div class="num" id="st-auto">0</div><div class="lbl">自动秒跳</div></div>
@@ -80,7 +97,7 @@
       <div class="card">
         <div class="card-head">
           <span>🛡 防护能力</span>
-          <span class="tag tag-green">v3.6.0 · 根窗口安全门+自动拉活 · 九层纵深</span>
+          <span class="tag tag-green">v3.7.0 · 手势能力修复+点击优先+心跳保活 · 十一层纵深</span>
         </div>
         <div class="switch-row">
           <div class="sw-text">

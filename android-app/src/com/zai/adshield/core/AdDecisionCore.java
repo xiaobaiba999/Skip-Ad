@@ -3,8 +3,24 @@ package com.zai.adshield.core;
 import java.util.ArrayList;
 
 /**
- * 秒跳决策核心（v3.6.0 · 纯 Java · 零 Android 依赖 · JVM 可单测）
+ * 秒跳决策核心（v3.7.0 · 纯 Java · 零 Android 依赖 · JVM 可单测）
  * ─────────────────────────────────────────────────────────────
+ * v3.7.0 设计动机（四次真机反馈 issue#10：喜马拉雅「已点击跳过×4」仍不关，
+ *  手动点同一按钮立刻生效；微博陀螺仪窗返回键直断无效果——广告拦截返回键）：
+ *  · 喜马拉雅根因链：① 无障碍服务缺 canPerformGestures → 手势真实触点
+ *    从未真正触达屏幕（服务侧配置修复）；② 手势路径单点零长度 → 部分
+ *    ROM 不触发点击（服务侧路径修复）；③ 决策层只点第一个「跳过」文本
+ *    候选，复验重试点同一坐标 4 遍——广告图内常嵌假「跳过」文本，
+ *    首选候选可能是陷阱/死区。对策（本类）：多候选收集 + 第 N 次点击
+ *    换第 N 个候选（skipCands）；学习位置（用户手指真正点通过的位置）
+ *    前置到 L1 之前——教过就优先直点，不再盲点文本候选。
+ *  · 微博根因链：L3 陀螺仪文案 120ms 就返回键直断，抢在角落键点击
+ *    （500ms）之前；返回键被广告 Activity 拦截后扫描链熔断，无复验无
+ *    兜底。对策：L3 降级到 L4 之后（有可点候选先点击，点完/无候选才
+ *    返回键）；返回键直断后由服务侧 600ms 复验（不熔断）。
+ *  · 角落键/关闭键受简单树 40 节点上限误伤（广告窗树常大）：放宽为
+ *    CORNER_TREE_MAX_NODES=150（热区直断/坐标兜底仍保持严格）。
+ *
  * v3.6.0 设计动机（三次真机反馈：喜马拉雅二次进入被引擎连按两次返回键
  *  「模拟人操作退出」到桌面——v3.5.0 的返回键兜底在第一方开屏窗=退出应用）：
  *  · 返回键只在「返回后仍在应用内」的窗口上安全：SDK 广告窗（独立广告
@@ -105,6 +121,10 @@ public final class AdDecisionCore {
 
     /* ── 阈值参数 ── */
     public static final double POS_LEARN_AREA_MAX = 0.25; // 位置学习：控件面积上限（v3.6.0 0.20→0.25：手动教学点击事件源可能是稍大的容器）
+    public static final double POS_MIN_NORM = 0.03;      // v3.7.0：位置学习健全性下限（真机日志 (63%,102%) 越界白学）
+    public static final double POS_MAX_NORM = 0.97;      // v3.7.0：位置学习健全性上限（越界坐标点了也是死区）
+    public static final int SKIP_CANDS_MAX = 4;          // v3.7.0：文本跳过键多候选上限（复验轮换，不再盲点同一坐标）
+    public static final int CORNER_TREE_MAX_NODES = 150; // v3.7.0：角落/关闭键树上限放宽（广告窗树常大，微博根因之一）
     public static final double HOT_ZONE_AREA = 0.55;   // 热区：≥55% 屏幕面积
     public static final int HOT_ZONE_MAX_NODES = 12;
     public static final double SKIP_AREA_MAX = 0.35;   // 真跳过键面积上限
@@ -148,11 +168,19 @@ public final class AdDecisionCore {
         public int[] tapBounds;     // 手势点击边界（原小控件，点得更准）
     }
 
+    /** v3.7.0 文本跳过键候选（广告图内常嵌假「跳过」文本，复验轮换点） */
+    public static final class SkipCand {
+        public NodeView clickNode;  // 可点祖先（performAction 目标）
+        public int[] tapBounds;     // 手势点击边界（原标签坐标，v3.6.0）
+        public String label;
+    }
+
     public static final class ScanFind {
         public boolean foundSkip;      // 真「跳过」文本控件（小面积可点）
         public NodeView skipNode;
         public int[] skipBounds;
         public String skipLabel;
+        public final java.util.ArrayList<SkipCand> skipCands = new java.util.ArrayList<SkipCand>(); // v3.7.0 多候选
         public boolean fakeSkip;       // 假跳过热区（「跳过」字样但大面积/不可点）
         public boolean gyroHint;       // 翻转/摇一摇诱导文案
         public boolean adBadge;        // 广告角标
@@ -249,6 +277,15 @@ public final class AdDecisionCore {
                             // 真机「已点击跳过但广告纹丝不动」根因之一）；performAction 仍走祖先
                             f.skipBounds = (b != null && areaRatio(b, ctx) < SKIP_AREA_MAX) ? b : click.bounds();
                             f.skipLabel = label;
+                        }
+                        // v3.7.0 多候选收集：广告图内常嵌假「跳过」文本（或同窗多个跳过键），
+                        // 复验第 N 次点第 N 个候选——不再同一坐标点四遍（issue#10 根因）
+                        if (f.skipCands.size() < SKIP_CANDS_MAX) {
+                            SkipCand c = new SkipCand();
+                            c.clickNode = click;
+                            c.tapBounds = (b != null && areaRatio(b, ctx) < SKIP_AREA_MAX) ? b : click.bounds();
+                            c.label = label;
+                            f.skipCands.add(c);
                         }
                     } else {
                         f.fakeSkip = true; // 大面积/不可点 = 图内假跳过陷阱
@@ -386,16 +423,24 @@ public final class AdDecisionCore {
         return (topArea || bottomArea) && small;
     }
 
+    /** v3.7.0：学习位置健全性校验——归一化坐标必须在屏内有效区（3%~97%）。
+     *  真机日志实锤：微信学出 (63%,102%) 越界位置（点击事件源节点 bounds
+     *  中心在屏幕外），点了也是死区——此类直接拒学，防止污染规则库 */
+    public static boolean saneNormPos(double x, double y) {
+        return x >= POS_MIN_NORM && x <= POS_MAX_NORM
+                && y >= POS_MIN_NORM && y <= POS_MAX_NORM;
+    }
+
     /* ═════════ 决策阶梯 ═════════ */
 
     public static Decision decide(ScanFind f, Ctx ctx) {
         /* ── 开屏/插屏窗内 ── */
         if (ctx.splashLive) {
-            // L1 文本跳过键（文本或 contentDescription）→ 代点
-            if (f.foundSkip && f.skipBounds != null) {
-                return click(f.skipNode, f.skipBounds, "skip_text");
-            }
-            // L1.5 学习位置点击（v3.5.0）：手动点过的位置指纹 → 次启同窗 500ms 直点
+            /* v3.7.0 学习位置【前置】到 L1 之前（issue#10 根因）：
+             * 用户手动点通过的位置 = 真实手指触点真正生效的坐标——比盲点
+             * 文本候选可靠得多（文本候选可能是广告图内假「跳过」文本）。
+             * 教过一次，下次同窗优先直点这个位置。 */
+            // L1.4 学习位置点击（v3.7.0 前置）：手动点过的位置指纹 → 次启同窗 500ms 直点
             //     安全门：仅在广告形态窗（简单树/SDK 窗/学习窗）内出手，
             //     信息流等正常界面（可滚动/有输入框/节点多）绝不点
             if (ctx.tapHintX >= 0 && ctx.tapHintY >= 0 && ctx.clickAttempts == 0
@@ -408,9 +453,22 @@ public final class AdDecisionCore {
                 d.reason = "learned_pos";
                 return d;
             }
+            // L1 文本跳过键（文本或 contentDescription）→ 代点
+            //     v3.7.0 多候选轮换：第 N 次出手点第 N 个候选（广告图内常嵌
+            //     假「跳过」文本，首选可能是陷阱/死区——不再同一坐标点四遍）
+            if (f.foundSkip && !f.skipCands.isEmpty()) {
+                int idx = Math.min(ctx.clickAttempts, f.skipCands.size() - 1);
+                SkipCand c = f.skipCands.get(idx);
+                return click(c.clickNode, c.tapBounds, "skip_text");
+            }
+            if (f.foundSkip && f.skipBounds != null) {
+                return click(f.skipNode, f.skipBounds, "skip_text");
+            }
             // L1.6 开屏×关闭键（v3.5.0）：顶部小关闭键 + 广告形态树（非长文本内容页）
+            //     v3.7.0 树上限放宽（CORNER_TREE_MAX_NODES）：广告窗树常大，
+            //     40 节点上限把真关闭键挡在门外（微博根因之一）
             if (f.foundClose && f.closeBounds != null && !f.longText
-                    && (isAdLike(f) || ctx.sdkAdWin || ctx.learnedCls)
+                    && (isAdLikeLoose(f) || ctx.sdkAdWin || ctx.learnedCls)
                     && inTopArea(f.closeBounds, ctx)
                     && ctx.elapsedMs >= SPLASH_CLOSE_MS) {
                 return click(f.closeNode, f.closeBounds, "splash_close");
@@ -434,27 +492,36 @@ public final class AdDecisionCore {
              * 此后 L3/L4.5/L5 的返回键决策仅在应用内窗（返回回到应用内）
              * 或 SDK 广告窗上生效；根窗口只走点击梯子，用尽优雅收手。 */
             boolean backSafe = !ctx.rootWindow || ctx.sdkAdWin;
+            // L4 角落无字小可点控件（图片跳过键，多候选）→ 手势点击其中心
+            //     v3.5.0：复验失败换下一个候选（第 N 次点击用第 N 个候选点）
+            //     v3.6.0：改纯手势（node=null）——performAction 可能落到大热区
+            //     祖先（=点开广告本体）；手势点子控件坐标=真实手指点跳过键
+            //     v3.7.0：① 前置到 L3 之前（微博根因：陀螺仪文案 120ms 抢先
+            //     返回键，角落键 500ms 才轮到——有点击候选先点击，点不到再断）；
+            //     ② 树上限放宽 CORNER_TREE_MAX_NODES=150（广告窗树常大）
+            if (!f.corners.isEmpty() && ctx.clickAttempts < f.corners.size()
+                    && !f.scrollPresent && !f.editPresent
+                    && f.nodeCount <= CORNER_TREE_MAX_NODES
+                    && ctx.elapsedMs >= CORNER_MIN_MS && ctx.elapsedMs <= CORNER_MAX_MS) {
+                CornerCand c = f.corners.get(ctx.clickAttempts);
+                return click(null, c.tapBounds, "corner_image_skip");
+            }
             // L3 陀螺仪/假跳过：无倒计时立即直断；带倒计时(假跳过) 800ms 直断
             //     v3.6.0 加信息流安全门：可滚动/有输入框的页面出现「摇一摇/翻转」文案
             //     多为互动玩法或 feed 内容（如「摇一摇抽签」），绝不返回键（防主页误退）
-            if (backSafe && f.gyroHint && !f.fakeSkip && !f.scrollPresent && !f.editPresent
+            //     v3.7.0 移到 L4 之后（微博根因）：有可点候选先点击，返回键是
+            //     「无任何可点目标」时的兜底（广告 Activity 常拦截返回键）；
+            //     gyro_immediate 加「无可点候选」门——角落键 500ms 才到时机，
+            //     有候选时等它，不 120ms 抢跑返回键
+            boolean clickableCand = !f.corners.isEmpty() || f.foundSkip || f.foundClose;
+            if (backSafe && f.gyroHint && !f.fakeSkip && !clickableCand
+                    && !f.scrollPresent && !f.editPresent
                     && ctx.elapsedMs >= GYRO_IMMEDIATE_MS) {
                 return back("gyro_immediate");
             }
             if (backSafe && (f.gyroHint || f.fakeSkip) && !f.scrollPresent && !f.editPresent
                     && ctx.elapsedMs >= GYRO_BREAK_MS) {
                 return back("gyro_break");
-            }
-            // L4 角落无字小可点控件（图片跳过键，多候选）→ 手势点击其中心
-            //     v3.5.0：复验失败换下一个候选（第 N 次点击用第 N 个候选点）
-            //     v3.6.0：改纯手势（node=null）——performAction 可能落到大热区
-            //     祖先（=点开广告本体）；手势点子控件坐标=真实手指点跳过键
-            if (!f.corners.isEmpty() && ctx.clickAttempts < f.corners.size()
-                    && !f.scrollPresent && !f.editPresent
-                    && f.nodeCount <= AD_LIKE_MAX_NODES
-                    && ctx.elapsedMs >= CORNER_MIN_MS && ctx.elapsedMs <= CORNER_MAX_MS) {
-                CornerCand c = f.corners.get(ctx.clickAttempts);
-                return click(null, c.tapBounds, "corner_image_skip");
             }
             // L4.5 点击复验失败升级（v3.5.0）：同窗点击 ≥3 次仍未关闭 → 返回键兜底
             //     v3.6.0：仅应用内窗（返回回到应用内）；根窗口绝不返回键（防退出）
@@ -470,9 +537,10 @@ public final class AdDecisionCore {
             // L6 坐标级点击兜底：开屏窗内简单树且无信号 → 点标准跳过位
             //    v3.6.0 三位置轮换：右上(88%,7%) → 右下(90%,92%) → 左上(8%,7%)，
             //    第 N 次兜底点第 N 个（角落候选用尽后接续计数），三个用尽即收手
+            //    v3.7.0 树上限放宽（isAdLikeLoose）：广告窗树常大，零信号也能兜底
             int coordIdx = f.corners.isEmpty() ? ctx.clickAttempts
                     : ctx.clickAttempts - f.corners.size();
-            if (coordIdx >= 0 && coordIdx < COORD_XS.length && isAdLike(f) && !f.longText
+            if (coordIdx >= 0 && coordIdx < COORD_XS.length && isAdLikeLoose(f) && !f.longText
                     && !ctx.guard && ctx.elapsedMs >= COORD_TAP_MS
                     && ctx.elapsedMs <= COORD_TAP_MAX_MS) {
                 Decision d = new Decision();
@@ -502,6 +570,14 @@ public final class AdDecisionCore {
     static boolean isAdLike(ScanFind f) {
         if (f.scrollPresent || f.editPresent) return false;
         return f.hotZone || f.nodeCount <= AD_LIKE_MAX_NODES;
+    }
+
+    /** v3.7.0 宽松版简单树（角落键/关闭键/坐标兜底用）：广告窗控件树常大
+     *  （微博真机：>40 节点把真角落键挡在门外），只要无滚动/无输入框且
+     *  节点 ≤150 即认可；热区直断/学习指纹快断仍用严格版 isAdLike 防误判 */
+    static boolean isAdLikeLoose(ScanFind f) {
+        if (f.scrollPresent || f.editPresent) return false;
+        return f.nodeCount <= CORNER_TREE_MAX_NODES;
     }
 
     private static Decision click(NodeView node, int[] bounds, String reason) {
