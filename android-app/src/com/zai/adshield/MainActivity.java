@@ -126,7 +126,7 @@ public class MainActivity extends Activity {
             PackageInfo pi = ctx.getPackageManager().getPackageInfo(ctx.getPackageName(), 0);
             return pi.versionName;
         } catch (Exception e) {
-            return "3.8.0";
+            return "3.8.1";
         }
     }
 
@@ -270,7 +270,7 @@ public class MainActivity extends Activity {
                 PackageInfo pi = a.getPackageManager().getPackageInfo(a.getPackageName(), 0);
                 return pi.versionCode;
             } catch (Exception e) {
-                return 30800;
+                return 30801;
             }
         }
 

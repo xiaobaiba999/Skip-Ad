@@ -1581,8 +1581,11 @@ public class AdSkipService extends AccessibilityService {
             final String key = Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES;
             final ComponentName cn = new ComponentName(ctx, AdSkipService.class);
             final String flat = cn.flattenToString();
+            final String flatShort = cn.flattenToShortString(); // v3.8.1：兼容短格式条目（adb 手动写入场景）
             final String cur = Settings.Secure.getString(cr, key);
-            if (cur == null || !cur.contains(flat)) {
+            // v3.8.1：登记判断双格式匹配——全格式或短格式条目任一命中即视为已登记，
+            // 否则短格式场景会被误判「未登记」再追加产生冗余双条目
+            if (cur == null || !(cur.contains(flat) || cur.contains(flatShort))) {
                 // 未登记（被系统关闭/覆盖安装后清除）→ 直接写回开启
                 String next = (cur == null || cur.trim().isEmpty()) ? flat : cur + ":" + flat;
                 Settings.Secure.putString(cr, key, next);
@@ -1593,7 +1596,7 @@ public class AdSkipService extends AccessibilityService {
             StringBuilder keep = new StringBuilder();
             for (String s : cur.split(":")) {
                 String t = s.trim();
-                if (t.length() == 0 || t.equals(flat)) continue;
+                if (t.length() == 0 || t.equals(flat) || t.equals(flatShort)) continue; // v3.8.1：双格式都摘除
                 if (keep.length() > 0) keep.append(':');
                 keep.append(t);
             }

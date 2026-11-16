@@ -65,7 +65,12 @@ public class KeepAliveReceiver extends BroadcastReceiver {
         final PendingResult result = goAsync();
         new Handler(Looper.getMainLooper()).postDelayed(() -> {
             try {
-                if (AdSkipService.instance == null) healOrNotify(ctx);
+                if (AdSkipService.instance == null) {
+                    // v3.8.1：不在此处直接自愈——postDelayed 回调时 onReceive 已返回，
+                    // 再调 goAsync() 拿不到广播窗口（自愈轮询线程失去系统保护）；
+                    // 改排 2s 后自检闹钟，在全新广播窗口走标准自检/自愈路径
+                    AdSkipService.scheduleNextHeartbeat(ctx, System.currentTimeMillis() + 2000);
+                }
             } finally {
                 if (result != null) result.finish();
             }
@@ -115,10 +120,10 @@ public class KeepAliveReceiver extends BroadcastReceiver {
             PendingIntent pi = PendingIntent.getActivity(ctx, 2, it,
                     PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
             b.setContentTitle("秒跳引擎待恢复")
-                    .setContentText("系统更新/重启关闭了无障碍服务（Android 安全设计），点按两步恢复")
+                    .setContentText("系统关闭了无障碍服务，点按直达服务开关恢复（Android 11+ 一步）")
                     .setStyle(new Notification.BigTextStyle()
-                            .bigText("系统在覆盖安装或重启后会关闭无障碍服务，这是 Android 的安全设计，任何应用都无法绕过。\n"
-                                    + "点按本通知 → 自动跳转无障碍设置 → 找到「开屏卫士」开启即恢复（学习数据全部保留）。"))
+                            .bigText("系统在覆盖安装、重启或深度清理后会关闭无障碍服务，这是 Android 的安全设计（已 adb 授权 WRITE_SECURE_SETTINGS 的设备会全自动恢复）。\n"
+                                    + "点按本通知 → 直达「开屏卫士」服务开关 → 打开即恢复（Android 11+ 一步直达；旧系统在无障碍列表中找到「开屏卫士」开启）。学习数据全部保留。"))
                     .setSmallIcon(R.drawable.ic_stat)
                     .setContentIntent(pi)
                     .setAutoCancel(true)

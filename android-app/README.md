@@ -2,6 +2,8 @@
 
 移动端「开屏广告 + 跳转广告 + 弹窗广告」智能跳过系统。v3.3.0 APK 约 61KB，零第三方依赖；联网仅两处出口（问题反馈 GitHub Issues / 检查更新 GitHub Releases，v3.3.0 起检查更新带令牌 + 重试 + 列表回退，下载直连失败自动切换镜像通道），学习数据仍全部本地保存。
 
+> **v3.8.1 要点**：发布加固——开机自愈路径修复（广播窗口保护）· 自愈重绑双格式匹配（全格式/短格式条目）· 恢复通知文案对齐 Android 11+ 一步直达。
+>
 > **v3.8.0 要点**：手势真实触点首选（performAction 首点被广告 SDK 无声吞掉——「点击 4 次不跳转」根因，GKD clickCenter 方法论）· 假跳过手势直点（「跳过」文案+大容器祖先→手势点标签坐标）· vid 跳过键（skip/tt_splash_skip_btn/count_down，GKD 全局规则同款）· visibleToUser 过滤 · 倒计时门控（「跳过 3」将尽 0.5s 前出手即命中）· 候选排序真键优先 · 角落键先于 SDK 直断（500→700ms）· 无障碍自愈重绑（adb 授权 WRITE_SECURE_SETTINGS 后清理后台/覆盖安装全自动恢复；未授权 Android 11+ 一步直达服务详情页）· 心跳精确闹钟自续期 · JVM 100 用例全绿。
 >
 > **v3.4.0 要点**：角落图片跳过键识别（650ms 手势点击）· 坐标级点击兜底（标准跳过位 + 六重防误点）· performAction 失效降级 dispatchGesture 真实触点 · 多窗口扫描 · 决策核心 AdDecisionCore 纯 Java JVM 38 用例（scripts/device-tests，javac+java 直跑，发版前必绿）。

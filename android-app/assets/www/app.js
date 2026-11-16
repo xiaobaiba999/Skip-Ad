@@ -71,9 +71,8 @@ const TEST = {
 
 /* 最近三个版本（仅此三版，其余全部略去） */
 const CHANGELOG = [
-  { v: "3.8.0", d: "issue#10 二轮真机反馈根因修复·「喜马拉雅已点击跳过×4 广告不关（手动点立刻生效）+微博不跳转+清理后台重进又要手动开无障碍」：① 手势真实触点首选（GKD clickCenter 方法论）——弃 performAction 首点（返回 true 也被喜马拉雅无声吞掉），dispatchGesture 点原标签中心=手动点击完全等价；触点时长 60→110ms 防触点时长校验 / ② 假跳过手势直点——微博「跳过」文案+大容器可点祖先，此前判假从不点击只返回键（返回键又被广告拦截）→ 手势直点标签自身坐标 / ③ vid 跳过键（GKD 全局规则同款）——viewId 含 skip（穿山甲 tt_splash_skip_btn/微博 iv_skip 类零文本图片键）或倒计时控件（count+down 非 download）/ ④ visibleToUser 过滤——不可见候选=陷阱/死区，点了白点 / ⑤ 倒计时门控——「跳过 3」类文案数字，SDK 倒计时结束前跳过键不响应（提前点白点）→ 锚点跟踪将尽 0.5s 前出手即命中 / ⑥ 候选排序——自身可点>短文案>小面积，真键排前（防广告图内假文本）/ ⑦ 角落键前置——先点击后 SDK 直断（直断 500→700ms）/ ⑧ 无障碍自愈重绑（GKD 进阶同款）——真因实锤：无障碍服务受 BIND_ACCESSIBILITY_SERVICE 签名级权限保护，任何应用（含自己）都不能 start/bind 它，v3.6.0 的 startService 拉活实为 SecurityException 被静默吞掉，「自动恢复」从未生效；正道：adb 一次性授权 WRITE_SECURE_SETTINGS 后写 Settings.Secure 全自动恢复（清理后台被杀/覆盖安装），未授权则 Android 11+ 直达本服务无障碍详情页（一个开关一步恢复）/ ⑨ 心跳闹钟自续期——setInexactRepeating 可被无限推迟→精确闹钟优先+降级，链永不断；JVM 用例 100 全绿；二十六轮自测 100%" },
+  { v: "3.8.1", d: "发布加固：① 开机自愈路径修复——BOOT_COMPLETED 8s 延迟回调里不再直接自愈长轮询（广播窗口已关、自愈线程失去保护），改排 2s 后自检闹钟走全新广播窗口；② 自愈重绑双格式匹配——Settings 条目无论全格式还是短格式（adb 手动写入）都正确识别，不再产生冗余条目；③ 恢复通知文案对齐 Android 11+ 一步直达。决策核心 JVM 100 用例保持全绿。" },  { v: "3.8.0", d: "issue#10 二轮真机反馈根因修复·「喜马拉雅已点击跳过×4 广告不关（手动点立刻生效）+微博不跳转+清理后台重进又要手动开无障碍」：① 手势真实触点首选（GKD clickCenter 方法论）——弃 performAction 首点（返回 true 也被喜马拉雅无声吞掉），dispatchGesture 点原标签中心=手动点击完全等价；触点时长 60→110ms 防触点时长校验 / ② 假跳过手势直点——微博「跳过」文案+大容器可点祖先，此前判假从不点击只返回键（返回键又被广告拦截）→ 手势直点标签自身坐标 / ③ vid 跳过键（GKD 全局规则同款）——viewId 含 skip（穿山甲 tt_splash_skip_btn/微博 iv_skip 类零文本图片键）或倒计时控件（count+down 非 download）/ ④ visibleToUser 过滤——不可见候选=陷阱/死区，点了白点 / ⑤ 倒计时门控——「跳过 3」类文案数字，SDK 倒计时结束前跳过键不响应（提前点白点）→ 锚点跟踪将尽 0.5s 前出手即命中 / ⑥ 候选排序——自身可点>短文案>小面积，真键排前（防广告图内假文本）/ ⑦ 角落键前置——先点击后 SDK 直断（直断 500→700ms）/ ⑧ 无障碍自愈重绑（GKD 进阶同款）——真因实锤：无障碍服务受 BIND_ACCESSIBILITY_SERVICE 签名级权限保护，任何应用（含自己）都不能 start/bind 它，v3.6.0 的 startService 拉活实为 SecurityException 被静默吞掉，「自动恢复」从未生效；正道：adb 一次性授权 WRITE_SECURE_SETTINGS 后写 Settings.Secure 全自动恢复（清理后台被杀/覆盖安装），未授权则 Android 11+ 直达本服务无障碍详情页（一个开关一步恢复）/ ⑨ 心跳闹钟自续期——setInexactRepeating 可被无限推迟→精确闹钟优先+降级，链永不断；JVM 用例 100 全绿；二十六轮自测 100%" },
   { v: "3.7.0", d: "四次真机反馈根因修复（issue#10 日志实锤）·「喜马拉雅已点击跳过×4 广告仍不关，手动点同一按钮立刻生效」：① 头号根因——无障碍配置缺 canPerformGestures=true，dispatchGesture「手势真实触点」从未真正触达屏幕，复验重试全部无效；已补声明，另加 flagIncludeNotImportantViews（被标不重要的跳过键从此可见）/ ② 手势路径单点零长度→部分 ROM 不触发点击，改 lineTo 非零路径+40ms 起始延迟+边界钳制+取消诊断回调 / ③ 文本跳过键只点第一个候选×4 盲点同一坐标→多候选收集轮换（广告图内常嵌假「跳过」文本）/ ④ 学习位置前置到文本候选之前 + 文本键手动点击也学位置（你手指点通过的位置最可靠）+ 越界坐标拒学 / 「微博直断没效果」：⑤ 陀螺仪文案 120ms 抢先返回键改点击优先 + 返回键被拦截后 600ms 复验不熔断 + 角落/关闭键树上限 40→150 / 「清理后台服务失效」：⑥ onUnbind 保留 + 15 分钟心跳自检闹钟 + 打开 App 自动拉活循环重试（每 5s）+ 电池白名单醒目横幅与厂商三步指引；二十五轮自测 100%" },
-  { v: "3.6.0", d: "三次真机反馈根因修复·「进入喜马拉雅被模拟人操作退出到桌面」：上传日志实锤两条毒链——① v3.5.0 的窗口指纹学习把主页/弹窗也学成「广告窗」，此后每次进入都在主页按返回键 → 喜马拉雅拦返回弹「再按一次退出」→ 引擎再按 → 真退出：sdkAdWin 改为只认【当前窗口类名】、指纹只沉淀真广告窗类、启动时自动清理历史毒指纹 / ② 应用入口窗（冷启动开屏/回前台首窗）上按返回=退出应用：根窗口安全门接线，入口窗禁一切返回键兜底，只走点击梯子（文本→学习位置→×→角落候选→三位置坐标轮换），用尽优雅收手（每窗 6 次） / 手势点击改点原标签控件坐标（不再点可点祖先中心，「已点没反应」根因之一）/ 信息流页面出现「摇一摇」文案不再误返回 / 无障碍持久化：清理后台后打开 App 自动拉活重绑（系统仍登记时无需手动去设置）+ onTaskRemoved 即时提醒 + 自检闹钟 / JVM 用例全绿；二十四轮自测 100%" },
 ];
 
 const INTEL = {
@@ -481,8 +480,8 @@ const FB_TYPES = { missed: "漏拦截：开屏广告没被秒跳", gyro_leak: "�
 function esc(s) {
   return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
-function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "3.8.0"; }
-function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "30800"; }
+function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "3.8.1"; }
+function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "30801"; }
 
 function openLink(url) {
   if (HAS_BRIDGE) { try { AndroidApp.openUrl(url); return; } catch (e) {} }
