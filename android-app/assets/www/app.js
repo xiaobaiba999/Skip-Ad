@@ -71,6 +71,7 @@ const TEST = {
 
 /* 最近三个版本（仅此三版，其余全部略去） */
 const CHANGELOG = [
+  { v: "3.9.0", d: "issue#11/#12 真机日志实锤三条毒链整改 + 李跳跳方法论一比一重构：① QQ/微信/抖音「进去就被退出来」根因修复——桌面（com.miui.home）被误判为广告窗→坐标兜底盲点固定坐标点中桌面图标→拉起微信→链式回弹按返回键踢出用户。三刀根治：桌面/Launcher 事件入口黑名单（绝不扫描/学习/回弹）+ 坐标级盲点兜底【整体移除】（每台手机屏幕大小不一样，固定百分比坐标必然乱点——只点规则命中的控件自身 bounds 中心，天然适配任意分辨率）+ 回弹宿主校验；启动时自动清理桌面误学的毒位置规则（真机实锤 com.miui.home 学出位置(39%,18%)）/ ② 李跳跳式内嵌规则引擎（RuleEngine）——规则内嵌 APK 零云端：全局文案两级匹配（「跳过/跳过广告/Skip」精确命中 + 短包含≤6字防诱导长文案）+ vid 匹配（零文本图片跳过键），可见+面积≤35%+手势真实触点，事件驱动 0ms 出手——露头就秒跳（Keep 开屏同级速度）/ ③ 角落无字小控件加广告形态确认门（热区/角标/SDK窗/学习窗/树≤60 五选一）——普通应用主页角落图标绝不误点 / ④ 速度全面提速：扫描链前段加密（0/60/120/200/300/450/650/900ms）、学习位置 500→100ms、关闭键 600→250ms、角落键 500→300ms、点击冷却 1.2s→0.9s、内容节流 150→80ms / ⑤ 弹窗内容突发检测默认关闭（issue#12 美团/social/view 大量误报整治），学习中心可开启 / ⑥ 保活强化：心跳自检 15→5 分钟，服务被杀更快发现+自愈 / ⑦ 保留：GitHub 引擎日志上传、学习中心（文本/位置/指纹学习）全部保留" },
   { v: "3.8.1", d: "发布加固：① 开机自愈路径修复——BOOT_COMPLETED 8s 延迟回调里不再直接自愈长轮询（广播窗口已关、自愈线程失去保护），改排 2s 后自检闹钟走全新广播窗口；② 自愈重绑双格式匹配——Settings 条目无论全格式还是短格式（adb 手动写入）都正确识别，不再产生冗余条目；③ 恢复通知文案对齐 Android 11+ 一步直达。决策核心 JVM 100 用例保持全绿。" },  { v: "3.8.0", d: "issue#10 二轮真机反馈根因修复·「喜马拉雅已点击跳过×4 广告不关（手动点立刻生效）+微博不跳转+清理后台重进又要手动开无障碍」：① 手势真实触点首选（GKD clickCenter 方法论）——弃 performAction 首点（返回 true 也被喜马拉雅无声吞掉），dispatchGesture 点原标签中心=手动点击完全等价；触点时长 60→110ms 防触点时长校验 / ② 假跳过手势直点——微博「跳过」文案+大容器可点祖先，此前判假从不点击只返回键（返回键又被广告拦截）→ 手势直点标签自身坐标 / ③ vid 跳过键（GKD 全局规则同款）——viewId 含 skip（穿山甲 tt_splash_skip_btn/微博 iv_skip 类零文本图片键）或倒计时控件（count+down 非 download）/ ④ visibleToUser 过滤——不可见候选=陷阱/死区，点了白点 / ⑤ 倒计时门控——「跳过 3」类文案数字，SDK 倒计时结束前跳过键不响应（提前点白点）→ 锚点跟踪将尽 0.5s 前出手即命中 / ⑥ 候选排序——自身可点>短文案>小面积，真键排前（防广告图内假文本）/ ⑦ 角落键前置——先点击后 SDK 直断（直断 500→700ms）/ ⑧ 无障碍自愈重绑（GKD 进阶同款）——真因实锤：无障碍服务受 BIND_ACCESSIBILITY_SERVICE 签名级权限保护，任何应用（含自己）都不能 start/bind 它，v3.6.0 的 startService 拉活实为 SecurityException 被静默吞掉，「自动恢复」从未生效；正道：adb 一次性授权 WRITE_SECURE_SETTINGS 后写 Settings.Secure 全自动恢复（清理后台被杀/覆盖安装），未授权则 Android 11+ 直达本服务无障碍详情页（一个开关一步恢复）/ ⑨ 心跳闹钟自续期——setInexactRepeating 可被无限推迟→精确闹钟优先+降级，链永不断；JVM 用例 100 全绿；二十六轮自测 100%" },
   { v: "3.7.0", d: "四次真机反馈根因修复（issue#10 日志实锤）·「喜马拉雅已点击跳过×4 广告仍不关，手动点同一按钮立刻生效」：① 头号根因——无障碍配置缺 canPerformGestures=true，dispatchGesture「手势真实触点」从未真正触达屏幕，复验重试全部无效；已补声明，另加 flagIncludeNotImportantViews（被标不重要的跳过键从此可见）/ ② 手势路径单点零长度→部分 ROM 不触发点击，改 lineTo 非零路径+40ms 起始延迟+边界钳制+取消诊断回调 / ③ 文本跳过键只点第一个候选×4 盲点同一坐标→多候选收集轮换（广告图内常嵌假「跳过」文本）/ ④ 学习位置前置到文本候选之前 + 文本键手动点击也学位置（你手指点通过的位置最可靠）+ 越界坐标拒学 / 「微博直断没效果」：⑤ 陀螺仪文案 120ms 抢先返回键改点击优先 + 返回键被拦截后 600ms 复验不熔断 + 角落/关闭键树上限 40→150 / 「清理后台服务失效」：⑥ onUnbind 保留 + 15 分钟心跳自检闹钟 + 打开 App 自动拉活循环重试（每 5s）+ 电池白名单醒目横幅与厂商三步指引；二十五轮自测 100%" },
 ];
@@ -137,8 +138,8 @@ function refreshHome() {
   }
   $("#service-status").textContent = statusText;
   $("#service-desc").textContent = running
-    ? "手势真实触点首选 · 假跳过直点 · vid 跳过键 · 倒计时门控 · 自愈重绑"
-    : (HAS_BRIDGE ? "开启无障碍后自动秒跳任何应用开屏" : "安装 APK 后体验真实秒跳服务");
+    ? "内嵌规则引擎 · 露头就秒跳 · 控件中心精准点击 · 桌面黑名单 · 自愈重绑"
+    : (HAS_BRIDGE ? "开启无障碍后自动秒跳任何应用开屏（规则内嵌，零云端）" : "安装 APK 后体验真实秒跳服务");
   dot.classList.toggle("on", running);
   card.classList.toggle("ok", running);
   /* v3.8.0：need_toggle（仍登记但进程重绑未成）时也展示「一步直达」按钮，隐藏不会自愈的重试按钮 */
@@ -280,7 +281,7 @@ if (HAS_BRIDGE) {
 function renderToggles() {
   const st = getRealState();
   $("#toggle-learning").checked = st.learning !== false;
-  $("#toggle-popup").checked = st.popupShield !== false;
+  $("#toggle-popup").checked = st.popupShield === true; // v3.9.0 默认关闭（issue#12 内容突发误报整治），学习中心可开启
   $("#toggle-chain").checked = st.chainRebound !== false;
 }
 
@@ -293,7 +294,7 @@ function bindToggle(id, key, onMsg, offMsg) {
   });
 }
 bindToggle("toggle-learning", "learning", "智能学习已开启", "智能学习已暂停（引擎保持通用规则）");
-bindToggle("toggle-popup", "popupShield", "弹窗广告屏蔽 v2 已开启", "弹窗广告屏蔽已关闭（运营弹窗将正常显示）");
+bindToggle("toggle-popup", "popupShield", "弹窗广告屏蔽已开启（默认关闭防误判，可随时关）", "弹窗广告屏蔽已关闭（默认状态：只跳开屏，绝不乱点弹窗）");
 bindToggle("toggle-chain", "chainRebound", "诱导跳转回弹已开启", "诱导跳转回弹已关闭");
 
 /* ══════════ 情报站 ══════════ */
@@ -480,7 +481,7 @@ const FB_TYPES = { missed: "漏拦截：开屏广告没被秒跳", gyro_leak: "�
 function esc(s) {
   return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
-function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "3.8.1"; }
+function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "3.9.0"; }
 function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "30801"; }
 
 function openLink(url) {

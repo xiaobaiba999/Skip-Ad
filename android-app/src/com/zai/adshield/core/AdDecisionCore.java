@@ -3,8 +3,22 @@ package com.zai.adshield.core;
 import java.util.ArrayList;
 
 /**
- * 秒跳决策核心（v3.8.0 · 纯 Java · 零 Android 依赖 · JVM 可单测）
+ * 秒跳决策核心（v3.9.0 · 纯 Java · 零 Android 依赖 · JVM 可单测）
  * ─────────────────────────────────────────────────────────────
+ * v3.9.0 设计动机（issue#12 真机日志实锤：QQ/微信/抖音「进去就被退出来」）
+ *  ——李跳跳实现方法论对齐，用户指令「一比一模仿李跳跳」：
+ *  · 【删除】L6 坐标级点击兜底（coord_fallback）：它点的是固定百分比坐标
+ *    (88%,7%) 等——每台手机屏幕大小不一样，位置肯定不一样（用户原话）。
+ *    桌面简单树被误判后盲点桌面图标拉起微信→回弹狂按返回键踢出用户
+ *    =issue#12 闪退完整毒链。主路径改由 RuleEngine（李跳跳式内嵌规则，
+ *    控件属性匹配+点控件自身 bounds 中心）接管，本类退居复杂信号兑底；
+ *  · 【提速】露头就秒跳（以 Keep 开屏为标杆）：学习位置 500→100ms、
+ *    开屏×关闭键 600→250ms、角落键 500→300ms（但增加广告形态确认门，
+ *    绝不在正常页面上乱点角落图标）；
+ *  · 【收紧】角落无字小控件（L4）须广告形态确认：热区/广告角标/SDK 窗/
+ *    学习窗/节点≤60 五选一——普通应用主页右上角的设置齿轮不再被误点；
+ *  · 【新增】isLauncherLike：桌面/Launcher 包识别（服务侧黑名单用——
+ *    桌面绝不扫描/学习/回弹，issue#12 根治）。
  * v3.8.0 设计动机（issue#10 二轮真机反馈：喜马拉雅点击跳过键 4 次广告不关、
  *  手动点立刻生效；微博找不到可点候选只能返回键，而返回键被广告拦截）——
  *  网络调研 GKD（gkd-kit，同类最佳开源应用）最新全局规则与 API 文档，
@@ -122,13 +136,11 @@ public final class AdDecisionCore {
     public static final long CLS_LEARNED_BREAK_MS = 300;  // 学习指纹快断
     public static final long GYRO_IMMEDIATE_MS = 120;     // 无倒计时立即直断
     public static final long GYRO_BREAK_MS = 800;         // 带倒计时(假跳过)直断
-    public static final long LEARNED_POS_MS = 500;        // 学习位置点击出手（v3.5.0）
-    public static final long SPLASH_CLOSE_MS = 600;       // 开屏×关闭键出手（v3.5.0）
-    public static final long CORNER_MIN_MS = 500;         // 角落控件最早出手（v3.6.0 600→500）
+    public static final long LEARNED_POS_MS = 100;        // 学习位置点击出手（v3.9.0 500→100：规则引擎未命中才轮到，出手即秒点）
+    public static final long SPLASH_CLOSE_MS = 250;       // 开屏×关闭键出手（v3.9.0 600→250：露头就秒跳）
+    public static final long CORNER_MIN_MS = 300;         // 角落控件最早出手（v3.9.0 500→300，但须广告形态确认门）
     public static final long CORNER_MAX_MS = 6500;        // 角落控件最晚（v3.6.0 3500→6500：部分开屏 3-5s 才出跳过键）
     public static final long HOT_ZONE_MS = 900;           // 热区直断
-    public static final long COORD_TAP_MS = 900;          // 坐标兜底最早出手
-    public static final long COORD_TAP_MAX_MS = 8000;     // 坐标兜底最晚（v3.6.0 4000→8000：覆盖晚出跳过键）
 
     /* ── v3.8.0 参数（issue#10 二轮·GKD 方法论对齐） ── */
     public static final double FAKE_TAP_AREA_MAX = 0.12; // v3.8.0：假跳过手势候选：标签自身面积上限（大标签=CTA 诱饵不点）
@@ -157,10 +169,10 @@ public final class AdDecisionCore {
     public static final double CORNER_LEFT_MAX = 0.28;  // 或左缘 ≤28% 宽
     public static final int CORNER_MIN_PX = 24;        // 角落控件最小像素
     public static final int AD_LIKE_MAX_NODES = 40;    // 简单树节点上限
-    /* v3.6.0 坐标轮换三标准位：右上（最常见）→ 右下（部分应用）→ 左上（少数）；
-       第 N 次兜底点第 N 个，三个都点不中即收手（绝不返回键退出应用） */
-    public static final double[] COORD_XS = {0.88, 0.90, 0.08};
-    public static final double[] COORD_YS = {0.07, 0.92, 0.07};
+    /* v3.9.0 角落键广告形态确认：无字小控件（疑似图片跳过键）出手前须满足
+       「热区/广告角标/SDK 窗/学习窗/节点≤60」五选一——普通主页的角落图标
+       （设置齿轮/客服入口）节点树大且无广告信号，绝不误点（不乱点红线） */
+    public static final int CORNER_CONFIRM_NODES = 60;
 
     /* ── 文案特征库（与 2026-11 市场调研同步） ── */
     public static final String[] SKIP_TEXTS = {"跳过", "关闭广告"};
@@ -579,7 +591,12 @@ public final class AdDecisionCore {
             if (!f.corners.isEmpty() && ctx.clickAttempts < f.corners.size()
                     && !f.scrollPresent && !f.editPresent
                     && f.nodeCount <= CORNER_TREE_MAX_NODES
-                    && ctx.elapsedMs >= CORNER_MIN_MS && ctx.elapsedMs <= CORNER_MAX_MS) {
+                    && ctx.elapsedMs >= CORNER_MIN_MS && ctx.elapsedMs <= CORNER_MAX_MS
+                    // v3.9.0 广告形态确认门（不乱点红线）：角落无字控件必须
+                    // 同时具备广告信号（热区/角标/SDK 窗/学习窗）或树极简
+                    //（≤60 节点）才出手——普通主页角落图标绝不误点
+                    && (f.hotZone || f.adBadge || ctx.sdkAdWin || ctx.learnedCls
+                        || f.nodeCount <= CORNER_CONFIRM_NODES)) {
                 CornerCand c = f.corners.get(ctx.clickAttempts);
                 return click(null, c.tapBounds, "corner_image_skip");
             }
@@ -630,22 +647,10 @@ public final class AdDecisionCore {
                     && ctx.elapsedMs >= HOT_ZONE_MS) {
                 return back("hot_zone");
             }
-            // L6 坐标级点击兜底：开屏窗内简单树且无信号 → 点标准跳过位
-            //    v3.6.0 三位置轮换：右上(88%,7%) → 右下(90%,92%) → 左上(8%,7%)，
-            //    第 N 次兜底点第 N 个（角落候选用尽后接续计数），三个用尽即收手
-            //    v3.7.0 树上限放宽（isAdLikeLoose）：广告窗树常大，零信号也能兜底
-            int coordIdx = f.corners.isEmpty() ? ctx.clickAttempts
-                    : ctx.clickAttempts - f.corners.size();
-            if (coordIdx >= 0 && coordIdx < COORD_XS.length && isAdLikeLoose(f) && !f.longText
-                    && !ctx.guard && ctx.elapsedMs >= COORD_TAP_MS
-                    && ctx.elapsedMs <= COORD_TAP_MAX_MS) {
-                Decision d = new Decision();
-                d.action = A_TAP_POINT;
-                d.x = (int) (ctx.screenW * COORD_XS[coordIdx]);
-                d.y = (int) (ctx.screenH * COORD_YS[coordIdx]);
-                d.reason = "coord_fallback";
-                return d;
-            }
+            /* v3.9.0：L6 坐标级点击兜底已【整体移除】——固定百分比坐标
+             * 在不同屏幕上位置不同，盲点必然乱点（issue#12 闪退毒链：
+             * 桌面被误判→盲点桌面图标→拉起微信→回弹踢出用户）。零信号
+             * 场景由学习位置（用户教过）与 RuleEngine 规则接管，绝不盲点。 */
         }
 
         /* ── 弹窗窗期（独立于开屏窗） ── */
@@ -712,6 +717,18 @@ public final class AdDecisionCore {
                     || s.contains("adpage") || s.contains("adlanding")) return true;
         }
         return false;
+    }
+
+    /** v3.9.0：桌面/Launcher 识别（issue#12 闪退根治）——桌面包事件在服务侧
+     *  直接丢弃：绝不扫描（防误判广告窗）、绝不学习（防桌面图标位置被学成
+     *  「跳过键」，真机实锤 com.miui.home 学出位置(39%,18%)）、绝不回弹
+     *  （防「桌面→微信」被当广告跳转踢出用户）。 */
+    public static boolean isLauncherLike(String pkg) {
+        if (pkg == null) return false;
+        String p = pkg.toLowerCase();
+        if (p.contains("launcher")) return true;
+        if (p.endsWith(".home") || p.equals("home")) return true;
+        return p.equals("com.miui.home") || p.equals("com.google.android.apps.nexuslauncher");
     }
 
     public static boolean isGuardPkg(String pkg) {

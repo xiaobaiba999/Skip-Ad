@@ -26,6 +26,8 @@ import com.zai.adshield.core.AdDecisionCore.Ctx;
 import com.zai.adshield.core.AdDecisionCore.Decision;
 import com.zai.adshield.core.AdDecisionCore.NodeView;
 import com.zai.adshield.core.AdDecisionCore.ScanFind;
+import com.zai.adshield.core.RuleEngine;
+import com.zai.adshield.core.RuleEngine.Hit;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -34,7 +36,39 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 开屏广告智能跳过服务（无障碍服务实现 · v3.7.0 · 十一层纵深）
+ * 开屏广告智能跳过服务（无障碍服务实现 · v3.9.0 · 李跳跳方法论重构）
+ * ─────────────────────────────────────────────────────────────
+ * v3.9.0（issue#11/#12 真机日志实锤三条毒链整改，用户指令「一比一模仿
+ * 李跳跳最新版实现逻辑」）：
+ *  · 毒链①（issue#12 闪退元凶）根治：桌面（com.miui.home）被误判为开屏
+ *    广告窗 → 坐标兜底盲点固定坐标点中桌面图标 → 拉起微信/QQ/抖音 →
+ *    链式回弹把用户踢出应用「进去就被退出来」。对策三刀：
+ *    ① 桌面/Launcher 事件入口直接丢弃（isLauncherLike 黑名单——绝不
+ *       扫描/学习/回弹，桌面图标位置永不再被学成「跳过键」）；
+ *    ② 坐标级盲点兜底（L6）整体移除——每台手机屏幕大小不一样，固定
+ *       百分比坐标必然乱点；只点【规则命中的控件自身 bounds 中心】
+ *       （应用按实际屏幕渲染，天然适配任意分辨率）；
+ *    ③ 链式回弹加宿主校验：host 必须非桌面且真有广告窗资格。
+ *  · 李跳跳主路径落地（RuleEngine 内嵌规则引擎，规则内嵌 APK 零云端）：
+ *    窗口/内容一变 → 按包名查全局规则（「跳过/跳过广告/Skip」精确+短包含
+ *    +vid skip）→ 命中即 0ms 手势点控件中心——「露头就秒跳」（Keep 开屏
+ *    同级速度）。决策核心退居复杂信号兜底（关闭键/角落键/SDK 窗/陀螺仪）。
+ *  · 角落键广告形态确认门：无字小控件须「热区/角标/SDK 窗/学习窗/树≤60」
+ *    五选一才出手——普通应用主页角落图标（设置齿轮）绝不误点。
+ *  · 弹窗内容突发检测默认关闭（issue#12 大量误报「疑似覆盖层弹窗」），
+ *    学习中心可手动开启。
+ *  · 速度全面提速（以 Keep 开屏为标杆）：扫描链前段加密（0/60/120/200/
+ *    300/450/650/900ms）、学习位置 100ms、关闭键 250ms、角落键 300ms、
+ *    点击冷却 1.2s→0.9s、内容变化节流 150→80ms。
+ *  · 保活强化：心跳自检闹钟 15 分钟→5 分钟（服务被杀发现更快，配合
+ *    WRITE_SECURE_SETTINGS 自愈重绑全自动恢复）。
+ *  · 保留：GitHub 引擎日志上传（issue 反馈通道）、学习中心（文本/位置/
+ *    指纹学习——用户使用习惯全保留）。
+ *
+ * v3.8.0（issue#10 二轮根因修复：canPerformGestures 缺失/手势零长度路径/
+ *  多候选轮换/假跳过直点/vid 跳过键/倒计时门控/WRITE_SECURE_SETTINGS 自愈）
+ * v3.7.0（issue#10 一轮根因修复：onUnbind 保留+心跳+学习位置前置+返回键复验）
+ * v3.6.0（根窗口安全门+毒指纹清理；v3.5.0 复验梯子+位置学习+保活三件套）
  * ─────────────────────────────────────────────────────────────
  * v3.7.0（四次真机反馈 issue#10：喜马拉雅「已点击跳过×4」广告不关，用户手点
  * 同一按钮立刻生效；微博陀螺仪窗返回键直断无效果；清理后台服务失效）：
@@ -109,14 +143,15 @@ public class AdSkipService extends AccessibilityService {
     public static final int NOTIF_ALERT = 2;   // 服务断开提醒（KeepAliveReceiver 发，服务连上即撤）
 
     private static final long WINDOW_MS = 12000;       // 开屏时间窗
-    private static final long COOLDOWN_MS = 1200;      // 同一应用两次自动点击最小间隔
+    private static final long COOLDOWN_MS = 900;       // 同一应用两次自动点击最小间隔（v3.9.0 1200→900：复验更快）
     private static final long LEARN_WINDOW_MS = 30000; // 手动点击学习宽时间窗
     private static final int MAX_RULES_PER_APP = 8;
     private static final int MAX_LOG = 60;
 
-    /* 极速链：相对窗口起点的扫描节奏（前密后疏，命中即熔断） */
+    /* 极速链（v3.9.0 前段加密：露头就秒跳——Keep 开屏「跳过」键 0ms 首扫即中，
+       60ms 内二连扫兜底渲染延迟；后段保持疏节奏覆盖晚出键） */
     private static final long[] SCAN_AT =
-            {0, 120, 240, 400, 650, 1000, 1500, 2200, 3200, 4500, 6000, 8000, 10500};
+            {0, 60, 120, 200, 300, 450, 650, 900, 1300, 1900, 2700, 3800, 5200, 7000, 9500, 12000};
     /* 返回键重试：每个窗口最多直断次数（个别广告拦截第一次返回键） */
     private static final int BACK_RETRY_MAX = 2;
     /* 广告特征有效期（链式回弹依据） */
@@ -209,8 +244,12 @@ public class AdSkipService extends AccessibilityService {
         // v3.6.0：清理 v3.5.0 误学毒指纹（MainActivity/FrameLayout/Dialog 被
         // 学成「广告窗指纹」——用户二次进入被连按返回键退出的根因）
         int purged = purgePoisonFingerprints();
-        appendLog("服务已启动 · v3.8.0 手势真实触点首选+假跳过手势直点+vid跳过键+倒计时门控+无障碍自愈重绑"
+        appendLog("服务已启动 · v3.9.0 李跳跳方法论重构：内嵌规则引擎 0ms 秒跳+桌面黑名单+盲点移除+回弹校验"
                 + (purged > 0 ? "｜已清理 " + purged + " 条误学窗口指纹" : ""));
+        // v3.9.0：清理毒位置规则（issue#12 实锤：桌面 com.miui.home 学出位置
+        //(39%,18%)——桌面点击被误学成「跳过键」，下次启动直点桌面图标=乱点）
+        int purgedPos = purgeLauncherPosRules();
+        if (purgedPos > 0) appendLog("已清理 " + purgedPos + " 条桌面误学位置规则（issue#12 闪退整治）");
     }
 
     /* ───────── v3.7.0 保活：onUnbind 保留 + 心跳自检闹钟 ─────────
@@ -235,8 +274,9 @@ public class AdSkipService extends AccessibilityService {
         return true; // 关键：true = 不销毁服务，下次 AMS 重绑直接复用
     }
 
-    /** v3.7.0：心跳自检闹钟（15 分钟重复，服务连上即撤） */
-    public static final long HEARTBEAT_MS = 15 * 60 * 1000;
+    /** v3.9.0：心跳自检闹钟（15→5 分钟：服务被杀后最多 5 分钟内发现并自愈/
+     *  提醒恢复——「清理后台重进要手动开」的发现延迟大幅缩短） */
+    public static final long HEARTBEAT_MS = 5 * 60 * 1000;
 
     /** v3.8.0：排下一次心跳（静态：KeepAliveReceiver 收到自检后自续期共用——
      *  心跳链永不中断）。精确闹钟优先（Doze 中也能准点触发），未授予精确闹钟
@@ -347,6 +387,53 @@ public class AdSkipService extends AccessibilityService {
         }
     }
 
+    /** v3.9.0：清理桌面/系统误学的位置规则（issue#12 实锤毒数据：
+     *  com.miui.home 学出位置(39%,18%)@Launcher、com.autonavi.minimap 学出
+     *  (86%,8%)——桌面图标位置被当「跳过键」记忆，下次启动直点图标=乱点）。
+     *  桌面包规则整体删除；位置规则的窗口类含 Launcher/home 的一并删除。 */
+    private int purgeLauncherPosRules() {
+        synchronized (lock) {
+            try {
+                JSONObject st = loadState();
+                JSONObject rules = st.optJSONObject("rules");
+                if (rules == null) return 0;
+                int purged = 0;
+                java.util.Iterator<String> it = rules.keys();
+                while (it.hasNext()) {
+                    String pkg = it.next();
+                    // 桌面包：规则整体删除（绝不扫描绝不学习——黑名单双保险）
+                    if (AdDecisionCore.isLauncherLike(pkg)) {
+                        JSONArray list = rules.optJSONArray(pkg);
+                        if (list != null) purged += list.length();
+                        it.remove();
+                        continue;
+                    }
+                    // 位置规则的窗口类含 Launcher/home：删除该条
+                    JSONArray list = rules.optJSONArray(pkg);
+                    if (list == null) continue;
+                    JSONArray kept = new JSONArray();
+                    for (int i = 0; i < list.length(); i++) {
+                        JSONObject r = list.optJSONObject(i);
+                        if (r == null) continue;
+                        String cls = r.optString("cls", "").toLowerCase();
+                        if (r.optBoolean("pos", false)
+                                && (cls.contains("launcher") || cls.contains("home"))) {
+                            purged++;
+                        } else {
+                            kept.put(r);
+                        }
+                    }
+                    if (kept.length() == 0) it.remove();
+                    else rules.put(pkg, kept);
+                }
+                if (purged > 0) saveState(st);
+                return purged;
+            } catch (Exception e) {
+                return 0;
+            }
+        }
+    }
+
     @Override
     public void onDestroy() {
         flushNow();
@@ -364,6 +451,14 @@ public class AdSkipService extends AccessibilityService {
         CharSequence pkgCs = event.getPackageName();
         if (pkgCs == null) return;
         String pkg = pkgCs.toString();
+        // v3.9.0 桌面/Launcher 黑名单（issue#12 闪退元凶根治）：桌面包事件
+        // 直接丢弃——绝不扫描（桌面简单树被误判广告窗）、绝不学习（桌面图标
+        // 位置被学成「跳过键」后下次启动直点图标=乱点）、绝不回弹（「桌面→
+        // 微信」被当广告跳转踢出用户）。仅更新前台包名追踪。
+        if (AdDecisionCore.isLauncherLike(pkg)) {
+            lastFgPkg = pkg;
+            return;
+        }
         if (pkg.equals(getPackageName())) return;
         if (isSystemNoise(pkg)) return;
 
@@ -405,7 +500,7 @@ public class AdSkipService extends AccessibilityService {
                 if (AdDecisionCore.isAdActivityClass(cls)) {
                     adFeatureUntil.put(pkg, now + CHAIN_GUARD_MS);
                     appendLog("🎯 SDK 广告窗识别（" + shortPkg(pkg) + "）：" + cls
-                            + " → 500ms 内无真跳过键将温和直断");
+                            + " → 700ms 内无真跳过键将温和直断");
                 } else if (learnedClassHit(pkg, cls)) {
                     adFeatureUntil.put(pkg, now + CHAIN_GUARD_MS);
                     winClsLearned.put(pkg, Boolean.TRUE);
@@ -587,7 +682,9 @@ public class AdSkipService extends AccessibilityService {
             return;
         }
         final long winStart = winAt(pkg);
-        if (now - winStart < 150) return;
+        // v3.9.0：节流 150→80ms（前 4s 内）——开屏「跳过」键晚渲染时更快补扫，
+        // 露头就秒跳；4s 后放宽 300ms 控能耗
+        if (now - winStart < (now - winStart < 4000 ? 80 : 300)) return;
         final int g = gen.intValue();
         handler.post(() -> {
             Integer cur = scanGen.get(pkg);
@@ -672,50 +769,81 @@ public class AdSkipService extends AccessibilityService {
                 ctx.tapHintY = tapHint[1];
                 ctx.budgetNodes = splashLive ? 600 : 280; // 开屏窗预算扩容（重树）
 
+                /* ═══ v3.9.0 主路径：内嵌规则引擎（李跳跳式）0ms 出手 ═══
+                 * 规则只认控件属性（text/desc/vid），点击的是控件自身 bounds 中心
+                 * ——应用按实际屏幕渲染，适配任意分辨率，绝无固定坐标盲点。
+                 * Keep 开屏「跳过」文本键：窗口事件 0ms 首扫即中即点=露头秒跳。 */
+                if (splashLive) {
+                    Hit hit = RuleEngine.match(new NodeAdapter(roots[ri]), ctx);
+                    if (hit != null) {
+                        // 广告窗资格标记（链式回弹依据）：规则命中=确定广告窗
+                        Long old = adFeatureUntil.get(pkg);
+                        if (old == null || now > old) adFeatureUntil.put(pkg, now + CHAIN_GUARD_MS);
+                        int cdHit = AdDecisionCore.parseCountdown(hit.label);
+                        if (!countdownWait(pkg, cdHit, clickAttempts, now)) {
+                            Decision rd = new Decision();
+                            rd.action = AdDecisionCore.A_CLICK_BOUNDS;
+                            rd.node = hit.gestureOnly ? null : hit.clickNode;
+                            rd.bounds = hit.tapBounds;
+                            rd.reason = "rule_" + hit.appId;
+                            if (execute(pkg, rd, null, ctx, clickCoolOK, now)) return; // 命中即熔断
+                        }
+                        // 规则已命中（或倒计时等待中）——本窗就是标准跳过场景，
+                        // 不再走决策核心兜底（避免角落键/热区在正常窗乱点）
+                        continue;
+                    }
+                }
+
+                /* ═══ 兜底路径：决策核心（复杂信号）═══ */
                 ScanFind f = AdDecisionCore.walk(new NodeAdapter(roots[ri]), ctx);
                 if (f.foundSkip || f.gyroHint || f.fakeSkip || f.hotZone || ctx.sdkAdWin || ctx.learnedCls) {
                     Long old = adFeatureUntil.get(pkg);
                     if (old == null || now > old) adFeatureUntil.put(pkg, now + CHAIN_GUARD_MS);
                 }
                 /* v3.8.0 倒计时门控（issue#10 二轮·喜马拉雅）：穿山甲类 SDK 倒计时
-                 * 结束前跳过键不响应——「已点击×4 不跳转」真凶之一（提前点全白点，
-                 * 还各占 1.2s 冷却）。文案数字变化→重新锚定；首击未关→等到
-                 * 锚点+剩余秒数-0.5s 再出手；倒计时走完（文案无数字）→立即恢复出手 */
-                boolean cdWait = false;
-                int cdN = f.countdownN;
-                if (cdN > 0) {
-                    Integer lastN = cdLastN.get(pkg);
-                    if (lastN == null || lastN.intValue() != cdN) {
-                        cdLastN.put(pkg, cdN);
-                        cdAnchorAt.put(pkg, now);
-                    }
-                    if (clickAttempts >= 1) {
-                        Long anchor = cdAnchorAt.get(pkg);
-                        long until = (anchor == null ? now : anchor.longValue())
-                                + cdN * 1000L - AdDecisionCore.COUNTDOWN_EXTRA_MS;
-                        if (now < until) {
-                            cdWait = true;
-                            if (cdWaitUntil.put(pkg, until) == null) {
-                                appendLog("⏳ 倒计时门控（" + shortPkg(pkg) + "）：跳过键 "
-                                        + cdN + "s 后才激活（提前点=白点）→ "
-                                        + (until - now) + "ms 后出手即命中");
-                            }
-                        }
-                    }
-                } else {
-                    Long w = cdWaitUntil.get(pkg);
-                    if (w != null) {
-                        cdWaitUntil.remove(pkg);
-                        appendLog("⏳ 倒计时结束（" + shortPkg(pkg) + "）：跳过键已激活 → 出手");
-                    }
-                }
-                if (cdWait) continue;
+                 * 结束前跳过键不响应——「已点击×4 不跳转」真凶之一（提前点全白点）。
+                 * v3.9.0 抽取为 countdownWait()（规则路径/兜底路径共用） */
+                if (countdownWait(pkg, f.countdownN, clickAttempts, now)) continue;
                 Decision d = AdDecisionCore.decide(f, ctx);
                 if (d.action.equals(AdDecisionCore.A_NONE)) continue;
                 if (execute(pkg, d, f, ctx, clickCoolOK, now)) return; // 命中即熔断
             }
         } catch (Exception ignored) {
         }
+    }
+
+    /* ───────── v3.9.0 倒计时门控（自 tryScan 抽取，规则/兜底两路共用）─────────
+     * 穿山甲类 SDK 倒计时结束前跳过键不响应（提前点=白点还占冷却）。
+     * 文案数字变化→重新锚定；首击未关→等到「锚点+剩余秒数-0.5s」再出手；
+     * 倒计时走完（文案无数字）→立即恢复出手。返回 true=继续等待。 */
+    private boolean countdownWait(String pkg, int cdN, int clickAttempts, long now) {
+        if (cdN > 0) {
+            Integer lastN = cdLastN.get(pkg);
+            if (lastN == null || lastN.intValue() != cdN) {
+                cdLastN.put(pkg, cdN);
+                cdAnchorAt.put(pkg, now);
+            }
+            if (clickAttempts >= 1) {
+                Long anchor = cdAnchorAt.get(pkg);
+                long until = (anchor == null ? now : anchor.longValue())
+                        + cdN * 1000L - AdDecisionCore.COUNTDOWN_EXTRA_MS;
+                if (now < until) {
+                    if (cdWaitUntil.put(pkg, until) == null) {
+                        appendLog("⏳ 倒计时门控（" + shortPkg(pkg) + "）：跳过键 "
+                                + cdN + "s 后才激活（提前点=白点）→ "
+                                + (until - now) + "ms 后出手即命中");
+                    }
+                    return true;
+                }
+            }
+            return false;
+        }
+        Long w = cdWaitUntil.get(pkg);
+        if (w != null) {
+            cdWaitUntil.remove(pkg);
+            appendLog("⏳ 倒计时结束（" + shortPkg(pkg) + "）：跳过键已激活 → 出手");
+        }
+        return false;
     }
 
     /** 收集同包可扫描窗口根节点（活动窗口优先，最多 3 个） */
@@ -809,7 +937,7 @@ public class AdSkipService extends AccessibilityService {
                 lastAutoClickPkg = pkg;
                 lastAutoClickAt = now;
                 clickTries.put(pkg, attempts + 1);
-                if (d.action.equals(AdDecisionCore.A_CLOSE)) {
+                if (d.action.equals(AdDecisionCore.A_CLOSE) && f != null) {
                     popupBlocks++;
                     lastPopupAt.put(pkg, now);
                     appendLog("🪟 弹窗广告已关闭（" + shortPkg(pkg) + "）："
@@ -844,11 +972,11 @@ public class AdSkipService extends AccessibilityService {
                 energyGestures++;
                 if (isLearned) {
                     appendLog("🎯 学习位置点击（" + shortPkg(pkg) + "）：你手动教过的位置指纹 ("
-                            + d.x + "," + d.y + ")（手势真实触点）→ 1.2s 后复验");
+                            + d.x + "," + d.y + ")（手势真实触点·相对你的屏幕渲染）→ 0.9s 后复验");
                     bumpPosRule(pkg);
                 } else {
-                    appendLog("🎯 坐标级点击兜底（" + shortPkg(pkg) + "）：开屏窗内零信号简单树"
-                            + " → 点击标准跳过位 (" + d.x + "," + d.y + ")，本次启动仅一次 → 1.2s 后复验");
+                    // v3.9.0：coord_fallback 已移除（绝不盲点固定坐标），此分支仅防御性保留
+                    appendLog("🎯 位置点击（" + shortPkg(pkg) + "）：(" + d.x + "," + d.y + ") → 0.9s 后复验");
                 }
                 bumpStat(pkg, "auto");
                 return true; // 不熔断：交由复验扫描确认
@@ -942,6 +1070,9 @@ public class AdSkipService extends AccessibilityService {
     private volatile String lastGesturePkg = "";
 
     private static String reasonZh(String r) {
+        if (r.equals("rule_global_exact")) return "内嵌规则·文案精确命中（李跳跳式 0ms）";
+        if (r.equals("rule_global_contains")) return "内嵌规则·文案包含命中";
+        if (r.equals("rule_global_vid")) return "内嵌规则·vid 跳过键（零文本图片键）";
         if (r.equals("skip_text")) return "文本跳过键";
         if (r.equals("fake_skip_tap")) return "假跳过手势直点（标签坐标）";
         if (r.equals("sdk_window")) return "SDK 广告窗指纹";
@@ -982,6 +1113,9 @@ public class AdSkipService extends AccessibilityService {
             for (Map.Entry<String, Long> e : adFeatureUntil.entrySet()) {
                 String k = e.getKey();
                 if (k.equals(newPkg)) continue;
+                // v3.9.0 宿主校验（issue#12 整治）：桌面绝不作为广告宿主——
+                // 用户从桌面点开微信/QQ/抖音是正常操作，绝不能被当广告跳转踢出
+                if (AdDecisionCore.isLauncherLike(k)) continue;
                 if (now < e.getValue().longValue()) {
                     if (now - winAt(k) <= WINDOW_MS + CHAIN_GUARD_MS) {
                         host = k;
@@ -1033,8 +1167,8 @@ public class AdSkipService extends AccessibilityService {
     }
 
     private boolean isLauncherLike(String pkg) {
-        return pkg.contains("launcher") || pkg.contains("home")
-                || pkg.equals("com.miui.home") || pkg.equals("com.huawei.android.launcher");
+        // v3.9.0：统一走 AdDecisionCore.isLauncherLike（黑名单/回弹/学习三处共用）
+        return AdDecisionCore.isLauncherLike(pkg);
     }
 
     /* ───────── 智能学习：观察手动点击 + className 指纹 ───────── */
@@ -1226,10 +1360,13 @@ public class AdSkipService extends AccessibilityService {
 
     private boolean popupShieldEnabled() {
         try {
+            // v3.9.0：默认关闭（issue#12 实锤：内容突发检测对正常应用大量误报
+            // 「疑似覆盖层弹窗」——美团/social/view/health 全中招）。学习中心
+            // 可手动开启；开启后仍受 OEM 工具包豁免与 Dialog 形态双重约束。
             JSONObject st = loadState();
-            return !st.has("popupShield") || st.optBoolean("popupShield", true);
+            return st.has("popupShield") && st.optBoolean("popupShield", false);
         } catch (Exception e) {
-            return true;
+            return false;
         }
     }
 
@@ -1250,7 +1387,7 @@ public class AdSkipService extends AccessibilityService {
      */
     private void learnPositionFromManualClick(String pkg, AccessibilityNodeInfo src, long now) {
         if (src == null || screenWidth <= 0 || screenHeight <= 0) return;
-        if (now - winAt(pkg) > 10000) return; // 仅窗口切换后 10s 内（开屏期）
+        if (now - winAt(pkg) > 6000) return; // v3.9.0：仅窗口切换后 6s 内（开屏期收紧，防误学主页面控件）
         try {
             Rect r = new Rect();
             src.getBoundsInScreen(r);
