@@ -24,7 +24,7 @@ import {
 const stats = [
   { label: "内置规则", value: "五层 + 28 款分应用表", sub: "全部内嵌 APK · 零云端" },
   { label: "出手速度", value: "0ms", sub: "事件驱动 · 露头就秒跳" },
-  { label: "JVM 用例", value: "172", sub: "规则引擎 60 + 决策核心 112 全绿" },
+  { label: "JVM 用例", value: "168", sub: "规则引擎 60 + 决策核心 108 全绿" },
   { label: "乱点红线", value: "0 盲点", sub: "只点控件自身 bounds · 适配任意分辨率" },
 ];
 
@@ -34,22 +34,22 @@ const features = [
   { icon: Sparkles, title: "SDK 图片键", desc: "vid skip 族 + SDK 窗 close 族（边缘带）" },
   { icon: BrainCircuit, title: "习惯学习", desc: "位置/指纹沉淀，越用越快" },
   { icon: MessageSquareWarning, title: "日志反馈", desc: "一键上传 GitHub Issues，驱动迭代" },
-  { icon: RefreshCw, title: "保活自愈", desc: "心跳 5 分钟 + adb 自愈授权" },
+  { icon: RefreshCw, title: "纯跳过引擎", desc: "v3.12.0：链式拦截整体移除，分享/支付跳转不再被误弹回" },
 ];
 
 const versions = [
   {
-    v: "3.10.0",
-    d: "内置规则库大扩充 + 界面精简重构：五层全局规则 + 28 款分应用表；桌面黑名单与广告窗指纹扩充；UI 精简重构（去除大段说明文字）。",
+    v: "3.12.0",
+    d: "纯跳过引擎：链式拦截机制整体移除（issue#14 实锤）——NFC 碰一碰支付链与主动「分享到微信」曾被 1.5s 内连按 3 次返回键弹回；用户意图无法穷举，回弹收益远小于代价。同包落地页弹回一并移除；connectivity 连接检查窗循环误点归零。",
     latest: true,
   },
   {
-    v: "3.9.0",
-    d: "QQ/微信/抖音「进去就被退出来」根因修复（三刀根治）；内嵌规则引擎主路径化，0ms 露头秒跳。",
+    v: "3.11.0",
+    d: "链式回弹用户意图安全门（三重放行）+ 学习规则明细撤出界面（引擎照常学习）。",
   },
   {
-    v: "3.8.1",
-    d: "发布加固：开机自愈路径修复 + 自愈双格式匹配。",
+    v: "3.10.0",
+    d: "内置规则库大扩充 + 界面精简重构：五层全局规则 + 28 款分应用表；桌面黑名单与广告窗指纹扩充；UI 精简重构（去除大段说明文字）。",
   },
 ];
 
@@ -61,8 +61,8 @@ export default function Home() {
         <div className="max-w-5xl mx-auto px-4 sm:px-6 pt-10 pb-6 sm:pt-14">
           <div className="flex flex-col gap-4">
             <div className="flex flex-wrap items-center gap-2">
-              <Badge className="bg-emerald-600 hover:bg-emerald-600 text-white">开屏卫士 v3.10.0</Badge>
-              <Badge variant="outline" className="border-emerald-300 text-emerald-700">内置规则库大扩充</Badge>
+              <Badge className="bg-emerald-600 hover:bg-emerald-600 text-white">开屏卫士 v3.12.0</Badge>
+              <Badge variant="outline" className="border-emerald-300 text-emerald-700">纯跳过引擎</Badge>
               <Badge variant="outline">Android 7.0+</Badge>
             </div>
             <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-neutral-900">
@@ -70,14 +70,14 @@ export default function Home() {
               <span className="text-emerald-600">绝不乱点</span>
             </h1>
             <p className="text-base text-neutral-600 max-w-2xl">
-              开屏广告自动跳过引擎。规则全部内嵌，只认控件属性、只点控件自身位置；日志反馈与习惯学习完整保留。
+              开屏广告自动跳过引擎。规则全部内嵌，只认控件属性、只点控件自身位置；v3.12.0 起链式拦截整体移除，只点「跳过/关闭」，绝不对抗你的任何跳转。
             </p>
             <div className="flex flex-wrap gap-3">
               <Button
                 className="bg-emerald-600 hover:bg-emerald-700 h-10 px-5"
                 onClick={() => window.open("https://github.com/xiaobaiba999/Skip-Ad/releases/latest", "_blank")}
               >
-                <Download className="mr-1.5 h-4 w-4" /> 下载 APK（93KB）
+                <Download className="mr-1.5 h-4 w-4" /> 下载 APK（GitHub 最新版）
               </Button>
               <Button
                 variant="outline"
@@ -156,7 +156,7 @@ export default function Home() {
               <div className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 rounded-lg bg-emerald-50 border border-emerald-200">
                 <Download className="w-6 h-6 text-emerald-600 shrink-0" />
                 <div className="min-w-0 text-sm">
-                  <span className="font-semibold text-neutral-900">adshield-v3.10.0.apk</span>
+                  <span className="font-semibold text-neutral-900">adshield-v3.12.0.apk</span>
                   <span className="text-neutral-500"> · 同签名覆盖升级，学习数据保留 · GitHub Releases 可下载历版</span>
                 </div>
               </div>
@@ -170,7 +170,7 @@ export default function Home() {
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-neutral-500">
           <div className="flex items-center gap-2">
             <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span>开屏卫士 Skip-Ad · v3.10.0</span>
+            <span>开屏卫士 Skip-Ad · v3.12.0</span>
           </div>
           <div className="flex flex-col sm:flex-row items-center gap-1.5 sm:gap-4 text-center">
             <span>只代点「跳过/关闭」，不碰网络、不终止进程</span>
