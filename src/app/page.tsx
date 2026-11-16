@@ -6,6 +6,7 @@ import { IntelStation } from "@/components/intel-station";
 import { LearningCenter } from "@/components/learning-center";
 import { AboutPanel } from "@/components/about-panel";
 import { FeedbackDialog } from "@/components/feedback-dialog";
+import { Logo } from "@/components/logo";
 import { Button } from "@/components/ui/button";
 import { APP_VERSION, GITHUB_HOME } from "@/lib/version";
 import { cn } from "@/lib/utils";
@@ -33,17 +34,17 @@ export default function Home() {
       <header className="sticky top-0 z-30 border-b border-zinc-200 bg-white/85 backdrop-blur">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3 px-4 py-2.5 lg:px-6">
           <div className="flex items-center gap-2.5">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-600 text-white shadow-md shadow-violet-500/25">
-              <Zap className="h-4.5 w-4.5" />
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-md shadow-emerald-500/30">
+              <Logo size={26} />
             </span>
             <div>
               <h1 className="flex items-center gap-2 text-[15px] font-bold leading-tight text-zinc-900">
                 Skip-Ad · 秒跳引擎
-                <span className="rounded-full bg-violet-50 px-1.5 py-0.5 text-[10px] font-bold text-violet-700 ring-1 ring-violet-200">
+                <span className="rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 ring-1 ring-emerald-200">
                   v{APP_VERSION}
                 </span>
               </h1>
-              <p className="text-[11px] text-zinc-500">角落键+坐标点击 · SDK 窗指纹 · 链式回弹 · 弹窗 v2 · 十八轮自测 100%</p>
+              <p className="text-[11px] text-zinc-500">点击复验+位置学习 · 角落键+坐标点击 · SDK 窗指纹 · 链式回弹 · 弹窗 v2 · 保活</p>
             </div>
           </div>
 

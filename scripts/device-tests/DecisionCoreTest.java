@@ -308,6 +308,145 @@ public class DecisionCoreTest {
         check("R1d 桌面不在名单", !AdDecisionCore.isAdTarget("com.miui.home"));
     }
 
+    /* ═══════ v3.5.0：点击复验 / 学习位置 / 开屏×关闭（二次真机反馈） ═══════ */
+
+    /** V1：复验重试梯子——第 1 个角落候选点完没关 → 换第 2 个候选；≥3 次 → 返回键兑底 */
+    static void verify_retryLadder() {
+        FakeNode root = FakeNode.root("com.sina.weibo.SplashActivity");
+        FakeNode adImage = FakeNode.node("android.widget.ImageView", 0, 0, 1080, 2400);
+        adImage.click();
+        FakeNode wrongBtn = FakeNode.node("android.widget.ImageView", 940, 90, 1030, 180).click();  // 候选 1：点不动
+        FakeNode realBtn = FakeNode.node("android.widget.ImageView", 60, 90, 140, 170).click();   // 候选 2：左上角真跳过
+        root.add(adImage).add(wrongBtn).add(realBtn);
+
+        // 第 1 次点击：候选 1（右）
+        Decision d1 = run(root, splash(700));
+        check("V1a 首次点击候选 1（右上）",
+                d1.action.equals(AdDecisionCore.A_CLICK_BOUNDS) && d1.bounds[0] == 940,
+                "实际: " + d1.action + " @" + (d1.bounds != null ? d1.bounds[0] : -1));
+
+        // 点击后广告没关（同窗 clickAttempts=1）→ 复验换候选 2（左上真跳过）
+        Ctx retry = splash(2200);
+        retry.clickAttempts = 1;
+        Decision d2 = run(root, retry);
+        check("V1b 复验失败换候选 2（左上）",
+                d2.action.equals(AdDecisionCore.A_CLICK_BOUNDS) && d2.bounds[0] == 60,
+                "实际: " + d2.action + " @" + (d2.bounds != null ? d2.bounds[0] : -1));
+
+        // 3 次都点不动 → 返回键兑底（「日志显示已点、实际没反应」的最终兑底）
+        Ctx giveup = splash(4200);
+        giveup.clickAttempts = 3;
+        giveup.coordTapUsed = true;
+        Decision d3 = run(root, giveup);
+        check("V1c 点击 ≥3 次仍同窗 → 返回键兑底",
+                d3.action.equals(AdDecisionCore.A_BACK) && d3.reason.equals("click_verify_fail"),
+                "实际: " + d3.action + "/" + d3.reason);
+    }
+
+    /** V2：开屏×关闭键（v3.4.0 发现了却从不点）→ 顶部小关闭键 + 广告形态树 → 代点 */
+    static void splash_closeKey() {
+        FakeNode root = FakeNode.root("com.ximalaya.ting.android.host.activity.WelComeActivity");
+        FakeNode adImage = FakeNode.node("android.widget.ImageView", 0, 0, 1080, 2400);
+        adImage.click();
+        FakeNode close = FakeNode.node("android.widget.TextView", 990, 100, 1040, 150).txt("×").click();
+        root.add(adImage).add(close);
+
+        Decision d = run(root, splash(700));
+        check("V2 开屏×关闭键代点（顶部 + 广告形态树）",
+                d.action.equals(AdDecisionCore.A_CLICK_BOUNDS) && d.reason.equals("splash_close"),
+                "实际: " + d.action + "/" + d.reason);
+
+        // 底部关闭键（隐私/业务弹窗形态）→ 不点
+        FakeNode root2 = FakeNode.root("com.sina.weibo.SplashActivity");
+        FakeNode body = FakeNode.node("android.widget.TextView", 100, 900, 980, 1000)
+                .txt("发现新版本 8.4.0，更新即刻体验全新首页与更多权益内容");
+        FakeNode close2 = FakeNode.node("android.widget.Button", 480, 1800, 600, 1900).txt("暂不").click();
+        root2.add(body).add(close2);
+        Decision d2 = run(root2, splash(1200));
+        check("V2b 底部「暂不」不当广告×点",
+                !(d2.action.equals(AdDecisionCore.A_CLICK_BOUNDS) && "splash_close".equals(d2.reason)),
+                "实际: " + d2.action + "/" + d2.reason);
+    }
+
+    /** V3：长文本内容页（文章/隐私条款）→ 绝不坐标兜底/不点关闭 */
+    static void longText_guard() {
+        FakeNode root = FakeNode.root("com.sina.weibo.ArticleActivity");
+        FakeNode article = FakeNode.node("android.widget.TextView", 60, 200, 1020, 2100)
+                .txt("这是一篇很长的正文文章内容，超过四十个字符就会触发长文本豁免，引擎不应把它当广告页处理");
+        FakeNode closeTop = FakeNode.node("android.widget.ImageView", 1000, 90, 1060, 150).txt("关闭").click();
+        root.add(article).add(closeTop);
+        Decision d = run(root, splash(1500));
+        check("V3 长文本页零动作（不点顶部关闭、不坐标兜底）",
+                d.action.equals(AdDecisionCore.A_NONE), "实际: " + d.action + "/" + d.reason);
+    }
+
+    /** V4：学习位置点击（手动教一次就会）→ 500ms 直点；失败不重复点 */
+    static void learnedPos_tap() {
+        FakeNode root = FakeNode.root("com.ximalaya.ting.android.host.activity.WelComeActivity");
+        FakeNode adImage = FakeNode.node("android.widget.ImageView", 0, 0, 1080, 2400);
+        adImage.click();
+        root.add(adImage);
+
+        Ctx ctx = splash(560);
+        ctx.tapHintX = 985;
+        ctx.tapHintY = 115;
+        Decision d = run(root, ctx);
+        check("V4a 学习位置 500ms 直点",
+                d.action.equals(AdDecisionCore.A_TAP_POINT) && d.reason.equals("learned_pos")
+                        && d.x == 985 && d.y == 115,
+                "实际: " + d.action + "/" + d.reason + " @" + d.x + "," + d.y);
+
+        // 已点过一次没关（clickAttempts=1）→ 不再点学习位置，转候选/兑底链
+        Ctx retry = splash(2200);
+        retry.tapHintX = 985;
+        retry.tapHintY = 115;
+        retry.clickAttempts = 1;
+        retry.coordTapUsed = true;
+        Decision d2 = run(root, retry);
+        check("V4b 学习位置失败不重复点（转入兑底链）",
+                !(d2.reason.equals("learned_pos")), "实际: " + d2.action + "/" + d2.reason);
+
+        // 未到时机（450ms）→ 不点
+        Ctx early = splash(450);
+        early.tapHintX = 985;
+        early.tapHintY = 115;
+        Decision d3 = run(root, early);
+        check("V4c 学习位置 500ms 前不点", d3.action.equals(AdDecisionCore.A_NONE),
+                "实际: " + d3.action + "/" + d3.reason);
+    }
+
+    /** V6：信息流/正常界面即便有学习位置指纹也绝不点（L1.5 安全门） */
+    static void learnedPos_safetyGate() {
+        FakeNode root = FakeNode.root("com.sina.weibo.HomeActivity");
+        FakeNode feed = FakeNode.node("androidx.recyclerview.widget.RecyclerView", 0, 200, 1080, 2300).scroll();
+        FakeNode avatar = FakeNode.node("android.widget.ImageView", 950, 120, 1040, 210).click();
+        feed.add(avatar);
+        root.add(feed);
+        Ctx ctx = splash(800);
+        ctx.tapHintX = 995;
+        ctx.tapHintY = 165; // 用户在信息流点过头像的位置
+        Decision d = run(root, ctx);
+        check("V6 信息流界面有位置指纹也零动作（安全门）",
+                d.action.equals(AdDecisionCore.A_NONE), "实际: " + d.action + "/" + d.reason);
+    }
+
+    /** V5：角落图片自身不可点、父容器可点 → 候选以父为代点目标、以子为点击坐标 */
+    static void corner_ancestor() {
+        FakeNode root = FakeNode.root("com.sina.weibo.SplashActivity");
+        FakeNode adImage = FakeNode.node("android.widget.ImageView", 0, 0, 1080, 2400);
+        adImage.click();
+        FakeNode wrap = FakeNode.node("android.view.View", 930, 80, 1040, 190).click();
+        FakeNode icon = FakeNode.node("android.widget.ImageView", 950, 95, 1020, 165); // 不可点
+        wrap.add(icon);
+        root.add(adImage).add(wrap);
+
+        Decision d = run(root, splash(700));
+        check("V5 不可点图片经可点父容器命中，点子控件坐标",
+                d.action.equals(AdDecisionCore.A_CLICK_BOUNDS) && d.reason.equals("corner_image_skip")
+                        && d.bounds[0] == 950,
+                "实际: " + d.action + "/" + d.reason + " @" + (d.bounds != null ? d.bounds[0] : -1));
+    }
+
     /* ═════════ 断言工具 ═════════ */
 
     static void check(String name, boolean ok) {
@@ -359,6 +498,14 @@ public class DecisionCoreTest {
         System.out.println("── 热区 / 回弹 ──");
         hotZone();
         reboundTargets();
+
+        System.out.println("── v3.5.0：点击复验 / 学习位置 / 开屏×关闭（二次真机反馈）──");
+        verify_retryLadder();
+        splash_closeKey();
+        longText_guard();
+        learnedPos_tap();
+        learnedPos_safetyGate();
+        corner_ancestor();
 
         System.out.println("\n═══ 结果：" + pass + " PASS / " + fail + " FAIL ═══");
         if (fail > 0) {

@@ -1,13 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.zai.adshield"
-    android:versionCode="30000"
-    android:versionName="3.0.0">
+    android:versionCode="30500"
+    android:versionName="3.5.0">
 
     <!-- 网络：问题反馈（GitHub Issues）与检查更新（GitHub Releases） -->
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- v3.0.0 应用内更新：系统 DownloadManager 下载 + 拉起安装 -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- v3.5.0 保活：前台常驻通知 + 更新/重启后断连提醒 -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- v3.5.0 保活：电池优化白名单（防厂商省电策略杀服务） -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <!-- queries：用于在学习中心展示应用名称（可启动应用可见性） -->
     <queries>
@@ -36,6 +43,7 @@
         <service
             android:name=".AdSkipService"
             android:exported="true"
+            android:foregroundServiceType="specialUse"
             android:label="@string/service_name"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <intent-filter>
@@ -44,6 +52,22 @@
             <meta-data
                 android:name="android.accessibilityservice"
                 android:resource="@xml/accessibility_service_config" />
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="AdSkip accessibility service: keep enabled until user manually disables" />
         </service>
+
+        <!-- v3.5.0 保活：开机/应用更新后检测服务断开 → 高优先级通知一键恢复
+             （Android 会在覆盖安装/系统更新后关闭无障碍服务，系统层无法绕过，
+               此接收器保证用户第一时间收到提醒，点按直达恢复流程） -->
+        <receiver
+            android:name=".KeepAliveReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

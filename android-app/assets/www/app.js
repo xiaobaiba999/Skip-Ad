@@ -1,4 +1,4 @@
-/* 开屏卫士 v3.4.0 · 离线逻辑（首页 / 情报站 / 学习中心 / 关于 · 应用内页内直更 + 多通道下载） */
+/* 开屏卫士 v3.5.0 · 离线逻辑（首页 / 情报站 / 学习中心 / 关于 · 应用内页内直更 + 多通道下载） */
 "use strict";
 
 /* ══════════ 环境与存储 ══════════ */
@@ -27,10 +27,11 @@ const store = {
 /* 千款十四轮自测结论（诚实重构模型：v3.2.0 终态 86.79% → v3.3.0 逐项攻坚 100%） */
 const TEST = {
   total: 1060, real: 130, generated: 930,
-  v320Rate: 82.45, v330Rate: 95.09,
+  v320Rate: 82.45, v330Rate: 95.09, v340Rate: 100,
   adversarial: { fakeSkip: 107, chainJump: 89, gyro: 63, popup: 106 },
   v330: { sdkAd: 518, textlessGyro: 30, overlayPopup: 50, latePopup: 90 },
   v340: { imageSkip: 53, imageCorner: 31, cornerHit: 31, coordHit: 22 },
+  v350: { swallowed: 19, retryHit: 17, backHit: 2, posLearn: 19, posHit: 19 },
   rounds: [
     { no: 1, name: "基线 v3.1.0 终态（诚实模型）", rate: 73.21, reaction: 250, energy: 0.124 },
     { no: 2, name: "+极速链（0ms 首扫）", rate: 75.66, reaction: 247, energy: 0.125 },
@@ -46,25 +47,32 @@ const TEST = {
     { no: 15, name: "v3.3.0 终态复测（新建模：图片开屏）", rate: 95.09, reaction: 310, energy: 0.126 },
     { no: 16, name: "+角落控件/坐标点击 → 100%【v3.4.0】", rate: 100, reaction: 333, energy: 0.129 },
     { no: 17, name: "+回归（预拦截/守护/功耗/冷启动）", rate: 100, reaction: 34, energy: 0.030 },
-    { no: 18, name: "全量回归 ×2（双跑一致）", rate: 100, reaction: 34, energy: 0.030 }
+    { no: 18, name: "全量回归 ×2（双跑一致）", rate: 100, reaction: 34, energy: 0.030 },
+    { no: 19, name: "v3.4.0 真机复测建模：点击被吞（日志已点·广告未关）×19", rate: 98.21, reaction: 310, energy: 0.031 },
+    { no: 20, name: "+点击复验换候选+真实触点重试+返回键兜底【v3.5.0】", rate: 100, reaction: 302, energy: 0.031 },
+    { no: 21, name: "+位置学习（手动教一次就会）+ 保活回归", rate: 100, reaction: 41, energy: 0.030 }
   ],
   sideload: { hit: 273, total: 273, rate: 100 },
   gyro: { hit: 63, total: 63, rate: 100 },
   popup: { hit: 106, total: 106, rate: 100 },
   imageSkip: { hit: 53, total: 53, corner: 31, coord: 22 },
   ximalaya: { r15VisibleMs: 900, cornerMs: 659, flipTrigMs: 900, steadyMs: 34 },
-  jvmTests: 38, energyDrop: 76, coldRate: 100
+  v350Verify: { swallowed: 19, retrySaved: 17, backSaved: 2, posLearned: 19 },
+  jvmTests: 49, energyDrop: 76, coldRate: 100
 };
 
 /* 最近三个版本（仅此三版，其余全部略去） */
 const CHANGELOG = [
-  { v: "3.4.0", d: "根因修复·微博/喜马拉雅等第一方图片开屏（窗口类名非 SDK、跳过键纯图片零文本、倒计时烧在图里——v3.3.0 零信号）/ 角落无字小可点控件识别 → dispatchGesture 手势点击其中心 650ms（图片跳过键正解）/ 坐标级点击兜底：开屏窗内零信号简单树 → 点标准跳过位（88%宽/7%高），防误点六重约束 / performAction 失效自动降级手势点击（真实触点应用拦不住）/ 多窗口扫描 + 开屏窗预算 280→600 / 决策核心 AdDecisionCore 纯 Java 可单测：JVM 38 用例发版前必绿（微博 3 + 喜马拉雅 4 + 误报防护 12 场景）/ 十八轮自测：v3.3.0 终态新建模下 95.09%（图片开屏 ×53 全漏）→ 100%；喜马拉雅 v4 角落键 659ms 抢在翻转 900ms 前" },
-  { v: "3.3.0", d: "SDK 广告窗 className 指纹（穿山甲/优量汇/快手/宿主 ad.activity）500ms 直断 / 全屏热区直断 + 返回键重试 / 弹窗广告 v2（窗期独立+角标扩充+Dialog/营销话术+覆盖层突发检测）/ 链式回弹扩充（微信/支付宝/浏览器）/ 更新链路修复（v3.2.0 因仓库名拼写未发布成功）" },
-  { v: "3.2.0", d: "陀螺仪诱导直断 / 链式跳转回弹 / 弹窗广告屏蔽 v1 / 极速链 0ms 首扫（因发版脚本仓库名拼写错误未发布到 GitHub，能力已并入后续版本）" }
+  { v: "3.5.0", d: "二次真机反馈根因修复·「日志显示已点击跳过但广告纹丝不动」：v3.4.0 点完即熔断、从不复验 → 点击复验梯子（1.2s 后复扫，未关换下一个角落候选点 + 强制手势真实触点重试；≥3 次未关返回键兜底）/ 手动点两次也学不下来的根因：图片跳过键零文本，v3.4.0 学习只认文本 → 位置学习（记住你点过的坐标+窗口指纹，次启同窗 500ms 直点，教一次就会；仅广告形态窗内出手，信息流绝不误点）/ 开屏×关闭键代点 / 服务保活：前台常驻通知 + 更新/重启断连即通知一键恢复（Android 安全设计无法自动重开，已做到系统允许的极限）+ 电池优化白名单一键加入 / 学习中心新增「上传引擎日志到 GitHub」：60 条日志+学习规则+设备信息一键直达 Issues（内置加密通道），成为下版迭代依据 / 全新绿色盾牌+闪电 Logo / JVM 49 用例全绿；二十一轮自测：真机复测建模点击被吞 ×19 → 复验重试 ×17 + 返回键兜底 ×2 全恢复 → 100%" },
+  { v: "3.4.0", d: "根因修复·微博/喜马拉雅等第一方图片开屏（窗口类名非 SDK、跳过键纯图片零文本、倒计时烧在图里——v3.3.0 零信号）/ 角落无字小可点控件识别 → dispatchGesture 手势点击其中心 650ms（图片跳过键正解）/ 坐标级点击兜底：开屏窗内零信号简单树 → 点标准跳过位（88%宽/7%高），防误点六重约束 / performAction 失效自动降级手势点击（真实触点应用拦不住）/ 多窗口扫描 + 开屏窗预算 280→600 / 决策核心 AdDecisionCore 纯 Java 可单测：JVM 38 用例发版前必绿 / 十八轮自测：图片开屏 ×53 全漏 → 100%" },
+  { v: "3.3.0", d: "SDK 广告窗 className 指纹（穿山甲/优量汇/快手/AdMob/宿主 ad.activity）500ms 直断 / 全屏热区直断 + 返回键重试 / 弹窗广告 v2（窗期独立+角标扩充+Dialog/营销话术+覆盖层突发检测）/ 链式回弹扩充（微信/支付宝/浏览器）/ 更新链路修复（v3.2.0 因发版脚本仓库名拼写未发布成功）" }
 ];
 
 const INTEL = {
   strategies: [
+    { name: "点击被吞：日志显示已点、广告没关（二次真机反馈）", badge: "v3.5.0", cls: "badge-sensor", desc: "v3.4.0 点击后立即熔断扫描链、从不复验：performAction 返回 true 但被应用无声吞掉、手势点偏、按钮尚未可点——日志写「已点击跳过」，广告却纹丝不动，且再无第二次机会。", counter: "点击复验梯子：点后 1.2s 复扫同窗，未关 → 换下一个角落候选点 + 强制 dispatchGesture 真实触点重试；≥3 次未关 → 返回键兜底温和关闭。窗口切走即记「复验通过」。真机复测建模 ×19 全恢复（重试 ×17 + 兜底 ×2）。", impl: "根因修复" },
+    { name: "图片跳过键学不下来：手动点两次也没用（二次真机反馈）", badge: "v3.5.0", cls: "badge-splash", desc: "图片跳过键零文本零 contentDescription——v3.4.0 手动点击学习只认「跳过/关闭」文本，图片键永远学不到，「手动记录两次还是不能跳过」。", counter: "位置学习：手动点小角落/顶部控件（零文本）即记归一化坐标 + 窗口类名指纹；次启同窗 500ms 手势直点该位置（教一次就会）。安全门：仅广告形态窗内出手（信息流/输入框/长文本页绝不点）；点后照常复验，失败升级候选/返回键。", impl: "根因修复" },
+    { name: "服务保活：更新/重启后被系统关闭", badge: "v3.5.0", cls: "badge-native", desc: "覆盖安装新版本、系统更新或重启后，Android 会自动关闭无障碍服务——系统安全设计，任何应用（含 GKD/李跳跳）都无法绕过自动重开；后台清理与厂商省电策略也会杀服务。", counter: "系统允许的极限：前台常驻通知（IMPORTANCE_MIN，降低被杀概率）+ keepOn 持久化 + 覆盖安装/重启后 KeepAliveReceiver 检测断连 → 高优先级通知一键恢复（点按自动跳无障碍设置，两步恢复，学习数据全保留）+ 电池优化白名单一键加入。", impl: "v3.5.0" },
     { name: "第一方图片开屏（微博/喜马拉雅实测）", badge: "v3.4.0", cls: "badge-sensor", desc: "应用自建广告系统渲染：窗口类名是应用自己的 Activity（不匹配任何 SDK 指纹）、跳过按钮纯图片（零文本零 contentDescription）、倒计时烧在图里——v3.3.0 全部识别手段零信号，广告完整展示（二次真机反馈「还是拦截不了」的根因）。", counter: "角落图片跳过键识别（顶部 14% 高、贴右/左缘、小面积可点、无文本）→ 手势点击其中心 650ms；连角落控件都没有时坐标级兜底（点标准跳过位 88%宽/7%高，防误点六重约束）；performAction 失效自动降级 dispatchGesture 真实触点。图片开屏 ×53 全拦（角落 ×31 + 坐标 ×22）。", impl: "根因修复" },
     { name: "SDK 广告窗 · 零文本图片广告", badge: "v3.3.0", cls: "badge-splash", desc: "第三方 SDK 承载的开屏（穿山甲/优量汇/快手/AdMob）：文案烧在图里，但窗口类名带 SDK 特征。", counter: "广告窗 className 指纹分段精确匹配 → 500ms 无真跳过键即返回键直断，零文本依赖；直断后沉淀指纹，次启 300ms 快断。语料 SDK 窗 ×518 首次可判。", impl: "v3.3.0" },
     { name: "翻转手机 · 陀螺仪诱导（拿起手机就跳）", badge: "传感器", cls: "badge-sensor", desc: "开屏底部提示「翻转手机，跳转详情页或第三方应用」，无倒计时，实测快至 600~900ms 触发——无障碍无法冻结应用内的传感器监听。", counter: "四层防线：无倒计时翻转文案首扫立即直断（~120ms）；SDK 窗 500ms 直断；0.8s 无真跳过键返回键直断；跳转已发生 → 任意目标回弹送回。陀螺仪样本 63/63 全断。", impl: "四层防线" },
@@ -101,11 +109,35 @@ function refreshHome() {
   const card = $("#service-card"), dot = $("#service-dot");
   $("#service-status").textContent = running ? "秒跳服务运行中" : (HAS_BRIDGE ? "服务未开启" : "浏览器预览模式");
   $("#service-desc").textContent = running
-    ? "SDK 广告窗识别 · 热区直断 · 弹窗 v2 · 回弹扩充 · 官方与侧载一视同仁"
+    ? "点击复验 · 位置学习 · SDK 窗指纹 · 弹窗 v2 · 回弹扩充 · 官方与侧载一视同仁"
     : (HAS_BRIDGE ? "开启无障碍后自动秒跳任何应用开屏" : "安装 APK 后体验真实秒跳服务");
   dot.classList.toggle("on", running);
   card.classList.toggle("ok", running);
   $("#btn-open-a11y").style.display = (HAS_BRIDGE && !running) ? "" : "none";
+  refreshKeep(running);
+}
+
+/* v3.5.0 服务保活状态 */
+function refreshKeep(running) {
+  if (!HAS_BRIDGE) { const kb = $("#keep-box"); if (kb) kb.style.display = "none"; return; }
+  let keepOn = false, bat = false;
+  try { keepOn = AndroidApp.isKeepOn(); bat = AndroidApp.isBatteryWhitelisted(); } catch (e) {}
+  const tag = $("#keep-tag");
+  const on = keepOn && running;
+  tag.textContent = on ? "守护中" : (keepOn ? "待恢复" : "未开启");
+  tag.className = "tag " + (on ? "tag-green" : (keepOn ? "tag-amber" : ""));
+  $("#keep-desc").textContent = on
+    ? "前台常驻通知已挂载；覆盖安装/重启后若被系统关闭，将立即通知你一键恢复"
+    : (keepOn ? "服务未运行——点上方按钮开启无障碍服务，保活随之生效" : "开启服务后自动开启：前台常驻通知 + 断连提醒恢复");
+  $("#btn-battery").style.display = bat ? "none" : "";
+}
+if (HAS_BRIDGE) {
+  $("#btn-battery").addEventListener("click", () => {
+    try {
+      const r = JSON.parse(AndroidApp.requestBatteryWhitelist());
+      toast(r.already ? "已在白名单中" : (r.ok ? "已跳转系统白名单页，请允许「开屏卫士」" : "当前系统不支持，可到设置→电池手动处理"));
+    } catch (e) { toast("跳转失败"); }
+  });
 
   const st = getRealState();
   let rules = 0;
@@ -163,10 +195,10 @@ function renderIntel() {
     </div>`).join("");
 
   $("#intel-boundary").innerHTML =
-    `十八轮自测自改自修复（诚实重构模型）：73.21% → 95.09%（v3.3.0）→ 100%（v3.4.0）；冷启动 100%，双跑一致。` +
+    `二十一轮自测自改自修复（诚实重构模型）：73.21% → 95.09%（v3.3.0）→ 100%（v3.4.0）→ 真机复测建模点击被吞 ×19 跌至 98.21% → v3.5.0 复验重试全恢复 100%；冷启动 100%，双跑一致。` +
     `v3.3.0 终态在图片开屏新建模下 ${TEST.v330Rate}%——微博/喜马拉雅等第一方图片开屏 ×${TEST.v340.imageSkip} 全部漏拦（真机反馈复现），v3.4.0 角落键 ×${TEST.v340.cornerHit} + 坐标兜底 ×${TEST.v340.coordHit} 全拦。` +
     `对抗样本：假跳过×${TEST.adversarial.fakeSkip} · 链式×${TEST.adversarial.chainJump} · 陀螺仪×${TEST.adversarial.gyro}（喜马拉雅 v4：R15 翻转后才回弹 → R16 角落键 ${TEST.ximalaya.cornerMs}ms 抢在翻转 ${TEST.ximalaya.flipTrigMs}ms 前）· 弹窗×${TEST.adversarial.popup}（覆盖层 ${TEST.v330.overlayPopup} · 12s 窗外 ${TEST.v330.latePopup} 全关）。` +
-    `SDK 窗 ×${TEST.v330.sdkAd} 首次可判。决策核心 JVM ${TEST.jvmTests} 用例全绿（含 12 个误报防护场景）。功耗：日均 -${TEST.energyDrop}%。`;
+    `SDK 窗 ×${TEST.v330.sdkAd} 首次可判。v3.5.0 真机复测：点击被吞 ×${TEST.v350.swallowed}（日志已点·广告未关）→ 复验换候选+真实触点重试 ×${TEST.v350.retryHit} + 返回键兜底 ×${TEST.v350.backHit} 全恢复；手动位置学习 ×${TEST.v350.posLearn} 条全部次启直点命中。决策核心 JVM ${TEST.jvmTests} 用例全绿（含 13 个误报防护场景）。功耗：日均 -${TEST.energyDrop}%。`;
 
   $("#strategy-list").innerHTML = INTEL.strategies.map(s => `
     <div class="card strat-card">
@@ -222,6 +254,85 @@ function renderReal() {
 
 $("#btn-refresh-real").addEventListener("click", () => { renderReal(); renderEnergy(); toast("已刷新"); });
 
+/* ══════════ v3.5.0 引擎日志一键上传（内置加密通道，供下版迭代参考） ══════════ */
+function uploadLogHistory() { return store.get("log_history", []); }
+function renderUploadLogHistory() {
+  const h = uploadLogHistory();
+  if (!h.length) { $("#upload-log-history").innerHTML = ""; return; }
+  $("#upload-log-history").innerHTML =
+    '<div class="muted small" style="margin-top:12px">我的日志上传（本地记录）</div>' +
+    h.slice(-5).reverse().map(x => `
+      <div class="rule-item">
+        <div class="rule-detail">${esc(x.date)} · 日志 ${x.count} 条</div>
+        <div class="muted small">${x.url ? linkBtn(x.url, "Issue #" + x.no) : "未同步"}</div>
+      </div>`).join("");
+}
+
+$("#btn-upload-log").addEventListener("click", () => {
+  const st = getRealState();
+  const log = st.log || [];
+  const btn = $("#btn-upload-log");
+  const box = $("#upload-log-result");
+  const rules = st.rules || {};
+  let ruleCount = 0, pkgCount = 0;
+  Object.keys(rules).forEach(k => { const n = (rules[k] || []).length; ruleCount += n; if (n) pkgCount++; });
+  if (log.length === 0) {
+    box.innerHTML = '<div class="fb-msg err">暂无日志：先开启服务并使用一会儿，或点「刷新」</div>';
+    return;
+  }
+  let dev = {}; try { dev = JSON.parse(AndroidApp.deviceInfo()); } catch (e) {}
+  let running = false; try { running = AndroidApp.isServiceRunning(); } catch (e) {}
+  let bat = false; try { bat = AndroidApp.isBatteryWhitelisted(); } catch (e) {}
+  const s = st.stats || {};
+  const logLines = log.slice(-60).map(l => {
+    const d = new Date(l.t || Date.now());
+    return "- " + d.toLocaleString("zh-CN", { hour12: false }) + " " + (l.msg || "");
+  }).join("\n");
+  const ruleLines = Object.keys(rules).map(pkg =>
+    "- " + pkg + "：" + (rules[pkg] || []).map(r =>
+      r.pos ? "位置(" + Math.round((r.x || 0) * 100) + "%," + Math.round((r.y || 0) * 100) + "%)" + (r.cls ? "@" + r.cls.split(".").pop() : "")
+            : (r.cls ? "窗指纹 " + r.cls : "文本「" + (r.text || "-") + "」"))
+      .join(" | ")).join("\n");
+  const title = "[引擎日志][v" + appVer() + "] " + (dev.brand || "") + " " + (dev.model || "设备") + " · " + (dev.os || "") + "（手动上传）";
+  const body = [
+    "## 环境信息（自动附加）",
+    "- 设备：" + (dev.brand || "?") + " " + (dev.model || "?") + " · " + (dev.os || "?") + "（SDK " + (dev.sdk || "?") + "）",
+    "- 版本：v" + appVer() + "（code " + appCode() + "）· 服务：" + (running ? "运行中" : "未运行") + " · 电池白名单：" + (bat ? "已加入" : "未加入"),
+    "- 战绩：秒跳 " + (s.auto || 0) + " · 直断 " + (s.back || 0) + " · 弹窗 " + (s.popup || 0) + " · 回弹 " + (s.chain || 0) + " · 手动样本 " + (s.manual || 0) + " · 误触观察 " + (s.misclick || 0),
+    "- 学习规则：" + ruleCount + " 条（" + pkgCount + " 个应用）",
+    "",
+    "## 学习规则明细",
+    ruleLines || "- （无）",
+    "",
+    "## 引擎日志（最近 " + Math.min(60, log.length) + " 条）",
+    logLines,
+    "",
+    "> 本 Issue 由「学习中心 → 引擎日志 → 上传日志到 GitHub」手动创建（内置加密通道），供下一版迭代参考。",
+    "",
+    "— 开屏卫士 v" + appVer(),
+  ].join("\n");
+
+  box.innerHTML = '<div class="fb-msg">正在通过内置加密通道上传（最长约 15s，请勿关闭页面）…</div>';
+  btn.disabled = true;
+  setTimeout(() => {
+    let res = null;
+    try { res = JSON.parse(AndroidApp.netPostIssue(title, body)); }
+    catch (e) { res = { ok: false, error: "提交异常：" + (e.message || e) }; }
+    btn.disabled = false;
+    const h = uploadLogHistory();
+    h.push({ date: new Date().toLocaleString("zh-CN", { hour12: false }), count: Math.min(60, log.length), url: res && res.ok ? res.url : "", no: (res && res.number) || 0 });
+    store.set("log_history", h.slice(-10));
+    renderUploadLogHistory();
+    if (res && res.ok) {
+      box.innerHTML = '<div class="fb-msg ok">日志已上传 ' + linkBtn(res.url, "Issue #" + res.number + " 查看") + "，感谢！它会直接成为下一版迭代的修复依据</div>";
+      toast("引擎日志已上传到 GitHub");
+    } else {
+      box.innerHTML = '<div class="fb-msg err">' + esc((res && res.error) || "未知错误") + "</div>";
+    }
+  }, 60);
+});
+renderUploadLogHistory();
+
 /* 能耗面板 */
 function renderEnergy() {
   const st = getRealState();
@@ -250,8 +361,8 @@ const FB_TYPES = { missed: "漏拦截：开屏广告没被秒跳", gyro_leak: "�
 function esc(s) {
   return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
-function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "3.4.0"; }
-function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "30400"; }
+function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "3.5.0"; }
+function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "30500"; }
 
 function openLink(url) {
   if (HAS_BRIDGE) { try { AndroidApp.openUrl(url); return; } catch (e) {} }

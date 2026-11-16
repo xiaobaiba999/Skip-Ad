@@ -6,7 +6,7 @@ import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import {
   BrainCircuit, Clock, RefreshCw, CloudUpload, CheckCircle2, XCircle, Github,
-  Smartphone, ShieldCheck, Zap, Timer, TrendingUp, ExternalLink, Sparkles,
+  Smartphone, ShieldCheck, Zap, Timer, TrendingUp, ExternalLink, Sparkles, ScrollText,
 } from "lucide-react";
 
 interface LearningData {
@@ -40,6 +40,8 @@ export function LearningCenter() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
+  const [logUploading, setLogUploading] = useState(false);
+  const [logMsg, setLogMsg] = useState<{ ok: boolean; text: string; url?: string } | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -75,6 +77,58 @@ export function LearningCenter() {
     }
     setSyncing(false);
   }, [load]);
+
+  /* ── v3.5.0 引擎日志一键上传（内置加密通道，供下版迭代参考） ── */
+  const uploadEngineLog = useCallback(async () => {
+    if (!data) return;
+    setLogUploading(true);
+    setLogMsg(null);
+    const { profile, learnedRules } = data;
+    const eventLines = profile.recent.length
+      ? profile.recent
+          .slice(0, 40)
+          .map((e) => `- ${new Date(e.ts).toLocaleString("zh-CN", { hour12: false })} · ${e.appName} · ${e.action} · ${e.adType} · ${e.success ? `${e.latencyMs}ms` : "手动跳过"}`)
+          .join("\n")
+      : "- （暂无事件）";
+    const ruleLines = learnedRules.length
+      ? learnedRules.map((r) => `- ${r.appName}（${r.appCategory}）：${r.pattern} · 命中 ${r.hitCount} 次 · 置信度 ${Math.round(r.confidence * 100)}%${r.enabled ? "" : " · 已停用"}`).join("\n")
+      : "- （无学习规则）";
+    const context = [
+      `### 版本：v3.5.0（秒跳引擎）· 上传时间：${new Date().toLocaleString("zh-CN", { hour12: false })}`,
+      "",
+      "### 拦截战绩（累计）",
+      `- 拦截 ${profile.totals.blocks} 次 · 漏拦截 ${profile.totals.misses} 次 · 成功率 ${Math.round(profile.totals.successRate * 100)}% · 平均耗时 ${profile.totals.avgLatencyMs}ms · 守护拦截 ${profile.totals.guardBlocks} 次`,
+      "",
+      "### 分应用统计",
+      ...(profile.perApp.length ? profile.perApp.map((a) => `- ${a.appName}（${a.category}）：${a.count} 次 · 平均 ${a.avgMs}ms`) : ["- （无）"]),
+      "",
+      "### 学习规则（" + learnedRules.length + " 条）",
+      ruleLines,
+      "",
+      "### 学习事件流（最近 40 条）",
+      eventLines,
+    ].join("\n");
+    try {
+      const r = await fetch("/api/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "engine_log",
+          desc: "学习中心手动上传引擎日志（拦截战绩 + 学习规则 + 事件流）",
+          context,
+        }),
+      });
+      const d = await r.json();
+      if (d.ok) {
+        setLogMsg({ ok: true, text: `已上传 Issue #${d.number}，将直接成为下一版迭代的修复依据`, url: d.url });
+      } else {
+        setLogMsg({ ok: false, text: d.error ?? "上传失败" });
+      }
+    } catch {
+      setLogMsg({ ok: false, text: "网络异常，请稍后重试" });
+    }
+    setLogUploading(false);
+  }, [data]);
 
   if (loading || !data) {
     return (
@@ -236,6 +290,37 @@ export function LearningCenter() {
             {syncMsg && (
               <div className="mt-3 rounded-xl bg-white/5 p-3 text-[11px] leading-relaxed text-zinc-200 ring-1 ring-white/10">{syncMsg}</div>
             )}
+
+            <div className="mt-4 border-t border-white/10 pt-4">
+              <div className="flex flex-wrap items-center gap-2.5">
+                <Button
+                  size="sm"
+                  data-testid="btn-upload-engine-log"
+                  variant="outline"
+                  className="h-9 rounded-lg border-emerald-400/40 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20 hover:text-emerald-200"
+                  onClick={() => void uploadEngineLog()}
+                  disabled={logUploading || !data || profile.totals.blocks === 0}
+                >
+                  {logUploading ? <RefreshCw className="mr-1 h-3.5 w-3.5 animate-spin" /> : <ScrollText className="mr-1 h-3.5 w-3.5" />}
+                  {logUploading ? "上传中…" : "上传引擎日志到 GitHub"}
+                </Button>
+                <span className="text-[10px] leading-relaxed text-zinc-500">拦截战绩 + 学习规则 + 事件流一键直达 Issues，供下一版迭代参考</span>
+              </div>
+              {logMsg && (
+                <div className={cn("mt-3 rounded-xl p-3 text-[11px] leading-relaxed ring-1",
+                  logMsg.ok ? "bg-emerald-500/10 text-emerald-300 ring-emerald-400/20" : "bg-rose-500/10 text-rose-300 ring-rose-400/20")}>
+                  <div className="flex items-center gap-1.5 font-bold">
+                    {logMsg.ok ? <CheckCircle2 className="h-3.5 w-3.5" /> : <XCircle className="h-3.5 w-3.5" />}
+                    {logMsg.text}
+                    {logMsg.url && (
+                      <a href={logMsg.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 text-emerald-400 hover:underline">
+                        查看 <ExternalLink className="h-3 w-3" />
+                      </a>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
 
             <div className="mt-4 flex items-center gap-2.5">
               <Button size="sm" data-testid="btn-sync-now" className="h-9 rounded-lg bg-emerald-500 hover:bg-emerald-400" onClick={() => void doSync()} disabled={syncing}>

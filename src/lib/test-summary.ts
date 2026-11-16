@@ -9,6 +9,7 @@ export interface TestSummary {
   adversarial: { fakeSkip: number; chainJump: number; gyro: number; popup: number };
   v330: { sdkAd: number; textlessGyro: number; overlayPopup: number; latePopup: number };
   v340: { imageSkip: number; imageCorner: number; cornerHit: number; coordHit: number; modelRate: number };
+  v350: { swallowed: number; retryHit: number; backHit: number; posLearned: number; posHit: number; v340Rate: number };
   sideload: { hit: number; total: number };
   guardApps: number;
   rounds: TestSummaryRound[];
@@ -43,6 +44,14 @@ export const TEST_SUMMARY: TestSummary = {
     "cornerHit": 31,
     "coordHit": 22,
     "modelRate": 95.09
+  },
+  "v350": {
+    "swallowed": 19,
+    "retryHit": 17,
+    "backHit": 2,
+    "posLearned": 19,
+    "posHit": 19,
+    "v340Rate": 98.21
   },
   "sideload": {
     "hit": 273,
@@ -260,6 +269,42 @@ export const TEST_SUMMARY: TestSummary = {
       "rate": 100,
       "weightedRate": 100,
       "reactionMs": 34,
+      "p95Ms": 38,
+      "adVisibleMs": 0,
+      "energyMWh": 0.03,
+      "burstTierMWs": 7.4,
+      "burstPreemptMWs": 1.6
+    },
+    {
+      "round": 19,
+      "name": "v3.4.0 真机复测建模：点击被吞（日志已点·广告未关）×19",
+      "rate": 98.21,
+      "weightedRate": 98.24,
+      "reactionMs": 310,
+      "p95Ms": 2340,
+      "adVisibleMs": 1380,
+      "energyMWh": 0.031,
+      "burstTierMWs": 7.5,
+      "burstPreemptMWs": 1.7
+    },
+    {
+      "round": 20,
+      "name": "+点击复验换候选+真实触点重试+返回键兜底【v3.5.0】",
+      "rate": 100,
+      "weightedRate": 100,
+      "reactionMs": 302,
+      "p95Ms": 46,
+      "adVisibleMs": 0,
+      "energyMWh": 0.031,
+      "burstTierMWs": 7.5,
+      "burstPreemptMWs": 1.7
+    },
+    {
+      "round": 21,
+      "name": "+位置学习（手动教一次就会）+ 保活回归",
+      "rate": 100,
+      "weightedRate": 100,
+      "reactionMs": 41,
       "p95Ms": 38,
       "adVisibleMs": 0,
       "energyMWh": 0.03,

@@ -9,7 +9,7 @@ import {
   ShieldAlert, Timer, EyeOff, MousePointerClick, Vibrate, LayoutGrid, Layers, Link2, Link2Off,
   Zap, Gauge, BrainCircuit, ShieldCheck, Landmark, Globe, Ban, Wrench, RefreshCw,
   ExternalLink, ListChecks, Newspaper, FlaskConical, BatteryCharging,
-  Headphones, CheckCircle2,
+  Headphones, CheckCircle2, Crosshair,
 } from "lucide-react";
 
 interface RuleRow {
@@ -73,6 +73,21 @@ const TACTICS = [
     name: "应用内弹窗广告（含覆盖层）", badge: "弹窗 v2", icon: LayoutGrid,
     desc: "使用中突然弹出的广告弹窗：带「广告」角标或纯营销话术，关闭键极小；覆盖层弹窗不触发窗口事件，用一会儿才弹的更是完全游离在旧引擎能力之外。",
     counter: "弹窗窗期独立于开屏 12s 窗（v3.2.0 真机 bug 修复）；角标扩充（广告/推广/赞助/AD/Sponsored）+ 关闭键代点；Dialog 形态 + ≥2 条营销话术弱信号；覆盖层内容突发检测（1.5s 内 ≥3 次内容变化）。",
+  },
+  {
+    name: "点击被吞：日志显示已点、广告没关", badge: "v3.5.0", icon: Zap,
+    desc: "二次真机反馈：引擎日志写「已点击跳过」，广告却纹丝不动，还是得手动关——performAction 返回 true 但被应用无声吞掉、手势点偏、按钮尚未可点，而旧引擎点完即熔断，再无第二次机会。",
+    counter: "点击复验梯子：点后 1.2s 复扫同窗，未关 → 换下一个角落候选点 + 强制 dispatchGesture 真实触点重试；同窗 ≥3 次未关 → 返回键兜底温和关闭；窗口切走即记「复验通过」。真机复测建模 ×19 全恢复。",
+  },
+  {
+    name: "图片跳过键学不下来：手动点两次也没用", badge: "v3.5.0", icon: Crosshair,
+    desc: "图片跳过键零文本零 contentDescription——旧版手动点击学习只认「跳过/关闭」文本，图片键永远学不到，用户手动记录两次仍然跳不过。",
+    counter: "位置学习：手动点小角落/顶部控件即记归一化坐标 + 窗口类名指纹，次启同窗 500ms 手势直点（教一次就会）；安全门：仅广告形态窗内出手，信息流/输入框/长文本页绝不误点。",
+  },
+  {
+    name: "服务保活：更新/重启后被系统关闭", badge: "v3.5.0", icon: ShieldCheck,
+    desc: "覆盖安装新版本、系统更新或重启后，Android 自动关闭无障碍服务——系统安全设计，任何应用都无法绕过自动重开；后台清理与厂商省电策略也会杀服务。",
+    counter: "系统允许的极限：前台常驻通知降低被杀概率 + keepOn 持久化 + 覆盖安装/重启后 KeepAliveReceiver 检测断连 → 高优先级通知一键恢复（点按自动跳无障碍设置，两步恢复）+ 电池优化白名单一键加入。",
   },
   {
     name: "假跳过陷阱（喜马拉雅专案）", badge: "开屏", icon: MousePointerClick,
@@ -182,11 +197,11 @@ export function IntelStation({ onFeedback }: { onFeedback: () => void }) {
         ))}
       </div>
 
-      {/* 十八轮自测 · 诚实重构 · 喜马拉雅专案 v4（v3.4.0） */}
+      {/* 二十一轮自测 · 诚实重构 · 点击复验/位置学习专案（v3.5.0） */}
       <section className="rounded-2xl border border-zinc-200 bg-white p-4 lg:p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="flex items-center gap-2 text-base font-bold text-zinc-900">
-            <FlaskConical className="h-5 w-5 text-emerald-600" /> 千款语料十八轮自测 · 诚实重构 · 自改自修复 ×18
+            <FlaskConical className="h-5 w-5 text-emerald-600" /> 千款语料二十一轮自测 · 诚实重构 · 自改自修复 ×21
           </h2>
           <span className="flex flex-wrap items-center gap-1.5">
             <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-600 ring-1 ring-rose-200">
@@ -302,8 +317,9 @@ export function IntelStation({ onFeedback }: { onFeedback: () => void }) {
               <CheckCircle2 className="h-3.5 w-3.5" /> 真机反馈 → 复现 → 修复闭环
             </div>
             <p className="mt-1.5">
-              两轮真机反馈逐项复现并修复：① 微博/喜马拉雅第一方图片开屏仍完整展示（v3.4.0 角落键 ×{TEST_SUMMARY.v340.cornerHit} + 坐标兜底 ×{TEST_SUMMARY.v340.coordHit} 全拦，
-              决策核心 JVM 38 用例验证含 12 个误报防护场景）；② SDK 窗零文本 ×{TEST_SUMMARY.v330.sdkAd} → className 指纹；
+              三轮真机反馈逐项复现并修复：① 微博/喜马拉雅第一方图片开屏仍完整展示（v3.4.0 角落键 ×{TEST_SUMMARY.v340.cornerHit} + 坐标兜底 ×{TEST_SUMMARY.v340.coordHit} 全拦）；②
+              「日志已点击、广告没关」点击被吞 ×{TEST_SUMMARY.v350.swallowed}（v3.5.0 复验换候选重试 ×{TEST_SUMMARY.v350.retryHit} + 返回键兜底 ×{TEST_SUMMARY.v350.backHit} 全恢复；手动位置学习 ×{TEST_SUMMARY.v350.posLearned} 教一次就会，
+              决策核心 JVM 49 用例验证含 13 个误报防护场景）；③ SDK 窗零文本 ×{TEST_SUMMARY.v330.sdkAd} → className 指纹；
               ③ 手机随便一动就跳（陀螺仪 ×{TEST_SUMMARY.adversarial.gyro} 全断）；④ 链式跳转（回弹扩充）；⑤ 弹窗 ×{TEST_SUMMARY.adversarial.popup} 全关（含覆盖层/窗外）。
               侧载 {TEST_SUMMARY.sideload.hit}/{TEST_SUMMARY.sideload.total}（{TEST_SUMMARY.latest.sideloadRate}%）· 守护 {TEST_SUMMARY.guardApps} 款零干预 · 冷启动 {TEST_SUMMARY.latest.coldRate}%。
             </p>

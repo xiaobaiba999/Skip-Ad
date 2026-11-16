@@ -12,7 +12,7 @@
   <!-- 顶栏 -->
   <header class="topbar">
     <div class="brand">
-      <div class="logo">⚡</div>
+      <div class="logo"><svg viewBox="0 0 48 48" width="24" height="24" fill="none" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="lgx" x1="6" y1="3" x2="42" y2="45" gradientUnits="userSpaceOnUse"><stop stop-color="#34d399"/><stop offset="1" stop-color="#059669"/></linearGradient></defs><path d="M24 3 L41 9 C41 26 35 39 24 45 C13 39 7 26 7 9 Z" fill="url(#lgx)"/><path d="M27.5 11 L17 26 h5.5 L20 37 L31 21 h-5.5 Z" fill="#fff"/></svg></div>
       <div>
         <div class="brand-name">开屏卫士</div>
         <div class="brand-sub" id="brand-sub">秒跳引擎 · 首页</div>
@@ -55,6 +55,16 @@
         </div>
         <button class="btn btn-primary btn-block" id="btn-open-a11y">开启无障碍服务</button>
         <div class="hint">设置 → 无障碍 → 已下载的应用 → 开屏卫士</div>
+        <div class="keep-box" id="keep-box">
+          <div class="keep-row">
+            <div class="sw-text" style="flex:1;min-width:0">
+              <div class="sw-title">服务保活 <span class="tag tag-amber" id="keep-tag" style="margin-left:4px">--</span></div>
+              <div class="sw-desc" id="keep-desc">开启服务后自动开启</div>
+            </div>
+          </div>
+          <button class="btn btn-ghost btn-sm btn-block" id="btn-battery" style="margin-top:8px">🔋 加入电池优化白名单（防厂商省电杀服务）</button>
+          <div class="hint">Android 会在覆盖安装新版本/重启后关闭无障碍服务（系统安全设计，任何应用无法绕过）。开启保活后：前台常驻通知降低被杀概率；万一断连立即发通知提醒，点按两步恢复，学习数据全部保留。</div>
+        </div>
         <div class="stat-grid">
           <div class="stat"><div class="num" id="st-auto">0</div><div class="lbl">自动秒跳</div></div>
           <div class="stat"><div class="num" id="st-back">0</div><div class="lbl">诱导直断</div></div>
@@ -69,12 +79,12 @@
       <div class="card">
         <div class="card-head">
           <span>🛡 防护能力</span>
-          <span class="tag tag-green">v3.4.0 · 角落键+坐标点击 · 八层纵深</span>
+          <span class="tag tag-green">v3.5.0 · 点击复验+位置学习 · 九层纵深</span>
         </div>
         <div class="switch-row">
           <div class="sw-text">
-            <div class="sw-title">开屏秒跳（角落键 + 坐标点击 + SDK 指纹）</div>
-            <div class="sw-desc">角落无字小可点控件（图片跳过键）→ 手势点击其中心 650ms（微博/喜马拉雅第一方图片开屏正解）；零信号简单树 → 坐标级点击标准跳过位（防误点六重约束）；SDK 窗 className 指纹 500ms 直断；翻转/摇一摇立即直断；performAction 失效自动降级真实触点手势</div>
+            <div class="sw-title">开屏秒跳（点击复验 + 位置学习 + 角落键）</div>
+            <div class="sw-desc">点击复验：点后 1.2s 复扫，未关换候选+真实触点重试，≥3 次返回键兜底（「点了没反应」终结）；位置学习：手动点过的图片跳过键位置，次启同窗 500ms 直点（教一次就会）；角落图片键手势点击；坐标级兜底；SDK 窗指纹直断；翻转/摇一摇立即直断</div>
           </div>
           <span class="tag tag-green">常开</span>
         </div>
@@ -171,8 +181,16 @@
         <div id="byapp-list"></div>
       </div>
       <div class="card">
-        <div class="card-head"><span>引擎日志</span><button class="btn btn-ghost btn-sm" id="btn-refresh-real">刷新</button></div>
+        <div class="card-head"><span>引擎日志</span>
+          <div style="display:flex;gap:6px;align-items:center">
+            <button class="btn btn-ghost btn-sm" id="btn-refresh-real">刷新</button>
+            <button class="btn btn-primary btn-sm" id="btn-upload-log">⬆ 上传日志到 GitHub</button>
+          </div>
+        </div>
+        <div class="muted small" style="margin-top:6px">把最近 60 条引擎日志 + 学习规则 + 设备信息一键上传到仓库 Issues（内置加密通道），供下一版迭代参考修复</div>
         <div class="log-box" id="real-log"></div>
+        <div id="upload-log-result"></div>
+        <div id="upload-log-history"></div>
       </div>
       <div class="card" id="energy-card">
         <div class="card-head"><span>🔋 能耗面板</span><span class="tag tag-green" id="en-estimate">--</span></div>

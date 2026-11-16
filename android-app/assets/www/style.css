@@ -15,11 +15,14 @@ body {
 }
 .brand { display: flex; align-items: center; gap: 10px; }
 .logo {
-  width: 38px; height: 38px; border-radius: 12px; font-size: 20px;
+  width: 38px; height: 38px; border-radius: 12px;
   display: flex; align-items: center; justify-content: center; color: #fff;
-  background: linear-gradient(135deg, #8b5cf6, #d946ef);
-  box-shadow: 0 4px 10px rgba(139, 92, 246, .3);
+  background: linear-gradient(135deg, #10b981, #059669);
+  box-shadow: 0 4px 10px rgba(16, 185, 129, .35);
 }
+.tag-amber { background: #fffbeb; color: #b45309; }
+.keep-box { margin-top: 10px; border-top: 1px dashed #e4e4e7; padding-top: 10px; }
+.keep-row { display: flex; align-items: center; gap: 8px; }
 .brand-name { font-weight: 800; font-size: 15px; }
 .brand-sub { font-size: 10px; color: #a1a1aa; }
 .ver-badge {

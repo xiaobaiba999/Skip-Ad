@@ -1,12 +1,17 @@
 package com.zai.adshield;
 
+import android.Manifest;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.Settings;
 import android.view.KeyEvent;
 import android.webkit.JavascriptInterface;
@@ -17,12 +22,14 @@ import android.webkit.WebViewClient;
 import org.json.JSONObject;
 
 /**
- * 主界面（v3.0.0）
+ * 主界面（v3.5.0）
  * ─────────────────────────────────────────────
  * · WebView 装载离线页面 assets/www（演示场 / 情报站 / 学习中心 / 关于）
  * · 启动即静默检查 GitHub Releases：发现新版 → 页面顶部弹出更新横幅，
  *   页内直接下载（系统 DownloadManager）→ 进度条 → 完成后拉起安装，全程不跳浏览器
- * · 问题反馈使用内置混淆令牌（Net.builtInToken），界面零 Token 输入
+ * · 问题反馈 / 引擎日志上传使用内置混淆令牌（Net.builtInToken），界面零 Token 输入
+ * · v3.5.0 保活：通知权限引导（Android 13+）、jump_a11y 通知一键恢复直达、
+ *   电池优化白名单与 keepOn 状态桥接（配合 KeepAliveReceiver）
  */
 public class MainActivity extends Activity {
 
@@ -39,6 +46,34 @@ public class MainActivity extends Activity {
         webView.addJavascriptInterface(new Bridge(this), "AndroidApp");
         webView.setWebViewClient(new WebViewClient());
         webView.loadUrl("file:///android_asset/www/index.html");
+
+        // v3.5.0 保活：通知权限（13+）——保活常驻通知与恢复提醒必需
+        requestNotifPermission();
+        // v3.5.0：从「待恢复」通知点入 → 自动跳无障碍设置（两步恢复的第一步）
+        // （注意：匿名内部类会触发 d8 8.2 NPE bug，一律用 lambda）
+        if (getIntent() != null && getIntent().getBooleanExtra("jump_a11y", false)) {
+            new Handler(Looper.getMainLooper()).postDelayed(this::openA11y, 500);
+        }
+    }
+
+    private void requestNotifPermission() {
+        try {
+            if (Build.VERSION.SDK_INT >= 33
+                    && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+                    != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 100);
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private void openA11y() {
+        try {
+            Intent it = new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS);
+            it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(it);
+        } catch (Exception ignored) {
+        }
     }
 
     @Override
@@ -67,7 +102,7 @@ public class MainActivity extends Activity {
             PackageInfo pi = ctx.getPackageManager().getPackageInfo(ctx.getPackageName(), 0);
             return pi.versionName;
         } catch (Exception e) {
-            return "3.0.0";
+            return "3.5.0";
         }
     }
 
@@ -92,6 +127,69 @@ public class MainActivity extends Activity {
                 it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 a.startActivity(it);
             } catch (Exception ignored) {
+            }
+        }
+
+        /* ───── v3.5.0 保活与诊断桥 ───── */
+
+        /** 设备信息（引擎日志上传时自动附带，供迭代定位问题） */
+        @JavascriptInterface
+        public String deviceInfo() {
+            org.json.JSONObject o = new org.json.JSONObject();
+            try {
+                o.put("model", Build.MODEL);
+                o.put("brand", Build.BRAND);
+                o.put("os", "Android " + Build.VERSION.RELEASE);
+                o.put("sdk", Build.VERSION.SDK_INT);
+                o.put("app", versionNameOf(a));
+            } catch (Exception ignored) {
+            }
+            return o.toString();
+        }
+
+        /** keepOn：开启后除非手动关闭，更新/重启断连都会提醒恢复 */
+        @JavascriptInterface
+        public boolean isKeepOn() {
+            return a.getSharedPreferences("adshield", Context.MODE_PRIVATE)
+                    .getBoolean("keepOn", false);
+        }
+
+        @JavascriptInterface
+        public void setKeepOn(boolean on) {
+            a.getSharedPreferences("adshield", Context.MODE_PRIVATE)
+                    .edit().putBoolean("keepOn", on).apply();
+        }
+
+        /** 电池优化白名单状态（厂商省电策略是杀服务主因之一） */
+        @JavascriptInterface
+        public boolean isBatteryWhitelisted() {
+            try {
+                android.os.PowerManager pm = (android.os.PowerManager)
+                        a.getSystemService(Context.POWER_SERVICE);
+                return pm != null && pm.isIgnoringBatteryOptimizations(a.getPackageName());
+            } catch (Exception e) {
+                return false;
+            }
+        }
+
+        /** 申请加入电池优化白名单（失败则跳白名单列表页） */
+        @JavascriptInterface
+        public String requestBatteryWhitelist() {
+            try {
+                if (isBatteryWhitelisted()) {
+                    return "{\"ok\":true,\"already\":true}";
+                }
+                Intent it = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                        Uri.parse("package:" + a.getPackageName()));
+                a.startActivity(it);
+                return "{\"ok\":true}";
+            } catch (Exception e) {
+                try {
+                    a.startActivity(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS));
+                    return "{\"ok\":true,\"fallback\":true}";
+                } catch (Exception e2) {
+                    return "{\"ok\":false}";
+                }
             }
         }
 
@@ -124,13 +222,13 @@ public class MainActivity extends Activity {
                 PackageInfo pi = a.getPackageManager().getPackageInfo(a.getPackageName(), 0);
                 return pi.versionCode;
             } catch (Exception e) {
-                return 30000;
+                return 30500;
             }
         }
 
-        /* ───── 问题反馈（内置令牌，无任何用户配置） ───── */
+        /* ───── 问题反馈 / 引擎日志上传（内置令牌，无任何用户配置） ───── */
 
-        /** 创建反馈 Issue；令牌内置混淆存储（Net.builtInToken），同步阻塞在 JSBridge 线程执行 */
+        /** 创建反馈 Issue（引擎日志上传共用此通道）；令牌内置混淆存储（Net.builtInToken） */
         @JavascriptInterface
         public String netPostIssue(String title, String body) {
             return Net.postIssue(title, body);

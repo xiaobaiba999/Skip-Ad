@@ -2,10 +2,17 @@ package com.zai.adshield;
 
 import android.accessibilityservice.AccessibilityService;
 import android.accessibilityservice.GestureDescription;
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.ServiceInfo;
 import android.graphics.Path;
 import android.graphics.Rect;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.accessibility.AccessibilityEvent;
@@ -25,13 +32,23 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 开屏广告智能跳过服务（无障碍服务实现 · v3.4.0）
+ * 开屏广告智能跳过服务（无障碍服务实现 · v3.5.0）
  * ─────────────────────────────────────────────────────────────
- * v3.4.0 架构：识别/决策逻辑全部下沉到 AdDecisionCore（纯 Java，JVM 可单测，
- * scripts/device-tests 38 用例发版前必绿）；本类只负责：
- *  · 事件调度（0ms 首扫 + 前密后疏重试链，命中即熔断）
+ * v3.5.0（二次真机反馈驱动：日志显示「已点击跳过」但广告纹丝不动，手动点
+ * 两次也没学下来——微博/喜马拉雅还是得手动关）：
+ *  · 点击复验：点击后不再熔断扫描链——同窗 1.2s 后复扫，广告仍未关则换下
+ *    一个角落候选点并强制 dispatchGesture 真实触点重试；同窗点击 ≥3 次
+ *    仍未关 → 返回键兜底（「点了没反应」的最终兜底）。
+ *  · 位置学习：手动点击图片跳过键（零文本）也能学——归一化坐标 + 窗口
+ *    类名指纹，次启同窗 500ms 直点（教一次就会）。
+ *  · 保活：前台常驻通知 + keepOn 持久化 + KeepAliveReceiver 断连提醒——
+ *    开启后除非手动关闭不再静默失效（更新/重启后一键恢复）。
+ *  · 架构：识别/决策逻辑全部在 AdDecisionCore（纯 Java，JVM 48 用例必绿）；
+ *    本类只负责：
+ *  · 事件调度（0ms 首扫 + 前密后疏重试链；点击后转入复验调度，不熔断）
  *  · 决策执行：performAction(ACTION_CLICK) 失效自动降级 dispatchGesture 手势点击
- *    （v3.4.0 关键：许多应用拦截 performAction，但拦不住真实触点）
+ *    （v3.4.0 关键：许多应用拦截 performAction，但拦不住真实触点；
+ *    v3.5.0 复验重试一律直接手势真实触点）
  *  · 多窗口扫描：getRootInActiveWindow 之外遍历 getWindows()（弹窗/覆盖层）
  *  · 坐标级点击兜底执行（L6，决策核心判定后执行）
  *  · 链式跳转回弹 / 同包落地页弹回 / 学习 / 统计 / 能耗画像
@@ -51,6 +68,10 @@ public class AdSkipService extends AccessibilityService {
 
     private static final String PREFS = "adshield";
     private static final String KEY_STATE = "state";
+    private static final String KEY_KEEPON = "keepOn";
+
+    private static final int NOTIF_KEEP = 1;   // 前台保活常驻通知
+    public static final int NOTIF_ALERT = 2;   // 服务断开提醒（KeepAliveReceiver 发，服务连上即撤）
 
     private static final long WINDOW_MS = 12000;       // 开屏时间窗
     private static final long COOLDOWN_MS = 1200;      // 同一应用两次自动点击最小间隔
@@ -105,6 +126,8 @@ public class AdSkipService extends AccessibilityService {
     private final java.util.HashMap<String, Long> landingBackAt = new java.util.HashMap<>();
     /* v3.4.0：坐标兜底每次启动一次（新窗口重置） */
     private final java.util.HashMap<String, Boolean> coordTapUsed = new java.util.HashMap<>();
+    /* v3.5.0：点击复验——本窗已点击次数（换候选/真实触点重试/返回键兜底的依据） */
+    private final java.util.HashMap<String, Integer> clickTries = new java.util.HashMap<>();
 
     private volatile String lastAutoClickPkg;
     private volatile long lastAutoClickAt;
@@ -132,7 +155,12 @@ public class AdSkipService extends AccessibilityService {
         instance = this;
         screenWidth = getResources().getDisplayMetrics().widthPixels;
         screenHeight = getResources().getDisplayMetrics().heightPixels;
-        appendLog("服务已启动 · v3.4.0 角落控件点击 + 坐标级兜底 + 手势降级（决策核心 38 用例全绿）");
+        // v3.5.0 保活：服务连上即记「用户要求保持开启」；仅用户在 App 内手动
+        // 关闭保活提醒（Bridge.setKeepOn(false)）才置 false
+        prefs().edit().putBoolean(KEY_KEEPON, true).apply();
+        startKeepAliveForeground();
+        cancelAlertNotification();
+        appendLog("服务已启动 · v3.5.0 点击复验+位置学习+保活（决策核心 48 用例全绿）");
     }
 
     @Override
@@ -163,9 +191,16 @@ public class AdSkipService extends AccessibilityService {
                 String cls = cs(event.getClassName());
                 if (reboundChainJump(pkg, now)) break;
                 if (reboundLanding(pkg, cls, now)) break;
+                // v3.5.0 复验通过：上一窗点过东西且窗口已切走 → 广告已关
+                Integer prevTries = clickTries.get(pkg);
+                if (prevTries != null && prevTries > 0 && !cls.equals(winClassOf(pkg))) {
+                    appendLog("✓ 复验通过（" + shortPkg(pkg) + "）：广告窗已关闭"
+                            + (prevTries > 1 ? "（共 " + prevTries + " 次尝试，重试梯子兜底）" : ""));
+                }
                 windowAt.put(pkg, now);
                 winClass.put(pkg, cls);
                 backTries.put(pkg, 0);
+                clickTries.put(pkg, 0); // v3.5.0：新窗重置复验计数
                 coordTapUsed.put(pkg, Boolean.FALSE); // 新窗口重置坐标兜底
                 winClsLearned.remove(pkg);
                 if (isDialogClass(cls)) {
@@ -391,6 +426,10 @@ public class AdSkipService extends AccessibilityService {
             Long lastClick = lastClickAt.get(pkg);
             boolean clickCoolOK = lastClick == null || now - lastClick >= COOLDOWN_MS;
             Boolean used = coordTapUsed.get(pkg);
+            // v3.5.0：学习位置指纹（手动教过的坐标）与复验次数
+            int[] tapHint = learnedPos(pkg);
+            Integer triesBox = clickTries.get(pkg);
+            int clickAttempts = triesBox == null ? 0 : triesBox.intValue();
 
             for (int ri = 0; ri < roots.length; ri++) {
                 energyScans++;
@@ -405,6 +444,9 @@ public class AdSkipService extends AccessibilityService {
                 ctx.sdkAdWin = now < adWinUntilGet(pkg);
                 Boolean learned = winClsLearned.get(pkg);
                 ctx.learnedCls = learned != null && learned.booleanValue();
+                ctx.clickAttempts = clickAttempts;
+                ctx.tapHintX = tapHint[0];
+                ctx.tapHintY = tapHint[1];
                 ctx.budgetNodes = splashLive ? 600 : 280; // 开屏窗预算扩容（重树）
 
                 ScanFind f = AdDecisionCore.walk(new NodeAdapter(roots[ri]), ctx);
@@ -457,18 +499,26 @@ public class AdSkipService extends AccessibilityService {
             backTries.put(pkg, triesOf(pkg) + 1);
             adFeatureUntil.put(pkg, now + CHAIN_GUARD_MS);
             if (d.reason.startsWith("sdk_window")) learnClass(pkg, winClassOf(pkg));
-            appendLog("🛡 广告窗直断（" + shortPkg(pkg) + "）：" + reasonZh(d.reason)
-                    + " · " + ctx.elapsedMs + "ms → 返回键温和关闭（不碰进程与服务）");
+            if ("click_verify_fail".equals(d.reason)) {
+                appendLog("🛡 点击复验失败升级（" + shortPkg(pkg) + "）：同窗 " + ctx.clickAttempts
+                        + " 次点击仍未关闭 → 返回键兜底温和关闭（不碰进程与服务）");
+            } else {
+                appendLog("🛡 广告窗直断（" + shortPkg(pkg) + "）：" + reasonZh(d.reason)
+                        + " · " + ctx.elapsedMs + "ms → 返回键温和关闭（不碰进程与服务）");
+            }
             bumpStat(pkg, "back");
             fuseChain(pkg);
             return true;
         }
         if (d.action.equals(AdDecisionCore.A_CLICK_BOUNDS) || d.action.equals(AdDecisionCore.A_CLOSE)) {
             if (!clickCoolOK) return false;
-            if (clickNode(d)) {
+            int attempts = triesOfClick(pkg);
+            // v3.5.0 复验重试：第 1 次 performAction→手势降级；第 ≥2 次一律手势真实触点
+            if (clickNode(d, attempts >= 1)) {
                 lastClickAt.put(pkg, now);
                 lastAutoClickPkg = pkg;
                 lastAutoClickAt = now;
+                clickTries.put(pkg, attempts + 1);
                 if (d.action.equals(AdDecisionCore.A_CLOSE)) {
                     popupBlocks++;
                     lastPopupAt.put(pkg, now);
@@ -477,29 +527,43 @@ public class AdSkipService extends AccessibilityService {
                             + " + 关闭键「" + f.closeLabel + "」");
                     bumpStat(pkg, "popup");
                 } else {
-                    appendLog("⚡ 已点击跳过（" + shortPkg(pkg) + "）：" + reasonZh(d.reason)
-                            + "（" + (lastGesture ? "手势点击" : "无障碍代点") + "）");
+                    if (attempts == 0) {
+                        appendLog("⚡ 已点击跳过（" + shortPkg(pkg) + "）：" + reasonZh(d.reason)
+                                + "（" + (lastGesture ? "手势点击" : "无障碍代点") + "）→ 1.2s 后复验，未关将换候选重试");
+                    } else {
+                        appendLog("🔁 复验未关闭 → 第 " + (attempts + 1) + " 次出手（" + shortPkg(pkg) + "）："
+                                + reasonZh(d.reason) + "（手势真实触点）");
+                    }
                     bumpStat(pkg, "auto");
                     adFeatureUntil.put(pkg, now + CHAIN_GUARD_MS);
                 }
-                fuseChain(pkg);
+                // v3.5.0 关键：点击后【不熔断】扫描链——由后续扫描复验；
+                // 广告关掉会触发新窗口事件（计数清零）；仍在则换候选/升级兜底
                 return true;
             }
             return false;
         }
         if (d.action.equals(AdDecisionCore.A_TAP_POINT)) {
             if (!clickCoolOK) return false;
+            boolean isLearned = "learned_pos".equals(d.reason);
+            if (isLearned) coordTapUsed.put(pkg, Boolean.TRUE); // 位置指纹属高置信，直接占位
             if (gestureTap(d.x, d.y)) {
                 lastClickAt.put(pkg, now);
                 lastAutoClickPkg = pkg;
                 lastAutoClickAt = now;
-                coordTapUsed.put(pkg, Boolean.TRUE);
+                clickTries.put(pkg, triesOfClick(pkg) + 1);
+                if (!isLearned) coordTapUsed.put(pkg, Boolean.TRUE);
                 energyGestures++;
-                appendLog("🎯 坐标级点击兜底（" + shortPkg(pkg) + "）：开屏窗内零信号简单树"
-                        + " → 点击标准跳过位 (" + d.x + "," + d.y + ")，本次启动仅一次");
+                if (isLearned) {
+                    appendLog("🎯 学习位置点击（" + shortPkg(pkg) + "）：你手动教过的位置指纹 ("
+                            + d.x + "," + d.y + ")（手势真实触点）→ 1.2s 后复验");
+                    bumpPosRule(pkg);
+                } else {
+                    appendLog("🎯 坐标级点击兜底（" + shortPkg(pkg) + "）：开屏窗内零信号简单树"
+                            + " → 点击标准跳过位 (" + d.x + "," + d.y + ")，本次启动仅一次 → 1.2s 后复验");
+                }
                 bumpStat(pkg, "auto");
-                fuseChain(pkg);
-                return true;
+                return true; // 不熔断：交由复验扫描确认
             }
             return false;
         }
@@ -508,10 +572,12 @@ public class AdSkipService extends AccessibilityService {
 
     private boolean lastGesture = false;
 
-    /** 点击控件：performAction 优先，失效降级 dispatchGesture 手势点击（真实触点） */
-    private boolean clickNode(Decision d) {
+    /** 点击控件：performAction 优先，失效降级 dispatchGesture 手势点击（真实触点）；
+     *  v3.5.0：forceGesture=true（复验重试）跳过 performAction 直接真实触点——
+     *  performAction 返回 true 也可能被应用无声吞掉，真机「点了没反应」的主因 */
+    private boolean clickNode(Decision d, boolean forceGesture) {
         lastGesture = false;
-        if (d.node instanceof NodeAdapter) {
+        if (!forceGesture && d.node instanceof NodeAdapter) {
             try {
                 if (((NodeAdapter) d.node).n.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
                     return true;
@@ -553,6 +619,8 @@ public class AdSkipService extends AccessibilityService {
         if (r.equals("gyro_immediate")) return "翻转/摇一摇文案立即直断";
         if (r.equals("gyro_break")) return "陀螺仪诱导/假跳过直断";
         if (r.equals("corner_image_skip")) return "角落图片跳过键";
+        if (r.equals("learned_pos")) return "学习位置（你手动教过）";
+        if (r.equals("splash_close")) return "开屏×关闭键";
         if (r.equals("hot_zone")) return "全屏热区自绘广告";
         if (r.equals("coord_fallback")) return "坐标级兜底";
         return r;
@@ -647,6 +715,7 @@ public class AdSkipService extends AccessibilityService {
 
         String text = "";
         String viewId = "";
+        AccessibilityNodeInfo srcNode = null;
         try {
             StringBuilder sb = new StringBuilder();
             if (event.getText() != null) {
@@ -657,12 +726,18 @@ public class AdSkipService extends AccessibilityService {
             text = sb.toString().trim();
             AccessibilityNodeInfo src = event.getSource();
             if (src != null) {
+                srcNode = src;
                 if (text.length() == 0) text = cs(src.getContentDescription());
                 viewId = cs(src.getViewIdResourceName());
             }
         } catch (Exception ignored) {
         }
-        if (!AdDecisionCore.matchesSkip(text) && !AdDecisionCore.isCloseText(text)) return;
+        if (!AdDecisionCore.matchesSkip(text) && !AdDecisionCore.isCloseText(text)) {
+            // v3.5.0 位置学习：图片跳过键零文本也要学（真机痛点：「手动记录两次
+            // 还是不能跳过」——v3.4.0 只认文本，图片键永远学不到）
+            learnPositionFromManualClick(pkg, srcNode, now);
+            return;
+        }
 
         synchronized (lock) {
             try {
@@ -720,7 +795,9 @@ public class AdSkipService extends AccessibilityService {
             if (list == null) return false;
             for (int i = 0; i < list.length(); i++) {
                 JSONObject r = list.optJSONObject(i);
-                if (r != null && cls.equals(r.optString("cls", ""))) return true;
+                if (r == null) continue;
+                if (r.optBoolean("pos", false)) continue; // v3.5.0：位置规则走「点位置」而非快断
+                if (cls.equals(r.optString("cls", ""))) return true;
             }
         } catch (Exception ignored) {
         }
@@ -825,6 +902,188 @@ public class AdSkipService extends AccessibilityService {
             return !st.has("chainRebound") || st.optBoolean("chainRebound", true);
         } catch (Exception e) {
             return true;
+        }
+    }
+
+    /* ───────── v3.5.0 位置学习：图片跳过键（零文本）教一次就会 ───────── */
+
+    /**
+     * 手动点击小角落/顶部控件（零文本）→ 记录归一化坐标 + 窗口类名指纹。
+     * 次启同窗 500ms 手势直点该位置（仅广告形态窗内出手，见决策核心 L1.5 安全门）。
+     */
+    private void learnPositionFromManualClick(String pkg, AccessibilityNodeInfo src, long now) {
+        if (src == null || screenWidth <= 0 || screenHeight <= 0) return;
+        if (now - winAt(pkg) > 10000) return; // 仅窗口切换后 10s 内（开屏期）
+        try {
+            Rect r = new Rect();
+            src.getBoundsInScreen(r);
+            if (r.isEmpty()) return;
+            int[] b = new int[]{r.left, r.top, r.right, r.bottom};
+            double area = AdDecisionCore.areaOf(b, screenWidth, screenHeight);
+            if (area > AdDecisionCore.POS_LEARN_AREA_MAX) return; // 大热区=CTA，不学
+            int cy = (b[1] + b[3]) / 2;
+            boolean corner = AdDecisionCore.cornerLike(b, screenWidth, screenHeight);
+            boolean topArea = cy <= screenHeight * 0.25;
+            if (!corner && !topArea) return; // 只学角落/顶部小控件（跳过键形态）
+            final double x = ((b[0] + b[2]) / 2.0) / screenWidth;
+            final double y = ((b[1] + b[3]) / 2.0) / screenHeight;
+            final String cls = winClassOf(pkg);
+            synchronized (lock) {
+                try {
+                    JSONObject st = loadState();
+                    JSONObject rules = st.optJSONObject("rules");
+                    if (rules == null) {
+                        rules = new JSONObject();
+                        st.put("rules", rules);
+                    }
+                    JSONArray list = rules.optJSONArray(pkg);
+                    if (list == null) {
+                        list = new JSONArray();
+                        rules.put(pkg, list);
+                    }
+                    boolean merged = false;
+                    for (int i = 0; i < list.length(); i++) {
+                        JSONObject rr = list.optJSONObject(i);
+                        if (rr == null || !rr.optBoolean("pos", false)) continue;
+                        double dx = Math.abs(rr.optDouble("x", -1) - x);
+                        double dy = Math.abs(rr.optDouble("y", -1) - y);
+                        boolean sameCls = cls.length() == 0 || cls.equals(rr.optString("cls", ""));
+                        if (dx <= 0.02 && dy <= 0.02 && sameCls) {
+                            rr.put("manual", rr.optInt("manual", 0) + 1);
+                            rr.put("ts", now);
+                            rr.put("cls", cls);
+                            merged = true;
+                            break;
+                        }
+                    }
+                    if (!merged) {
+                        if (list.length() >= MAX_RULES_PER_APP) return;
+                        JSONObject rr = new JSONObject();
+                        rr.put("pos", 1);
+                        rr.put("x", Math.round(x * 1000) / 1000.0);
+                        rr.put("y", Math.round(y * 1000) / 1000.0);
+                        rr.put("cls", cls);
+                        rr.put("text", "");
+                        rr.put("viewId", "");
+                        rr.put("manual", 1);
+                        rr.put("auto", 0);
+                        rr.put("ts", now);
+                        list.put(rr);
+                    }
+                    bumpManualStat(st, pkg);
+                    saveState(st);
+                } catch (Exception ignored) {
+                }
+            }
+            appendLog("📍 位置已学习（" + shortPkg(pkg) + "）：图片跳过键零文本，已记住位置 ("
+                    + Math.round(x * 100) + "%," + Math.round(y * 100) + "%) → 下次启动同窗 500ms 直点");
+        } catch (Exception ignored) {
+        }
+    }
+
+    /** 学习位置指纹（当前窗口类名匹配、manual>0、最新优先）；无则 {-1,-1} */
+    private int[] learnedPos(String pkg) {
+        try {
+            String cls = winClassOf(pkg);
+            if (cls.length() == 0) return new int[]{-1, -1};
+            JSONObject rules = loadState().optJSONObject("rules");
+            if (rules == null) return new int[]{-1, -1};
+            JSONArray list = rules.optJSONArray(pkg);
+            if (list == null) return new int[]{-1, -1};
+            JSONObject best = null;
+            long bestTs = -1;
+            for (int i = 0; i < list.length(); i++) {
+                JSONObject r = list.optJSONObject(i);
+                if (r == null || !r.optBoolean("pos", false)) continue;
+                if (r.optInt("manual", 0) < 1) continue;
+                if (!cls.equals(r.optString("cls", ""))) continue;
+                long ts = r.optLong("ts", 0);
+                if (ts > bestTs) {
+                    bestTs = ts;
+                    best = r;
+                }
+            }
+            if (best == null) return new int[]{-1, -1};
+            int x = (int) Math.round(best.optDouble("x", -1) * screenWidth);
+            int y = (int) Math.round(best.optDouble("y", -1) * screenHeight);
+            if (x <= 0 || y <= 0 || x >= screenWidth || y >= screenHeight) return new int[]{-1, -1};
+            return new int[]{x, y};
+        } catch (Exception ignored) {
+            return new int[]{-1, -1};
+        }
+    }
+
+    /** 学习位置命中沉淀 auto 次数 */
+    private void bumpPosRule(String pkg) {
+        try {
+            String cls = winClassOf(pkg);
+            synchronized (lock) {
+                JSONObject st = loadState();
+                JSONObject rules = st.optJSONObject("rules");
+                if (rules == null) return;
+                JSONArray list = rules.optJSONArray(pkg);
+                if (list == null) return;
+                for (int i = 0; i < list.length(); i++) {
+                    JSONObject r = list.optJSONObject(i);
+                    if (r == null || !r.optBoolean("pos", false)) continue;
+                    if (cls.equals(r.optString("cls", ""))) {
+                        r.put("auto", r.optInt("auto", 0) + 1);
+                        saveState(st);
+                        return;
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
+    private int triesOfClick(String pkg) {
+        Integer n = clickTries.get(pkg);
+        return n == null ? 0 : n.intValue();
+    }
+
+    /* ───────── v3.5.0 保活：前台常驻通知（系统不杀）+ 断连提醒撤销 ───────── */
+
+    private void startKeepAliveForeground() {
+        try {
+            NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+            Notification.Builder b;
+            if (Build.VERSION.SDK_INT >= 26) {
+                NotificationChannel ch = new NotificationChannel("keep", "秒跳引擎守护中",
+                        NotificationManager.IMPORTANCE_MIN);
+                ch.setDescription("服务保持开启，直到你手动关闭");
+                ch.setShowBadge(false);
+                nm.createNotificationChannel(ch);
+                b = new Notification.Builder(this, "keep");
+            } else {
+                b = new Notification.Builder(this);
+            }
+            Intent it = new Intent(this, MainActivity.class);
+            it.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            PendingIntent pi = PendingIntent.getActivity(this, 0, it,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+            b.setContentTitle("秒跳引擎守护中")
+                    .setContentText("保持开启直到你手动关闭 · 点击进入开屏卫士")
+                    .setSmallIcon(R.drawable.ic_stat)
+                    .setContentIntent(pi)
+                    .setOngoing(true)
+                    .setShowWhen(false)
+                    .setColor(0xFF10B981);
+            Notification notif = b.build();
+            if (Build.VERSION.SDK_INT >= 34) {
+                startForeground(NOTIF_KEEP, notif, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
+            } else {
+                startForeground(NOTIF_KEEP, notif);
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private void cancelAlertNotification() {
+        try {
+            NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+            nm.cancel(NOTIF_ALERT);
+        } catch (Exception ignored) {
         }
     }
 

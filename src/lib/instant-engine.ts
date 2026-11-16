@@ -1,5 +1,5 @@
 /**
- * 秒跳引擎（Instant Skip Engine · v3.3.0 · 七层纵深）
+ * 秒跳引擎（Instant Skip Engine · v3.5.0 · 九层纵深）
  * ─────────────────────────────────────────────────────────────
  * 设计基准（2026-11 市场调研 + 喜马拉雅专案 v3 复盘 · 真机反馈驱动）：
  *  · P0 预拦截：学习指纹（广告容器签名 + viewId + 窗口 className）命中即
@@ -314,7 +314,7 @@ export function planInstantBlock(
         detail: `performAction(ACTION_CLICK) 命中真「跳过」控件中心${traits.fakeSkip ? "（假跳过热区已忽略）" : ""}${traits.noCountdown ? "（无倒计时形态，「跳过广告」文案直配）" : ""}`,
         atMs: jitter(34, 8) + waitMs,
       },
-      { label: "关闭校验", detail: "广告窗口出栈确认，直进应用主页", atMs: jitter(50, 12) + waitMs },
+      { label: "关闭校验 + 复验待命", detail: "广告窗口出栈确认，直进应用主页；1.2s 后复验待命——未关即换候选点+真实触点重试，≥3 次返回键兜底（v3.5.0「点了没反应」终结）", atMs: jitter(50, 12) + waitMs },
     );
   }
 

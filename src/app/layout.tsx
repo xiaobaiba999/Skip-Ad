@@ -20,14 +20,17 @@ export const metadata: Metadata = {
   keywords: ["开屏广告", "秒跳", "摇一摇拦截", "Skip-Ad", "GKD", "无障碍", "守护模式", "智能学习"],
   manifest: "/manifest.webmanifest",
   icons: {
-    icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
+    icon: [
+      { url: "/favicon.png", type: "image/png", sizes: "64x64" },
+      { url: "/logo.svg", type: "image/svg+xml" },
+    ],
     apple: "/icon-192.png",
   },
   appleWebApp: { capable: true, statusBarStyle: "default", title: "Skip-Ad" },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#7c3aed",
+  themeColor: "#059669",
   width: "device-width",
   initialScale: 1,
 };
