@@ -1,6 +1,6 @@
 /** 版本与 GitHub 仓库信息（Web 端与发布节奏共用） */
-export const APP_VERSION = "3.10.0";
-export const VERSION_CODE = 31000; // major*10000 + minor*100 + patch，随版本单调递增
+export const APP_VERSION = "3.11.0";
+export const VERSION_CODE = 31100; // major*10000 + minor*100 + patch，随版本单调递增
 export const GITHUB_REPO = "xiaobaiba999/Skip-Ad";
 export const GITHUB_API = `https://api.github.com/repos/${GITHUB_REPO}`;
 export const GITHUB_HOME = `https://github.com/${GITHUB_REPO}`;
@@ -17,6 +17,19 @@ export interface VersionEntry {
 
 /** 「关于」页仅展示最近三个版本 */
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "3.11.0",
+    code: 31100,
+    date: "2026-11-17",
+    tagline: "链式回弹用户意图安全门 · 分享不再被拦",
+    notes: [
+      "issue#13 实锤修复：用户在安全中心主动「分享到微信」被链式回弹连弹 3 次踢回原应用。参考同类头部应用的安全哲学——回弹绝不与用户意愿对抗，只拦「无人在场时广告自己拉起」的跳转",
+      "三重放行安全门：① 用户 2.2s 内真实点击（分享/登录按钮，引擎代点不计）→ 放行；② 系统分享选择器（Resolver/Chooser/com.android.intentresolver 全兼容）8s 内出现过 → 用户亲手挑的目标放行；③ 同「宿主→目标」12s 内已弹回过一次又立刻拉起 = 用户重试 → 放行。决策纯函数 chainBounceVerdict 沉淀进决策核心，JVM 可单测",
+      "同包落地页弹回同步加用户点击门：点商品/文章详情跳内置 WebView 不再被误弹回",
+      "分享选择器（intentresolver）加入系统噪音过滤：分享面板全屏热区「疑似误触」观察归零",
+      "学习规则明细撤出 App UI（用户反馈“太多了很乱”）：学习引擎照常静默工作，首页保留规则计数，明细仅随引擎日志上传进 GitHub 诊断",
+    ],
+  },
   {
     version: "3.10.0",
     code: 31000,

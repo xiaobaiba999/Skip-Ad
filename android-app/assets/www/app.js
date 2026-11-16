@@ -1,4 +1,4 @@
-/* 开屏卫士 v3.10.0 · 离线逻辑（首页 / 学习中心 / 关于 · 应用内页内直更 + 多通道下载） */
+/* 开屏卫士 v3.11.0 · 离线逻辑（首页 / 学习中心 / 关于 · 应用内页内直更 + 多通道下载） */
 "use strict";
 
 /* ══════════ 环境与存储 ══════════ */
@@ -22,13 +22,13 @@ const store = {
   }
 };
 
-/* ══════════ 静态数据（v3.10.0 · 精简重构：每版一句话） ══════════ */
+/* ══════════ 静态数据（v3.11.0 · 精简重构：每版一句话） ══════════ */
 
 /* 最近三个版本 */
 const CHANGELOG = [
-  { v: "3.10.0", d: "内置规则库大扩充 + 界面精简重构：五层全局规则（19 条精确文案大小写归一 / 倒计时形态严格正则——营销话术数学上无法混入 / 短包含 8 字上限 + 17 诱导词否决 / vid skip 族 + SDK 窗 close 族边缘带）+ 28 款主流应用分应用规则表；桌面黑名单与广告窗指纹扩充（lawnchair/trebuchet、小米 zeus/adview/youmi/domob/doubleclick）；UI 去除大段说明文字，页签精简为三页。" },
+  { v: "3.11.0", d: "链式回弹用户意图安全门（issue#13 实锤修复）：你 2.2s 内刚点过（分享/登录按钮）、系统分享选择器刚出现过、同一目标刚弹回又立刻拉起（你的重试）——三重任一命中即放行，绝不与你对抗；点商品/文章详情跳内置页不再被误弹回；分享面板噪音归零；学习规则明细撤出界面（学习引擎照常工作，界面更清爽）。" },
+  { v: "3.10.0", d: "内置规则库大扩充 + 界面精简重构：五层全局规则（19 条精确文案大小写归一 / 倒计时形态严格正则——营销话术数学上无法混入 / 短包含 8 字上限 + 17 诱导词否决 / vid skip 族 + SDK 窗 close 族边缘带）+ 28 款主流应用分应用规则表；桌面黑名单与广告窗指纹扩充；UI 去除大段说明文字，页签精简为三页。" },
   { v: "3.9.0", d: "QQ/微信/抖音「进去就被退出来」根因修复（桌面误判→盲点坐标→回弹踢出，三刀根治）；内嵌规则引擎主路径化，事件驱动 0ms 露头秒跳；扫描链前段加密与点击冷却提速。" },
-  { v: "3.8.1", d: "发布加固：开机自愈路径修复 + 自愈双格式匹配 + 通知文案对齐。" },
 ];
 
 /* 内置规则库概览（首页防护能力卡） */
@@ -231,29 +231,15 @@ bindToggle("toggle-learning", "learning", "智能学习已开启", "智能学习
 bindToggle("toggle-popup", "popupShield", "弹窗广告屏蔽已开启（默认关闭防误判，可随时关）", "弹窗广告屏蔽已关闭（默认状态：只跳开屏，绝不乱点弹窗）");
 bindToggle("toggle-chain", "chainRebound", "诱导跳转回弹已开启", "诱导跳转回弹已关闭");
 
-/* ══════════ 学习中心 ══════════ */
+/* ══════════ 学习中心（v3.11.0：学习规则明细撤出界面——引擎照常学习，
+   界面只留分应用统计与引擎日志；明细仅随日志上传进 GitHub 诊断） ══════════ */
 function renderReal() {
   const st = getRealState();
-  const rules = st.rules || {};
-  const pkgList = Object.keys(rules);
 
   if (!HAS_BRIDGE) {
-    $("#rules-list").innerHTML = `<div class="log-box" style="margin-top:8px"><div class="empty">浏览器预览模式<br>安装 APK 后这里展示真实学习成果</div></div>`;
-    $("#byapp-list").innerHTML = "";
+    $("#byapp-list").innerHTML = `<div class="log-box" style="margin-top:8px"><div class="empty">浏览器预览模式<br>安装 APK 后这里展示真实统计与日志</div></div>`;
     $("#real-log").innerHTML = "";
     return;
-  }
-  if (pkgList.length === 0) {
-    $("#rules-list").innerHTML = `<div class="log-box" style="margin-top:8px"><div class="empty">还没有学习规则<br>开启服务后手动点几次「跳过」即可</div></div>`;
-  } else {
-    $("#rules-list").innerHTML = pkgList.map(pkg => (rules[pkg] || []).map(r => `
-      <div class="rule-item">
-        <div style="flex:1;min-width:0">
-          <div class="rule-pkg">${pkg}</div>
-          <div class="rule-detail">${r.cls ? "窗口指纹 " + r.cls : "文本「" + (r.text || "-") + "」"}${r.viewId ? " · ID " + r.viewId : ""}</div>
-        </div>
-        <div class="rule-stat"><b>${r.auto || 0}</b><span>自动 / 手动${r.manual || 0}</span></div>
-      </div>`).join("")).join("");
   }
 
   const byApp = (st.stats && st.stats.byApp) || {};
@@ -381,8 +367,8 @@ const FB_TYPES = { missed: "漏拦截：开屏广告没被秒跳", gyro_leak: "�
 function esc(s) {
   return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
-function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "3.10.0"; }
-function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "31000"; }
+function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "3.11.0"; }
+function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "31100"; }
 
 function openLink(url) {
   if (HAS_BRIDGE) { try { AndroidApp.openUrl(url); return; } catch (e) {} }

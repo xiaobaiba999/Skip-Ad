@@ -36,8 +36,21 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 开屏广告智能跳过服务（无障碍服务实现 · v3.10.0 · 内嵌规则库大扩充）
+ * 开屏广告智能跳过服务（无障碍服务实现 · v3.11.0 · 链式回弹用户意图安全门）
  * ─────────────────────────────────────────────────────────────
+ * v3.11.0（issue#13 实锤修复：用户主动分享被链式回弹连踢 3 次）：
+ *  · 事故链：用户在安全中心点「分享到微信」→ 引擎把 securitycenter→mm
+ *    当成「广告拉起微信」→ 返回键弹回 → 用户重试 3 次全被弹回。
+ *    参考李跳跳同类能力的安全哲学：回弹绝不与用户意愿对抗——只拦
+ *    「无人在场时广告自己拉起」的跳转。三重放行安全门：
+ *    ① 用户 2.2s 内真实点击（引擎代点不计）→ 主动跳转，放行；
+ *    ② 系统分享选择器（Resolver/Chooser/intentresolver）8s 内出现过
+ *       → 用户亲手挑的目标，放行；
+ *    ③ 同「宿主→目标」12s 内已弹回过一次又立刻拉起 = 用户重试，放行。
+ *  · 同包落地页弹回同步加用户点击门（点商品/文章详情跳 WebView 不再误弹）；
+ *  · intentresolver 加入系统噪音过滤（分享面板全屏热区误观察归零）；
+ *  · 学习规则明细撤出 App UI（学习引擎照常工作，列表仅进诊断日志）。
+ *
  * v3.10.0（规则直接内嵌、覆盖面大扩充、绝不乱点）：
  *  · RuleEngine 五层规则：分应用表（28 款主流应用真实文案）/ 全局精确
  *    文案（19 条，大小写归一）/ 倒计时形态（严格正则，营销话术数学上
@@ -206,6 +219,16 @@ public class AdSkipService extends AccessibilityService {
     private final java.util.HashMap<String, Long> lastPopupScanAt = new java.util.HashMap<>();
     private final java.util.HashMap<String, long[]> burstWin = new java.util.HashMap<>();
     private final java.util.HashMap<String, Long> landingBackAt = new java.util.HashMap<>();
+    /* v3.11.0（issue#13）链式回弹三重放行状态：
+     *  lastUserActAt——用户最近一次真实点击（引擎代点不计）时刻；
+     *  chooserSeenAt——系统分享选择器最近出现/被选中时刻；
+     *  chainPairBackAt——「宿主→目标」最近一次已弹回时刻（同对 12s 内二跳
+     *  判定为用户重试，直接放行，绝不对抗用户）；
+     *  lastChainPassLogAt——放行日志节流（避免刷屏）。 */
+    private volatile long lastUserActAt = 0L;
+    private volatile long chooserSeenAt = 0L;
+    private final java.util.HashMap<String, Long> chainPairBackAt = new java.util.HashMap<>();
+    private volatile long lastChainPassLogAt = 0L;
     /* v3.5.0：点击复验——本窗已点击次数（换候选/真实触点重试/返回键兜底的依据） */
     private final java.util.HashMap<String, Integer> clickTries = new java.util.HashMap<>();
     /* v3.8.0 倒计时门控（issue#10 二轮·喜马拉雅）：跳过文案带数字（「跳过 3」）
@@ -250,7 +273,7 @@ public class AdSkipService extends AccessibilityService {
         // v3.6.0：清理 v3.5.0 误学毒指纹（MainActivity/FrameLayout/Dialog 被
         // 学成「广告窗指纹」——用户二次进入被连按返回键退出的根因）
         int purged = purgePoisonFingerprints();
-        appendLog("服务已启动 · v3.10.0 内嵌规则库大扩充：五层全局规则+28 款分应用表+SDK 图片关闭键，0ms 秒跳+桌面黑名单（"
+        appendLog("服务已启动 · v3.11.0 链式回弹用户意图安全门：主动分享/手动点击/目标重试三重放行（绝不与你对抗）+ 分享选择器识别 + 学习明细精简（"
                 + RuleEngine.stats() + ")"
                 + (purged > 0 ? "｜已清理 " + purged + " 条误学窗口指纹" : ""));
         // v3.9.0：清理毒位置规则（issue#12 实锤：桌面 com.miui.home 学出位置
@@ -467,9 +490,27 @@ public class AdSkipService extends AccessibilityService {
             return;
         }
         if (pkg.equals(getPackageName())) return;
-        if (isSystemNoise(pkg)) return;
 
         long now = System.currentTimeMillis();
+
+        // v3.11.0（issue#13）用户意图追踪【前置于 isSystemNoise】：分享选择器
+        //（com.android.intentresolver / android 包 ResolverActivity）与部分系统窗
+        // 事件会被噪音过滤拦下，但它们恰恰是「用户主动分享/打开」的铁证。
+        // 李跳跳同款原则：只要用户最近亲手点过，广告回弹一律让路。
+        int et = event.getEventType();
+        if (et == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
+                && AdDecisionCore.isChooserHint(pkg, cs(event.getClassName()))) {
+            chooserSeenAt = now;
+        }
+        if (et == AccessibilityEvent.TYPE_VIEW_CLICKED && !isOwnAutoClick(pkg, now)) {
+            lastUserActAt = now; // 真实用户点击（非引擎代点）：主动意图最强信号
+            if (AdDecisionCore.isChooserHint(pkg, cs(event.getClassName()))) {
+                chooserSeenAt = now; // 在分享选择器里点中目标 App 图标
+            }
+        }
+
+        if (isSystemNoise(pkg)) return;
+
         energyEvents++;
 
         switch (event.getEventType()) {
@@ -529,6 +570,7 @@ public class AdSkipService extends AccessibilityService {
             }
             case AccessibilityEvent.TYPE_VIEW_CLICKED: {
                 if (isOwnAutoClick(pkg, now)) return;
+                lastUserActAt = now; // v3.11.0：应用内真实点击同样计入用户意图（直接分享/登录跳转等）
                 learnFromManualClick(pkg, event, now);
                 observeMisclick(pkg, event, now);
                 break;
@@ -543,6 +585,7 @@ public class AdSkipService extends AccessibilityService {
                 || pkg.equals("android")
                 || pkg.contains("inputmethod")
                 || pkg.contains("packageinstaller")
+                || pkg.contains("intentresolver") // v3.11.0：分享选择器噪音（全屏热区误观察）
                 || pkg.equals("com.android.settings");
     }
 
@@ -1116,6 +1159,20 @@ public class AdSkipService extends AccessibilityService {
 
     /* ───────── 链式跳转回弹（跨应用） ───────── */
 
+    /** v3.11.0（issue#13）：同「宿主→目标」对最近一次弹回时刻（无记录=0） */
+    private long chainPairBackAtOf(String host, String target) {
+        Long t = chainPairBackAt.get(host + ">" + target);
+        return t == null ? 0L : t.longValue();
+    }
+
+    /** v3.11.0（issue#13）：放行原因的人话文案 */
+    private static String chainPassZh(String verdict) {
+        if (AdDecisionCore.CHAIN_USER_ACT.equals(verdict)) return "你 2.2s 内刚点击过（分享/登录按钮），判定为主动跳转";
+        if (AdDecisionCore.CHAIN_CHOOSER.equals(verdict)) return "系统分享选择器刚出现过，目标是你亲手挑的";
+        if (AdDecisionCore.CHAIN_RETRY.equals(verdict)) return "同一目标刚弹回过一次又立刻拉起，判定为你的主动重试";
+        return "";
+    }
+
     private boolean reboundChainJump(String newPkg, long now) {
         try {
             if (!chainReboundEnabled()) return false;
@@ -1137,10 +1194,26 @@ public class AdSkipService extends AccessibilityService {
                 }
             }
             if (host == null) return false;
+
+            // v3.11.0（issue#13 实锤修复）三重放行安全门：用户在安全中心
+            // 「分享到微信」被连弹 3 次踢回——回弹只允许拦「无人在场时广告
+            // 自己拉起」的跳转；用户 2.2s 内点过 / 分享选择器 8s 内出现过 /
+            // 同对 12s 内已弹回过（重试=意愿），一律放行，绝不与用户对抗。
+            String verdict = AdDecisionCore.chainBounceVerdict(now, lastUserActAt,
+                    chooserSeenAt, chainPairBackAtOf(host, newPkg));
+            if (!AdDecisionCore.CHAIN_ALLOW.equals(verdict)) {
+                if (now - lastChainPassLogAt > 3000) {
+                    lastChainPassLogAt = now;
+                    appendLog("⛓ 链式跳转放行（" + shortPkg(host) + " → " + shortPkg(newPkg)
+                            + "）：" + chainPassZh(verdict) + "，不回弹");
+                }
+                return false;
+            }
             if (!backAllowed(now)) return false;
 
             performGlobalAction(GLOBAL_ACTION_BACK);
             chainRebounds++;
+            chainPairBackAt.put(host + ">" + newPkg, Long.valueOf(now));
             appendLog("⛓ 链式跳转已弹回：" + shortPkg(host) + " 的广告试图拉起 " + shortPkg(newPkg)
                     + " → 返回键送回原应用（" + (now - winAt(host)) + "ms 内）");
             bumpStat(host, "chain");
@@ -1160,6 +1233,11 @@ public class AdSkipService extends AccessibilityService {
             if (cls == null || cls.length() == 0) return false;
             String c = cls.toLowerCase();
             if (!c.contains("webview") && !c.contains("h5")) return false;
+            // v3.11.0（issue#13 同族防线）：用户 2.2s 内刚点过（点开商品/文章
+            // 详情跳内置 WebView 是正常操作）→ 不回弹，只有广告自己拉起的
+            // 落地页才弹回。判定复用 chainBounceVerdict（同对/选择器门在
+            // 同包场景不适用，仅取用户点击门）。
+            if (now - lastUserActAt < AdDecisionCore.CHAIN_USER_ACT_MS) return false;
             Long until = adFeatureUntil.get(pkg);
             if (until == null || now >= until.longValue()) return false;
             long judgedAt = until.longValue() - CHAIN_GUARD_MS;

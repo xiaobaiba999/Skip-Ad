@@ -867,6 +867,80 @@ public class DecisionCoreTest {
         check("L11 喜马拉雅不是桌面", !AdDecisionCore.isLauncherLike("com.ximalaya.ting.android"));
     }
 
+    /* ───────── v3.11.0：链式回弹用户意图安全门（issue#13 实锤建模） ───────── */
+
+    /**
+     * 事故建模（issue#13 真机日志）：用户在 MIUI 安全中心（ApplicationsDetailsActivity）
+     * 点「分享到微信」→ securitycenter→com.tencent.mm 被当广告链式跳转 → 返回键弹回
+     * → 用户重试 3 次全被弹回。三重放行安全门逐一验证 + 真广告自动拉起仍要弹回的
+     * 核心价值回归验证。
+     */
+    static void v3110_chainUserIntent() {
+        System.out.println("\n── v3.11.0：issue#13 事故链建模（分享到微信被弹回×3 → 三重放行）──");
+        long now = 1700000000000L;
+
+        // ① 用户点击门：点完分享按钮 800ms 后 mm 开（典型分享链路延迟）
+        check("V1a 分享按钮点击后 0.8s 跳微信 → 放行",
+                AdDecisionCore.CHAIN_USER_ACT.equals(
+                        AdDecisionCore.chainBounceVerdict(now, now - 800, 0, 0)));
+        check("V1b 选择器里点中微信图标 1.5s 后开 → 放行",
+                AdDecisionCore.CHAIN_USER_ACT.equals(
+                        AdDecisionCore.chainBounceVerdict(now, now - 1500, now - 6000, 0)));
+        check("V1c 点击 2.1s（<2.2s 门限）→ 仍放行",
+                AdDecisionCore.CHAIN_USER_ACT.equals(
+                        AdDecisionCore.chainBounceVerdict(now, now - 2100, 0, 0)));
+        check("V1d 点击 2.3s 前（>门限）且无其他证据 → 可弹回",
+                AdDecisionCore.CHAIN_ALLOW.equals(
+                        AdDecisionCore.chainBounceVerdict(now, now - 2300, 0, 0)));
+
+        // ② 分享选择器门：选择器弹出后用户翻列表 5s 才点（点击事件可能被系统窗
+        //    噪音过滤吃掉，选择器本身即铁证）
+        check("V2a 选择器 5s 前出现 → 放行",
+                AdDecisionCore.CHAIN_CHOOSER.equals(
+                        AdDecisionCore.chainBounceVerdict(now, 0, now - 5000, 0)));
+        check("V2b 选择器 7.9s 前 → 仍放行",
+                AdDecisionCore.CHAIN_CHOOSER.equals(
+                        AdDecisionCore.chainBounceVerdict(now, 0, now - 7900, 0)));
+        check("V2c 选择器 8.1s 前已过期 → 可弹回",
+                AdDecisionCore.CHAIN_ALLOW.equals(
+                        AdDecisionCore.chainBounceVerdict(now, 0, now - 8100, 0)));
+
+        // ③ 同对重试门：issue#13 实锤——弹回后用户立刻重试，绝不能连环对抗
+        check("V3a 同宿主→同目标 5s 内二跳（用户重试）→ 放行",
+                AdDecisionCore.CHAIN_RETRY.equals(
+                        AdDecisionCore.chainBounceVerdict(now, 0, 0, now - 5000)));
+        check("V3b 同对 11.9s 内 → 仍放行",
+                AdDecisionCore.CHAIN_RETRY.equals(
+                        AdDecisionCore.chainBounceVerdict(now, 0, 0, now - 11900)));
+        check("V3c 同对 12.1s 后 → 恢复可弹回",
+                AdDecisionCore.CHAIN_ALLOW.equals(
+                        AdDecisionCore.chainBounceVerdict(now, 0, 0, now - 12100)));
+
+        // ④ 核心价值回归：无人在场时广告自动拉起（真链式跳转）必须仍被弹回
+        check("V4a 用户 60s 没碰手机，广告拉起应用商店 → 弹回",
+                AdDecisionCore.CHAIN_ALLOW.equals(
+                        AdDecisionCore.chainBounceVerdict(now, now - 60000, 0, 0)));
+        check("V4b 全零初始态（刚开机）→ 可弹回",
+                AdDecisionCore.CHAIN_ALLOW.equals(
+                        AdDecisionCore.chainBounceVerdict(now, 0, 0, 0)));
+
+        // ⑤ 选择器识别（全 ROM 兼容矩阵）
+        check("V5a AOSP ResolverActivity（pkg=android）",
+                AdDecisionCore.isChooserHint("android", "android.intent.resolver.ResolverActivity"));
+        check("V5b Android 12+ intentresolver 包",
+                AdDecisionCore.isChooserHint("com.android.intentresolver", "com.android.intentresolver.ResolverActivity"));
+        check("V5c ChooserActivity",
+                AdDecisionCore.isChooserHint("android", "com.android.internal.app.ChooserActivity"));
+        check("V5d 厂商定制 chooser 类",
+                AdDecisionCore.isChooserHint("com.miui.home", "com.miui.something.ShareChooser"));
+        check("V5e 微信 MainActivity 不是选择器",
+                !AdDecisionCore.isChooserHint("com.tencent.mm", "com.tencent.mm.ui.LauncherUI"));
+        check("V5f null 类名不误判",
+                !AdDecisionCore.isChooserHint("com.tencent.mm", null));
+        check("V5g Keep null 包不误判",
+                !AdDecisionCore.isChooserHint(null, "com.xingin.keep.ui.MainActivity"));
+    }
+
     static void check(String name, boolean ok) {
         check(name, ok, "");
     }
@@ -882,7 +956,7 @@ public class DecisionCoreTest {
     }
 
     public static void main(String[] args) {
-        System.out.println("═══ AdDecisionCore JVM 单测（v3.9.0 · 真机场景建模 · 屏幕 1080x2400）═══\n");
+        System.out.println("═══ AdDecisionCore JVM 单测（v3.11.0 · 真机场景建模 · 屏幕 1080x2400）═══\n");
 
         System.out.println("── 微博类：第一方图片开屏（真机反馈主场景）──");
         weibo_cornerSkip();
@@ -949,6 +1023,9 @@ public class DecisionCoreTest {
         v380_parseCountdown();
         v380_cornersBeforeSdkBack();
         v380_candidateOrdering();
+
+        System.out.println("── v3.11.0：链式回弹用户意图安全门（issue#13 分享被弹回×3）──");
+        v3110_chainUserIntent();
 
         System.out.println("\n═══ 结果：" + pass + " PASS / " + fail + " FAIL ═══");
         if (fail > 0) {

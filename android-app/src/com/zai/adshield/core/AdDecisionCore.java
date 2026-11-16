@@ -3,8 +3,16 @@ package com.zai.adshield.core;
 import java.util.ArrayList;
 
 /**
- * 秒跳决策核心（v3.10.0 · 纯 Java · 零 Android 依赖 · JVM 可单测）
+ * 秒跳决策核心（v3.11.0 · 纯 Java · 零 Android 依赖 · JVM 可单测）
  * ─────────────────────────────────────────────────────────────
+ * v3.11.0 设计动机（issue#13 真机日志实锤：用户在安全中心主动「分享到
+ *  微信」被链式回弹连弹 3 次踢回原应用）——回弹与用户意愿对抗是红线：
+ *  · 【新增】chainBounceVerdict 链式回弹三重放行安全门：用户 2.2s 内
+ *    真实点击（分享按钮/选择器图标）→ 放行；系统分享选择器 8s 内出现
+ *    → 放行；同宿主→同目标 12s 内已弹回过一次（=用户重试）→ 放行。
+ *    只有无人在场、广告自拉起的跳转才回弹；
+ *  · 【新增】isChooserHint 分享选择器识别（ResolverActivity/
+ *    ChooserActivity/com.android.intentresolver 全兼容）。
  * v3.9.0 设计动机（issue#12 真机日志实锤：QQ/微信/抖音「进去就被退出来」）
  *  ——内嵌规则引擎主路径化（规则只认控件属性+点控件自身 bounds 中心）：
  *  · 【删除】L6 坐标级点击兜底（coord_fallback）：它点的是固定百分比坐标
@@ -749,6 +757,52 @@ public final class AdDecisionCore {
         if (pkg == null) return false;
         for (String h : AD_TARGET_HINTS) {
             if (pkg.startsWith(h) || pkg.contains(h)) return true;
+        }
+        return false;
+    }
+
+    /* ═════════ v3.11.0 链式跳转回弹安全门（issue#13 用户主动分享被弹回×3） ═════════ */
+
+    public static final String CHAIN_ALLOW = "allow";       // 允许回弹（无任何用户意图证据）
+    public static final String CHAIN_USER_ACT = "user_act"; // 用户 2.2s 内有真实点击 → 主动跳转，放行
+    public static final String CHAIN_CHOOSER = "chooser";   // 系统分享选择器刚出现 → 用户正在挑目标，放行
+    public static final String CHAIN_RETRY = "pair_retry";  // 同宿主→同目标 12s 内已弹回过一次 → 重试即意愿，放行
+
+    public static final long CHAIN_USER_ACT_MS = 2200;    // 用户点击→应用切换的常规间隔上限
+    public static final long CHAIN_CHOOSER_MS = 8000;     // 分享选择器存活宽限（用户翻列表要时间）
+    public static final long CHAIN_PAIR_RETRY_MS = 12000; // 同对二跳放行窗（绝不连环对抗用户）
+
+    /** v3.11.0 链式回弹三重放行判定（纯函数，JVM 可单测）。
+     *  核心原则（李跳跳同款方法论）：回弹只能拦「无人在场时广告自己拉起」的
+     *  跳转——只要用户最近亲手点过（分享按钮/选择器里的目标图标）、或正在
+     *  分享选择器里挑选、或同一目标刚被弹回又被立刻拉起（=用户重试），
+     *  一律判定为用户主动意愿，绝不回弹。issue#13 实锤：用户在安全中心
+     *  点「分享到微信」被连弹 3 次踢回，三重门任何一道都足以拦下该事故。 */
+    public static String chainBounceVerdict(long now, long lastUserActAt,
+                                            long chooserSeenAt, long pairLastBackAt) {
+        if (now - lastUserActAt < CHAIN_USER_ACT_MS) return CHAIN_USER_ACT;
+        if (chooserSeenAt > 0 && now - chooserSeenAt < CHAIN_CHOOSER_MS) return CHAIN_CHOOSER;
+        if (pairLastBackAt > 0 && now - pairLastBackAt < CHAIN_PAIR_RETRY_MS) return CHAIN_RETRY;
+        return CHAIN_ALLOW;
+    }
+
+    /** v3.11.0：系统分享选择器（Chooser/Resolver）识别。选择器出现本身就是
+     *  「用户主动发起分享/打开方式」的铁证——之后无论跳到哪个应用都是用户
+     *  亲手挑选，链式回弹必须让路。兼容 AOSP（android.intent.resolver.
+     *  ResolverActivity，包名 android）、Android 12+（com.android.intentresolver）
+     *  与厂商定制窗类。 */
+    public static boolean isChooserHint(String pkg, String cls) {
+        if (pkg != null) {
+            String p = pkg.toLowerCase();
+            if (p.contains("intentresolver") || p.contains(".resolver")) return true;
+        }
+        if (cls != null) {
+            String c = cls.toLowerCase();
+            if (c.contains("resolveractivity") || c.contains("chooseractivity")) return true;
+            if (c.contains(".chooser") || c.contains(".resolver")) return true;
+            // 厂商定制分享面板：类名以 chooser/resolver 结尾（ShareChooser/
+            // ShareResolver 等）——误判方向安全（仅多放行 8s，绝不误弹回）
+            if (c.endsWith("chooser") || c.endsWith("resolver")) return true;
         }
         return false;
     }
