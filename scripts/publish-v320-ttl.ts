@@ -70,9 +70,9 @@ async function tryOnce(): Promise<boolean> {
 }
 
 let done = false;
-for (let i = 1; i <= 60 && !done; i++) {
+for (let i = 1; i <= 150 && !done; i++) {
   try { done = await tryOnce(); } catch (e) { console.log(`轮 ${i} 异常:`, e instanceof Error ? e.message : e); }
-  if (!done) await new Promise((r) => setTimeout(r, 9000 + Math.random() * 4000));
+  if (!done) await new Promise((r) => setTimeout(r, 12000 + Math.random() * 6000));
 }
 console.log(done ? "【发布完成】" : "【60 轮未成功——稍后需重跑】");
 process.exit(done ? 0 : 1);
