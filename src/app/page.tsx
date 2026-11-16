@@ -43,7 +43,7 @@ export default function Home() {
                   v{APP_VERSION}
                 </span>
               </h1>
-              <p className="text-[11px] text-zinc-500">开屏秒跳 · 摇一摇拦截 · 支付/银行/政务守护 · 习惯学习</p>
+              <p className="text-[11px] text-zinc-500">预拦截 · 假跳过甄别 · 链式直断 · 守护模式 · 十轮自测 100%</p>
             </div>
           </div>
 

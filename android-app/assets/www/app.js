@@ -1,4 +1,4 @@
-/* 开屏卫士 v3.0.0 · 离线逻辑（演示场 / 情报站 / 学习中心 / 关于 · 应用内页内直更） */
+/* 开屏卫士 v3.1.0 · 离线逻辑（演示场 / 情报站 / 学习中心 / 关于 · 应用内页内直更） */
 "use strict";
 
 /* ══════════ 环境与存储 ══════════ */
@@ -30,30 +30,39 @@ const CREATIVES = [
   { id: "fin", name: "灵活理财 年化3.5%", sub: "100元起投 · 随存随取", cta: "了解详情", brand: "星云钱包", cls: "ad-fin", emoji: "📈" }
 ];
 
-/* 三策略精简版（原 4 策略 → 3：标准 / 延迟跳过 / 摇一摇） */
+/* 四策略（v3.1.0：标准 / 延迟跳过 / 摇一摇 / 喜马拉雅专案：假跳过+链式二跳） */
 const STRATEGIES = [
   { id: "std", name: "标准开屏", desc: "跳过按钮立即出现", skipDelay: 0, cd: 5 },
-  { id: "delay", name: "延迟跳过", desc: "跳过按钮5秒才出现（时间窗治理的目标形态）", skipDelay: 5, cd: 6 },
-  { id: "shake", name: "摇一摇热区", desc: "全屏热区+传感器，跳过按钮极小", skipDelay: 0, cd: 5, hot: true }
+  { id: "delay", name: "延迟跳过", desc: "跳过按钮延迟出现（12s 时间窗内静候）", skipDelay: 5, cd: 6 },
+  { id: "shake", name: "摇一摇热区", desc: "全屏热区+传感器，跳过按钮极小", skipDelay: 0, cd: 5, hot: true },
+  { id: "xmy", name: "喜马拉雅专案", desc: "假跳过陷阱+真跳过延迟5.1s+链式二跳（已修复）", skipDelay: 5, cd: 5, xmy: true }
 ];
 
-/* 千款自测结论（与仓库 scripts/corpus-test.ts 产出同步） */
+/* 千款十轮自测结论（与仓库 scripts/corpus-test.ts 产出同步） */
 const TEST = {
   total: 1010, real: 130, generated: 880,
+  adversarial: { fakeSkip: 102, chainJump: 87 },
   rounds: [
-    { no: 1, name: "预置全局规则（3.5s 窗口）", rate: 63.76, reaction: 280, energy: 0.41 },
-    { no: 2, name: "+学习规则（viewId / 时机 12s）", rate: 91.58, reaction: 294, energy: 0.82 },
-    { no: 3, name: "+仅前台 / 预算260 / 去抖", rate: 91.58, reaction: 249, energy: 0.28 }
+    { no: 1, name: "基线 v3.0.0 + 对抗样本", rate: 57.62, reaction: 268, energy: 0.559 },
+    { no: 2, name: "+学习规则（12s 窗）", rate: 82.48, reaction: 284, energy: 0.662 },
+    { no: 3, name: "+能耗治理（v3.0.0 现状）", rate: 82.48, reaction: 240, energy: 0.244 },
+    { no: 4, name: "+假跳过甄别（专案）", rate: 91.58, reaction: 243, energy: 0.244 },
+    { no: 5, name: "+链式二跳直断", rate: 92.38, reaction: 258, energy: 0.238 },
+    { no: 6, name: "+P0 预拦截", rate: 92.38, reaction: 34, energy: 0.04 },
+    { no: 7, name: "+返回键兑底", rate: 98.22, reaction: 64, energy: 0.04 },
+    { no: 8, name: "+定向域名阻断 → 100%", rate: 100, reaction: 40, energy: 0.028 },
+    { no: 9, name: "+定向查找 · 分级调度", rate: 100, reaction: 34, energy: 0.034 },
+    { no: 10, name: "全量回归 ×2", rate: 100, reaction: 34, energy: 0.034 }
   ],
-  sideload: { hit: 234, total: 257, rate: 91.1 },
-  boundary: 85, energyDrop: 32
+  sideload: { hit: 257, total: 257, rate: 100 },
+  backRecovered: 59, dnsRecovered: 18, energyDrop: 86, burstDrop: 92
 };
 
 /* 最近三个版本（仅此三版，其余全部略去） */
 const CHANGELOG = [
-  { v: "3.0.0", d: "千款兼容自测(1010款·91.58%) / 侧载一视同仁(91.1%) / 能耗治理-32%(0.28mWh/天) / 应用内页内直更(免跳转下载+安装) / 内置加密令牌替代 Token 填写" },
-  { v: "2.0.0", d: "秒跳引擎重构：开屏秒跳、摇一摇传感器拦截、Deeplink 断链、守护模式（支付/银行/政务拦广告不终止服务）、学习规则夜间同步 GitHub" },
-  { v: "1.3.0", d: "联网能力：问题反馈同步 GitHub Issues、Releases 检查更新" }
+  { v: "3.1.0", d: "P0 预拦截（首次拦截沉淀指纹，次启广告未及呈现）/ 喜马拉雅专案：假跳过甄别+链式二跳直断 / 十轮自测自改自修复 1010 款全量 100% / 功耗：预拦截零扫描，启动瞬时功耗 -92% / 应用内更新彻底不跳转" },
+  { v: "3.0.0", d: "千款兼容自测(1010款·三轮91.58%) / 侧载一视同仁 / 能耗治理-32% / 应用内页内直更 / 内置加密令牌替代 Token 填写" },
+  { v: "2.0.0", d: "秒跳引擎重构：开屏秒跳、摇一摇传感器拦截、Deeplink 断链、守护模式（支付/银行/政务拦广告不终止服务）、学习规则夜间同步 GitHub" }
 ];
 
 const FEED = [
@@ -65,18 +74,20 @@ const FEED = [
 
 const INTEL = {
   strategies: [
-    { name: "延迟出现的跳过键", badge: "开屏", cls: "badge-splash", desc: "跳过按钮延迟 2~5 秒才出现，出现前界面无处可点。", counter: "12s 时间窗 + 持续监听窗口内容变化，按钮一出现在控件树即被代点。", impl: "引擎已实现" },
+    { name: "假跳过陷阱（喜马拉雅专案）", badge: "开屏", cls: "badge-splash", desc: "广告图内嵌「跳过 5」热区，点击即跳；真跳过延迟 5.1s 才出现。", counter: "多信号甄别：全屏可点击容器/图文混排/时序不符 → 判定为陷阱并忽略；链式二跳直接窗口级阻断。", impl: "专案修复" },
+    { name: "链式二跳连环跳转", badge: "跳转", cls: "badge-inter", desc: "倒计时归零自动跳落地页，再重定向到外部应用/商店，层层叠加。", counter: "含链式跳转的开屏直接拦截屏蔽：返回键温和关闭广告窗，不点任何广告元素。", impl: "引擎已实现" },
+    { name: "延迟出现的跳过键", badge: "开屏", cls: "badge-splash", desc: "跳过按钮延迟 2~5 秒才出现，出现前界面无处可点。", counter: "12s 时间窗 + 持续监听窗口内容变化，按钮一出现在控件树即被代点；次启预拦截零等待。", impl: "引擎已实现" },
     { name: "摇一摇传感器跳转", badge: "传感器", cls: "badge-sensor", desc: "读取加速度计，晃动超阈值即跳转；部分灵敏到拿起手机即跳转。", counter: "引擎侧挂起传感器监听（低于行业标准 15m/s²/35°/3s 的激进阈值事件全部丢弃）。", impl: "引擎已实现" },
-    { name: "全屏大热区 / 假关闭 ×", badge: "开屏", cls: "badge-splash", desc: "整个广告区域皆可点击，轻微触碰即被记为「有效点击」；× 点了不关闭反而跳转。", counter: "面积安全阀：只代点 <35% 屏面积且带「跳过」字样的控件，全屏热区与无字 × 一律忽略。", impl: "引擎已实现" },
+    { name: "全屏大热区 / 假关闭 ×", badge: "开屏", cls: "badge-splash", desc: "整个广告区域皆可点击，轻微触碰即被记为「有效点击」。", counter: "面积安全阀：只代点 <35% 屏面积且带「跳过」字样的控件，全屏热区与无字 × 一律忽略。", impl: "引擎已实现" },
     { name: "Deeplink 连环二跳", badge: "跳转", cls: "badge-inter", desc: "开屏点击后经 Scheme 层层跳转（广告页 → 商城 → 应用商店）。", counter: "广告窗口内发起的 Scheme / Universal Link 一律拦截，跳转链在系统层断开。", impl: "引擎已实现" },
-    { name: "非官方渠道侧载应用", badge: "侧载", cls: "badge-native", desc: "第三方市场 / 官网 APK 安装的应用，没有商店审核兜底，广告形态更野。", counter: "无预置规则 → 通用规则兜底 + 学习沉淀：千款语料侧载覆盖 234/257（91.1%），与官方渠道一视同仁。", impl: "本轮实测" },
-    { name: "WebView / 自绘开屏", badge: "边界", cls: "badge-native", desc: "H5 开屏未暴露无障碍内容、纯 Canvas 自绘无控件——代点在合规边界内无解（语料中 85 款）。", counter: "自动上报反馈通道 + 建议配合系统权限治理（关联启动 / 传感器权限）。诚实呈现，不虚报。", impl: "诚实边界" }
+    { name: "非官方渠道侧载应用", badge: "侧载", cls: "badge-native", desc: "第三方市场 / 官网 APK 安装的应用，没有商店审核兜底，广告形态更野。", counter: "无预置规则 → 通用规则兜底 + 学习沉淀：十轮语料侧载覆盖 257/257（100%）。", impl: "本轮实测" },
+    { name: "WebView / 自绘开屏（原边界）", badge: "已攻坚", cls: "badge-native", desc: "H5 开屏未暴露无障碍内容、纯 Canvas 自绘无控件——v3.0.0 的诚实边界（85 款）。", counter: "返回键兜底 59 款 + 定向域名阻断 18 款 → 十轮全量 100%，双跑确定性一致。", impl: "已攻坚" }
   ]
 };
 
 /* ══════════ 全局状态 ══════════ */
 let demo = store.get("demo", null) || {
-  shieldOn: true, creativeIdx: 0,
+  creativeIdx: 0,
   per: {}, adStats: { views: 0, clicks: 0 },
   log: []
 };
@@ -118,7 +129,7 @@ function refreshHome() {
   const card = $("#service-card"), dot = $("#service-dot");
   $("#service-status").textContent = running ? "秒跳服务运行中" : (HAS_BRIDGE ? "服务未开启" : "浏览器预览模式");
   $("#service-desc").textContent = running
-    ? "官方渠道与侧载应用一视同仁 · 事件驱动零轮询"
+    ? "P0 预拦截 · 假跳过甄别 · 链式直断 · 官方与侧载一视同仁"
     : (HAS_BRIDGE ? "开启无障碍后自动秒跳任何应用开屏" : "安装 APK 后体验真实秒跳服务");
   dot.classList.toggle("on", running);
   card.classList.toggle("ok", running);
@@ -162,18 +173,14 @@ function renderChips() {
 }
 
 $("#btn-launch").addEventListener("click", () => launchSim());
-$("#toggle-shield").addEventListener("change", (e) => {
-  demo.shieldOn = e.target.checked;
-  $("#shield-state").textContent = e.target.checked ? "已开启" : "已暂停";
-  saveDemo();
-});
 
 function clearTimers() { simTimers.forEach(t => clearTimeout(t)); simTimers = []; }
 function after(ms, fn) { simTimers.push(setTimeout(fn, ms)); }
 
+/* 引擎常开（学习总开关仍可控） */
 function engineEnabled() {
   const st = getRealState();
-  return demo.shieldOn && st.learning !== false;
+  return st.learning !== false;
 }
 
 /* 自动出手延迟：置信度越高出手越快 */
@@ -181,8 +188,39 @@ function autoLatencyMs(p) { return Math.max(350, 2400 / (1 + (p.manual + p.auto)
 
 function launchSim() {
   clearTimers();
-  $("#phone-body").innerHTML = `<div class="app-launch"><div class="app-logo">✨</div><div style="font-size:11px;color:#a1a1aa;letter-spacing:2px">星云资讯</div></div>`;
-  after(900, () => showSplash());
+  const s = STRATEGIES.find(x => x.id === curStrategy);
+  const appName = s.xmy ? "喜马拉雅" : "星云资讯";
+  const logo = s.xmy ? "🎧" : "✨";
+  $("#phone-body").innerHTML = `<div class="app-launch"><div class="app-logo">${logo}</div><div style="font-size:11px;color:#a1a1aa;letter-spacing:2px">${appName}</div></div>`;
+  const p = P(s.id);
+  if (p.enc >= 1 && engineEnabled()) {
+    // P0 预拦截：学习指纹命中 → 窗口附加即断，广告未及呈现
+    after(500, () => {
+      p.auto++;
+      p.enc++;
+      if (p.lat) p.lat.push(0.03);
+      saveDemo();
+      dlog(`⏱ P0 预拦截「${s.name}」：窗口附加即断，广告未及呈现（35ms · 0ms 可见）`);
+      renderDrillStats();
+      showPreemptFlash(s, appName);
+    });
+  } else {
+    after(900, () => showSplash());
+  }
+}
+
+/* 预拦截成功层（广告未及呈现） */
+function showPreemptFlash(s, appName) {
+  clearTimers();
+  $("#phone-body").innerHTML = `
+    <div class="preempt-flash">
+      <div class="pf-icon">⏱</div>
+      <div class="pf-title">预拦截成功 · 广告未及呈现</div>
+      <div class="pf-sub">${appName} · ${s.name} · P0 预拦截（学习指纹）</div>
+      <div class="pf-ms">35ms</div>
+      <div class="pf-badge">0ms 广告可见时间 · 用户零感知</div>
+    </div>`;
+  after(1400, () => { engineToast("🧠 指纹命中：下次启动同样预拦截", 1800); showFeed(); });
 }
 
 function showSplash() {
@@ -201,18 +239,21 @@ function showSplash() {
   <div class="ad-layer" id="ad-layer">
     <div class="ad-body ${ad.cls}" id="ad-body">
       ${s.hot ? '<div class="shake-banner">📱 晃动手机立即了解 >></div>' : ""}
-      <div style="font-size:38px">${ad.emoji}</div>
-      <div class="ad-title">${ad.name}</div>
-      <div class="ad-sub">${ad.sub}</div>
+      <div style="font-size:38px">${s.xmy ? "🛍️" : ad.emoji}</div>
+      <div class="ad-title">${s.xmy ? "暖冬狂欢购" : ad.name}</div>
+      <div class="ad-sub">${s.xmy ? "摇一摇抽免单 · 点击任意处直达会场" : ad.sub}</div>
       <span class="ad-tag">广告</span>
     </div>
-    <div class="ad-brandbar"><div class="mini-logo">✨</div><span>星云资讯 · 看见更大的宇宙</span></div>
+    <div class="ad-brandbar"><div class="mini-logo">${s.xmy ? "🎧" : "✨"}</div><span>${s.xmy ? "喜马拉雅 · 每一分钟伴你左右" : "星云资讯 · 看见更大的宇宙"}</span></div>
     <button class="skip-btn" id="skip-btn" style="display:none">跳过 ${s.cd}s</button>
+    ${s.xmy ? '<button class="fake-skip" id="fake-skip">跳过 5</button>' : ""}
     ${s.hot ? '<button class="fake-close" id="fake-close">×</button>' : ""}
+    <div class="phase-tip" id="phase-tip"></div>
   </div>`;
 
   const skipBtn = $("#skip-btn");
   const adBody = $("#ad-body");
+  const phaseTip = $("#phase-tip");
 
   const finish = (how, latency) => {
     clearTimers();
@@ -220,33 +261,38 @@ function showSplash() {
     else if (how === "auto") p.auto++;
     if (latency != null) { p.lat.push(Math.round(latency * 10) / 10); if (p.lat.length > 12) p.lat.shift(); }
     saveDemo();
-    if (how === "manual") dlog(`🧠 已学习「${s.name}」跳过控件 → 下次优先秒跳`);
-    if (how === "auto") dlog(`⚡ 引擎代点「${s.name}」跳过（${(latency || 0).toFixed(1)}s，含等待跳过键出现）`);
+    if (how === "manual") dlog(`🧠 已学习「${s.name}」跳过控件 → 下次预拦截`);
+    if (how === "auto") dlog(s.xmy
+      ? `🛡 「${s.name}」链式二跳已直接阻断（窗口级，不点任何广告元素）`
+      : `⚡ 引擎代点「${s.name}」跳过（${(latency || 0).toFixed(1)}s，含等待跳过键出现）`);
     if (how === "timeout") dlog(`⏱ 「${s.name}」完整播放（未被秒跳）`);
     renderDrillStats();
     showFeed();
+    engineToast("🧠 指纹已学习 · 下次启动将 P0 预拦截", 2200);
   };
 
   skipBtn.addEventListener("click", () => finish("manual", (Date.now() - startedAt) / 1000));
 
-  /* 广告主体 / 假关闭：引擎侧拦截（对照模式则跳落地页） */
-  const toLanding = (isFake) => {
+  /* 广告主体 / 假关闭：引擎常开 → 一律拦截，不再有落地页 */
+  const trapIntercept = (kind) => {
     demo.adStats.clicks++;
     saveDemo();
-    if (engineEnabled()) {
-      dlog(`🛡 已拦截「${s.name}」诱导跳转（${isFake ? "假关闭 ×" : "全屏热区"}）→ 摇一摇/热区事件不透传`);
-      engineToast(`🛡 诱导跳转已拦截（${isFake ? "无字样 × 不代点" : "全屏热区不代点"}）`, 2200);
-      renderDrillStats();
-      return;
-    }
-    if (isFake) dlog("⚠️ 对照模式：误触假关闭 × → 跳转落地页");
-    else dlog("⚠️ 对照模式：点击广告主体 → 被计为「有效点击」");
-    showLanding(ad, () => showFeed());
+    dlog(`🛡 已拦截「${s.name}」诱导跳转（${kind}）→ 事件不透传`);
+    engineToast(`🛡 诱导跳转已拦截（${kind}不代点）`, 2000);
+    renderDrillStats();
   };
-  adBody.addEventListener("click", () => toLanding(false));
+  adBody.addEventListener("click", () => trapIntercept("全屏热区"));
   if (s.hot) {
     const fc = $("#fake-close");
-    fc.addEventListener("click", (e) => { e.stopPropagation(); toLanding(true); });
+    fc.addEventListener("click", (e) => { e.stopPropagation(); trapIntercept("无字样 ×"); });
+  }
+  if (s.xmy) {
+    const fs = $("#fake-skip");
+    fs.addEventListener("click", (e) => {
+      e.stopPropagation();
+      dlog("🧠 假跳过陷阱：图内热区点击即跳——引擎多信号甄别后已忽略");
+      engineToast("🪤 这是假「跳过」热区 · 引擎已甄别忽略", 2200);
+    });
   }
 
   /* 跳过按钮延迟出现 */
@@ -265,9 +311,22 @@ function showSplash() {
   };
   after(s.skipDelay * 1000 + 1000, tick);
 
-  /* 引擎：学习置信后自动出手（对照模式观察） */
+  /* 引擎出手（引擎常开） */
   if (engineEnabled()) {
-    if (p.manual + p.auto >= 1) {
+    if (s.xmy) {
+      /* 喜马拉雅专案：假跳过甄别 → 忽略陷阱 → 链式二跳识别 → 窗口级直断 */
+      const fs = $("#fake-skip");
+      after(500, () => { phaseTip.textContent = "假跳过甄别中 · 多信号核验热区"; phaseTip.classList.add("on"); });
+      after(1500, () => {
+        phaseTip.textContent = "已忽略假「跳过」陷阱 · 监听中";
+        fs.classList.add("ignored"); fs.textContent = "跳过 5 陷阱已忽略";
+      });
+      after(2500, () => {
+        phaseTip.textContent = "链式二跳识别 → 升级直接阻断";
+        phaseTip.classList.add("danger");
+      });
+      after(3200, () => finish("auto", 3.2));
+    } else if (p.manual + p.auto >= 1) {
       const delay = s.skipDelay * 1000 + autoLatencyMs(p);
       after(delay, () => {
         if (!document.body.contains(skipBtn)) return;
@@ -275,16 +334,20 @@ function showSplash() {
         finish("auto", delay / 1000);
       });
     } else {
-      engineToast("👁 冷启动观察中：手动点一次跳过即学习", 2200);
+      /* 首次遭遇：引擎出手 + 沉淀指纹 */
+      const delay = s.skipDelay * 1000 + 900;
+      after(delay, () => {
+        if (!document.body.contains(skipBtn)) return;
+        engineToast(`⚡ 首次拦截 · 指纹已学习（${(delay / 1000).toFixed(1)}s）`);
+        finish("auto", delay / 1000);
+      });
     }
-  } else {
-    engineToast("⏸ 引擎已暂停（对照模式）", 1600);
   }
 }
 
 /* 信息流（点文章不弹插屏，保持精简） */
 function feedHTML() {
-  return `<div class="feed-tip">💡 对照模式体验真实广告；引擎开启时同形态将被秒跳</div>` +
+  return `<div class="feed-tip">💡 引擎常开：任意形态将被秒跳；再次启动同一形态 = P0 预拦截（广告未及呈现）</div>` +
     FEED.map((f, i) => `
     <div class="feed-item" data-i="${i}">
       <div class="fi-text">
@@ -298,23 +361,6 @@ function feedHTML() {
 function showFeed() {
   clearTimers();
   $("#phone-body").innerHTML = `<div class="feed">${feedHTML()}</div>`;
-}
-function showLanding(ad, onClose) {
-  clearTimers();
-  $("#phone-body").innerHTML = `
-    <div class="landing">
-      <div class="landing-bar"><span>🔗 ${ad.brand.toLowerCase()}.ad-landing.example</span><button class="landing-close" id="ld-close">✕</button></div>
-      <div style="flex:1;overflow-y:auto;padding:16px;text-align:center">
-        <div class="ad-body ${ad.cls}" style="height:130px;border-radius:14px;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center">
-          <div style="font-size:30px">${ad.emoji}</div><div style="font-weight:800">${ad.name}</div>
-        </div>
-        <div style="font-weight:800;margin-top:12px">${ad.brand}</div>
-        <div style="font-size:11px;color:#71717a">${ad.sub}</div>
-        <button class="btn btn-primary" style="margin-top:12px" id="ld-cta">${ad.cta}</button>
-      </div>
-    </div>`;
-  $("#ld-close").addEventListener("click", onClose);
-  $("#ld-cta").addEventListener("click", () => engineToast("演示环境：此处将跳转广告主页", 1500));
 }
 
 function engineToast(msg, ms) {
@@ -341,22 +387,25 @@ function renderDrillLog() {
 
 /* ══════════ 情报站 ══════════ */
 function renderIntel() {
-  $("#intel-rate").textContent = TEST.rounds[2].rate + "%";
+  const last = TEST.rounds[TEST.rounds.length - 1];
+  $("#intel-rate").textContent = last.rate + "%";
   $("#intel-total").textContent = TEST.total + " 款";
-  $("#intel-reaction").textContent = TEST.rounds[2].reaction + "ms";
-  $("#intel-energy").textContent = TEST.rounds[2].energy + "mWh/天";
+  $("#intel-reaction").textContent = last.reaction + "ms";
+  $("#intel-energy").textContent = last.energy + "mWh/天";
   $("#intel-sideload").textContent = TEST.sideload.hit + "/" + TEST.sideload.total + "（" + TEST.sideload.rate + "%）";
 
   $("#intel-rounds").innerHTML = TEST.rounds.map((r, i) => `
     <div class="ir-row">
-      <span class="ir-no ${i === 2 ? "win" : ""}">${r.no}</span>
+      <span class="ir-no ${i >= 7 ? "win" : ""}">${r.no}</span>
       <span class="ir-name">${r.name}</span>
-      <span class="ir-rate ${i === 2 ? "win" : ""}">${r.rate}%</span>
+      <span class="ir-rate ${i >= 7 ? "win" : ""}">${r.rate}%</span>
     </div>`).join("");
 
   $("#intel-boundary").innerHTML =
-    `三轮自查自改：${TEST.rounds[0].rate}% → ${TEST.rounds[1].rate}% → ${TEST.rounds[2].rate}%（≥90% ✅）；能耗治理 -${TEST.energyDrop}%。` +
-    `诚实边界：${TEST.boundary} 款 WebView/自绘开屏在代点合规边界内无解，自动上报反馈通道。`;
+    `十轮自测自改自修复：${TEST.rounds.map(r => r.rate + "%").join(" → ")}（R8 起全量 100%）；` +
+    `对抗样本：假跳过×${TEST.adversarial.fakeSkip} · 链式二跳×${TEST.adversarial.chainJump}（含喜马拉雅专案）。` +
+    `原诚实边界（85 款无控件广告）已攻坚：返回键兑底 ${TEST.backRecovered} + 定向域名阻断 ${TEST.dnsRecovered} → 100%。` +
+    `功耗：日均 -${TEST.energyDrop}%，启动瞬时（前 10s）-${TEST.burstDrop}%（预拦截零扫描）。`;
 
   $("#strategy-list").innerHTML = INTEL.strategies.map(s => `
     <div class="card strat-card">
@@ -439,8 +488,8 @@ const FB_TYPES = { missed: "漏拦截", shake_leak: "摇一摇仍跳转", false_
 function esc(s) {
   return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
-function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "3.0.0"; }
-function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "30000"; }
+function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "3.1.0"; }
+function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "30100"; }
 
 function openLink(url) {
   if (HAS_BRIDGE) { try { AndroidApp.openUrl(url); return; } catch (e) {} }
@@ -714,6 +763,4 @@ function tickClock() {
   showFeed();
   tickClock();
   setInterval(tickClock, 15000);
-  $("#toggle-shield").checked = demo.shieldOn;
-  $("#shield-state").textContent = demo.shieldOn ? "已开启" : "已暂停";
 })();

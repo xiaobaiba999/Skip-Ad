@@ -1,9 +1,10 @@
 /**
- * 学习中心（SERVER）
+ * 学习中心（SERVER · v3.1.0 智能学习）
  * ─────────────────────────────────────────────────────────────
- * · recordBlock：拦截成功 → 拦截流水 + 规则命中累计（置信度随命中增长）
- * · recordMiss：对照模式下用户手动跳过 → 记为「漏拦截」；同一应用
- *   累计 ≥2 次自动生成该应用的学习规则（观察你的跳过习惯，下次优先秒跳）
+ * · recordBlock：拦截成功 → 拦截流水 + 规则命中累计；首次拦截即
+ *   沉淀「广告指纹」学习规则（容器签名 + viewId + 出现时机），
+ *   下次启动直接 P0 预拦截（广告未及呈现）
+ * · recordMiss：反馈通道兼容接口（对照/反馈场景手动跳过留痕）
  * · getProfile：使用习惯画像（应用分布 / 时段分布 / 场景分布 / 耗时）
  * · buildSnapshot：夜间同步 GitHub 的数据快照（学习规则 + 画像 + 统计）
  */
@@ -38,7 +39,7 @@ export function todayKey(d: Date = new Date()): string {
   return shanghaiDateKey(d);
 }
 
-/** 拦截成功：写流水 + 命中规则累计 */
+/** 拦截成功：写流水 + 命中规则累计；首次拦截即沉淀预拦截指纹 */
 export async function recordBlock(input: BlockEventInput) {
   const app = APP_BY_KEY.get(input.appKey);
   if (!app) throw new Error("unknown app");
@@ -61,6 +62,7 @@ export async function recordBlock(input: BlockEventInput) {
   const rule = await db.rule.findFirst({
     where: { appName: app.name, source: "learned" },
   });
+  let learnedCreated = false;
   if (rule) {
     await db.rule.update({
       where: { id: rule.id },
@@ -75,12 +77,36 @@ export async function recordBlock(input: BlockEventInput) {
       where: { appName: app.name, source: "preset" },
       data: { hitCount: { increment: 1 }, lastHitAt: new Date() },
     });
+    // v3.1.0 智能学习：首次拦截即沉淀「广告指纹」→ 下次启动 P0 预拦截
+    const preemptAction =
+      app.adType === "shake"
+        ? "sensor_block"
+        : app.adType === "deeplink"
+          ? "intent_block"
+          : app.guard
+            ? "guard_skip"
+            : app.traits?.chainJump
+              ? "chain_block"
+              : "preempt_block";
+    await db.rule.create({
+      data: {
+        appName: app.name,
+        appCategory: app.category,
+        adType: app.adType,
+        matchType: "learned",
+        pattern: `首次拦截即沉淀广告指纹（容器签名 + viewId + 出现时机）→ 下次启动 P0 预拦截，广告未及呈现`,
+        action: preemptAction,
+        source: "learned",
+        confidence: 0.78,
+      },
+    });
+    learnedCreated = true;
   }
 
-  return ev;
+  return { event: ev, learnedCreated };
 }
 
-/** 漏拦截（对照模式手动跳过）：流水 + 自动生成学习规则 */
+/** 漏拦截（反馈通道兼容接口）：流水 + 满 2 次自动生成学习规则 */
 export async function recordMiss(input: BlockEventInput) {
   const app = APP_BY_KEY.get(input.appKey);
   if (!app) throw new Error("unknown app");
@@ -230,7 +256,7 @@ export async function buildSnapshot() {
   });
   return {
     meta: {
-      version: "2.0.0",
+      version: "3.1.0",
       generatedAt: new Date().toISOString(),
       timezone: "Asia/Shanghai",
       purpose: "学习中心夜间自动同步——为后续版本迭代提供规则与画像参考",

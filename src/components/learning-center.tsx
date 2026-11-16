@@ -183,10 +183,10 @@ export function LearningCenter() {
               <Sparkles className="h-5 w-5 text-fuchsia-600" /> 学习规则
               <span className="rounded-full bg-fuchsia-50 px-2 py-0.5 text-[10px] font-bold text-fuchsia-700">{learnedRules.length} 条</span>
             </h2>
-            <p className="mt-1 text-[11px] text-zinc-400">同一应用累计 2 次手动跳过即自动沉淀专属秒跳规则，命中越多置信度越高</p>
+            <p className="mt-1 text-[11px] text-zinc-400">首次拦截即沉淀广告指纹（容器签名 + viewId + 时机），再次启动 P0 预拦截，命中越多置信度越高</p>
             {learnedRules.length === 0 ? (
               <p className="mt-3 rounded-lg bg-zinc-50 px-3 py-6 text-center text-[11px] leading-relaxed text-zinc-400">
-                还没有学习规则。到演练场关闭引擎（对照模式）手动跳过同一应用 2 次，即可看到规则在这里生成。
+                还没有学习规则。到演练场启动任意应用：首次拦截即自动沉淀广告指纹，第二次启动即预拦截（广告未及呈现）。
               </p>
             ) : (
               <ul className="mt-3 space-y-2.5">

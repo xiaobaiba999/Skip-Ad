@@ -1,0 +1,82 @@
+{
+  "round": 9,
+  "engine": "R9 · 功耗再治理（预拦截零扫描 + viewId 定向查找 + 分级调度）",
+  "fixNote": "修复⑧：短时功耗治理——预拦截命中零扫描（1 条事件≈1.6mWs）、首次遭遇 viewId 定向查找（2.6→0.4mWs）、命中即休眠",
+  "total": 1010,
+  "hits": 1010,
+  "rate": 100,
+  "weightedRate": 100,
+  "avgLatencyMs": 34,
+  "p95LatencyMs": 38,
+  "avgReactionMs": 34,
+  "avgAdVisibleMs": 0,
+  "guardHits": 29,
+  "guardServiceKills": 0,
+  "bySource": {
+    "official": [
+      753,
+      753
+    ],
+    "sideload": [
+      257,
+      257
+    ]
+  },
+  "byRender": {
+    "native": [
+      826,
+      826
+    ],
+    "web": [
+      124,
+      124
+    ],
+    "self": [
+      60,
+      60
+    ]
+  },
+  "byAdType": {
+    "splash": [
+      799,
+      799
+    ],
+    "interstitial": [
+      108,
+      108
+    ],
+    "shake": [
+      66,
+      66
+    ],
+    "deeplink": [
+      37,
+      37
+    ]
+  },
+  "tierCounts": {
+    "preempt_block": 878,
+    "guard_skip": 29,
+    "sensor_block": 66,
+    "intent_block": 37
+  },
+  "missReasons": {},
+  "energy": {
+    "mWh": 0.034086388888888895,
+    "preemptShare": 0.9,
+    "breakdown": [
+      {
+        "label": "启动拦截",
+        "mWh": 0.02986416666666667
+      },
+      {
+        "label": "后台事件",
+        "mWh": 0.004222222222222223
+      }
+    ]
+  },
+  "burst": {
+    "tier": 9.5,
+    "preempt": 1.6
+  }
+}

@@ -5,17 +5,16 @@ import { AdCreative } from "@/components/ad-creative";
 import { SCENARIO_APPS, type ScenarioApp } from "@/lib/scenario-apps";
 import { planInstantBlock, AD_TYPE_LABEL, type BlockPlan } from "@/lib/instant-engine";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import {
   ShoppingBag, Rocket, Landmark, Building2, Wallet, Play, Phone, MessageCircle,
-  Globe, Camera, Signal, Wifi, BatteryFull, Zap, ShieldCheck, ShieldOff, Vibrate,
+  Globe, Camera, Signal, Wifi, BatteryFull, Zap, ShieldCheck, Headphones,
   Link2Off, ChevronLeft, Search, ScanLine, ArrowLeftRight, Receipt, TrendingUp,
-  PiggyBank, UserRound, FileText, CalendarClock, Heart, ThumbsUp, Share2,
-  Flame, Tv, Music2, Activity, Gauge, Timer,
+  PiggyBank, UserRound, FileText, CalendarClock, ThumbsUp, Share2,
+  Flame, Tv, Music2, Activity, Gauge, Timer, Vibrate, Layers,
 } from "lucide-react";
 
-type Stage = "home" | "launch" | "ad" | "flash" | "main" | "landing";
+type Stage = "home" | "launch" | "ad" | "flash" | "main";
 
 const APP_ICONS: Record<string, React.ElementType> = {
   "shopping-bag": ShoppingBag,
@@ -24,44 +23,45 @@ const APP_ICONS: Record<string, React.ElementType> = {
   "building-2": Building2,
   wallet: Wallet,
   play: Play,
+  headphones: Headphones,
 };
+
+/** 喜马拉雅类广告的甄别阶段（演示节奏，已放慢） */
+type FakePhase = "scanning" | "ignored" | "chain";
 
 interface SessionLogItem {
   id: number;
   app: string;
-  kind: "block" | "miss" | "jump";
+  kind: "block" | "preempt";
   text: string;
   ms: number;
 }
 
 export function Arena({ onFeedback }: { onFeedback: () => void }) {
-  const [engineOn, setEngineOn] = useState(true);
   const [app, setApp] = useState<ScenarioApp | null>(null);
   const [stage, setStage] = useState<Stage>("home");
   const [plan, setPlan] = useState<BlockPlan | null>(null);
-  const [countdown, setCountdown] = useState(0); // 对照模式倒计时（0.1s 精度）
-  const [shakeAnim, setShakeAnim] = useState(false);
+  const [fakePhase, setFakePhase] = useState<FakePhase | null>(null);
   const [learnedApps, setLearnedApps] = useState<Set<string>>(new Set());
   const [blocks, setBlocks] = useState(0);
-  const [misses, setMisses] = useState(0);
+  const [preempts, setPreempts] = useState(0);
   const [msSum, setMsSum] = useState(0);
   const [log, setLog] = useState<SessionLogItem[]>([]);
   const [toast, setToast] = useState<{ id: number; text: string; sub?: string } | null>(null);
-  const adShownAtRef = useRef(0);
   const logIdRef = useRef(0);
   const toastIdRef = useRef(0);
 
   const pushToast = useCallback((text: string, sub?: string) => {
     const id = ++toastIdRef.current;
     setToast({ id, text, sub });
-    setTimeout(() => setToast((t) => (t?.id === id ? null : t)), 3200);
+    setTimeout(() => setToast((t) => (t?.id === id ? null : t)), 3600);
   }, []);
 
   const pushLog = useCallback((item: Omit<SessionLogItem, "id">) => {
     setLog((cur) => [{ ...item, id: ++logIdRef.current }, ...cur].slice(0, 12));
   }, []);
 
-  /* 学习规则名（命中则秒跳置信度更高） */
+  /* 学习指纹（命中即预拦截资格） */
   const refreshLearning = useCallback(async () => {
     try {
       const r = await fetch("/api/learning");
@@ -84,7 +84,7 @@ export function Arena({ onFeedback }: { onFeedback: () => void }) {
 
   /* ── 埋点 ── */
   const postEvent = useCallback(
-    async (kind: "block" | "miss", p: BlockPlan | null, latencyMs: number, note: string) => {
+    async (p: BlockPlan, note: string) => {
       if (!app) return;
       try {
         const r = await fetch("/api/block-events", {
@@ -92,11 +92,11 @@ export function Arena({ onFeedback }: { onFeedback: () => void }) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             appKey: app.key,
-            kind,
-            action: kind === "block" ? p?.action ?? "instant_skip" : "miss",
-            latencyMs,
-            confidence: kind === "block" ? (p?.confidence ?? 95) / 100 : 0.5,
-            scenario: p?.scenario ?? "normal",
+            kind: "block",
+            action: p.action,
+            latencyMs: p.totalMs,
+            confidence: p.confidence / 100,
+            scenario: p.scenario,
             adType: app.adType,
             note,
           }),
@@ -104,7 +104,7 @@ export function Arena({ onFeedback }: { onFeedback: () => void }) {
         if (r.ok) {
           const d = await r.json();
           if (d.learnedCreated) {
-            pushToast("学习规则已生成", `${app.name} 专属秒跳规则已沉淀，下次优先秒跳`);
+            pushToast("广告指纹已学习", `${app.name} 下次启动将 P0 预拦截——广告未及呈现`);
             void refreshLearning();
           }
         }
@@ -114,100 +114,97 @@ export function Arena({ onFeedback }: { onFeedback: () => void }) {
   );
 
   /* ── 启动应用 ── */
-  const launchApp = useCallback(
-    (a: ScenarioApp) => {
-      setApp(a);
-      setPlan(null);
-      setStage("launch");
-    },
-    [],
-  );
+  const launchApp = useCallback((a: ScenarioApp) => {
+    setApp(a);
+    setPlan(null);
+    setFakePhase(null);
+    setStage("launch");
+  }, []);
 
   /* ── 阶段流转 ── */
   useEffect(() => {
     if (stage === "launch" && app) {
+      const isPreempt = learnedApps.has(app.name);
       const t = setTimeout(() => {
-        adShownAtRef.current = Date.now();
-        setCountdown(app.ad.countdownSec * 10);
-        setPlan(
-          planInstantBlock({
+        const p = planInstantBlock(
+          {
             name: app.name,
             category: app.category,
             adType: app.adType,
             guard: app.guard,
             ruleName: app.ruleName,
-            learnedRuleName: learnedApps.has(app.name) ? `${app.name} 学习规则` : null,
-          }),
+            learnedRuleName: learnedApps.has(app.name) ? `${app.name} 学习指纹` : null,
+            traits: app.traits ?? null,
+          },
+          { preempt: isPreempt },
         );
-        setStage("ad");
+        setPlan(p);
+        if (isPreempt) {
+          // P0 预拦截：广告未及呈现，直接进入拦截成功层
+          setPreempts((n) => n + 1);
+          setBlocks((n) => n + 1);
+          setMsSum((s) => s + p.totalMs);
+          pushLog({ app: app.name, kind: "preempt", text: `P0 预拦截 · ${AD_TYPE_LABEL[app.adType]} · 广告未及呈现`, ms: p.totalMs });
+          void postEvent(p, "P0 预拦截（学习指纹）");
+          setStage("flash");
+        } else {
+          setStage("ad");
+        }
       }, 850);
       return () => clearTimeout(t);
     }
     if (stage === "flash") {
-      const t = setTimeout(() => setStage("main"), 1150);
+      const t = setTimeout(() => setStage("main"), 1250);
       return () => clearTimeout(t);
     }
-  }, [stage, app, learnedApps]);
+  }, [stage, app, learnedApps, postEvent, pushLog]);
 
-  /* 引擎开启：广告出现 → 毫秒级拦截 */
+  /* ── 引擎拦截（广告展示中） ── */
   useEffect(() => {
-    if (stage !== "ad" || !app || !engineOn) return;
-    const t = setTimeout(() => {
-      const p = plan;
-      if (p) {
-        setBlocks((n) => n + 1);
-        setMsSum((s) => s + p.totalMs);
-        pushLog({ app: app.name, kind: "block", text: `${p.ruleName} · ${AD_TYPE_LABEL[app.adType]}`, ms: p.totalMs });
-        void postEvent("block", p, p.totalMs, p.ruleName);
-      }
-      setStage("flash");
-    }, 700);
-    return () => clearTimeout(t);
-  }, [stage, app, engineOn, plan, postEvent, pushLog]);
+    if (stage !== "ad" || !app || !plan) return;
+    const isAdversarial = !!app.traits?.fakeSkip && !!app.traits?.chainJump;
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    if (isAdversarial) {
+      // 喜马拉雅类：假跳过甄别 → 忽略陷阱 → 链式二跳识别 → 窗口级直断
+      timers.push(setTimeout(() => setFakePhase("scanning"), 500));
+      timers.push(setTimeout(() => setFakePhase("ignored"), 1500));
+      timers.push(setTimeout(() => setFakePhase("chain"), 2500));
+      timers.push(
+        setTimeout(() => {
+          setBlocks((n) => n + 1);
+          setMsSum((s) => s + plan.totalMs);
+          pushLog({ app: app.name, kind: "block", text: `${plan.ruleName} · 链式二跳直接阻断`, ms: plan.totalMs });
+          void postEvent(plan, "假跳过甄别 + 链式直断");
+          setStage("flash");
+        }, 3200),
+      );
+    } else {
+      timers.push(
+        setTimeout(() => {
+          setBlocks((n) => n + 1);
+          setMsSum((s) => s + plan.totalMs);
+          pushLog({ app: app.name, kind: "block", text: `${plan.ruleName} · ${AD_TYPE_LABEL[app.adType]}`, ms: plan.totalMs });
+          void postEvent(plan, plan.ruleName);
+          setStage("flash");
+        }, 700),
+      );
+    }
+    return () => timers.forEach(clearTimeout);
+  }, [stage, app, plan, postEvent, pushLog]);
 
-  /* 引擎关闭（对照模式）：倒计时 → 归零自动跳转落地页（变迁全部在定时器回调中执行） */
-  useEffect(() => {
-    if (stage !== "ad" || !app || engineOn || countdown <= 0) return;
-    const t = setTimeout(() => {
-      if (countdown <= 1) {
-        setStage("landing");
-        setMisses((n) => n + 1);
-        pushLog({ app: app.name, kind: "jump", text: "倒计时归零自动跳转落地页", ms: app.ad.countdownSec * 1000 });
-        void postEvent("miss", null, app.ad.countdownSec * 1000, "对照模式：倒计时归零自动跳转");
-      } else {
-        setCountdown((c) => c - 1);
-      }
-    }, 100);
-    return () => clearTimeout(t);
-  }, [stage, app, engineOn, countdown, postEvent, pushLog]);
-
-  /* ── 对照模式交互 ── */
-  const manualSkip = useCallback(() => {
-    if (!app) return;
-    const ms = Date.now() - adShownAtRef.current;
-    setMisses((n) => n + 1);
-    pushLog({ app: app.name, kind: "miss", text: "手动点击「跳过」（按钮过小）", ms });
-    void postEvent("miss", null, ms, "对照模式：用户手动跳过");
-    pushToast("已记录手动跳过", "同一应用累计 2 次将自动生成学习规则");
-    setStage("main");
-  }, [app, postEvent, pushLog, pushToast]);
-
-  const tryShake = useCallback(() => {
-    if (!app || stage !== "ad" || engineOn) return;
-    setShakeAnim(true);
-    setTimeout(() => setShakeAnim(false), 700);
-    setTimeout(() => {
-      setStage("landing");
-      setMisses((n) => n + 1);
-      pushLog({ app: app.name, kind: "jump", text: "摇一摇触发「有效点击」跳转", ms: 0 });
-      void postEvent("miss", null, 300, "对照模式：摇一摇触发跳转");
-    }, 720);
-  }, [app, stage, engineOn, postEvent, pushLog]);
+  /* ── 假跳过陷阱教学点按 ── */
+  const tapFakeSkip = useCallback(() => {
+    pushToast(
+      "假跳过陷阱 · 引擎已忽略",
+      "这是广告图内嵌的热区：点击即跳落地页并二跳商店。多信号甄别（面积/容器归属/时序）判定为陷阱",
+    );
+  }, [pushToast]);
 
   const backHome = useCallback(() => {
     setApp(null);
     setStage("home");
     setPlan(null);
+    setFakePhase(null);
   }, []);
 
   const avgMs = blocks > 0 ? Math.round(msSum / blocks) : 0;
@@ -216,24 +213,17 @@ export function Arena({ onFeedback }: { onFeedback: () => void }) {
     <div className="flex flex-col gap-5 lg:flex-row lg:items-start">
       {/* ═══ 左：手机模拟器 ═══ */}
       <section className="flex w-full shrink-0 flex-col items-center gap-3 lg:w-[420px]" aria-label="演练场手机模拟器">
-        <div
-          className={cn(
-            "relative w-full max-w-[360px] rounded-[2.6rem] border-[10px] border-zinc-800 bg-zinc-800 shadow-2xl shadow-zinc-900/25 ring-1 ring-zinc-700",
-            shakeAnim && "animate-[phone-shake_.7s_ease-in-out]",
-          )}
-        >
+        <div className="relative w-full max-w-[360px] rounded-[2.6rem] border-[10px] border-zinc-800 bg-zinc-800 shadow-2xl shadow-zinc-900/25 ring-1 ring-zinc-700">
           <div className="overflow-hidden rounded-[2rem] bg-white">
             <div className="relative aspect-[9/19] w-full select-none">
               <PhoneScreen
                 stage={stage}
                 app={app}
                 plan={plan}
-                engineOn={engineOn}
-                countdown={countdown}
+                fakePhase={fakePhase}
                 onLaunch={launchApp}
-                onSkip={manualSkip}
                 onBack={backHome}
-                onBackFromLanding={() => setStage("main")}
+                onTapFakeSkip={tapFakeSkip}
               />
 
               {/* 拦截 Toast */}
@@ -249,50 +239,32 @@ export function Arena({ onFeedback }: { onFeedback: () => void }) {
             </div>
           </div>
         </div>
-
-        {/* 摇一摇触发（仅对照模式 + 摇一摇广告展示中） */}
-        {stage === "ad" && app?.adType === "shake" && !engineOn && (
-          <Button
-            size="sm"
-            data-testid="btn-shake"
-            variant="outline"
-            className="h-8 rounded-lg border-orange-300 text-orange-600 hover:bg-orange-50"
-            onClick={tryShake}
-          >
-            <Vibrate className="mr-1 h-3.5 w-3.5" /> 模拟摇晃手机
-          </Button>
-        )}
+        <p className="max-w-[360px] text-center text-[10px] leading-relaxed text-zinc-400">
+          同一应用第二次启动将触发 <span className="font-bold text-violet-600">P0 预拦截</span>：窗口附加阶段直接阻断，广告未及呈现
+        </p>
       </section>
 
       {/* ═══ 右：引擎面板 ═══ */}
       <section className="flex min-w-0 flex-1 flex-col gap-4" aria-label="秒跳引擎面板">
-        {/* 引擎开关 */}
-        <div className={cn("rounded-2xl border p-4 transition-colors", engineOn ? "border-emerald-200 bg-emerald-50/60" : "border-rose-200 bg-rose-50/60")}>
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2.5">
-              <span className={cn("flex h-9 w-9 items-center justify-center rounded-xl text-white", engineOn ? "bg-gradient-to-br from-emerald-500 to-teal-600" : "bg-gradient-to-br from-rose-500 to-red-600")}>
-                {engineOn ? <ShieldCheck className="h-4.5 w-4.5" /> : <ShieldOff className="h-4.5 w-4.5" />}
-              </span>
-              <div>
-                <div className="flex items-center gap-2 text-sm font-bold text-zinc-900">
-                  秒跳引擎
-                  <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-bold", engineOn ? "bg-emerald-600 text-white" : "bg-rose-600 text-white")}>
-                    {engineOn ? "运行中" : "对照模式"}
-                  </span>
-                </div>
-                <p className="mt-0.5 text-[11px] text-zinc-500">
-                  {engineOn ? "任何应用开屏广告毫秒级识别并代点跳过，传感器与跳转意图同步拦截" : "模拟未装本引擎的手机：小小跳过键 / 摇一摇即跳 / 倒计时归零自动跳转"}
-                </p>
+        {/* 引擎状态 */}
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4">
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white">
+              <ShieldCheck className="h-4.5 w-4.5" />
+            </span>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 text-sm font-bold text-zinc-900">
+                秒跳引擎 · 运行中
+                <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-bold text-white">五层纵深</span>
               </div>
+              <p className="mt-0.5 text-[11px] text-zinc-500">
+                P0 预拦截 → P1 假跳过甄别+代点 → P2 链式直断/返回键兜底 → P3 域名阻断；守护应用只拦广告、不碰服务
+              </p>
             </div>
-            <Switch data-testid="engine-switch" checked={engineOn} onCheckedChange={setEngineOn} aria-label="秒跳引擎开关" />
+            <div className="ml-auto hidden shrink-0 items-center gap-1 text-[10px] font-bold text-emerald-700 sm:flex">
+              <Layers className="h-3.5 w-3.5" /> 1010 款语料 100%
+            </div>
           </div>
-          {!engineOn && (
-            <div className="mt-3 flex items-start gap-1.5 rounded-lg bg-rose-100/80 p-2 text-[11px] leading-relaxed text-rose-700">
-              <Flame className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              对照模式下你的每次手动跳过都会被学习中心记录：同一应用累计 2 次即自动生成专属秒跳规则（到「学习中心」查看，可触发反馈与夜间同步）。
-            </div>
-          )}
         </div>
 
         {/* 统计 chips */}
@@ -300,7 +272,7 @@ export function Arena({ onFeedback }: { onFeedback: () => void }) {
           {[
             { icon: Zap, label: "本次会话拦截", value: `${blocks} 次`, tone: "text-emerald-600" },
             { icon: Gauge, label: "平均拦截耗时", value: blocks > 0 ? `${avgMs} ms` : "—", tone: "text-violet-600" },
-            { icon: Timer, label: "漏拦截 / 手动", value: `${misses} 次`, tone: misses > 0 ? "text-rose-600" : "text-zinc-500" },
+            { icon: Timer, label: "预拦截（0ms 可见）", value: `${preempts} 次`, tone: "text-fuchsia-600" },
           ].map(({ icon: Icon, label, value, tone }) => (
             <div key={label} className="rounded-xl border border-zinc-200 bg-white p-3">
               <div className="flex items-center gap-1 text-[10px] font-semibold text-zinc-400">
@@ -318,8 +290,9 @@ export function Arena({ onFeedback }: { onFeedback: () => void }) {
               <Activity className="h-4 w-4 text-violet-600" /> 毫秒级判定流水线
             </h3>
             {plan && (
-              <span className="rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-bold text-violet-700 ring-1 ring-violet-200">
-                {plan.ruleName}
+              <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-bold ring-1",
+                plan.preempt ? "bg-fuchsia-50 text-fuchsia-700 ring-fuchsia-200" : "bg-violet-50 text-violet-700 ring-violet-200")}>
+                {plan.preempt ? "P0 预拦截" : plan.ruleName}
               </span>
             )}
           </div>
@@ -327,9 +300,14 @@ export function Arena({ onFeedback }: { onFeedback: () => void }) {
             <>
               <div className="mt-3 flex items-baseline gap-2">
                 <span className="text-2xl font-black tabular-nums text-zinc-900">{plan.totalMs}<span className="text-sm">ms</span></span>
-                <span className="text-[11px] font-semibold text-zinc-500">总耗时</span>
+                <span className="text-[11px] font-semibold text-zinc-500">端到端耗时</span>
                 <span className="ml-auto text-[11px] font-bold text-emerald-600">置信度 {plan.confidence}%</span>
               </div>
+              {plan.waitMs > 0 && (
+                <p className="mt-1 text-[10px] leading-relaxed text-amber-600">
+                  含等待广告方 { (plan.waitMs / 1000).toFixed(1) }s 显示真跳过（引擎出手仅 {plan.engineMs}ms）——链式二跳广告已升级为直接阻断，无需等待
+                </p>
+              )}
               <ol className="mt-3 space-y-1.5">
                 {plan.steps.map((s, i) => (
                   <li key={i} className="flex items-start gap-2 rounded-lg bg-zinc-50 px-2.5 py-1.5">
@@ -345,7 +323,7 @@ export function Arena({ onFeedback }: { onFeedback: () => void }) {
             </>
           ) : (
             <p className="mt-3 rounded-lg bg-zinc-50 px-3 py-6 text-center text-xs text-zinc-400">
-              点按左侧任意应用图标启动，观察秒跳引擎的毫秒级拦截过程
+              点按左侧任意应用图标启动，观察秒跳引擎的拦截过程；再次启动同一应用可体验预拦截
             </p>
           )}
         </div>
@@ -353,7 +331,7 @@ export function Arena({ onFeedback }: { onFeedback: () => void }) {
         {/* 场景速览 + 会话日志 */}
         <div className="grid gap-4 md:grid-cols-2">
           <div className="rounded-2xl border border-zinc-200 bg-white p-4">
-            <h3 className="text-sm font-bold text-zinc-900">六大场景</h3>
+            <h3 className="text-sm font-bold text-zinc-900">七大场景</h3>
             <ul className="mt-2.5 space-y-2">
               {SCENARIO_APPS.map((a) => {
                 const Icon = APP_ICONS[a.icon];
@@ -367,7 +345,8 @@ export function Arena({ onFeedback }: { onFeedback: () => void }) {
                         {a.name}
                         <span className="rounded bg-zinc-100 px-1 text-[9px] font-semibold text-zinc-500">{a.category}</span>
                         {a.guard && <span className="rounded bg-emerald-100 px-1 text-[9px] font-bold text-emerald-700">守护</span>}
-                        {learnedApps.has(a.name) && <span className="rounded bg-violet-100 px-1 text-[9px] font-bold text-violet-700">已学习</span>}
+                        {a.traits?.fakeSkip && <span className="rounded bg-rose-100 px-1 text-[9px] font-bold text-rose-600">专案</span>}
+                        {learnedApps.has(a.name) && <span className="rounded bg-fuchsia-100 px-1 text-[9px] font-bold text-fuchsia-700">指纹</span>}
                       </div>
                       <div className="truncate text-[10px] text-zinc-400">{a.note} · {AD_TYPE_LABEL[a.adType]}</div>
                     </div>
@@ -387,12 +366,10 @@ export function Arena({ onFeedback }: { onFeedback: () => void }) {
               <ul className="mt-2.5 max-h-72 space-y-1.5 overflow-y-auto pr-1">
                 {log.map((l) => (
                   <li key={l.id} className="flex items-center gap-2 rounded-lg bg-zinc-50 px-2.5 py-1.5 text-[11px]">
-                    <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", l.kind === "block" ? "bg-emerald-500" : "bg-rose-500")} />
+                    <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", l.kind === "preempt" ? "bg-fuchsia-500" : "bg-emerald-500")} />
                     <span className="font-bold text-zinc-800">{l.app}</span>
                     <span className="min-w-0 flex-1 truncate text-zinc-500">{l.text}</span>
-                    <span className={cn("shrink-0 font-bold tabular-nums", l.kind === "block" ? "text-emerald-600" : "text-rose-500")}>
-                      {l.kind === "block" ? `${l.ms}ms` : "漏"}
-                    </span>
+                    <span className="shrink-0 font-bold tabular-nums text-emerald-600">{l.ms}ms</span>
                   </li>
                 ))}
               </ul>
@@ -406,34 +383,31 @@ export function Arena({ onFeedback }: { onFeedback: () => void }) {
 
 /* ═══════════ 手机屏幕（状态机渲染） ═══════════ */
 function PhoneScreen({
-  stage, app, plan, engineOn, countdown, onLaunch, onSkip, onBack, onBackFromLanding,
+  stage, app, plan, fakePhase, onLaunch, onBack, onTapFakeSkip,
 }: {
   stage: Stage;
   app: ScenarioApp | null;
   plan: BlockPlan | null;
-  engineOn: boolean;
-  countdown: number;
+  fakePhase: FakePhase | null;
   onLaunch: (a: ScenarioApp) => void;
-  onSkip: () => void;
   onBack: () => void;
-  onBackFromLanding: () => void;
+  onTapFakeSkip: () => void;
 }) {
   return (
     <div className="relative flex h-full w-full flex-col overflow-hidden bg-zinc-50">
-      <StatusBar engineOn={engineOn} />
+      <StatusBar />
       {stage === "home" && <HomeScreen onLaunch={onLaunch} />}
       {stage === "launch" && app && <LaunchScreen app={app} />}
-      {stage === "ad" && app && (
-        <AdStage app={app} engineOn={engineOn} countdown={countdown} onSkip={onSkip} />
+      {stage === "ad" && app && plan && (
+        <AdStage app={app} plan={plan} fakePhase={fakePhase} onTapFakeSkip={onTapFakeSkip} />
       )}
       {stage === "flash" && app && plan && <BlockFlash app={app} plan={plan} />}
       {stage === "main" && app && <MainScreen app={app} onBack={onBack} />}
-      {stage === "landing" && app && <LandingScreen app={app} onBack={onBackFromLanding} />}
     </div>
   );
 }
 
-function StatusBar({ engineOn }: { engineOn: boolean }) {
+function StatusBar() {
   const [time, setTime] = useState("--:--");
   useEffect(() => {
     const tick = () => setTime(new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false }));
@@ -446,11 +420,9 @@ function StatusBar({ engineOn }: { engineOn: boolean }) {
       <span className="tabular-nums">{time}</span>
       <span className="absolute left-1/2 top-1.5 h-4 w-20 -translate-x-1/2 rounded-full bg-black" aria-hidden />
       <span className="flex items-center gap-1.5">
-        {engineOn && (
-          <span className="flex items-center gap-0.5 text-emerald-600" title="秒跳引擎守护中">
-            <ShieldCheck className="h-3 w-3" />
-          </span>
-        )}
+        <span className="flex items-center gap-0.5 text-emerald-600" title="秒跳引擎守护中">
+          <ShieldCheck className="h-3 w-3" />
+        </span>
         <Signal className="h-3 w-3" /> <Wifi className="h-3 w-3" /> <BatteryFull className="h-3.5 w-3.5" />
       </span>
     </div>
@@ -476,7 +448,7 @@ function HomeScreen({ onLaunch }: { onLaunch: (a: ScenarioApp) => void }) {
       </div>
       {/* 壁纸提示 */}
       <div className="mx-5 mb-2 rounded-xl bg-white/60 px-3 py-2 text-center text-[10px] leading-relaxed text-zinc-500 backdrop-blur">
-        点击任意应用体验开屏秒跳 · 银行/政务/支付为守护模式
+        点击应用体验秒跳 · 银行/政务/支付为守护模式 · 喜马拉雅为专案演示
       </div>
       {/* Dock */}
       <div className="mx-4 mb-3 flex items-center justify-around rounded-2xl bg-white/70 p-2.5 backdrop-blur">
@@ -503,46 +475,95 @@ function LaunchScreen({ app }: { app: ScenarioApp }) {
   );
 }
 
-/* ── 广告展示（引擎开：等待秒跳；引擎关：对照体验） ── */
-function AdStage({ app, engineOn, countdown, onSkip }: { app: ScenarioApp; engineOn: boolean; countdown: number; onSkip: () => void }) {
+/* ── 广告展示（引擎拦截过程演示） ── */
+function AdStage({
+  app, plan, fakePhase, onTapFakeSkip,
+}: {
+  app: ScenarioApp;
+  plan: BlockPlan;
+  fakePhase: FakePhase | null;
+  onTapFakeSkip: () => void;
+}) {
   const isShake = app.adType === "shake";
+  const isAdversarial = !!app.traits?.fakeSkip && !!app.traits?.chainJump;
+
+  const overlayText =
+    fakePhase === "scanning" ? "假跳过甄别中 · 多信号核验热区"
+    : fakePhase === "ignored" ? "已忽略假「跳过」陷阱 · 监听中"
+    : fakePhase === "chain" ? "链式二跳识别 → 升级直接阻断"
+    : "秒跳引擎拦截中…";
+
   return (
     <div className="relative flex-1" data-testid="ad-stage">
       <AdCreative ad={app.ad} variant="splash" />
-      {/* 跳过按钮（故意做小，还原真实体验） */}
-      <button
-        type="button"
-        data-testid="btn-skip"
-        onClick={onSkip}
-        className="absolute right-2.5 top-2.5 z-20 rounded-full bg-black/35 px-2.5 py-1 text-[10px] font-semibold text-white backdrop-blur active:scale-95"
-      >
-        {engineOn ? "跳过" : `跳过 ${Math.ceil(countdown / 10)}`}
-      </button>
-      {/* 倒计时进度条（对照模式） */}
-      {!engineOn && (
-        <div className="absolute inset-x-0 bottom-0 z-20 h-1 bg-black/20">
-          <div className="h-full bg-white/90 transition-[width] duration-100" style={{ width: `${(countdown / (app.ad.countdownSec * 10)) * 100}%` }} />
-        </div>
+
+      {/* 真跳过按钮（非对抗类：正常跳过键，引擎将代点） */}
+      {!isAdversarial && (
+        <button
+          type="button"
+          data-testid="btn-skip"
+          className="absolute right-2.5 top-2.5 z-20 rounded-full bg-black/35 px-2.5 py-1 text-[10px] font-semibold text-white backdrop-blur"
+        >
+          跳过
+        </button>
       )}
+
+      {/* 假跳过陷阱（喜马拉雅类：广告图内嵌的大号假「跳过」，点击即跳转） */}
+      {isAdversarial && (
+        <button
+          type="button"
+          data-testid="btn-fake-skip"
+          onClick={onTapFakeSkip}
+          className={cn(
+            "absolute bottom-5 right-3 z-20 flex items-center gap-1.5 rounded-full bg-gradient-to-r from-orange-500 to-amber-400 px-4 py-2 text-[12px] font-black text-white shadow-lg shadow-orange-500/40 transition",
+            fakePhase === "ignored" || fakePhase === "chain"
+              ? "pointer-events-none opacity-60 ring-2 ring-rose-500 ring-offset-2 ring-offset-black/20"
+              : "animate-pulse",
+          )}
+        >
+          {fakePhase === "ignored" || fakePhase === "chain" ? (
+            <>
+              <span className="line-through decoration-rose-500 decoration-2">跳过 5</span>
+              <span className="rounded bg-rose-500 px-1 text-[9px]">陷阱已忽略</span>
+            </>
+          ) : (
+            <>跳过 5</>
+          )}
+        </button>
+      )}
+
       {/* 摇一摇角标 */}
       {isShake && (
         <div className="absolute bottom-16 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1 rounded-full bg-black/45 px-3 py-1.5 text-[11px] font-bold text-white backdrop-blur">
           <Vibrate className="h-3.5 w-3.5 animate-pulse text-amber-300" />
-          {engineOn ? "传感器已被引擎挂起" : "轻微晃动即跳转 · 灵敏度异常"}
+          传感器已被引擎挂起
         </div>
       )}
       {/* Deeplink 角标 */}
       {app.adType === "deeplink" && (
         <div className="absolute bottom-16 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1 rounded-full bg-black/45 px-3 py-1.5 text-[11px] font-bold text-white backdrop-blur">
           <Link2Off className="h-3.5 w-3.5 text-rose-300" />
-          {engineOn ? "跳转意图已断链" : "倒计时归零将唤起外部应用"}
+          跳转意图已断链
         </div>
       )}
-      {engineOn && (
-        <div className="absolute inset-0 z-10 flex items-end justify-center pb-6">
-          <div className="flex items-center gap-1.5 rounded-full bg-black/40 px-3 py-1 text-[10px] font-semibold text-white/90 backdrop-blur">
-            <Zap className="h-3 w-3 animate-pulse text-amber-300" /> 秒跳引擎拦截中…
-          </div>
+
+      {/* 引擎状态覆盖层 */}
+      <div className="absolute inset-x-0 bottom-0 z-10 flex items-center justify-center pb-6">
+        <div className={cn(
+          "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[10px] font-semibold backdrop-blur",
+          fakePhase === "chain" ? "bg-rose-600/80 text-white" : "bg-black/45 text-white/90",
+        )}>
+          {fakePhase === "chain"
+            ? <Link2Off className="h-3 w-3" />
+            : <Zap className="h-3 w-3 animate-pulse text-amber-300" />}
+          {overlayText}
+        </div>
+      </div>
+
+      {/* 首启学习提示（尚未沉淀指纹的应用） */}
+      {plan.preempt === false && (
+        <div className="absolute left-2.5 top-2.5 z-20 rounded-full bg-fuchsia-600/90 px-2 py-0.5 text-[9px] font-bold text-white">
+          首拦学习指纹 · 下次启动预拦截
         </div>
       )}
     </div>
@@ -552,27 +573,37 @@ function AdStage({ app, engineOn, countdown, onSkip }: { app: ScenarioApp; engin
 /* ── 拦截成功闪光层 ── */
 function BlockFlash({ app, plan }: { app: ScenarioApp; plan: BlockPlan }) {
   return (
-    <div className="relative flex-1 animate-[toast-in_.2s_ease-out]" data-testid="block-flash">
+    <div className="relative flex-1 animate-[toast-in_.2s_ease-out]" data-testid={plan.preempt ? "preempt-flash" : "block-flash"}>
       <div className="absolute inset-0 bg-zinc-950/92" />
       <div className="relative flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
-        <span className={cn("flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br text-white shadow-lg", app.guard ? "from-emerald-500 to-teal-600" : "from-violet-500 to-fuchsia-600")}>
-          {app.guard ? <ShieldCheck className="h-8 w-8" /> : <Zap className="h-8 w-8" />}
+        <span className={cn(
+          "flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br text-white shadow-lg",
+          plan.preempt ? "from-fuchsia-500 to-violet-600" : app.guard ? "from-emerald-500 to-teal-600" : "from-violet-500 to-fuchsia-600",
+        )}>
+          {plan.preempt ? <Timer className="h-8 w-8" /> : app.guard ? <ShieldCheck className="h-8 w-8" /> : <Zap className="h-8 w-8" />}
         </span>
         <div className="text-[15px] font-black leading-snug text-white">{plan.headline}</div>
         <div className="text-[11px] text-zinc-400">{plan.subline}</div>
         <div className="mt-1 flex items-center gap-2">
-          <span className="rounded-lg bg-white/10 px-3 py-1.5 text-lg font-black tabular-nums text-emerald-400 ring-1 ring-emerald-400/30">
+          <span className={cn(
+            "rounded-lg px-3 py-1.5 text-lg font-black tabular-nums ring-1",
+            plan.preempt ? "bg-white/10 text-fuchsia-300 ring-fuchsia-400/30" : "bg-white/10 text-emerald-400 ring-emerald-400/30",
+          )}>
             {plan.totalMs}ms
           </span>
           <span className="rounded-lg bg-white/10 px-3 py-1.5 text-[11px] font-bold text-zinc-200 ring-1 ring-white/10">
             置信度 {plan.confidence}%
           </span>
         </div>
-        {app.guard && (
+        {plan.preempt ? (
+          <div className="mt-1 flex items-center gap-1.5 rounded-full bg-fuchsia-500/15 px-3 py-1 text-[10px] font-bold text-fuchsia-300 ring-1 ring-fuchsia-400/30">
+            <Timer className="h-3 w-3" /> 0ms 广告可见时间 · 用户零感知
+          </div>
+        ) : app.guard ? (
           <div className="mt-1 flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-3 py-1 text-[10px] font-bold text-emerald-300 ring-1 ring-emerald-400/30">
             <ShieldCheck className="h-3 w-3" /> 应用进程与服务未受任何影响
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   );
@@ -594,6 +625,7 @@ function MainScreen({ app, onBack }: { app: ScenarioApp; onBack: () => void }) {
         {app.screen === "gov" && <GovScreen />}
         {app.screen === "pay" && <PayScreen />}
         {app.screen === "video" && <VideoScreen />}
+        {app.screen === "audio" && <AudioScreen />}
       </div>
       {/* 底部返回 */}
       <button type="button" data-testid="btn-home" onClick={onBack} className="flex h-9 shrink-0 items-center justify-center gap-1 border-t border-zinc-200 bg-white text-[11px] font-semibold text-zinc-500 active:bg-zinc-50">
@@ -675,7 +707,7 @@ function GameScreen() {
 function BankScreen() {
   return (
     <div>
-      <AppHeader app={SCENARIO_APPS[2]} right={<UserRound className="h-4 w-4" />} />
+      <AppHeader app={SCENARIO_APPS.find((a) => a.key === "bank")!} right={<UserRound className="h-4 w-4" />} />
       <div className="p-4">
         <div className="rounded-2xl bg-gradient-to-br from-sky-700 to-indigo-700 p-4 text-white shadow-md">
           <div className="text-[10px] opacity-80">储蓄卡（**** 8867）</div>
@@ -720,7 +752,7 @@ function GovScreen() {
   ];
   return (
     <div>
-      <AppHeader app={SCENARIO_APPS[3]} />
+      <AppHeader app={SCENARIO_APPS.find((a) => a.key === "gov")!} />
       <div className="p-4">
         <div className="rounded-2xl bg-gradient-to-r from-teal-600 to-emerald-500 p-4 text-white">
           <div className="text-sm font-black">一键办事</div>
@@ -748,7 +780,7 @@ function GovScreen() {
 function PayScreen() {
   return (
     <div>
-      <AppHeader app={SCENARIO_APPS[4]} right={<UserRound className="h-4 w-4" />} />
+      <AppHeader app={SCENARIO_APPS.find((a) => a.key === "pay")!} right={<UserRound className="h-4 w-4" />} />
       <div className="flex flex-col items-center gap-4 p-6">
         <button type="button" className="flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-lg shadow-emerald-500/30 active:scale-95">
           <ScanLine className="h-8 w-8" />
@@ -777,7 +809,7 @@ function VideoScreen() {
   ];
   return (
     <div>
-      <AppHeader app={SCENARIO_APPS[5]} right={<Search className="h-4 w-4" />} />
+      <AppHeader app={SCENARIO_APPS.find((a) => a.key === "video")!} right={<Search className="h-4 w-4" />} />
       <div className="space-y-3 p-3">
         {videos.map((v) => (
           <div key={v.t} className="overflow-hidden rounded-xl bg-white ring-1 ring-zinc-100">
@@ -805,22 +837,47 @@ function VideoScreen() {
   );
 }
 
-/* ── 对照模式：广告落地页（坏结局） ── */
-function LandingScreen({ app, onBack }: { app: ScenarioApp; onBack: () => void }) {
+function AudioScreen() {
+  const audios = [
+    { t: "深夜电台 · 都市情感树洞", a: "夜声Live", d: "12.4 万人在听", g: "from-orange-400 to-amber-500" },
+    { t: "三分钟财经早知道", a: "财听天下", d: "早 7 点更新", g: "from-sky-400 to-blue-500" },
+    { t: "郭氏相声精选集", a: "曲艺茶馆", d: "完本 · 342 集", g: "from-rose-400 to-pink-500" },
+    { t: "枕边名著 · 平凡的世界", a: "声书馆", d: "播到第 96 集", g: "from-emerald-400 to-teal-500" },
+  ];
   return (
-    <div className="relative flex-1" data-testid="landing">
-      <AdCreative ad={app.ad} variant="splash" />
-      <div className="absolute inset-x-0 top-0 z-20 bg-rose-600/95 px-3 py-1.5 text-center text-[10px] font-bold text-white">
-        ⚠ 未开启秒跳引擎：已被自动跳转至「{app.ad.brand}」落地页
+    <div>
+      <AppHeader app={SCENARIO_APPS.find((a) => a.key === "ximalaya")!} right={<Search className="h-4 w-4" />} />
+      <div className="p-3">
+        <div className="flex items-center gap-3 rounded-2xl bg-gradient-to-r from-orange-500 to-amber-400 p-3.5 text-white">
+          <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/20">
+            <Play className="h-5 w-5" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-sm font-black">继续收听 · 夜听电台 第 214 期</div>
+            <div className="mt-0.5 text-[10px] opacity-90">已播 18:26 / 42:10</div>
+          </div>
+        </div>
+        <div className="mt-3 space-y-2">
+          {audios.map((v) => (
+            <div key={v.t} className="flex items-center gap-3 rounded-xl bg-white px-3 py-2.5 ring-1 ring-zinc-100">
+              <span className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br text-white", v.g)}>
+                <Music2 className="h-4.5 w-4.5" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-xs font-bold text-zinc-800">{v.t}</div>
+                <div className="mt-0.5 flex items-center gap-2 text-[10px] text-zinc-400">
+                  <span>{v.a}</span>
+                  <span>·</span>
+                  <span>{v.d}</span>
+                </div>
+              </div>
+              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-orange-50 text-orange-500">
+                <Play className="h-3.5 w-3.5" />
+              </span>
+            </div>
+          ))}
+        </div>
       </div>
-      <button
-        type="button"
-        data-testid="btn-back-app"
-        onClick={onBack}
-        className="absolute left-2.5 top-11 z-20 rounded-full bg-black/40 px-3 py-1.5 text-[10px] font-semibold text-white backdrop-blur active:scale-95"
-      >
-        <ChevronLeft className="mr-0.5 inline h-3 w-3" /> 返回{app.name}
-      </button>
     </div>
   );
 }

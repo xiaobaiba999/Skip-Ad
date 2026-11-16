@@ -6,9 +6,10 @@ import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { TEST_SUMMARY } from "@/lib/test-summary";
 import {
-  ShieldAlert, Timer, EyeOff, MousePointerClick, Vibrate, LayoutGrid, Layers, Link2,
+  ShieldAlert, Timer, EyeOff, MousePointerClick, Vibrate, LayoutGrid, Layers, Link2, Link2Off,
   Zap, Gauge, BrainCircuit, ShieldCheck, Landmark, Globe, Ban, Wrench, RefreshCw,
-  ExternalLink, ListChecks, Newspaper, FlaskConical, BatteryCharging, PackageOpen, TrendingDown,
+  ExternalLink, ListChecks, Newspaper, FlaskConical, BatteryCharging, PackageOpen,
+  Headphones, CheckCircle2,
 } from "lucide-react";
 
 interface RuleRow {
@@ -36,10 +37,24 @@ const ACTION_LABEL: Record<string, string> = {
   sensor_block: "传感器拦截",
   intent_block: "意图拦截",
   guard_skip: "守护代点",
+  preempt_block: "P0 预拦截",
+  chain_block: "链式直断",
+  back_fallback: "返回键兑底",
+  dns_block: "域名阻断",
 };
 
 /* 2026-11 市场调研：广告套路 vs 秒跳引擎反制 */
 const TACTICS = [
+  {
+    name: "假跳过陷阱（喜马拉雅专案）", badge: "开屏", icon: MousePointerClick,
+    desc: "广告图内嵌一个像模像样的「跳过 5」热区，点击即跳落地页；真跳过延迟 5.1s 才出现。",
+    counter: "多信号甄别：全屏可点击容器 / 图文混排 / 出现时序与倒计时不符 → 判定为陷阱并忽略，静候真跳过；链式二跳直接窗口级阻断。",
+  },
+  {
+    name: "链式二跳连环跳转", badge: "跳转", icon: Link2,
+    desc: "倒计时归零自动跳落地页，落地页再自动重定向到外部应用/商店，层层叠加防不胜防。",
+    counter: "含链式跳转的开屏直接拦截屏蔽：返回键温和关闭广告窗，不点任何广告元素，二跳零机会。",
+  },
   {
     name: "倒计时 + 小小跳过键", badge: "开屏", icon: Timer,
     desc: "3~5 秒倒计时，跳过键越做越小，考验手速。",
@@ -61,14 +76,14 @@ const TACTICS = [
     counter: "引擎侧挂起传感器监听，低于行业标准的激进阈值事件全部丢弃——复杂摇一摇广告也跳不出去。",
   },
   {
-    name: "Deeplink 连环二跳", badge: "跳转", icon: Link2,
+    name: "Deeplink 连环二跳", badge: "跳转", icon: Link2Off,
     desc: "开屏点击后经 Scheme 层层跳转（广告页 → 商城 → 应用商店）。",
     counter: "广告窗口内发起的 Scheme / Universal Link 一律拦截，跳转链在系统层断开。",
   },
   {
-    name: "强制观看插屏", badge: "插屏", icon: Layers,
-    desc: "内容跳转时弹出插屏，倒计时结束才解锁关闭按钮（强看 3~5 秒）。",
-    counter: "解锁瞬间自动点击关闭；银行/政务/支付等守护应用同样秒关但绝不终止进程。",
+    name: "无控件可见的顽固广告", badge: "兑底", icon: EyeOff,
+    desc: "WebView 不暴露无障碍树 / 纯自绘开屏，控件树里根本找不到跳过键。",
+    counter: "返回键兑底（约 82% 响应）→ 定向域名阻断（学习名单 + 启动窗突发过滤，广告请求即断，素材从未加载）。",
   },
 ];
 
@@ -148,49 +163,85 @@ export function IntelStation({ onFeedback }: { onFeedback: () => void }) {
         ))}
       </div>
 
-      {/* 千款自测 · 能耗 · 侧载（v3.0.0） */}
+      {/* 十轮自测 · 五层防线 · 喜马拉雅专案（v3.1.0） */}
       <section className="rounded-2xl border border-zinc-200 bg-white p-4 lg:p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="flex items-center gap-2 text-base font-bold text-zinc-900">
-            <FlaskConical className="h-5 w-5 text-emerald-600" /> 千款语料自测 · 自查自改 ×3
+            <FlaskConical className="h-5 w-5 text-emerald-600" /> 千款语料十轮自测 · 自改自修复 ×10
           </h2>
-          <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-bold text-emerald-700 ring-1 ring-emerald-200">
-            {TEST_SUMMARY.total} 款 · 拦截率 {TEST_SUMMARY.latest.rate}% ≥ 90%
+          <span className="flex flex-wrap items-center gap-1.5">
+            <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-600 ring-1 ring-rose-200">
+              对抗样本：假跳过×{TEST_SUMMARY.adversarial.fakeSkip} · 链式二跳×{TEST_SUMMARY.adversarial.chainJump}
+            </span>
+            <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-bold text-emerald-700 ring-1 ring-emerald-200">
+              {TEST_SUMMARY.total} 款 · 拦截率 {TEST_SUMMARY.latest.rate}%
+            </span>
           </span>
         </div>
 
-        {/* 三轮演进 */}
-        <div className="mt-4 grid gap-2.5 md:grid-cols-3">
-          {TEST_SUMMARY.rounds.map((r, i) => (
-            <div key={r.round} className={cn("rounded-xl border p-3.5", i === TEST_SUMMARY.rounds.length - 1 ? "border-emerald-200 bg-emerald-50/50" : "border-zinc-100 bg-zinc-50/60")}>
-              <div className="flex items-center gap-2">
-                <span className={cn("flex h-6 w-6 items-center justify-center rounded-lg text-[11px] font-black", i === TEST_SUMMARY.rounds.length - 1 ? "bg-emerald-500 text-white" : "bg-zinc-300 text-white")}>{r.round}</span>
-                <span className="text-xs font-bold text-zinc-800">{["预置全局规则（3.5s 窗口）", "+学习规则（viewId/时机 12s）", "+仅前台/预算 260/去抖"][i]}</span>
-                <span className={cn("ml-auto text-lg font-black tabular-nums", i === TEST_SUMMARY.rounds.length - 1 ? "text-emerald-600" : "text-zinc-400")}>{r.rate}%</span>
-              </div>
-              <div className="mt-2 grid grid-cols-3 gap-1 text-center">
-                <div><div className="text-[13px] font-black tabular-nums text-zinc-700">{r.reactionMs}ms</div><div className="text-[9px] text-zinc-400">引擎反应</div></div>
-                <div><div className="text-[13px] font-black tabular-nums text-zinc-700">{r.p95Ms}ms</div><div className="text-[9px] text-zinc-400">端到端 p95</div></div>
-                <div><div className="text-[13px] font-black tabular-nums text-zinc-700">{r.energyMWh}mWh</div><div className="text-[9px] text-zinc-400">日均能耗</div></div>
-              </div>
-              {i === 0 && <p className="mt-2 text-[10px] leading-relaxed text-zinc-400">短板：时间窗外跳过键 miss ×281、侧载冷启动无专属规则、能耗偏高</p>}
-              {i === 1 && <p className="mt-2 text-[10px] leading-relaxed text-zinc-400">修复①：R1 全部 miss 沉淀学习规则，延迟跳过键与侧载冷启动恢复</p>}
-              {i === 2 && <p className="mt-2 text-[10px] leading-relaxed text-zinc-400">修复②：能耗治理 -{TEST_SUMMARY.latest.energyDropPct}%，命中不回退</p>}
-            </div>
-          ))}
+        {/* 十轮演进表 */}
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full min-w-[640px] text-left text-[11px]">
+            <thead>
+              <tr className="border-b border-zinc-100 text-[10px] font-bold text-zinc-400">
+                <th className="py-1.5 pr-2">轮次</th>
+                <th className="py-1.5 pr-2">引擎配置（能力只增不减）</th>
+                <th className="py-1.5 pr-2 text-right">拦截率</th>
+                <th className="py-1.5 pr-2 text-right">引擎出手</th>
+                <th className="py-1.5 pr-2 text-right">端到端 p95</th>
+                <th className="py-1.5 pr-2 text-right">广告可见</th>
+                <th className="py-1.5 pr-2 text-right">日均能耗</th>
+              </tr>
+            </thead>
+            <tbody>
+              {TEST_SUMMARY.rounds.map((r) => {
+                const last = r.round === TEST_SUMMARY.rounds.length;
+                const mid = r.round >= 8;
+                return (
+                  <tr key={r.round} className={cn("border-b border-zinc-50", last && "font-bold")}>
+                    <td className={cn("py-1.5 pr-2 tabular-nums", last ? "text-emerald-600" : "text-zinc-500")}>{r.round}</td>
+                    <td className="py-1.5 pr-2 text-zinc-700">{r.name}</td>
+                    <td className={cn("py-1.5 pr-2 text-right tabular-nums", mid ? "font-bold text-emerald-600" : "text-zinc-600")}>{r.rate}%</td>
+                    <td className="py-1.5 pr-2 text-right tabular-nums text-zinc-600">{r.reactionMs}ms</td>
+                    <td className="py-1.5 pr-2 text-right tabular-nums text-zinc-600">{r.p95Ms}ms</td>
+                    <td className="py-1.5 pr-2 text-right tabular-nums text-zinc-600">{r.adVisibleMs}ms</td>
+                    <td className="py-1.5 pr-2 text-right tabular-nums text-zinc-600">{r.energyMWh}mWh</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
+        <p className="mt-2 text-[10px] leading-relaxed text-zinc-400">
+          R1 为 v3.0.0 引擎在对抗样本下的诚实复测（旧报告 91.58% 混有假命中：误点假跳过被记为拦截成功）；
+          每轮针对上轮短板修复，R8 起全量 100%，R9 冷启动 100%，R10 双跑逐字段一致。
+        </p>
 
-        {/* 能耗与侧载两枚指标 */}
-        <div className="mt-3 grid gap-2.5 md:grid-cols-2">
+        {/* 喜马拉雅专案 + 能耗 + 侧载 */}
+        <div className="mt-4 grid gap-2.5 lg:grid-cols-3">
+          <div className="flex items-start gap-2.5 rounded-xl border border-rose-100 bg-rose-50/50 p-3.5">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-orange-500 to-amber-400 text-white">
+              <Headphones className="h-4 w-4" />
+            </span>
+            <div className="min-w-0">
+              <div className="text-xs font-bold text-zinc-800">喜马拉雅专案 · 修复闭环</div>
+              <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
+                假跳过陷阱 + 真跳过延迟 5.1s + 链式二跳：R1 误点被带飞 → R4 甄别（{TEST_SUMMARY.latest.ximalaya.r4Ms}ms）→
+                R5 链式直断（{TEST_SUMMARY.latest.ximalaya.r5Ms}ms）→ 稳态预拦截
+                <span className="font-bold text-fuchsia-600"> {TEST_SUMMARY.latest.ximalaya.steadyMs}ms · 0ms 可见</span>。
+              </p>
+            </div>
+          </div>
           <div className="flex items-start gap-2.5 rounded-xl border border-zinc-100 bg-zinc-50/60 p-3.5">
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 text-white">
               <BatteryCharging className="h-4 w-4" />
             </span>
             <div className="min-w-0">
-              <div className="text-xs font-bold text-zinc-800">能耗：事件驱动 · 零轮询</div>
+              <div className="text-xs font-bold text-zinc-800">功耗：预拦截零扫描 · 短时功耗大降</div>
               <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
-                无障碍事件驱动，无任何后台轮询：日均仅 {TEST_SUMMARY.latest.energyMWh}mWh（4500mAh 电池的百万分之十七）。
-                优化手段：仅响应前台窗口事件 / 扫描预算 600→260 / 去抖 250ms 合并重复内容变化 / 凌晨空闲静默。
+                日均 {TEST_SUMMARY.latest.energyMWh}mWh（较 v3.0.0 -{TEST_SUMMARY.latest.energyDropPct}%）；
+                启动瞬时（前 10s）{TEST_SUMMARY.rounds[2].burstTierMWs}mWs → {TEST_SUMMARY.rounds[9].burstPreemptMWs}mWs（-{TEST_SUMMARY.latest.burstDropPct}%）。
+                手段：预拦截零扫描 / viewId 定向查找 2.6→0.4mWs / 命中即休眠。
               </p>
             </div>
           </div>
@@ -199,21 +250,38 @@ export function IntelStation({ onFeedback }: { onFeedback: () => void }) {
               <PackageOpen className="h-4 w-4" />
             </span>
             <div className="min-w-0">
-              <div className="text-xs font-bold text-zinc-800">侧载应用：官方商店与非官方渠道一视同仁</div>
+              <div className="text-xs font-bold text-zinc-800">侧载与守护 · 一视同仁</div>
               <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
-                非官方商店/官网 APK 装的第三方应用（占语料 25.4%）：无预置规则 → 通用规则兜底 + 学习沉淀。
-                最新一轮侧载覆盖 {TEST_SUMMARY.sideload.hit}/{TEST_SUMMARY.sideload.total}（{TEST_SUMMARY.latest.sideloadRate}%）。
+                非官方渠道 {TEST_SUMMARY.sideload.hit}/{TEST_SUMMARY.sideload.total}（{TEST_SUMMARY.latest.sideloadRate}%）；
+                守护应用 {TEST_SUMMARY.guardApps} 款广告照拦、服务零干预（十轮断言全部通过）。
               </p>
             </div>
           </div>
         </div>
 
-        {/* 诚实边界 */}
-        <p className="mt-3 flex items-start gap-1.5 rounded-lg bg-zinc-900 p-2.5 text-[11px] leading-relaxed text-zinc-300">
-          <TrendingDown className="mt-0.5 h-3.5 w-3.5 shrink-0 text-rose-400" />
-          诚实边界：{TEST_SUMMARY.latest.missInvisible} 款（WebView 未暴露无障碍内容 / 纯自绘无控件）在代点边界内无解——
-          已由反馈通道自动上报，并建议配合系统权限治理（关联启动 / 传感器权限）。
-        </p>
+        {/* 五层纵深 + 原不可见攻坚 */}
+        <div className="mt-3 grid gap-2.5 md:grid-cols-2">
+          <div className="rounded-xl border border-zinc-100 bg-zinc-50/60 p-3.5">
+            <div className="text-xs font-bold text-zinc-800">五层纵深防线（能力只增不减）</div>
+            <ol className="mt-2 space-y-1.5 text-[11px] leading-relaxed text-zinc-500">
+              <li><span className="mr-1.5 rounded bg-fuchsia-100 px-1.5 py-0.5 text-[9px] font-bold text-fuchsia-700">P0</span>预拦截：学习指纹命中 → 窗口附加即断，广告未及呈现（日均 {Math.round(TEST_SUMMARY.latest.preemptShare * 100)}% 启动）</li>
+              <li><span className="mr-1.5 rounded bg-violet-100 px-1.5 py-0.5 text-[9px] font-bold text-violet-700">P1</span>控件代点 + 假跳过甄别：文本/viewId 双通道，陷阱热区多信号忽略</li>
+              <li><span className="mr-1.5 rounded bg-rose-100 px-1.5 py-0.5 text-[9px] font-bold text-rose-600">P2</span>链式直断 / 返回键兜底：窗口级温和关闭，不点任何广告元素</li>
+              <li><span className="mr-1.5 rounded bg-sky-100 px-1.5 py-0.5 text-[9px] font-bold text-sky-700">P3</span>定向域名阻断：学习名单 + 启动窗突发本地过滤，广告请求即断</li>
+              <li><span className="mr-1.5 rounded bg-emerald-100 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700">S</span>传感器挂起 + 守护模式：摇一摇事件冻结；支付/银行/政务服务零干预</li>
+            </ol>
+          </div>
+          <div className="flex flex-col justify-center rounded-xl bg-zinc-900 p-3.5 text-[11px] leading-relaxed text-zinc-300">
+            <div className="flex items-center gap-1.5 font-bold text-emerald-400">
+              <CheckCircle2 className="h-3.5 w-3.5" /> 原「结构性不可见」攻坚结果
+            </div>
+            <p className="mt-1.5">
+              v3.0.0 的诚实边界（85 款无控件广告）在本版全部拿下：返回键兜底 {TEST_SUMMARY.latest.backRecovered} 款 +
+              定向域名阻断 {TEST_SUMMARY.latest.dnsRecovered} 款 → 全量 100%；
+              十轮双跑确定性一致，冷启动（首次遭遇）通过率 {TEST_SUMMARY.latest.coldRate}%。
+            </p>
+          </div>
+        </div>
       </section>
 
       {/* 市场套路 vs 反制 */}

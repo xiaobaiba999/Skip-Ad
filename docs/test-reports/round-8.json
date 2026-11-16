@@ -1,0 +1,83 @@
+{
+  "round": 8,
+  "engine": "R8 · 定向域名阻断（结构性不可见的最后兜底）→ 全量 100%",
+  "fixNote": "修复⑦：返回键也无效的极少数——学习名单域名热阻断 + 启动窗突发本地过滤，广告请求即断（素材从未加载）",
+  "total": 1010,
+  "hits": 1010,
+  "rate": 100,
+  "weightedRate": 100,
+  "avgLatencyMs": 40,
+  "p95LatencyMs": 39,
+  "avgReactionMs": 40,
+  "avgAdVisibleMs": 0,
+  "guardHits": 29,
+  "guardServiceKills": 0,
+  "bySource": {
+    "official": [
+      753,
+      753
+    ],
+    "sideload": [
+      257,
+      257
+    ]
+  },
+  "byRender": {
+    "native": [
+      826,
+      826
+    ],
+    "web": [
+      124,
+      124
+    ],
+    "self": [
+      60,
+      60
+    ]
+  },
+  "byAdType": {
+    "splash": [
+      799,
+      799
+    ],
+    "interstitial": [
+      108,
+      108
+    ],
+    "shake": [
+      66,
+      66
+    ],
+    "deeplink": [
+      37,
+      37
+    ]
+  },
+  "tierCounts": {
+    "preempt_block": 860,
+    "guard_skip": 29,
+    "sensor_block": 66,
+    "intent_block": 37,
+    "dns_block": 18
+  },
+  "missReasons": {},
+  "energy": {
+    "mWh": 0.02781436225501225,
+    "preemptShare": 0.9833156524254991,
+    "breakdown": [
+      {
+        "label": "启动拦截",
+        "mWh": 0.023592140032790025
+      },
+      {
+        "label": "后台事件",
+        "mWh": 0.004222222222222223
+      }
+    ]
+  },
+  "burst": {
+    "tier": 18.9,
+    "preempt": 1.6
+  }
+}

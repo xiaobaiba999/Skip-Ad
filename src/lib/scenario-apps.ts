@@ -1,19 +1,20 @@
 /**
- * 演练场场景应用定义
- * 6 个典型应用覆盖全部广告形态与守护场景：
+ * 演练场场景应用定义（v3.1.0）
+ * 7 个典型应用覆盖全部广告形态与对抗特征：
  *  电商·标准开屏 / 游戏·摇一摇 / 视频·Deeplink 诱导 /
- *  银行·政务·支付·守护模式（拦广告但绝不终止服务）
+ *  银行·政务·支付·守护模式（拦广告但绝不终止服务）/
+ *  喜马拉雅·假跳过陷阱 + 链式二跳（2026-11 专案）
  */
-import type { AdType, AppCategory } from "./instant-engine";
+import type { AdType, AppCategory, AdTraits } from "./instant-engine";
 
 export interface ScenarioAd {
-  brand: string; // 广告主品牌（对照模式落地页用）
+  brand: string; // 广告主品牌（落地页/陷阱演示用）
   title: string;
   subtitle: string;
   ctaText: string;
   theme: "ecommerce" | "game" | "vip" | "finance" | "gov" | "pay";
-  countdownSec: number; // 对照模式（引擎关闭）时的倒计时
-  landingHint: string; // 对照模式被跳转后的落地页提示
+  countdownSec: number; // 广告方倒计时
+  landingHint: string; // 被跳转后的落地页提示
 }
 
 export interface ScenarioApp {
@@ -25,9 +26,10 @@ export interface ScenarioApp {
   ruleName: string; // 命中的预置规则名
   icon: string; // lucide 图标名（组件内映射）
   gradient: string; // 图标渐变
-  screen: "mall" | "game" | "bank" | "gov" | "pay" | "video";
+  screen: "mall" | "game" | "bank" | "gov" | "pay" | "video" | "audio";
   ad: ScenarioAd;
   note: string; // 演练场卡片的一句话说明
+  traits?: AdTraits; // 广告对抗特征（假跳过 / 链式二跳 / 真跳过延迟）
 }
 
 export const SCENARIO_APPS: ScenarioApp[] = [
@@ -51,6 +53,28 @@ export const SCENARIO_APPS: ScenarioApp[] = [
       landingHint: "已跳转聚星商城活动页",
     },
     note: "标准开屏：倒计时 + 小小跳过键",
+  },
+  {
+    key: "ximalaya",
+    name: "喜马拉雅",
+    category: "音频",
+    adType: "splash",
+    guard: false,
+    ruleName: "专案·假跳过甄别 + 链式断链",
+    icon: "headphones",
+    gradient: "from-orange-500 to-amber-400",
+    screen: "audio",
+    ad: {
+      brand: "橙意购物节",
+      title: "暖冬狂欢购",
+      subtitle: "摇一摇抽免单 · 点击任意处直达会场",
+      ctaText: "立即参与",
+      theme: "ecommerce",
+      countdownSec: 5,
+      landingHint: "倒计时归零自动跳落地页，并将二跳外部商店",
+    },
+    note: "假跳过陷阱 + 链式二跳（专案修复）",
+    traits: { fakeSkip: true, chainJump: true, realSkipDelayMs: 5100 },
   },
   {
     key: "game",

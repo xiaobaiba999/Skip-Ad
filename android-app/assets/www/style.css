@@ -290,3 +290,44 @@ textarea { min-height: 72px; resize: none; }
   padding: 9px 16px; border-radius: 10px; z-index: 999; max-width: 86%; text-align: center;
   transition: opacity .25s;
 }
+
+/* ══════════ v3.1.0：假跳过陷阱 / 阶段提示 / 预拦截层 ══════════ */
+.fake-skip {
+  position: absolute; right: 12px; bottom: 44px; z-index: 5;
+  border: 0; border-radius: 999px; padding: 9px 18px;
+  background: linear-gradient(135deg, #f97316, #fbbf24);
+  color: #fff; font-size: 13px; font-weight: 900;
+  box-shadow: 0 4px 14px rgba(249, 115, 22, .4);
+}
+.fake-skip.ignored {
+  opacity: .55; pointer-events: none;
+  text-decoration: line-through; text-decoration-color: #ef4444; text-decoration-thickness: 2px;
+  box-shadow: 0 0 0 2px #ef4444;
+}
+.phase-tip {
+  position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%);
+  z-index: 6; display: none; max-width: 86%;
+  background: rgba(0,0,0,.5); color: rgba(255,255,255,.92);
+  border-radius: 999px; padding: 5px 12px; font-size: 10px; font-weight: 700;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.phase-tip.on { display: block; }
+.phase-tip.danger { background: #dc2626; }
+.preempt-flash {
+  height: 100%; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 8px;
+  background: rgba(9, 9, 11, .94); color: #fff; text-align: center; padding: 0 18px;
+}
+.preempt-flash .pf-icon { font-size: 34px; }
+.preempt-flash .pf-title { font-size: 15px; font-weight: 900; }
+.preempt-flash .pf-sub { font-size: 10px; color: #a1a1aa; }
+.preempt-flash .pf-ms {
+  font-size: 22px; font-weight: 900; color: #e879f9;
+  background: rgba(255,255,255,.08); border: 1px solid rgba(232,121,249,.35);
+  border-radius: 10px; padding: 3px 14px;
+}
+.preempt-flash .pf-badge {
+  font-size: 10px; font-weight: 800; color: #f0abfc;
+  background: rgba(232,121,249,.12); border: 1px solid rgba(232,121,249,.3);
+  border-radius: 999px; padding: 3px 10px;
+}

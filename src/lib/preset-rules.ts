@@ -26,6 +26,11 @@ const MATCH_LABEL: Record<string, string> = {
   intent: "Scheme 意图",
   "guard-list": "守护名单",
   learned: "习惯学习",
+  preempt: "P0 预拦截",
+  "fake-skip": "假跳过甄别",
+  chain: "链式二跳",
+  backkey: "返回键兜底",
+  dns: "定向域名",
 };
 
 export function matchTypeLabel(t: string): string {
@@ -109,9 +114,82 @@ export function presetRules(): PresetRuleSeed[] {
   return [...global, ...perApp];
 }
 
-/** 幂等播种：规则库为空时写入预置规则 */
+/** v3.1.0 五层纵深新增规则（幂等升级：老库补种，新库全量） */
+export function presetRulesV31(): PresetRuleSeed[] {
+  return [
+    {
+      appName: "*",
+      appCategory: "通用",
+      adType: "splash",
+      matchType: "preempt",
+      pattern: "P0 预拦截：学习指纹（广告容器签名 + viewId + 出现时机）命中 → 窗口附加阶段直接阻断，广告未及呈现、引擎零扫描",
+      action: "preempt_block",
+      confidence: 0.98,
+    },
+    {
+      appName: "*",
+      appCategory: "通用",
+      adType: "splash",
+      matchType: "fake-skip",
+      pattern: "假跳过甄别：全屏可点击容器 / 图文混排「跳过」热区 / 出现时序与倒计时不符 → 多信号判定为陷阱并忽略，静候真跳过",
+      action: "instant_skip",
+      confidence: 0.96,
+    },
+    {
+      appName: "*",
+      appCategory: "通用",
+      adType: "splash",
+      matchType: "chain",
+      pattern: "链式二跳直接阻断：广告容器携带自动重定向 Scheme（落地页→外部应用二跳）→ 返回键温和关闭广告窗，不点任何广告元素",
+      action: "chain_block",
+      confidence: 0.96,
+    },
+    {
+      appName: "*",
+      appCategory: "通用",
+      adType: "any",
+      matchType: "backkey",
+      pattern: "返回键兜底：无控件可见的顽固广告（WebView 不暴露无障碍树 / 纯自绘）→ GLOBAL_ACTION_BACK 温和关闭广告窗口",
+      action: "back_fallback",
+      confidence: 0.88,
+    },
+    {
+      appName: "*",
+      appCategory: "通用",
+      adType: "any",
+      matchType: "dns",
+      pattern: "定向域名阻断（兜底中的兜底）：返回键也无效的结构性不可见广告 → 学习名单域名热阻断 + 启动窗突发本地过滤，广告请求即断",
+      action: "dns_block",
+      confidence: 0.9,
+    },
+    {
+      appName: "喜马拉雅",
+      appCategory: "音频",
+      adType: "splash",
+      matchType: "chain",
+      pattern: "喜马拉雅专案：广告图内嵌假「跳过」热区 + 真跳过延迟 5.1s + 倒计时归零链式二跳 → 假跳过甄别 + 窗口级直接阻断 + 次启预拦截",
+      action: "chain_block",
+      confidence: 0.97,
+    },
+  ];
+}
+
+/** 幂等播种：规则库为空时写入全量；已有旧版规则则补种 v3.1.0 新规则 */
 export async function ensureRulesSeed(): Promise<void> {
   const count = await db.rule.count();
-  if (count > 0) return;
-  await db.rule.createMany({ data: presetRules() });
+  if (count === 0) {
+    await db.rule.createMany({ data: [...presetRules(), ...presetRulesV31()] });
+    return;
+  }
+  // v3.1.0 升级补种：按 appName + matchType + action 判重
+  for (const r of presetRulesV31()) {
+    const exists = await db.rule.findFirst({
+      where: { appName: r.appName, matchType: r.matchType, action: r.action },
+    });
+    if (!exists) {
+      await db.rule.create({
+        data: { ...r, source: "preset" },
+      });
+    }
+  }
 }

@@ -1,5 +1,5 @@
 /**
- * 千款热门应用兼容性测试语料库（v3.0.0）
+ * 千款热门应用兼容性测试语料库（v3.1.0 · 含对抗样本层）
  * ─────────────────────────────────────────────────────────────
  * · REAL 层：130 款真实国民应用（真实包名，依据 2026-11 国内应用市场
  *   公开信息整理；包名以主流应用商店在架版本为准）。
@@ -8,6 +8,10 @@
  * · 渲染建模：native（原生控件树）86.5% / web（H5，其中 60% 无障碍
  *   树可见）/ self（自绘，其中 35% 角落有原生跳过小控件）——诚实反映
  *   「哪些广告结构上可见、哪些不可见」。
+ * · 对抗样本层（v3.1.0 新增，喜马拉雅专案沉淀）：
+ *   fakeSkip（广告图内嵌假「跳过」热区，点击即跳转）、
+ *   chainJump（倒计时归零自动跳落地页并二跳外部应用）、
+ *   backResponsive（无控件广告对返回键是否响应）。
  * · 能耗画像：每款应用的开屏事件量（事件数 = 引擎工作量的输入）。
  */
 import type { AdType } from "./instant-engine";
@@ -23,12 +27,18 @@ export interface CorpusApp {
   guard: boolean;
   source: SourceKind;
   render: RenderKind;
-  /** 跳过控件出现延迟（毫秒，0~5000 均匀分布） */
+  /** 真跳过控件出现延迟（毫秒，0~5000 均匀分布；假跳过陷阱的陪衬） */
   skipDelayMs: number;
   /** web 渲染：无障碍树是否暴露内容（H5 开屏约 6 成可见） */
   webviewA11y: boolean;
   /** self 渲染：角落是否仍保留原生「跳过」小控件（约 35%） */
   hybridSkip: boolean;
+  /** 广告图内嵌假「跳过」热区（点击即跳转，非真跳过） */
+  fakeSkip: boolean;
+  /** 链式二跳（倒计时归零自动跳落地页 → 再跳外部应用/商店） */
+  chainJump: boolean;
+  /** 无控件可见时，广告窗口对返回键是否响应（约 82%） */
+  backResponsive: boolean;
   /** 热度 0~100（决定抽样权重与事件量） */
   hot: number;
 }
@@ -216,7 +226,15 @@ const GUARD_CATEGORIES = new Set(["银行", "政务", "支付"]);
 function mkApp(row: RealRow): CorpusApp {
   const [name, pkg, category, adType, render, source] = row;
   const rnd = seqOf(pkg);
-  return {
+  const skipDelayMs = Math.round(rnd() * 5000);
+  const webviewA11y = rnd() < 0.6;
+  const hybridSkip = rnd() < 0.35;
+  const hot = 60 + Math.round(rnd() * 40);
+  // 对抗样本：约 8% 假跳过陷阱 / 约 8% 链式二跳（确定性派生）
+  const fakeSkip = (adType === "splash" || adType === "interstitial") && rnd() < 0.08;
+  const chainJump = adType === "splash" && rnd() < 0.08;
+  const backResponsive = rnd() < 0.82;
+  const app: CorpusApp = {
     pkg,
     name,
     category,
@@ -224,11 +242,22 @@ function mkApp(row: RealRow): CorpusApp {
     guard: GUARD_CATEGORIES.has(category),
     source,
     render,
-    skipDelayMs: Math.round(rnd() * 5000),
-    webviewA11y: rnd() < 0.6,
-    hybridSkip: rnd() < 0.35,
-    hot: 60 + Math.round(rnd() * 40),
+    skipDelayMs,
+    webviewA11y,
+    hybridSkip,
+    fakeSkip,
+    chainJump,
+    backResponsive,
+    hot,
   };
+  // 喜马拉雅专案画像（2026-11 实测特征）：假跳过陷阱 + 真跳过延迟 5.1s + 链式二跳
+  if (pkg === "com.ximalaya.ting.android") {
+    app.fakeSkip = true;
+    app.chainJump = true;
+    app.skipDelayMs = 5100;
+    app.hot = 98;
+  }
+  return app;
 }
 
 /* ───────── GEN 层：880 款确定性生成式长尾 ───────── */
@@ -305,6 +334,13 @@ function genLayer(): CorpusApp[] {
       const adType = pickW(rnd, AD_WEIGHTS[category] ?? AD_WEIGHTS.default);
       const render = pickW(rnd, RENDER_WEIGHTS[category] ?? RENDER_WEIGHTS.default);
       const source: SourceKind = rnd() < 0.3 ? "sideload" : "official";
+      const skipDelayMs = Math.round(rnd() * 5000);
+      const webviewA11y = rnd() < 0.6;
+      const hybridSkip = rnd() < 0.35;
+      const fakeSkip = (adType === "splash" || adType === "interstitial") && rnd() < 0.12;
+      const chainJump = adType === "splash" && rnd() < 0.1;
+      const backResponsive = rnd() < 0.82;
+      const hot = Math.round(Math.pow(rnd(), 2) * 60 + 4); // 长尾幂律：多数低热度
       out.push({
         pkg,
         name,
@@ -313,10 +349,13 @@ function genLayer(): CorpusApp[] {
         guard,
         source,
         render,
-        skipDelayMs: Math.round(rnd() * 5000),
-        webviewA11y: rnd() < 0.6,
-        hybridSkip: rnd() < 0.35,
-        hot: Math.round(Math.pow(rnd(), 2) * 60 + 4), // 长尾幂律：多数低热度
+        skipDelayMs,
+        webviewA11y,
+        hybridSkip,
+        fakeSkip,
+        chainJump,
+        backResponsive,
+        hot,
       });
     }
   }
