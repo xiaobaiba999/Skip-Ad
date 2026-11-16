@@ -25,6 +25,12 @@
  *   popupForm（dialog=独立弹窗有窗口事件 / overlay=覆盖层无窗口事件）、
  *   popupAtMs（弹窗出现时刻 2s~60s——v3.2.0 弹窗扫描被 12s 开屏窗误拦）、
  *   popupSignal（badge=带角标 / ctaOnly=无角标但 Dialog 形态+营销话术）。
+ * · v3.4.0 新增建模（2026-11 二次真机反馈：微博/喜马拉雅等主流应用仍拦截失败）：
+ *   imageSkip（第一方图片开屏：应用自建广告系统渲染——窗口类名是应用
+ *     自己的 Activity（不匹配 SDK 指纹）、跳过按钮纯图片零文本、倒计时
+ *     烧在图里——v3.3.0 全部识别手段零信号，广告完整展示的根因）、
+ *   imageCorner（该图片跳过键是否为右上角小可点控件——v3.4.0 L4 角落
+ *     控件点击可命中；否则需 L6 坐标级点击兜底）。
  * · 能耗画像：每款应用的开屏事件量（事件数 = 引擎工作量的输入）。
  */
 import type { AdType } from "./instant-engine";
@@ -77,6 +83,11 @@ export interface CorpusApp {
   popupAtMs: number;
   /** 弹窗信号类型（badge=带角标；ctaOnly=无角标但 Dialog 形态+营销话术） */
   popupSignal: PopupSignal;
+  /* ── v3.4.0 真机反馈建模（追加在随机序列末尾，既有字段不变） ── */
+  /** 第一方图片开屏（真机反馈主场景）：非 SDK 窗口、跳过键纯图片零文本 */
+  imageSkip: boolean;
+  /** 图片跳过键是否为右上角小可点控件（L4 角落点击可命中；否则需 L6 坐标兜底） */
+  imageCorner: boolean;
 }
 
 /* ───────── 确定性伪随机（可复现） ───────── */
@@ -273,6 +284,12 @@ function mkApp(row: RealRow): CorpusApp {
   const popup = rnd() < 0.11;
   const backResponsive = rnd() < 0.82;
   const v330 = model330(rnd, adType, render, webviewA11y, hybridSkip, gyroFlip);
+  /* v3.4.0 建模（追加在末尾，既有字段不变）：第一方图片开屏约 14%
+     （真机反馈：微博/喜马拉雅等主流应用的自建广告系统渲染形态） */
+  const guardCat = GUARD_CATEGORIES.has(category);
+  const imageSkip = adType === "splash" && !guardCat && !fakeSkip && !chainJump && !gyroFlip
+    && !v330.sdkAd && rnd() < 0.14;
+  const imageCorner = imageSkip && rnd() < 0.55;
   const app: CorpusApp = {
     pkg,
     name,
@@ -291,21 +308,26 @@ function mkApp(row: RealRow): CorpusApp {
     backResponsive,
     hot,
     ...v330,
+    imageSkip,
+    imageCorner,
   };
-  // 喜马拉雅专案 v3 画像（2026-11 真机实测）：无倒计时 + SDK 广告窗（穿山甲
-  // 聚合，className 指纹可识别）+ 翻转手机 900ms 即跳（拿起就跳）+ 跳浏览器
-  // 落地页（v3.2.0 回弹名单外）+ 首页覆盖层弹窗广告（30s 后弹出，带角标）
+  // 喜马拉雅专案 v4 画像（2026-11 二次真机实测）：第一方图片开屏
+  // （WelComeActivity 自建广告渲染，窗口类名非 SDK、跳过键纯图片零文本、
+  // 倒计时烧在图里）+ 翻转手机 900ms 即跳（零文本翻转提示同样烧在图里）+
+  // 浏览器二跳 + 30s 首页覆盖层弹窗。v3.3.0 全部识别手段零信号 → 完整展示。
   if (pkg === "com.ximalaya.ting.android") {
-    app.fakeSkip = true;
+    app.fakeSkip = false;
     app.chainJump = true;
     app.gyroFlip = true;
     app.skipDelayMs = 5100;
     app.hot = 98;
-    app.sdkAd = true;
-    app.gyroWindow = "sdk";
+    app.sdkAd = false;
+    app.gyroWindow = "image";
     app.flipTrigMs = 900;
     app.jumpTarget = "browser";
     app.backResponsive = true;
+    app.imageSkip = true;
+    app.imageCorner = true;
     app.popup = true;
     app.popupForm = "overlay";
     app.popupAtMs = 30000;
@@ -435,6 +457,9 @@ function genLayer(): CorpusApp[] {
       const backResponsive = rnd() < 0.82;
       const hot = Math.round(Math.pow(rnd(), 2) * 60 + 4); // 长尾幂律：多数低热度
       const v330 = model330(rnd, adType, render, webviewA11y, hybridSkip, gyroFlip);
+      const imageSkip = adType === "splash" && !guard && !fakeSkip && !chainJump && !gyroFlip
+        && !v330.sdkAd && rnd() < 0.14;
+      const imageCorner = imageSkip && rnd() < 0.55;
       out.push({
         pkg,
         name,
@@ -453,6 +478,8 @@ function genLayer(): CorpusApp[] {
         backResponsive,
         hot,
         ...v330,
+        imageSkip,
+        imageCorner,
       });
     }
   }

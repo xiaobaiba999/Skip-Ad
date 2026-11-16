@@ -69,12 +69,12 @@
       <div class="card">
         <div class="card-head">
           <span>🛡 防护能力</span>
-          <span class="tag tag-green">SDK 广告窗指纹 · 七层纵深</span>
+          <span class="tag tag-green">v3.4.0 · 角落键+坐标点击 · 八层纵深</span>
         </div>
         <div class="switch-row">
           <div class="sw-text">
-            <div class="sw-title">开屏秒跳（SDK 广告窗识别 + 极速链）</div>
-            <div class="sw-desc">广告窗 className 指纹（穿山甲/优量汇/快手/宿主 ad.activity）零文本可判，500ms 直断；翻转/摇一摇无倒计时首扫立即直断；自绘图片广告全屏热区识别 900ms 直断（守护名单豁免）；返回键被拦自动补一次</div>
+            <div class="sw-title">开屏秒跳（角落键 + 坐标点击 + SDK 指纹）</div>
+            <div class="sw-desc">角落无字小可点控件（图片跳过键）→ 手势点击其中心 650ms（微博/喜马拉雅第一方图片开屏正解）；零信号简单树 → 坐标级点击标准跳过位（防误点六重约束）；SDK 窗 className 指纹 500ms 直断；翻转/摇一摇立即直断；performAction 失效自动降级真实触点手势</div>
           </div>
           <span class="tag tag-green">常开</span>
         </div>
@@ -109,6 +109,8 @@
         </div>
         <select id="fb-type" class="fb-select">
           <option value="missed">漏拦截：开屏广告没被秒跳</option>
+          <option value="img_ad">漏拦截：开屏图片广告（无跳过按钮）</option>
+          <option value="coord_fp">误点击：坐标兜底点错位置</option>
           <option value="gyro_leak">翻转/摇一摇仍被跳转</option>
           <option value="popup_leak">弹窗广告没被关闭</option>
           <option value="landing_fp">误弹回：正常浏览被送回</option>
@@ -128,7 +130,7 @@
     <section class="page" id="page-intel">
       <div class="card intro-card">
         <div class="card-head">
-          <span>🧪 千款语料自测 · 十四轮 · 诚实重构</span>
+          <span>🧪 千款语料自测 · 十八轮 · 诚实重构</span>
           <span class="tag tag-green" id="intel-rate">--%</span>
         </div>
         <div id="intel-rounds"></div>

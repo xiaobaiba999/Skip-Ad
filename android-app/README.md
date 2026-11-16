@@ -2,6 +2,8 @@
 
 移动端「开屏广告 + 跳转广告 + 弹窗广告」智能跳过系统。v3.3.0 APK 约 61KB，零第三方依赖；联网仅两处出口（问题反馈 GitHub Issues / 检查更新 GitHub Releases，v3.3.0 起检查更新带令牌 + 重试 + 列表回退，下载直连失败自动切换镜像通道），学习数据仍全部本地保存。
 
+> **v3.4.0 要点**：角落图片跳过键识别（650ms 手势点击）· 坐标级点击兜底（标准跳过位 + 六重防误点）· performAction 失效降级 dispatchGesture 真实触点 · 多窗口扫描 · 决策核心 AdDecisionCore 纯 Java JVM 38 用例（scripts/device-tests，javac+java 直跑，发版前必绿）。
+>
 > **v3.3.0 要点**：SDK 广告窗 className 识别（零文本广告 500ms 直断，喜马拉雅类根因修复）· 全屏热区直断 · 陀螺仪诱导四层防线 · 链式回弹名单扩充（微信/支付宝/浏览器）· 弹窗广告 v2（窗期独立 + 覆盖层突发检测）· 应用内更新链路修复（v3.2.0 曾因发版脚本仓库名拼写错误未发布成功，真机一直停留在 v3.1.0）。
 
 ## 一、目录说明
@@ -11,7 +13,8 @@ android-app/
 ├── AndroidManifest.xml          # 应用清单（versionCode/versionName 在此注入）
 ├── src/com/zai/adshield/
 │   ├── MainActivity.java        # WebView 壳 + JSBridge（版本/存储/无障碍设置/联网桥）
-│   ├── AdSkipService.java       # 无障碍智能跳过服务（学习引擎核心）
+│   ├── AdSkipService.java       # 无障碍智能跳过服务（调度 + 执行：手势点击/返回键/多窗口）
+│   ├── core/AdDecisionCore.java # 决策核心（纯 Java 零 Android 依赖，JVM 可单测）
 │   └── Net.java                 # GitHub API 极简客户端（反馈 / 检查更新，零依赖）
 ├── res/                         # 布局/字符串/主题/无障碍配置/图标
 ├── assets/www/                  # 离线页面（首页/情报站/学习中心/关于；首页无任何演示模块）

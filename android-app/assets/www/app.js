@@ -1,4 +1,4 @@
-/* 开屏卫士 v3.3.0 · 离线逻辑（首页 / 情报站 / 学习中心 / 关于 · 应用内页内直更 + 多通道下载） */
+/* 开屏卫士 v3.4.0 · 离线逻辑（首页 / 情报站 / 学习中心 / 关于 · 应用内页内直更 + 多通道下载） */
 "use strict";
 
 /* ══════════ 环境与存储 ══════════ */
@@ -27,42 +27,46 @@ const store = {
 /* 千款十四轮自测结论（诚实重构模型：v3.2.0 终态 86.79% → v3.3.0 逐项攻坚 100%） */
 const TEST = {
   total: 1060, real: 130, generated: 930,
-  v320Rate: 86.79,
+  v320Rate: 82.45, v330Rate: 95.09,
   adversarial: { fakeSkip: 107, chainJump: 89, gyro: 63, popup: 106 },
   v330: { sdkAd: 518, textlessGyro: 30, overlayPopup: 50, latePopup: 90 },
+  v340: { imageSkip: 53, imageCorner: 31, cornerHit: 31, coordHit: 22 },
   rounds: [
-    { no: 1, name: "基线 v3.1.0 终态（诚实模型）", rate: 77.55, reaction: 250, energy: 0.127 },
-    { no: 2, name: "+极速链（0ms 首扫）", rate: 80, reaction: 247, energy: 0.128 },
-    { no: 3, name: "+陀螺仪诱导直断", rate: 84.43, reaction: 297, energy: 0.130 },
-    { no: 4, name: "+链式回弹（旧名单）", rate: 86.32, reaction: 312, energy: 0.130 },
-    { no: 5, name: "+弹窗屏蔽 v1 → v3.2.0 形态", rate: 86.79, reaction: 314, energy: 0.130 },
-    { no: 6, name: "v3.2.0 终态冷启动复测（诚实）", rate: 86.79, reaction: 314, energy: 0.130 },
-    { no: 7, name: "+SDK 广告窗识别【v3.3.0】", rate: 88.49, reaction: 324, energy: 0.131 },
-    { no: 8, name: "+立即直断/热区/重试【v3.3.0】", rate: 90.09, reaction: 308, energy: 0.130 },
-    { no: 9, name: "+弹窗屏蔽 v2【v3.3.0】", rate: 99.62, reaction: 308, energy: 0.130 },
-    { no: 10, name: "+回弹扩充/活跃回弹 → 100%", rate: 100, reaction: 310, energy: 0.130 },
-    { no: 11, name: "+P0 预拦截回归（0ms 可见）", rate: 100, reaction: 34, energy: 0.035 },
-    { no: 12, name: "+守护模式回归（零干预）", rate: 100, reaction: 34, energy: 0.035 },
-    { no: 13, name: "+功耗治理/冷启动回归", rate: 100, reaction: 34, energy: 0.096 },
-    { no: 14, name: "全量回归 ×2（双跑一致）", rate: 100, reaction: 34, energy: 0.096 }
+    { no: 1, name: "基线 v3.1.0 终态（诚实模型）", rate: 73.21, reaction: 250, energy: 0.124 },
+    { no: 2, name: "+极速链（0ms 首扫）", rate: 75.66, reaction: 247, energy: 0.125 },
+    { no: 3, name: "+陀螺仪诱导直断", rate: 80.09, reaction: 297, energy: 0.126 },
+    { no: 4, name: "+链式回弹（旧名单）", rate: 81.98, reaction: 312, energy: 0.126 },
+    { no: 5, name: "+弹窗屏蔽 v1 → v3.2.0 形态", rate: 82.45, reaction: 314, energy: 0.126 },
+    { no: 6, name: "v3.2.0 终态冷启动复测（诚实）", rate: 82.45, reaction: 314, energy: 0.126 },
+    { no: 7, name: "+SDK 广告窗识别【v3.3.0】", rate: 84.15, reaction: 324, energy: 0.126 },
+    { no: 8, name: "+立即直断/热区/重试【v3.3.0】", rate: 85.75, reaction: 308, energy: 0.126 },
+    { no: 9, name: "+弹窗屏蔽 v2【v3.3.0】", rate: 94.62, reaction: 308, energy: 0.126 },
+    { no: 10, name: "+回弹扩充/活跃回弹 → 95.09%", rate: 95.09, reaction: 310, energy: 0.126 },
+    { no: 14, name: "全量回归 ×2（v3.3.0 终态）", rate: 95.09, reaction: 310, energy: 0.126 },
+    { no: 15, name: "v3.3.0 终态复测（新建模：图片开屏）", rate: 95.09, reaction: 310, energy: 0.126 },
+    { no: 16, name: "+角落控件/坐标点击 → 100%【v3.4.0】", rate: 100, reaction: 333, energy: 0.129 },
+    { no: 17, name: "+回归（预拦截/守护/功耗/冷启动）", rate: 100, reaction: 34, energy: 0.030 },
+    { no: 18, name: "全量回归 ×2（双跑一致）", rate: 100, reaction: 34, energy: 0.030 }
   ],
   sideload: { hit: 273, total: 273, rate: 100 },
   gyro: { hit: 63, total: 63, rate: 100 },
   popup: { hit: 106, total: 106, rate: 100 },
-  ximalaya: { r1Ms: 900, sdkCutMs: 504, flipTrigMs: 900, steadyMs: 34 },
-  energyDrop: 24, coldRate: 100
+  imageSkip: { hit: 53, total: 53, corner: 31, coord: 22 },
+  ximalaya: { r15VisibleMs: 900, cornerMs: 659, flipTrigMs: 900, steadyMs: 34 },
+  jvmTests: 38, energyDrop: 76, coldRate: 100
 };
 
 /* 最近三个版本（仅此三版，其余全部略去） */
 const CHANGELOG = [
-  { v: "3.3.0", d: "根因修复·SDK 广告窗识别（穿山甲/优量汇/快手/宿主 ad.activity 窗口类名指纹，文案烧在图里的零文本广告 500ms 直断，次启 300ms 快断）/ 全屏热区直断（≥55% 可点+节点≤12+无输入框，守护名单豁免）+ 返回键重试 / 弹窗广告 v2（窗期独立于开屏 12s 窗——修复用一会儿后弹窗关不掉；角标扩充推广/赞助/AD；Dialog+营销话术弱信号；覆盖层内容突发检测）/ 链式回弹扩充（微信/支付宝/美团/知乎/小红书/B站/浏览器入名单；广告窗活跃时任意目标都弹回；同包 WebView 落地页弹回）/ 更新链路修复（令牌+重试+列表回退；下载直连失败自动切换镜像通道） / 十四轮自测（诚实重构）：86.79% → 100%，冷启动 100%" },
-  { v: "3.2.0", d: "陀螺仪诱导直断（翻转文案 0.8s 无真跳过键 → 返回键温和直断）/ 链式跳转回弹 / 弹窗广告屏蔽 v1（角标+关闭键）/ 极速链 0ms 首扫 / 十轮自测（旧模型 100%，v3.3.0 诚实重构修正为 86.79%——零文本广告无出手信号）" },
-  { v: "3.1.0", d: "P0 预拦截（首次拦截沉淀指纹，次启广告未及呈现）/ 喜马拉雅专案 v1：假跳过甄别+链式二跳直断 / 十轮自测自改自修复（旧模型）1010 款 100% / 功耗：预拦截零扫描，启动瞬时功耗 -92%" }
+  { v: "3.4.0", d: "根因修复·微博/喜马拉雅等第一方图片开屏（窗口类名非 SDK、跳过键纯图片零文本、倒计时烧在图里——v3.3.0 零信号）/ 角落无字小可点控件识别 → dispatchGesture 手势点击其中心 650ms（图片跳过键正解）/ 坐标级点击兜底：开屏窗内零信号简单树 → 点标准跳过位（88%宽/7%高），防误点六重约束 / performAction 失效自动降级手势点击（真实触点应用拦不住）/ 多窗口扫描 + 开屏窗预算 280→600 / 决策核心 AdDecisionCore 纯 Java 可单测：JVM 38 用例发版前必绿（微博 3 + 喜马拉雅 4 + 误报防护 12 场景）/ 十八轮自测：v3.3.0 终态新建模下 95.09%（图片开屏 ×53 全漏）→ 100%；喜马拉雅 v4 角落键 659ms 抢在翻转 900ms 前" },
+  { v: "3.3.0", d: "SDK 广告窗 className 指纹（穿山甲/优量汇/快手/宿主 ad.activity）500ms 直断 / 全屏热区直断 + 返回键重试 / 弹窗广告 v2（窗期独立+角标扩充+Dialog/营销话术+覆盖层突发检测）/ 链式回弹扩充（微信/支付宝/浏览器）/ 更新链路修复（v3.2.0 因仓库名拼写未发布成功）" },
+  { v: "3.2.0", d: "陀螺仪诱导直断 / 链式跳转回弹 / 弹窗广告屏蔽 v1 / 极速链 0ms 首扫（因发版脚本仓库名拼写错误未发布到 GitHub，能力已并入后续版本）" }
 ];
 
 const INTEL = {
   strategies: [
-    { name: "SDK 广告窗 · 零文本图片广告（喜马拉雅根因）", badge: "v3.3.0", cls: "badge-sensor", desc: "文案全部烧在广告图里，无障碍树零文本——跳过文本/翻转文案全找不到，v3.2.0 及之前完全无出手信号（真机「还是跳不过」「手机一动就跳」的根因）。", counter: "广告窗 className 指纹：穿山甲/优量汇/快手/AdMob/宿主 ad.activity 类名分段精确匹配 → 500ms 无真跳过键即返回键直断，零文本依赖；直断后沉淀指纹，次启 300ms 快断。语料中 SDK 窗 ×518 全部首次可判。", impl: "根因修复" },
+    { name: "第一方图片开屏（微博/喜马拉雅实测）", badge: "v3.4.0", cls: "badge-sensor", desc: "应用自建广告系统渲染：窗口类名是应用自己的 Activity（不匹配任何 SDK 指纹）、跳过按钮纯图片（零文本零 contentDescription）、倒计时烧在图里——v3.3.0 全部识别手段零信号，广告完整展示（二次真机反馈「还是拦截不了」的根因）。", counter: "角落图片跳过键识别（顶部 14% 高、贴右/左缘、小面积可点、无文本）→ 手势点击其中心 650ms；连角落控件都没有时坐标级兜底（点标准跳过位 88%宽/7%高，防误点六重约束）；performAction 失效自动降级 dispatchGesture 真实触点。图片开屏 ×53 全拦（角落 ×31 + 坐标 ×22）。", impl: "根因修复" },
+    { name: "SDK 广告窗 · 零文本图片广告", badge: "v3.3.0", cls: "badge-splash", desc: "第三方 SDK 承载的开屏（穿山甲/优量汇/快手/AdMob）：文案烧在图里，但窗口类名带 SDK 特征。", counter: "广告窗 className 指纹分段精确匹配 → 500ms 无真跳过键即返回键直断，零文本依赖；直断后沉淀指纹，次启 300ms 快断。语料 SDK 窗 ×518 首次可判。", impl: "v3.3.0" },
     { name: "翻转手机 · 陀螺仪诱导（拿起手机就跳）", badge: "传感器", cls: "badge-sensor", desc: "开屏底部提示「翻转手机，跳转详情页或第三方应用」，无倒计时，实测快至 600~900ms 触发——无障碍无法冻结应用内的传感器监听。", counter: "四层防线：无倒计时翻转文案首扫立即直断（~120ms）；SDK 窗 500ms 直断；0.8s 无真跳过键返回键直断；跳转已发生 → 任意目标回弹送回。陀螺仪样本 63/63 全断。", impl: "四层防线" },
     { name: "应用内弹窗广告（含覆盖层 / 窗外弹出）", badge: "弹窗 v2", cls: "badge-inter", desc: "使用中突然弹出的广告弹窗：带「广告」角标或纯营销话术，关闭键极小；覆盖层弹窗不触发窗口事件；用一会儿才弹的完全游离在 v3.2.0 能力外（12s 窗误拦 bug）。", counter: "弹窗窗期独立于开屏窗；角标扩充（广告/推广/赞助/AD/Sponsored）+ 关闭键代点；Dialog 形态 + ≥2 条营销话术弱信号；覆盖层内容突发检测（1.5s 内 ≥3 次内容变化）。弹窗样本 106/106 全关（覆盖层 50 · 12s 窗外 90）。", impl: "v3.3.0" },
     { name: "链式二跳连环跳转（含微信/浏览器目标）", badge: "跳转", cls: "badge-inter", desc: "倒计时归零或翻转触发自动跳落地页，再重定向到外部应用/商店/浏览器；跳转目标常不在旧回弹名单。", counter: "回弹名单扩充（微信/QQ/支付宝/美团/知乎/小红书/B站/主流浏览器）；引擎仍见到广告信号时任意目标都弹回（广告窗活跃回弹）；广告判定 3s 内同包拉起 WebView 落地页同样弹回。", impl: "v3.3.0" },
@@ -153,16 +157,16 @@ function renderIntel() {
 
   $("#intel-rounds").innerHTML = TEST.rounds.map((r, i) => `
     <div class="ir-row">
-      <span class="ir-no ${i >= 9 ? "win" : ""}">${r.no}</span>
+      <span class="ir-no ${r.no >= 16 ? "win" : ""}">${r.no}</span>
       <span class="ir-name">${r.name}</span>
-      <span class="ir-rate ${i >= 9 ? "win" : ""}">${r.rate}%</span>
+      <span class="ir-rate ${r.no >= 16 ? "win" : ""}">${r.rate}%</span>
     </div>`).join("");
 
   $("#intel-boundary").innerHTML =
-    `十四轮自测自改自修复（诚实重构模型）：${TEST.rounds.map(r => r.rate + "%").join(" → ")}（R10 起全量 100%，R13 冷启动 100%）；` +
-    `v3.2.0 终态诚实命中率 ${TEST.v320Rate}%——旧模型把「返回键兜底/域名阻断」计为能力，真机反馈证伪。` +
-    `对抗样本：假跳过×${TEST.adversarial.fakeSkip} · 链式二跳×${TEST.adversarial.chainJump} · 陀螺仪诱导×${TEST.adversarial.gyro}（翻转手机跳第三方，喜马拉雅专案 v3：R1 漏拦 ${TEST.ximalaya.r1Ms}ms → SDK 窗直断 ${TEST.ximalaya.sdkCutMs}ms < 翻转触发）· 弹窗广告×${TEST.adversarial.popup}（覆盖层 ${TEST.v330.overlayPopup} · 12s 窗外 ${TEST.v330.latePopup} 全关）。` +
-    `零文本 SDK 广告窗 ×${TEST.v330.sdkAd} 首次可判。功耗：日均 -${TEST.energyDrop}%。`;
+    `十八轮自测自改自修复（诚实重构模型）：73.21% → 95.09%（v3.3.0）→ 100%（v3.4.0）；冷启动 100%，双跑一致。` +
+    `v3.3.0 终态在图片开屏新建模下 ${TEST.v330Rate}%——微博/喜马拉雅等第一方图片开屏 ×${TEST.v340.imageSkip} 全部漏拦（真机反馈复现），v3.4.0 角落键 ×${TEST.v340.cornerHit} + 坐标兜底 ×${TEST.v340.coordHit} 全拦。` +
+    `对抗样本：假跳过×${TEST.adversarial.fakeSkip} · 链式×${TEST.adversarial.chainJump} · 陀螺仪×${TEST.adversarial.gyro}（喜马拉雅 v4：R15 翻转后才回弹 → R16 角落键 ${TEST.ximalaya.cornerMs}ms 抢在翻转 ${TEST.ximalaya.flipTrigMs}ms 前）· 弹窗×${TEST.adversarial.popup}（覆盖层 ${TEST.v330.overlayPopup} · 12s 窗外 ${TEST.v330.latePopup} 全关）。` +
+    `SDK 窗 ×${TEST.v330.sdkAd} 首次可判。决策核心 JVM ${TEST.jvmTests} 用例全绿（含 12 个误报防护场景）。功耗：日均 -${TEST.energyDrop}%。`;
 
   $("#strategy-list").innerHTML = INTEL.strategies.map(s => `
     <div class="card strat-card">
@@ -246,8 +250,8 @@ const FB_TYPES = { missed: "漏拦截：开屏广告没被秒跳", gyro_leak: "�
 function esc(s) {
   return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
-function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "3.3.0"; }
-function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "30300"; }
+function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "3.4.0"; }
+function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "30400"; }
 
 function openLink(url) {
   if (HAS_BRIDGE) { try { AndroidApp.openUrl(url); return; } catch (e) {} }

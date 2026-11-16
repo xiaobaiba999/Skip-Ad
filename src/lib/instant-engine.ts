@@ -32,6 +32,7 @@ export type BlockAction =
   | "chain_block"
   | "gyro_block"
   | "sdk_window_cut"
+  | "coord_tap"
   | "popup_close"
   | "back_fallback"
   | "dns_block"
@@ -76,6 +77,7 @@ export const ACTION_LABEL: Record<BlockAction, string> = {
   preempt_block: "P0 预拦截",
   chain_block: "链式跳转直接阻断",
   gyro_block: "陀螺仪诱导直断 + 回弹",
+  coord_tap: "角落控件/坐标级点击",
   sdk_window_cut: "SDK 广告窗指纹直断",
   popup_close: "弹窗广告代点关闭",
   back_fallback: "返回键兜底",

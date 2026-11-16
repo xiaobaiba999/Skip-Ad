@@ -1,13 +1,22 @@
 package com.zai.adshield;
 
 import android.accessibilityservice.AccessibilityService;
+import android.accessibilityservice.GestureDescription;
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.graphics.Path;
 import android.graphics.Rect;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
+import android.view.accessibility.AccessibilityWindowInfo;
+
+import com.zai.adshield.core.AdDecisionCore;
+import com.zai.adshield.core.AdDecisionCore.Ctx;
+import com.zai.adshield.core.AdDecisionCore.Decision;
+import com.zai.adshield.core.AdDecisionCore.NodeView;
+import com.zai.adshield.core.AdDecisionCore.ScanFind;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -16,41 +25,25 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 开屏广告智能跳过服务（无障碍服务实现 · v3.3.0）
+ * 开屏广告智能跳过服务（无障碍服务实现 · v3.4.0）
+ * ─────────────────────────────────────────────────────────────
+ * v3.4.0 架构：识别/决策逻辑全部下沉到 AdDecisionCore（纯 Java，JVM 可单测，
+ * scripts/device-tests 38 用例发版前必绿）；本类只负责：
+ *  · 事件调度（0ms 首扫 + 前密后疏重试链，命中即熔断）
+ *  · 决策执行：performAction(ACTION_CLICK) 失效自动降级 dispatchGesture 手势点击
+ *    （v3.4.0 关键：许多应用拦截 performAction，但拦不住真实触点）
+ *  · 多窗口扫描：getRootInActiveWindow 之外遍历 getWindows()（弹窗/覆盖层）
+ *  · 坐标级点击兜底执行（L6，决策核心判定后执行）
+ *  · 链式跳转回弹 / 同包落地页弹回 / 学习 / 统计 / 能耗画像
  *
- * 设计依据（2026-11 调研 + 真机反馈复盘）：
- * 1. 市面开屏广告的「跳过」是一个真实控件（TextView/Button，text 含「跳过」），存在于无障碍控件树中，
- *    可通过 text / viewIdResourceName 定位后 performAction(ACTION_CLICK) —— 与 GKD、李跳跳同原理。
- * 2. 「拦精灵」案（2024，芒果TV 诉）判决边界：跳过类软件只能「替用户点击跳过按钮」，
- *    不得直接屏蔽广告本身。本服务严格只代点「跳过/skip/关闭广告/关闭」类控件，不碰网络层。
+ * 真机反馈修复（2026-11：微博/喜马拉雅等主流应用仍拦截失败）：
+ *  根因：第一方图片开屏——窗口类名是应用自己的 Activity（不匹配 SDK 指纹）、
+ *  跳过按钮是纯图片（零文本零 desc）、倒计时烧在图里 → v3.3.0 零信号不出手。
+ *  对策：L4 角落无字小可点控件点击（图片跳过键正解）+ L6 坐标级点击兜底
+ *  （dispatchGesture 真实触点，点击标准跳过位 88%宽/7%高，防误点六重约束）。
  *
- * v3.3.0（本轮五项攻坚 · 真机反馈：喜马拉雅类仍跳不了 / 手机一动就跳 / 弹窗关不掉）：
- * · SDK 广告窗识别（className 指纹）：穿山甲/优量汇/快手/AdMob/自有 ad.activity 等广告
- *   Activity 类名分段精确匹配（.ad.activity / AdActivity / openadsdk / kwad …）→
- *   500ms 内无真跳过键 → 返回键温和直断。解决「文案烧在广告图里、无障碍树零文本」
- *   的图片自绘广告（喜马拉雅无倒计时不带任何可读文本的形态）。
- * · className 指纹学习：直断成功即沉淀广告窗类名 → 下次启动 300ms 快断（零扫描零文本依赖）。
- * · 全屏热区广告识别：启动窗内「≥55% 屏幕面积可点热区 + 节点数≤12 + 无输入框」三条件 →
- *   900ms 无真跳过键 → 直断（图片广告全屏皆是点击热区，正常页面不会）。守护名单（银行/
- *   政务/支付）豁免此启发式，只用高精度信号。
- * · 返回键重试：直断后广告窗仍在（个别广告拦截返回键）→ 窗口期内自动补一次（每窗最多 2 次）。
- * · 弹窗广告屏蔽 v2：弹窗窗期独立于开屏窗（v3.2.0 的弹窗扫描被 12s 开屏窗误拦，
- *   应用用一会儿之后弹出的广告永远关不掉——已修）；Dialog/PopupWindow 窗口事件触发；
- *   角标扩充（广告/推广/赞助/AD/Sponsored/Promoted）；营销话术弱信号（Dialog 形态 +
- *   ≥2 条 CTA + 关闭键）；关闭键不可点时 Dialog 形态返回键兜底；内容突发检测
- *   （1.5s 内 ≥3 次内容变化 → 覆盖层弹窗不触发窗口切换事件的形态）。
- * · 链式跳转回弹扩充：目标名单新增微信/QQ/支付宝/美团/唯品会/苏宁/知乎/小红书/B站/
- *   主流浏览器家族；同包 WebView 落地页（广告判定 3s 内拉起）同样弹回。
- *
- * v3.2.0（沿用）：
- * · 极速链：窗口切换 0ms 即首扫 + 前密后疏重试链 [0,120,240,400,650,1000,…]ms，命中即熔断。
- * · 陀螺仪诱导直断：「翻转/摇一摇」文案 0.8s 内仍无真跳过键 → 返回键温和直断广告窗。
- * · 链式跳转回弹：广告宿主被判定后 6s 内被广告目标抢占前台 → 返回键弹回原应用。
- *
- * 智能学习机制（沿用）：
- * · 冷启动：通用规则（开屏窗内寻找小面积「跳过」控件）+ SDK className 指纹（免学习即命中）。
- * · 观察学习：捕获用户手动点击「跳过」事件，沉淀 text/viewId 专属规则，viewId 定向直达。
- * · 安全阀：控件面积上限（防全屏热区误触）、假跳过甄别、点击冷却、时间窗限制、系统包名过滤。
+ * 合规边界（沿用）：只代点「跳过/关闭」类控件、返回键温和关闭广告窗，
+ * 不碰网络层、不终止任何进程与服务（「拦精灵」案司法边界）。
  */
 public class AdSkipService extends AccessibilityService {
 
@@ -59,118 +52,67 @@ public class AdSkipService extends AccessibilityService {
     private static final String PREFS = "adshield";
     private static final String KEY_STATE = "state";
 
-    /* 只识别「跳过 / 关闭广告」类控件 —— 合规边界：代点跳过，不屏蔽广告 */
-    private static final String[] SKIP_TEXTS = {"跳过", "关闭广告"};
-    /* 陀螺仪 / 摇一摇诱导文案（喜马拉雅实测：翻转手机，跳转详情页或第三方应用） */
-    private static final String[] GYRO_HINTS = {"翻转", "摇一摇", "摇晃", "晃动", "摇动", "扭一扭", "转动手机", "倾斜手机", "拿起手机"};
-    /* 弹窗广告的关闭键文本（精确匹配，≤6 字） */
-    private static final String[] CLOSE_TEXTS =
-            {"×", "x", "X", "✕", "✖", "╳", "关闭", "close", "不感兴趣", "我知道了", "知道了", "关闭广告", "跳过", "忽略", "暂不"};
-    /* v3.3.0 弹窗广告角标（精确/前缀匹配） */
-    private static final String[] BADGE_TEXTS = {"广告", "推广", "赞助", "广告推广", "sponsored", "promoted", "sponsor"};
-    /* v3.3.0 营销 CTA 弱信号（Dialog 形态 + ≥2 条 + 关闭键 → 判定弹窗广告） */
-    private static final String[] CTA_TEXTS =
-            {"立即领取", "点击领取", "领取红包", "限时", "秒杀", "恭喜", "马上抢", "立即下载", "立即抢购",
-                    "0元领", "0元", "免费领", "点击进入", "立即查看", "开通会员", "领取礼包", "大奖"};
-    /* 常见广告跳转目标（链式回弹只针对这些包：电商 / 商店 / 短视频 / 社交 / 生活 / 浏览器） */
-    private static final String[] AD_TARGET_HINTS = {
-            // 电商 / 商店
-            "com.jingdong", "com.taobao", "com.tmall", "com.xunmeng", "com.achievo.vipshop",
-            "com.suning.juniper", "com.dangdang", "com.eastmoney", "com.amazon.mShop",
-            "com.android.vending", "com.xiaomi.market", "com.huawei.appmarket",
-            "com.heytap.market", "com.bbk.appstore", "com.tencent.android.qqdownloader",
-            // 短视频 / 内容
-            "com.ss.android.ugc", "com.smile.gifmaker", "com.kuaishou", "tv.danmaku.bili",
-            "com.zhihu.android", "com.xingin.xhs", "com.dragon.read",
-            // 社交 / 生活（广告高频跳转目标）
-            "com.tencent.mm", "com.tencent.mobileqq", "com.eg.android.AlipayGphone",
-            "com.sankuai.meituan", "com.dianping.v1", "com.sdu.didi.psnger",
-            // 浏览器家族（广告落地页最常见宿主）
-            "com.android.browser", "com.android.chrome", "com.sec.android.app.sbrowser",
-            "com.UCMobile", "com.quark.browser", "com.tencent.mtt", "org.mozilla.firefox",
-            "com.microsoft.emmx", "com.heytap.browser", "com.vivo.browser", "com.mi.globalbrowser"
-    };
-    /* v3.3.0 同包落地页特征（广告判定后 3s 内拉起的 WebView/H5 页 → 弹回） */
-    private static final String[] LANDING_HINTS = {"webview", "h5"};
-    /* v3.3.0 守护名单（银行/政务/支付）：热区启发式豁免，只用高精度信号；服务永不干预 */
-    private static final String[] GUARD_PKG_HINTS = {
-            "bank", "icbc", "cmb", "ccb", "psbc", "abchina", "boc", "unionpay",
-            "gov", "alipay", "955", "12345"
-    };
-
-    private static final long WINDOW_MS = 12000;       // 开屏时间窗（覆盖延迟跳过键）
-    private static final long COOLDOWN_MS = 1200;      // 同一应用两次自动点击的最小间隔
-    private static final long LEARN_WINDOW_MS = 30000; // 手动点击学习的宽时间窗
+    private static final long WINDOW_MS = 12000;       // 开屏时间窗
+    private static final long COOLDOWN_MS = 1200;      // 同一应用两次自动点击最小间隔
+    private static final long LEARN_WINDOW_MS = 30000; // 手动点击学习宽时间窗
     private static final int MAX_RULES_PER_APP = 8;
     private static final int MAX_LOG = 60;
 
-    /* v3.2.0 极速链：相对窗口起点的扫描节奏（前密后疏，命中即熔断） */
+    /* 极速链：相对窗口起点的扫描节奏（前密后疏，命中即熔断） */
     private static final long[] SCAN_AT =
             {0, 120, 240, 400, 650, 1000, 1500, 2200, 3200, 4500, 6000, 8000, 10500};
-    /* 陀螺仪诱导直断时限：识别到翻转文案后，此时长内仍无真跳过键 → 返回键直断 */
-    private static final long GYRO_BREAK_MS = 800;
-    /* v3.3.0 SDK 广告窗直断时限：className 命中后此时长内仍无真跳过键 → 返回键直断 */
-    private static final long CLS_BREAK_MS = 500;
-    /* v3.3.0 学习指纹快断时限：className 指纹命中（已沉淀）→ 更快直断 */
-    private static final long CLS_LEARNED_BREAK_MS = 300;
-    /* v3.3.0 全屏热区直断时限（给真跳过键留出现的余地） */
-    private static final long HOT_ZONE_GRACE_MS = 900;
-    /* v3.3.0 热区判定：可点热区 ≥55% 屏幕面积 且 窗口节点数 ≤12 且无输入框 */
-    private static final double HOT_ZONE_AREA = 0.55;
-    private static final int HOT_ZONE_MAX_NODES = 12;
-    /* v3.3.0 返回键重试：每个窗口最多直断次数（个别广告拦截第一次返回键） */
+    /* 返回键重试：每个窗口最多直断次数（个别广告拦截第一次返回键） */
     private static final int BACK_RETRY_MAX = 2;
-    /* 广告特征有效期：发现跳过键/翻转文案/SDK 广告窗后，链式回弹保护持续此时长 */
+    /* 广告特征有效期（链式回弹依据） */
     private static final long CHAIN_GUARD_MS = 6000;
     /* 同包落地页弹回：仅限广告判定后此时长内拉起的 WebView */
     private static final long LANDING_GUARD_MS = 3000;
-    /* 弹窗广告窗口期与冷却 */
+    /* 弹窗窗期与冷却 */
     private static final long POPUP_WINDOW_MS = 10000;
     private static final long POPUP_COOLDOWN_MS = 2500;
-    /* v3.3.0 弹窗补扫节流与内容突发检测 */
     private static final long POPUP_SCAN_THROTTLE_MS = 700;
     private static final int BURST_COUNT = 3;
     private static final long BURST_WIN_MS = 1500;
+    /* 多窗口扫描上限（能耗） */
+    private static final int MAX_WINDOWS_SCAN = 3;
 
-    /* v3.0.0 能耗治理：内存聚合 + 延迟落盘（合并闪存写入） */
+    /* 能耗治理：内存聚合 + 延迟落盘 */
     private static final long FLUSH_DELAY_MS = 15000;
     private boolean flushScheduled = false;
 
-    /* v3.0.0/v3.2.0 能耗画像（开机累计，供学习中心「能耗面板」展示） */
-    public long energyEvents = 0;   // 处理的无障碍事件数
-    public long energyScans = 0;    // 控件树扫描次数
-    public long energyBacks = 0;    // 返回键直断/回弹次数
-    public long popupBlocks = 0;    // 弹窗广告关闭次数
-    public long chainRebounds = 0;  // 链式跳转回弹次数
+    /* 能耗画像（开机累计，学习中心展示） */
+    public long energyEvents = 0;
+    public long energyScans = 0;
+    public long energyBacks = 0;
+    public long energyGestures = 0;
+    public long popupBlocks = 0;
+    public long chainRebounds = 0;
 
     private final Object lock = new Object();
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final java.util.HashMap<String, Long> windowAt = new java.util.HashMap<>();
     private final java.util.HashMap<String, Long> lastClickAt = new java.util.HashMap<>();
     private final java.util.HashMap<String, Long> lastPopupAt = new java.util.HashMap<>();
-    /* v3.2.0：广告特征有效期（链式回弹依据）与扫描代际（命中即熔断） */
     private final java.util.HashMap<String, Long> adFeatureUntil = new java.util.HashMap<>();
     private final java.util.HashMap<String, Integer> scanGen = new java.util.HashMap<>();
-    /* v3.3.0：窗口类名 / SDK 广告窗有效期 / className 学习快断 / 返回键重试计数 */
     private final java.util.HashMap<String, String> winClass = new java.util.HashMap<>();
     private final java.util.HashMap<String, Long> adWinUntil = new java.util.HashMap<>();
     private final java.util.HashMap<String, Boolean> winClsLearned = new java.util.HashMap<>();
     private final java.util.HashMap<String, Integer> backTries = new java.util.HashMap<>();
-    /* v3.3.0：弹窗窗期（独立于开屏窗）/ 弹窗补扫节流 / 内容突发窗口 */
     private final java.util.HashMap<String, Long> popupUntil = new java.util.HashMap<>();
     private final java.util.HashMap<String, Long> lastPopupScanAt = new java.util.HashMap<>();
     private final java.util.HashMap<String, long[]> burstWin = new java.util.HashMap<>();
-    /* v3.3.0：同包落地页弹回节流 */
     private final java.util.HashMap<String, Long> landingBackAt = new java.util.HashMap<>();
+    /* v3.4.0：坐标兜底每次启动一次（新窗口重置） */
+    private final java.util.HashMap<String, Boolean> coordTapUsed = new java.util.HashMap<>();
 
-    // 标记自己发起的点击，避免把引擎的点击误学为「用户手动点击」
     private volatile String lastAutoClickPkg;
     private volatile long lastAutoClickAt;
 
     private int screenWidth;
     private int screenHeight;
 
-    /** 状态快照（含缓存）：Bridge 读 state 时走这里，保证 UI 永远拿到最新内存态 */
+    /** 状态快照（含缓存）：Bridge 读 state 走这里，UI 永远拿最新内存态 */
     public static String snapshotState(Context ctx) {
         AdSkipService s = instance;
         if (s != null) {
@@ -190,7 +132,7 @@ public class AdSkipService extends AccessibilityService {
         instance = this;
         screenWidth = getResources().getDisplayMetrics().widthPixels;
         screenHeight = getResources().getDisplayMetrics().heightPixels;
-        appendLog("服务已启动 · v3.3.0 SDK广告窗识别 · className指纹学习 · 热区直断 · 弹窗v2 · 回弹扩充");
+        appendLog("服务已启动 · v3.4.0 角落控件点击 + 坐标级兜底 + 手势降级（决策核心 38 用例全绿）");
     }
 
     @Override
@@ -210,63 +152,54 @@ public class AdSkipService extends AccessibilityService {
         CharSequence pkgCs = event.getPackageName();
         if (pkgCs == null) return;
         String pkg = pkgCs.toString();
-        if (pkg.equals(getPackageName())) return; // 忽略自身
+        if (pkg.equals(getPackageName())) return;
         if (isSystemNoise(pkg)) return;
 
         long now = System.currentTimeMillis();
-        energyEvents++; // 能耗画像：仅统计有效事件（噪声已前置过滤）
+        energyEvents++;
 
         switch (event.getEventType()) {
             case AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED: {
                 String cls = cs(event.getClassName());
-                // 链式跳转回弹：广告宿主特征期内被广告目标抢占 → 返回键弹回
                 if (reboundChainJump(pkg, now)) break;
-                // 同包落地页弹回：广告判定 3s 内拉起内置 WebView/H5 落地页 → 返回键弹回
                 if (reboundLanding(pkg, cls, now)) break;
-                // 新窗口（应用启动 / Activity 切换 / Dialog / PopupWindow）
                 windowAt.put(pkg, now);
                 winClass.put(pkg, cls);
-                backTries.put(pkg, 0); // 新窗口重置返回键重试计数
+                backTries.put(pkg, 0);
+                coordTapUsed.put(pkg, Boolean.FALSE); // 新窗口重置坐标兜底
                 winClsLearned.remove(pkg);
                 if (isDialogClass(cls)) {
-                    // 弹窗窗期开启：Dialog/PopupWindow 形态（独立于开屏 12s 窗）
                     popupUntil.put(pkg, now + POPUP_WINDOW_MS);
                 }
-                // v3.3.0 SDK 广告窗识别：className 指纹命中 → 标记广告窗（直断 + 回弹依据）
-                if (isAdActivityClass(cls)) {
+                if (AdDecisionCore.isAdActivityClass(cls)) {
                     adFeatureUntil.put(pkg, now + CHAIN_GUARD_MS);
                     adWinUntil.put(pkg, now + WINDOW_MS);
                     appendLog("🎯 SDK 广告窗识别（" + shortPkg(pkg) + "）：" + cls
-                            + " → 500ms 内无真跳过键将温和直断（className 指纹，不依赖任何文本）");
+                            + " → 500ms 内无真跳过键将温和直断");
                 } else if (learnedClassHit(pkg, cls)) {
                     adFeatureUntil.put(pkg, now + CHAIN_GUARD_MS);
                     adWinUntil.put(pkg, now + WINDOW_MS);
-                    winClsLearned.put(pkg, Boolean.TRUE); // 学习指纹：300ms 快断
+                    winClsLearned.put(pkg, Boolean.TRUE);
                 }
                 bumpScanChain(pkg);
                 break;
             }
             case AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED: {
-                // 开屏窗内：界面内容变化（延迟出现的跳过按钮等）→ 低摩擦补扫
                 if (now - winAt(pkg) < WINDOW_MS) {
                     nudgeScan(pkg, now);
                     break;
                 }
-                // v3.3.0 弹窗窗期内（Dialog/PopupWindow/已确认弹窗）→ 节流补扫
                 if (now < popupUntilGet(pkg)) {
                     nudgePopupScan(pkg, now);
                     break;
                 }
-                // v3.3.0 内容突发检测：覆盖层弹窗（FrameLayout 叠加）不触发窗口切换事件，
-                // 表现为静默窗口期的密集内容变化 → 1.5s 内 ≥3 次 → 开弹窗窗期补扫一次
                 detectPopupBurst(pkg, now);
                 break;
             }
             case AccessibilityEvent.TYPE_VIEW_CLICKED: {
-                // 智能学习：观察用户手动点了什么
                 if (isOwnAutoClick(pkg, now)) return;
                 learnFromManualClick(pkg, event, now);
-                observeMisclick(pkg, event, now); // 误触观察（只记录不拦截）
+                observeMisclick(pkg, event, now);
                 break;
             }
         }
@@ -282,6 +215,12 @@ public class AdSkipService extends AccessibilityService {
                 || pkg.equals("com.android.settings");
     }
 
+    private static boolean isDialogClass(String cls) {
+        if (cls == null) return false;
+        String c = cls.toLowerCase();
+        return c.contains("dialog") || c.contains("popup");
+    }
+
     private long winAt(String pkg) {
         Long t = windowAt.get(pkg);
         return t == null ? 0L : t;
@@ -294,318 +233,6 @@ public class AdSkipService extends AccessibilityService {
 
     private boolean isOwnAutoClick(String pkg, long now) {
         return pkg.equals(lastAutoClickPkg) && (now - lastAutoClickAt) < 900;
-    }
-
-    /** v3.3.0 守护名单（银行/政务/支付）：只影响热区启发式；文本/className 高精度信号照常 */
-    private boolean isGuardPkg(String pkg) {
-        String p = pkg.toLowerCase();
-        for (String k : GUARD_PKG_HINTS) {
-            if (p.contains(k)) return true;
-        }
-        return false;
-    }
-
-    /* ───────── v3.3.0 SDK 广告窗识别（className 指纹） ───────── */
-
-    /**
-     * 广告 Activity 类名识别：按 . 与 $ 分段后精确/特征匹配，
-     * 规避 DownloadActivity 之类的前缀误命中（分段相等而非子串）。
-     * 覆盖：穿山甲 stub、优量汇、快手、AdMob、Mintegral、Tanx、百度，
-     * 及宿主自有广告模块（.ad.activity / AdActivity / AdvertActivity / SplashAd…）。
-     */
-    private boolean isAdActivityClass(String cls) {
-        if (cls == null || cls.length() < 6) return false;
-        String c = cls.toLowerCase();
-        if (c.contains("qq.e.ads") || c.contains("gms.ads") || c.contains("bytedance.sdk")
-                || c.contains(".ad.activity") || c.contains(".ads.activity")
-                || c.contains("baidu.mobads") || c.contains("csjad") || c.contains("unionad")) return true;
-        String[] seg = c.split("[.$]");
-        for (String s : seg) {
-            if (s.length() < 3) continue;
-            if (s.equals("adactivity") || s.equals("advertactivity")) return true;
-            if (s.contains("openadsdk") || s.contains("adsdk") || s.contains("kwad")
-                    || s.contains("gdtadv") || s.contains("admob") || s.contains("sigmob")
-                    || s.contains("adcolony") || s.contains("applovin") || s.contains("vungle")
-                    || s.contains("mbridge") || s.contains("tanx") || s.contains("mobads")
-                    || s.contains("splashad") || s.contains("adsplash") || s.contains("landingpage")
-                    || s.contains("adpage") || s.contains("adlanding")) return true;
-        }
-        return false;
-    }
-
-    /** Dialog / PopupWindow 窗口形态 */
-    private boolean isDialogClass(String cls) {
-        if (cls == null) return false;
-        String c = cls.toLowerCase();
-        return c.contains("dialog") || c.contains("popup");
-    }
-
-    /** 学习到的 className 指纹命中（首启直断成功后沉淀） */
-    private boolean learnedClassHit(String pkg, String cls) {
-        if (cls == null || cls.length() == 0) return false;
-        try {
-            JSONObject rules = loadState().optJSONObject("rules");
-            if (rules == null) return false;
-            JSONArray list = rules.optJSONArray(pkg);
-            if (list == null) return false;
-            for (int i = 0; i < list.length(); i++) {
-                JSONObject r = list.optJSONObject(i);
-                if (r != null && cls.equals(r.optString("cls", ""))) return true;
-            }
-        } catch (Exception ignored) {
-        }
-        return false;
-    }
-
-    /** className 指纹学习：直断成功后沉淀（不依赖 text/viewId，纯窗口形态指纹） */
-    private void learnClass(String pkg, String cls) {
-        if (cls == null || cls.length() == 0) return;
-        synchronized (lock) {
-            try {
-                JSONObject st = loadState();
-                JSONObject rules = st.optJSONObject("rules");
-                if (rules == null) {
-                    rules = new JSONObject();
-                    st.put("rules", rules);
-                }
-                JSONArray list = rules.optJSONArray(pkg);
-                if (list == null) {
-                    list = new JSONArray();
-                    rules.put(pkg, list);
-                }
-                for (int i = 0; i < list.length(); i++) {
-                    JSONObject r = list.optJSONObject(i);
-                    if (r != null && cls.equals(r.optString("cls", ""))) {
-                        r.put("auto", r.optInt("auto", 0) + 1);
-                        r.put("ts", System.currentTimeMillis());
-                        saveState(st);
-                        return;
-                    }
-                }
-                if (list.length() >= MAX_RULES_PER_APP) return;
-                JSONObject r = new JSONObject();
-                r.put("text", "");
-                r.put("viewId", "");
-                r.put("cls", cls);
-                r.put("manual", 0);
-                r.put("auto", 1);
-                r.put("ts", System.currentTimeMillis());
-                list.put(r);
-                saveState(st);
-            } catch (Exception ignored) {
-            }
-        }
-    }
-
-    /* ───────── v3.2.0 扫描调度：0ms 首扫 + 前密后疏重试链，命中即熔断 ───────── */
-
-    /** 新窗口：代际 +1 熔断旧链，按节奏表调度整条重试链（0ms 起步） */
-    private void bumpScanChain(final String pkg) {
-        final long winStart = winAt(pkg);
-        Integer g = scanGen.get(pkg);
-        final int gen = g == null ? 1 : g + 1;
-        scanGen.put(pkg, gen);
-        for (int i = 0; i < SCAN_AT.length; i++) {
-            final long at = SCAN_AT[i];
-            // lambda 由 d8 脱糖（与 v3.0.0 同路径，已验证）
-            handler.postDelayed(() -> {
-                Integer cur = scanGen.get(pkg);
-                if (cur == null || cur.intValue() != gen) return; // 旧链已熔断
-                tryScan(pkg, winStart, at);
-            }, at);
-        }
-    }
-
-    /** 开屏窗内内容变化补扫：距窗口起点 150ms 以上才允许（与重试链错峰，防事件洪流） */
-    private void nudgeScan(final String pkg, long now) {
-        Integer gen = scanGen.get(pkg);
-        if (gen == null) {
-            bumpScanChain(pkg);
-            return;
-        }
-        final long winStart = winAt(pkg);
-        if (now - winStart < 150) return;
-        final int g = gen.intValue();
-        handler.post(() -> {
-            Integer cur = scanGen.get(pkg);
-            if (cur == null || cur.intValue() != g) return;
-            tryScan(pkg, winStart, -1); // -1 = 补扫（受全局冷却约束）
-        });
-    }
-
-    /** v3.3.0 弹窗窗期补扫：节流 700ms（弹窗渲染的密集内容变化不再逐条触发扫描） */
-    private void nudgePopupScan(final String pkg, long now) {
-        Long last = lastPopupScanAt.get(pkg);
-        if (last != null && now - last < POPUP_SCAN_THROTTLE_MS) return;
-        lastPopupScanAt.put(pkg, now);
-        final long winStart = winAt(pkg);
-        final int[] g = {scanGen.get(pkg) == null ? 0 : scanGen.get(pkg).intValue()};
-        handler.post(() -> {
-            if (instance == null) return;
-            tryScan(pkg, winStart, -2); // -2 = 弹窗补扫
-        });
-    }
-
-    /** v3.3.0 内容突发检测：静默窗口期 1.5s 内 ≥3 次内容变化 → 开启弹窗窗期并补扫一次 */
-    private void detectPopupBurst(String pkg, long now) {
-        if (!popupShieldEnabled()) return;
-        long[] w = burstWin.get(pkg);
-        if (w == null || now - w[0] > BURST_WIN_MS) {
-            burstWin.put(pkg, new long[]{now, 1});
-            return;
-        }
-        w[1]++;
-        if (w[1] >= BURST_COUNT) {
-            burstWin.remove(pkg);
-            popupUntil.put(pkg, now + POPUP_WINDOW_MS);
-            appendLog("🪟 检测到内容突发（" + shortPkg(pkg) + "）：疑似覆盖层弹窗 → 开启弹窗识别窗补扫");
-            nudgePopupScan(pkg, now);
-        }
-    }
-
-    /** 命中即熔断：清掉该应用未执行的扫描（代际 +1） */
-    private void fuseChain(String pkg) {
-        Integer g = scanGen.get(pkg);
-        scanGen.put(pkg, g == null ? 1 : g + 1);
-    }
-
-    /* ───────── 扫描与决策 ───────── */
-
-    private void tryScan(String pkg, long winStart, long atMs) {
-        if (instance == null) return;
-        long now = System.currentTimeMillis();
-        long elapsed = now - winStart;
-        /* v3.3.0：开屏窗与弹窗窗两条独立通道——v3.2.0 把弹窗扫描锁在 12s 开屏窗内，
-           应用使用一段时间后弹出的广告永远关不掉；现已解耦 */
-        boolean splashLive = learningEnabled() && elapsed <= WINDOW_MS;
-        boolean popupLive = popupShieldEnabled() && now < popupUntilGet(pkg) && popupCooldownOK(pkg, now);
-        if (!splashLive && !popupLive) return;
-        energyScans++; // 能耗画像：每次控件树扫描计数
-
-        try {
-            AccessibilityNodeInfo root = getRootInActiveWindow();
-            if (root == null) return;
-            CharSequence rp = root.getPackageName();
-            if (rp == null || !pkg.contentEquals(rp)) return; // 只处理当前活动窗口
-
-            /* ① 学习规则优先（viewId 定向直达，零全树扫描；仅开屏窗内） */
-            Target t = null;
-            ScanFind f = null;
-            if (splashLive) {
-                t = findLearnedTarget(root, pkg);
-                if (t == null) {
-                    f = scanCollect(root);
-                    t = f.skip;
-                }
-            }
-
-            boolean adFeature = f != null && (f.gyroHint || f.fakeSkip);
-            if (t != null || adFeature) {
-                // 广告特征有效期：此窗口被判定为广告（链式回弹依据）
-                Long old = adFeatureUntil.get(pkg);
-                if (old == null || now > old) adFeatureUntil.put(pkg, now + CHAIN_GUARD_MS);
-            }
-
-            /* ③ 命中真跳过键 → 代点，熔断扫描链（受点击冷却约束） */
-            Long lastClick = lastClickAt.get(pkg);
-            boolean clickCoolOK = lastClick == null || now - lastClick >= COOLDOWN_MS;
-            if (t != null && clickCoolOK && click(t.node)) {
-                lastClickAt.put(pkg, now);
-                lastAutoClickPkg = pkg;
-                lastAutoClickAt = now;
-                adFeatureUntil.put(pkg, now + CHAIN_GUARD_MS); // 跳转可能已在途，保守回弹保护
-                bumpAuto(pkg, t);
-                fuseChain(pkg);
-                return;
-            }
-
-            /* 弹窗窗期但无跳过目标 → 需要一次多信号扫描（角标/关闭键/CTA/Dialog 形态） */
-            if (f == null && t == null && popupLive) {
-                f = scanCollect(root);
-            }
-            if (f == null) return;
-
-            /* ── 开屏窗内：三类直断（SDK 广告窗 / 全屏热区 / 陀螺仪·假跳过） ── */
-            if (splashLive) {
-                /* ④ SDK 广告窗直断：className 指纹命中（穿山甲/优量汇/快手/宿主 ad.activity…），
-                     不依赖任何文本——文案烧在广告图里的形态在此命中 */
-                if (now < adWinUntilGet(pkg) && elapsed >= clsBreakMs(pkg) && backOk(pkg, now)) {
-                    performGlobalAction(GLOBAL_ACTION_BACK);
-                    energyBacks++;
-                    backTries.put(pkg, triesOf(pkg) + 1);
-                    adFeatureUntil.put(pkg, now + CHAIN_GUARD_MS);
-                    learnClass(pkg, winClassOf(pkg)); // 沉淀窗口类名指纹 → 下次 300ms 快断
-                    appendLog("🛡 SDK 广告窗已直断（" + shortPkg(pkg) + "）：" + winClassOf(pkg)
-                            + " · " + elapsed + "ms 无真跳过键 → 返回键温和关闭（不碰进程与服务）");
-                    bumpStat(pkg, "back");
-                    return; // 不熔断：剩余扫描继续观察，广告窗若拦截了返回键会再补一次
-                }
-
-                /* ⑤ 全屏热区直断：≥55% 屏幕可点热区 + 节点数≤12 + 无输入框 → 图片广告。
-                     守护名单（银行/政务/支付）豁免此启发式，只用高精度信号 */
-                if (f.hotZone && !f.hasEditText && f.nodeCount <= HOT_ZONE_MAX_NODES
-                        && !isGuardPkg(pkg) && elapsed >= HOT_ZONE_GRACE_MS && backOk(pkg, now)) {
-                    performGlobalAction(GLOBAL_ACTION_BACK);
-                    energyBacks++;
-                    backTries.put(pkg, triesOf(pkg) + 1);
-                    adFeatureUntil.put(pkg, now + CHAIN_GUARD_MS);
-                    appendLog("🛡 全屏热区广告已直断（" + shortPkg(pkg) + "）：可点热区占屏 "
-                            + Math.round(HOT_ZONE_AREA * 100) + "% · 节点 " + f.nodeCount
-                            + " · " + elapsed + "ms 无真跳过键 → 返回键温和关闭（零文本依赖）");
-                    bumpStat(pkg, "back");
-                    return;
-                }
-
-                /* ⑥ 陀螺仪诱导直断：识别到「翻转/摇一摇」文案或假跳过热区，
-                     GYRO_BREAK_MS 内仍无真跳过键 → 返回键温和直断广告窗 */
-                if ((f.gyroHint || f.fakeSkip) && elapsed >= GYRO_BREAK_MS && backOk(pkg, now)) {
-                    performGlobalAction(GLOBAL_ACTION_BACK);
-                    energyBacks++;
-                    backTries.put(pkg, triesOf(pkg) + 1);
-                    adFeatureUntil.put(pkg, now + CHAIN_GUARD_MS);
-                    appendLog("🛡 陀螺仪诱导广告已直断（" + shortPkg(pkg) + "）："
-                            + (f.gyroHint ? "检测到「翻转手机/摇一摇」文案" : "检测到假跳过热区")
-                            + " · " + elapsed + "ms 无真跳过键 → 返回键温和关闭广告窗"
-                            + (triesOf(pkg) >= BACK_RETRY_MAX ? "（重试已达上限）" : ""));
-                    bumpStat(pkg, "back");
-                    return;
-                }
-            }
-
-            /* ⑦ 应用内弹窗广告 v2：角标强信号 / Dialog 形态+营销话术弱信号 → 代点关闭 */
-            if (popupLive && f.close != null) {
-                boolean strongBadge = f.adBadge;                          // 「广告/推广/赞助」角标
-                boolean weakCombo = f.dialogForm && f.ctaCount >= 2;      // Dialog + ≥2 条 CTA + 关闭键
-                if (strongBadge || weakCombo) {
-                    if (click(f.close.node)) {
-                        lastClickAt.put(pkg, now);
-                        lastAutoClickPkg = pkg;
-                        lastAutoClickAt = now;
-                        popupBlocks++;
-                        lastPopupAt.put(pkg, now);
-                        appendLog("🪟 应用内弹窗广告已关闭（" + shortPkg(pkg) + "）："
-                                + (strongBadge ? "识别「" + f.badgeLabel + "」角标" : "Dialog 形态 + " + f.ctaCount + " 条营销话术")
-                                + " + 关闭键「" + f.close.label + "」→ 已代点");
-                        bumpStat(pkg, "popup");
-                    } else if (f.dialogForm && f.adBadge && backOk(pkg, now)) {
-                        // 关闭键不可点（自绘 dispatchTouchEvent）：Dialog 形态返回键即取消
-                        performGlobalAction(GLOBAL_ACTION_BACK);
-                        energyBacks++;
-                        popupBlocks++;
-                        lastPopupAt.put(pkg, now);
-                        appendLog("🪟 弹窗广告关闭键不可点 → Dialog 形态返回键取消（" + shortPkg(pkg) + "）");
-                        bumpStat(pkg, "popup");
-                    }
-                }
-            }
-        } catch (Exception ignored) {
-        }
-    }
-
-    /** SDK 广告窗直断时限：学习指纹 300ms（已知形态）/ 首次命中 500ms */
-    private long clsBreakMs(String pkg) {
-        Boolean learned = winClsLearned.get(pkg);
-        return (learned != null && learned.booleanValue()) ? CLS_LEARNED_BREAK_MS : CLS_BREAK_MS;
     }
 
     private long adWinUntilGet(String pkg) {
@@ -623,13 +250,315 @@ public class AdSkipService extends AccessibilityService {
         return n == null ? 0 : n.intValue();
     }
 
-    /** 返回键节流：全局 600ms 最小间隔 + 每窗口最多 2 次（重试兜底：个别广告拦截第一次返回键） */
-    private boolean backOk(String pkg, long now) {
-        if (triesOf(pkg) >= BACK_RETRY_MAX) return false;
-        return backAllowed(now);
+    /* ───────── AccessibilityNodeInfo → 决策核心适配 ───────── */
+
+    private static final class NodeAdapter implements NodeView {
+        final AccessibilityNodeInfo n;
+
+        NodeAdapter(AccessibilityNodeInfo n) {
+            this.n = n;
+        }
+
+        public String text() {
+            return n.getText() == null ? "" : n.getText().toString().trim();
+        }
+
+        public String desc() {
+            return n.getContentDescription() == null ? "" : n.getContentDescription().toString().trim();
+        }
+
+        public String cls() {
+            return n.getClassName() == null ? "" : n.getClassName().toString();
+        }
+
+        public boolean clickable() {
+            return n.isClickable();
+        }
+
+        public boolean scrollable() {
+            return n.isScrollable();
+        }
+
+        public boolean editable() {
+            return n.isEditable();
+        }
+
+        public int[] bounds() {
+            try {
+                Rect r = new Rect();
+                n.getBoundsInScreen(r);
+                return new int[]{r.left, r.top, r.right, r.bottom};
+            } catch (Exception e) {
+                return null;
+            }
+        }
+
+        public int childCount() {
+            return n.getChildCount();
+        }
+
+        public NodeView child(int i) {
+            AccessibilityNodeInfo c = n.getChild(i);
+            return c == null ? null : new NodeAdapter(c);
+        }
+
+        public NodeView parent() {
+            AccessibilityNodeInfo p = n.getParent();
+            return p == null ? null : new NodeAdapter(p);
+        }
     }
 
-    /** 返回键全局节流：600ms 内最多一次（直断与回弹共用） */
+    /* ───────── 扫描调度：0ms 首扫 + 前密后疏重试链 ───────── */
+
+    private void bumpScanChain(final String pkg) {
+        final long winStart = winAt(pkg);
+        Integer g = scanGen.get(pkg);
+        final int gen = g == null ? 1 : g + 1;
+        scanGen.put(pkg, gen);
+        for (int i = 0; i < SCAN_AT.length; i++) {
+            final long at = SCAN_AT[i];
+            handler.postDelayed(() -> {
+                Integer cur = scanGen.get(pkg);
+                if (cur == null || cur.intValue() != gen) return;
+                tryScan(pkg, winStart, at);
+            }, at);
+        }
+    }
+
+    private void nudgeScan(final String pkg, long now) {
+        Integer gen = scanGen.get(pkg);
+        if (gen == null) {
+            bumpScanChain(pkg);
+            return;
+        }
+        final long winStart = winAt(pkg);
+        if (now - winStart < 150) return;
+        final int g = gen.intValue();
+        handler.post(() -> {
+            Integer cur = scanGen.get(pkg);
+            if (cur == null || cur.intValue() != g) return;
+            tryScan(pkg, winStart, -1);
+        });
+    }
+
+    private void nudgePopupScan(final String pkg, long now) {
+        Long last = lastPopupScanAt.get(pkg);
+        if (last != null && now - last < POPUP_SCAN_THROTTLE_MS) return;
+        lastPopupScanAt.put(pkg, now);
+        final long winStart = winAt(pkg);
+        handler.post(() -> {
+            if (instance == null) return;
+            tryScan(pkg, winStart, -2);
+        });
+    }
+
+    private void detectPopupBurst(String pkg, long now) {
+        if (!popupShieldEnabled()) return;
+        long[] w = burstWin.get(pkg);
+        if (w == null || now - w[0] > BURST_WIN_MS) {
+            burstWin.put(pkg, new long[]{now, 1});
+            return;
+        }
+        w[1]++;
+        if (w[1] >= BURST_COUNT) {
+            burstWin.remove(pkg);
+            popupUntil.put(pkg, now + POPUP_WINDOW_MS);
+            appendLog("🪟 检测到内容突发（" + shortPkg(pkg) + "）：疑似覆盖层弹窗 → 开启弹窗识别窗");
+            nudgePopupScan(pkg, now);
+        }
+    }
+
+    private void fuseChain(String pkg) {
+        Integer g = scanGen.get(pkg);
+        scanGen.put(pkg, g == null ? 1 : g + 1);
+    }
+
+    /* ───────── 扫描与决策执行（逻辑全部在 AdDecisionCore） ───────── */
+
+    private void tryScan(String pkg, long winStart, long atMs) {
+        if (instance == null) return;
+        long now = System.currentTimeMillis();
+        long elapsed = now - winStart;
+        boolean splashLive = learningEnabled() && elapsed <= WINDOW_MS;
+        boolean popupLive = popupShieldEnabled() && now < popupUntilGet(pkg) && popupCooldownOK(pkg, now);
+        if (!splashLive && !popupLive) return;
+
+        try {
+            /* 多窗口扫描：活动窗口优先，其次 getWindows() 同包窗口（弹窗/覆盖层） */
+            AccessibilityNodeInfo[] roots = collectRoots(pkg);
+            if (roots.length == 0) return;
+
+            Long lastClick = lastClickAt.get(pkg);
+            boolean clickCoolOK = lastClick == null || now - lastClick >= COOLDOWN_MS;
+            Boolean used = coordTapUsed.get(pkg);
+
+            for (int ri = 0; ri < roots.length; ri++) {
+                energyScans++;
+                Ctx ctx = new Ctx();
+                ctx.screenW = screenWidth;
+                ctx.screenH = screenHeight;
+                ctx.elapsedMs = Math.max(0, elapsed - ri * 30);
+                ctx.splashLive = splashLive;
+                ctx.popupLive = popupLive;
+                ctx.guard = AdDecisionCore.isGuardPkg(pkg);
+                ctx.coordTapUsed = used != null && used.booleanValue();
+                ctx.sdkAdWin = now < adWinUntilGet(pkg);
+                Boolean learned = winClsLearned.get(pkg);
+                ctx.learnedCls = learned != null && learned.booleanValue();
+                ctx.budgetNodes = splashLive ? 600 : 280; // 开屏窗预算扩容（重树）
+
+                ScanFind f = AdDecisionCore.walk(new NodeAdapter(roots[ri]), ctx);
+                if (f.foundSkip || f.gyroHint || f.fakeSkip || f.hotZone || ctx.sdkAdWin || ctx.learnedCls) {
+                    Long old = adFeatureUntil.get(pkg);
+                    if (old == null || now > old) adFeatureUntil.put(pkg, now + CHAIN_GUARD_MS);
+                }
+                Decision d = AdDecisionCore.decide(f, ctx);
+                if (d.action.equals(AdDecisionCore.A_NONE)) continue;
+                if (execute(pkg, d, f, ctx, clickCoolOK, now)) return; // 命中即熔断
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
+    /** 收集同包可扫描窗口根节点（活动窗口优先，最多 3 个） */
+    private AccessibilityNodeInfo[] collectRoots(String pkg) {
+        java.util.ArrayList<AccessibilityNodeInfo> out = new java.util.ArrayList<>();
+        AccessibilityNodeInfo active = getRootInActiveWindow();
+        if (active != null) {
+            CharSequence rp = active.getPackageName();
+            if (rp != null && pkg.contentEquals(rp)) out.add(active);
+        }
+        if (out.isEmpty()) {
+            try {
+                List<AccessibilityWindowInfo> wins = getWindows();
+                if (wins != null) {
+                    for (AccessibilityWindowInfo w : wins) {
+                        if (out.size() >= MAX_WINDOWS_SCAN) break;
+                        CharSequence wp = w == null ? null : w.getRoot() == null ? null : w.getRoot().getPackageName();
+                        if (wp != null && pkg.contentEquals(wp)) {
+                            AccessibilityNodeInfo r = w.getRoot();
+                            if (r != null) out.add(r);
+                        }
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        return out.toArray(new AccessibilityNodeInfo[0]);
+    }
+
+    /** 执行决策；返回 true = 已出手（熔断扫描链） */
+    private boolean execute(String pkg, Decision d, ScanFind f, Ctx ctx, boolean clickCoolOK, long now) {
+        String how = d.action + "/" + d.reason;
+        if (d.action.equals(AdDecisionCore.A_BACK)) {
+            if (triesOf(pkg) >= BACK_RETRY_MAX || !backAllowed(now)) return false;
+            performGlobalAction(GLOBAL_ACTION_BACK);
+            energyBacks++;
+            backTries.put(pkg, triesOf(pkg) + 1);
+            adFeatureUntil.put(pkg, now + CHAIN_GUARD_MS);
+            if (d.reason.startsWith("sdk_window")) learnClass(pkg, winClassOf(pkg));
+            appendLog("🛡 广告窗直断（" + shortPkg(pkg) + "）：" + reasonZh(d.reason)
+                    + " · " + ctx.elapsedMs + "ms → 返回键温和关闭（不碰进程与服务）");
+            bumpStat(pkg, "back");
+            fuseChain(pkg);
+            return true;
+        }
+        if (d.action.equals(AdDecisionCore.A_CLICK_BOUNDS) || d.action.equals(AdDecisionCore.A_CLOSE)) {
+            if (!clickCoolOK) return false;
+            if (clickNode(d)) {
+                lastClickAt.put(pkg, now);
+                lastAutoClickPkg = pkg;
+                lastAutoClickAt = now;
+                if (d.action.equals(AdDecisionCore.A_CLOSE)) {
+                    popupBlocks++;
+                    lastPopupAt.put(pkg, now);
+                    appendLog("🪟 弹窗广告已关闭（" + shortPkg(pkg) + "）："
+                            + (f.adBadge ? "「" + f.badgeLabel + "」角标" : "Dialog+营销话术")
+                            + " + 关闭键「" + f.closeLabel + "」");
+                    bumpStat(pkg, "popup");
+                } else {
+                    appendLog("⚡ 已点击跳过（" + shortPkg(pkg) + "）：" + reasonZh(d.reason)
+                            + "（" + (lastGesture ? "手势点击" : "无障碍代点") + "）");
+                    bumpStat(pkg, "auto");
+                    adFeatureUntil.put(pkg, now + CHAIN_GUARD_MS);
+                }
+                fuseChain(pkg);
+                return true;
+            }
+            return false;
+        }
+        if (d.action.equals(AdDecisionCore.A_TAP_POINT)) {
+            if (!clickCoolOK) return false;
+            if (gestureTap(d.x, d.y)) {
+                lastClickAt.put(pkg, now);
+                lastAutoClickPkg = pkg;
+                lastAutoClickAt = now;
+                coordTapUsed.put(pkg, Boolean.TRUE);
+                energyGestures++;
+                appendLog("🎯 坐标级点击兜底（" + shortPkg(pkg) + "）：开屏窗内零信号简单树"
+                        + " → 点击标准跳过位 (" + d.x + "," + d.y + ")，本次启动仅一次");
+                bumpStat(pkg, "auto");
+                fuseChain(pkg);
+                return true;
+            }
+            return false;
+        }
+        return false;
+    }
+
+    private boolean lastGesture = false;
+
+    /** 点击控件：performAction 优先，失效降级 dispatchGesture 手势点击（真实触点） */
+    private boolean clickNode(Decision d) {
+        lastGesture = false;
+        if (d.node instanceof NodeAdapter) {
+            try {
+                if (((NodeAdapter) d.node).n.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+                    return true;
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        if (d.bounds != null) {
+            int cx = (d.bounds[0] + d.bounds[2]) / 2;
+            int cy = (d.bounds[1] + d.bounds[3]) / 2;
+            if (gestureTap(cx, cy)) {
+                lastGesture = true;
+                energyGestures++;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** dispatchGesture 坐标点击（API 24+；真实触点，performAction 拦不住） */
+    private boolean gestureTap(int x, int y) {
+        try {
+            if (x <= 0 || y <= 0) return false;
+            Path p = new Path();
+            p.moveTo(x, y);
+            GestureDescription gd = new GestureDescription.Builder()
+                    .addStroke(new GestureDescription.StrokeDescription(p, 0, 60))
+                    .build();
+            return dispatchGesture(gd, null, null);
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    private static String reasonZh(String r) {
+        if (r.equals("skip_text")) return "文本跳过键";
+        if (r.equals("sdk_window")) return "SDK 广告窗指纹";
+        if (r.equals("sdk_window_learned")) return "学习窗口指纹（快断）";
+        if (r.equals("gyro_immediate")) return "翻转/摇一摇文案立即直断";
+        if (r.equals("gyro_break")) return "陀螺仪诱导/假跳过直断";
+        if (r.equals("corner_image_skip")) return "角落图片跳过键";
+        if (r.equals("hot_zone")) return "全屏热区自绘广告";
+        if (r.equals("coord_fallback")) return "坐标级兜底";
+        return r;
+    }
+
+    /** 返回键全局节流：600ms 内最多一次 */
     private long lastBackAt = 0;
 
     private boolean backAllowed(long now) {
@@ -643,258 +572,19 @@ public class AdSkipService extends AccessibilityService {
         return t == null || now - t >= POPUP_COOLDOWN_MS;
     }
 
-    private boolean click(AccessibilityNodeInfo node) {
-        try {
-            return node.performAction(AccessibilityNodeInfo.ACTION_CLICK);
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
-    private static class Target {
-        AccessibilityNodeInfo node;
-        String how;    // 命中方式（学习规则 / 通用规则）
-        String label;  // 被点击控件文本
-        String ruleId; // 命中的学习规则 viewId（可为空）
-
-        Target(AccessibilityNodeInfo n, String how, String label, String ruleId) {
-            this.node = n;
-            this.how = how;
-            this.label = label;
-            this.ruleId = ruleId;
-        }
-    }
-
-    /** 一次 DFS 的多信号收集结果 */
-    private static class ScanFind {
-        Target skip;       // 真「跳过」控件（小面积 + 可点，已甄别）
-        boolean fakeSkip;  // 疑似假跳过热区（「跳过」字样但大面积/不可点）
-        boolean gyroHint;  // 「翻转手机 / 摇一摇」诱导文案
-        Target close;      // 弹窗关闭键（×/关闭/不感兴趣/我知道了…）
-        boolean adBadge;   // 「广告/推广/赞助」角标（精确匹配）
-        String badgeLabel; // v3.3.0 命中的角标文本（日志用）
-        // v3.3.0 新信号
-        boolean hotZone;     // 全屏可点热区（≥55% 屏幕面积）—— 图片广告特征
-        int nodeCount;       // 窗口节点数（热区判定的低节点条件）
-        int ctaCount;        // 营销 CTA 命中数（弹窗广告弱信号）
-        boolean dialogForm;  // 根节点为 Dialog/PopupWindow 形态
-        boolean hasEditText; // 存在输入框（正常业务弹窗特征 → 禁用热区直断）
-    }
-
-    /** 优先级：① 已学习规则（viewId 精确命中）→ ② 已学习规则（文本） */
-    private Target findLearnedTarget(AccessibilityNodeInfo root, String pkg) {
-        JSONObject rules = null;
-        try {
-            rules = loadState().optJSONObject("rules");
-        } catch (Exception ignored) {
-        }
-        if (rules == null) return null;
-        JSONArray list = rules.optJSONArray(pkg);
-        if (list == null) return null;
-        // ① viewId 精确查找（最稳，不受文案改版影响）
-        for (int i = 0; i < list.length(); i++) {
-            JSONObject r = list.optJSONObject(i);
-            if (r == null) continue;
-            String vid = r.optString("viewId", "");
-            if (vid.length() == 0) continue;
-            List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByViewId(vid);
-            if (nodes != null) {
-                for (AccessibilityNodeInfo n : nodes) {
-                    // 学习规则可信度高：面积放宽至 45%（用户亲手点过的控件）
-                    if (isSafeClickable(n, 0.45, 0.60)) {
-                        return new Target(n, "学习规则·控件ID", vid, vid);
-                    }
-                }
-            }
-        }
-        // ② 学习到的文本按钮
-        for (int i = 0; i < list.length(); i++) {
-            JSONObject r = list.optJSONObject(i);
-            if (r == null) continue;
-            String txt = r.optString("text", "");
-            if (txt.length() == 0) continue;
-            List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText(txt);
-            if (nodes != null) {
-                for (AccessibilityNodeInfo n : nodes) {
-                    if (isSafeClickable(n, 0.45, 0.60)) {
-                        return new Target(n, "学习规则·文本「" + txt + "」", txt, r.optString("viewId", ""));
-                    }
-                }
-            }
-        }
-        return null;
-    }
-
-    /**
-     * 通用多信号扫描（DFS，预算 280 节点）：
-     * 同一次遍历收集 跳过键 / 假跳过热区 / 翻转文案 / 广告角标 / 关闭键 / 全屏热区 /
-     * 节点计数 / 营销话术 / 输入框存在性 —— 比逐项单独遍历省电。
-     */
-    private ScanFind scanCollect(AccessibilityNodeInfo root) {
-        ScanFind f = new ScanFind();
-        f.dialogForm = isDialogClass(cs(root.getClassName()));
-        int[] budget = {280};
-        collect(root, 0, budget, f);
-        return f;
-    }
-
-    private void collect(AccessibilityNodeInfo node, int depth, int[] budget, ScanFind f) {
-        if (node == null || depth > 32 || budget[0] <= 0) return;
-        budget[0]--;
-        f.nodeCount++;
-        try {
-            String text = cs(node.getText());
-            String desc = cs(node.getContentDescription());
-            String label = text.length() > 0 ? text : desc;
-            String cls = cs(node.getClassName()).toLowerCase();
-            if (cls.contains("edittext")) f.hasEditText = true;
-
-            // v3.3.0 全屏热区检测：可点且 ≥55% 屏幕面积（图片广告整图皆可点击）
-            if (!f.hotZone && node.isClickable() && screenWidth > 0 && isHugeArea(node)) {
-                f.hotZone = true;
-            }
-
-            if (label.length() > 0) {
-                if (label.length() <= 14 && matchesSkip(label)) {
-                    // 「跳过」字样：小面积可点 = 真跳过键；大面积/不可点 = 图内假跳过热区
-                    AccessibilityNodeInfo clickable = resolveClickable(node, 4);
-                    if (clickable != null && isSmallArea(clickable)) {
-                        if (f.skip == null) {
-                            f.skip = new Target(clickable, "通用规则·文本「" + label + "」", label, "");
-                        }
-                    } else {
-                        f.fakeSkip = true; // 假跳过陷阱（喜马拉雅类）
-                    }
-                } else if (label.length() <= 22 && matchesGyro(label)) {
-                    f.gyroHint = true; // 翻转手机 / 摇一摇诱导文案
-                } else if (label.length() <= 6 && isCloseText(label)) {
-                    AccessibilityNodeInfo clickable = resolveClickable(node, 4);
-                    if (clickable != null && isSmallArea(clickable) && f.close == null) {
-                        f.close = new Target(clickable, "关闭键·「" + label + "」", label, "");
-                    }
-                } else if (isAdBadge(label)) {
-                    f.adBadge = true; // 「广告/推广/赞助」角标
-                    f.badgeLabel = label;
-                } else if (label.length() <= 14 && matchesCta(label)) {
-                    f.ctaCount++; // 营销 CTA 弱信号（弹窗广告）
-                }
-            }
-
-            for (int i = 0; i < node.getChildCount(); i++) {
-                collect(node.getChild(i), depth + 1, budget, f);
-            }
-        } catch (Exception ignored) {
-        }
-    }
-
-    /** v3.3.0 热区判定：控件面积 ≥55% 屏幕（图片广告整图点击热区） */
-    private boolean isHugeArea(AccessibilityNodeInfo node) {
-        try {
-            Rect r = new Rect();
-            node.getBoundsInScreen(r);
-            if (r.isEmpty()) return false;
-            double area = (double) r.width() * r.height();
-            double screen = (double) screenWidth * screenHeight;
-            return area / screen >= HOT_ZONE_AREA;
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
-    private boolean matchesSkip(String s) {
-        String lower = s.toLowerCase();
-        if (lower.contains("skip") || lower.contains("跳过")) return true;
-        for (String k : SKIP_TEXTS) {
-            if (s.contains(k)) return true;
-        }
-        return false;
-    }
-
-    private boolean matchesGyro(String s) {
-        for (String k : GYRO_HINTS) {
-            if (s.contains(k)) return true;
-        }
-        return false;
-    }
-
-    private boolean isCloseText(String s) {
-        String t = s.trim();
-        String lower = t.toLowerCase();
-        for (String k : CLOSE_TEXTS) {
-            if (t.equals(k) || lower.equals(k)) return true;
-        }
-        return false;
-    }
-
-    /** v3.3.0 营销 CTA 匹配（弹窗广告弱信号） */
-    private boolean matchesCta(String s) {
-        for (String k : CTA_TEXTS) {
-            if (s.contains(k)) return true;
-        }
-        return false;
-    }
-
-    /** 「广告」角标：精确短文本（防把正文里出现「广告」二字的文章当角标） */
-    private boolean isAdBadge(String label) {
-        String t = label.trim();
-        String lower = t.toLowerCase();
-        if (t.equals("广告") || t.equals("推广") || t.equals("赞助") || t.equals("广告推广")) return true;
-        if (lower.equals("ad") || lower.equals("sponsored") || lower.equals("promoted")) return true;
-        return t.length() <= 8 && (t.startsWith("广告 ") || t.startsWith("广告·") || t.endsWith(" 广告"));
-    }
-
-    /** 向上找可点击的祖先（最多 4 层）—— 跳过文字本身不可点时，其容器往往可点 */
-    private AccessibilityNodeInfo resolveClickable(AccessibilityNodeInfo node, int maxUp) {
-        AccessibilityNodeInfo cur = node;
-        for (int i = 0; i < maxUp && cur != null; i++) {
-            if (cur.isClickable()) return cur;
-            cur = cur.getParent();
-        }
-        return null;
-    }
-
-    /**
-     * 面积安全阀：只点击小控件（默认 < 屏幕面积 35% 且宽度 < 屏宽 55%）。
-     * 防全屏热区 / 摇一摇类广告误触 —— 引擎永远不点屏幕中央大区域。
-     */
-    private boolean isSmallArea(AccessibilityNodeInfo node) {
-        return isSafeClickable(node, 0.35, 0.55);
-    }
-
-    private boolean isSafeClickable(AccessibilityNodeInfo n, double areaRatio, double widthRatio) {
-        if (n == null || !n.isClickable()) return false;
-        try {
-            if (screenWidth <= 0 || screenHeight <= 0) return true;
-            Rect r = new Rect();
-            n.getBoundsInScreen(r);
-            if (r.isEmpty()) return false;
-            double area = (double) r.width() * r.height();
-            double screen = (double) screenWidth * screenHeight;
-            return area / screen < areaRatio && r.width() < screenWidth * widthRatio;
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
     /* ───────── 链式跳转回弹（跨应用） ───────── */
 
-    /**
-     * 广告宿主 A 的广告特征期内（发现跳过键/翻转文案/SDK 广告窗后 6s），被已知广告跳转目标 B
-     * （电商/商店/短视频/社交/浏览器…）抢占前台 → GLOBAL_ACTION_BACK 弹回 A。
-     * 无障碍事件均在主线程串行到达，遍历内存 Map 安全。
-     */
     private boolean reboundChainJump(String newPkg, long now) {
         try {
             if (!chainReboundEnabled()) return false;
             if (isSystemNoise(newPkg) || isLauncherLike(newPkg)) return false;
-            if (!isAdTarget(newPkg)) return false; // 只弹已知广告跳转目标，正常切换零打扰
+            if (!AdDecisionCore.isAdTarget(newPkg)) return false;
 
             String host = null;
             for (Map.Entry<String, Long> e : adFeatureUntil.entrySet()) {
                 String k = e.getKey();
                 if (k.equals(newPkg)) continue;
                 if (now < e.getValue().longValue()) {
-                    // 宿主开窗太久 → 用户多半在正常使用，不弹
                     if (now - winAt(k) <= WINDOW_MS + CHAIN_GUARD_MS) {
                         host = k;
                         break;
@@ -909,8 +599,8 @@ public class AdSkipService extends AccessibilityService {
             appendLog("⛓ 链式跳转已弹回：" + shortPkg(host) + " 的广告试图拉起 " + shortPkg(newPkg)
                     + " → 返回键送回原应用（" + (now - winAt(host)) + "ms 内）");
             bumpStat(host, "chain");
-            // 弹回后宿主广告窗可能仍在：续一条短链继续处理
             windowAt.put(host, now);
+            coordTapUsed.put(host, Boolean.FALSE);
             bumpScanChain(host);
             return true;
         } catch (Exception ignored) {
@@ -918,36 +608,18 @@ public class AdSkipService extends AccessibilityService {
         }
     }
 
-    private boolean isAdTarget(String pkg) {
-        for (String h : AD_TARGET_HINTS) {
-            if (pkg.startsWith(h) || pkg.contains(h)) return true;
-        }
-        return false;
-    }
+    /* ───────── 同包落地页弹回 ───────── */
 
-    /* ───────── v3.3.0 同包落地页弹回 ───────── */
-
-    /**
-     * 广告判定后 3s 内，同包切换到 WebView/H5 Activity（广告落地页，无 Scheme 事件）→
-     * 返回键弹回一次。倒计时归零自动跳、点击热区误触均覆盖。
-     */
     private boolean reboundLanding(String pkg, String cls, long now) {
         try {
             if (!chainReboundEnabled()) return false;
             if (cls == null || cls.length() == 0) return false;
             String c = cls.toLowerCase();
-            boolean landing = false;
-            for (String h : LANDING_HINTS) {
-                if (c.contains(h)) {
-                    landing = true;
-                    break;
-                }
-            }
-            if (!landing) return false;
+            if (!c.contains("webview") && !c.contains("h5")) return false;
             Long until = adFeatureUntil.get(pkg);
             if (until == null || now >= until.longValue()) return false;
             long judgedAt = until.longValue() - CHAIN_GUARD_MS;
-            if (now - judgedAt > LANDING_GUARD_MS) return false; // 判定 3s 后才开网页 → 用户主动行为，不弹
+            if (now - judgedAt > LANDING_GUARD_MS) return false;
             Long last = landingBackAt.get(pkg);
             if (last != null && now - last.longValue() < CHAIN_GUARD_MS) return false;
             if (!backAllowed(now)) return false;
@@ -968,10 +640,10 @@ public class AdSkipService extends AccessibilityService {
                 || pkg.equals("com.miui.home") || pkg.equals("com.huawei.android.launcher");
     }
 
-    /* ───────── 智能学习：观察手动点击 ───────── */
+    /* ───────── 智能学习：观察手动点击 + className 指纹 ───────── */
 
     private void learnFromManualClick(String pkg, AccessibilityEvent event, long now) {
-        if (now - winAt(pkg) > LEARN_WINDOW_MS) return; // 只学习窗口切换附近的点击
+        if (now - winAt(pkg) > LEARN_WINDOW_MS) return;
 
         String text = "";
         String viewId = "";
@@ -990,7 +662,7 @@ public class AdSkipService extends AccessibilityService {
             }
         } catch (Exception ignored) {
         }
-        if (!matchesSkip(text) && !isCloseText(text)) return; // 学习「跳过 / 关闭」类点击
+        if (!AdDecisionCore.matchesSkip(text) && !AdDecisionCore.isCloseText(text)) return;
 
         synchronized (lock) {
             try {
@@ -1039,7 +711,62 @@ public class AdSkipService extends AccessibilityService {
         appendLog("已学习：" + shortPkg(pkg) + " 中你手动点击了「" + text + "」→ 下次将自动点击");
     }
 
-    /* ───────── 误触观察：区分「广告诱导跳转」与「用户主动操作」 ───────── */
+    private boolean learnedClassHit(String pkg, String cls) {
+        if (cls == null || cls.length() == 0) return false;
+        try {
+            JSONObject rules = loadState().optJSONObject("rules");
+            if (rules == null) return false;
+            JSONArray list = rules.optJSONArray(pkg);
+            if (list == null) return false;
+            for (int i = 0; i < list.length(); i++) {
+                JSONObject r = list.optJSONObject(i);
+                if (r != null && cls.equals(r.optString("cls", ""))) return true;
+            }
+        } catch (Exception ignored) {
+        }
+        return false;
+    }
+
+    private void learnClass(String pkg, String cls) {
+        if (cls == null || cls.length() == 0) return;
+        synchronized (lock) {
+            try {
+                JSONObject st = loadState();
+                JSONObject rules = st.optJSONObject("rules");
+                if (rules == null) {
+                    rules = new JSONObject();
+                    st.put("rules", rules);
+                }
+                JSONArray list = rules.optJSONArray(pkg);
+                if (list == null) {
+                    list = new JSONArray();
+                    rules.put(pkg, list);
+                }
+                for (int i = 0; i < list.length(); i++) {
+                    JSONObject r = list.optJSONObject(i);
+                    if (r != null && cls.equals(r.optString("cls", ""))) {
+                        r.put("auto", r.optInt("auto", 0) + 1);
+                        r.put("ts", System.currentTimeMillis());
+                        saveState(st);
+                        return;
+                    }
+                }
+                if (list.length() >= MAX_RULES_PER_APP) return;
+                JSONObject r = new JSONObject();
+                r.put("text", "");
+                r.put("viewId", "");
+                r.put("cls", cls);
+                r.put("manual", 0);
+                r.put("auto", 1);
+                r.put("ts", System.currentTimeMillis());
+                list.put(r);
+                saveState(st);
+            } catch (Exception ignored) {
+            }
+        }
+    }
+
+    /* ───────── 误触观察 ───────── */
 
     private void observeMisclick(String pkg, AccessibilityEvent event, long now) {
         try {
@@ -1049,7 +776,7 @@ public class AdSkipService extends AccessibilityService {
             if (src == null) return;
             String label = cs(src.getText());
             if (label.length() == 0) label = cs(src.getContentDescription());
-            if (matchesSkip(label) || isCloseText(label)) return;
+            if (AdDecisionCore.matchesSkip(label) || AdDecisionCore.isCloseText(label)) return;
             Rect r = new Rect();
             src.getBoundsInScreen(r);
             if (r.isEmpty()) return;
@@ -1083,7 +810,6 @@ public class AdSkipService extends AccessibilityService {
         }
     }
 
-    /** 应用内弹窗广告屏蔽（默认开） */
     private boolean popupShieldEnabled() {
         try {
             JSONObject st = loadState();
@@ -1093,7 +819,6 @@ public class AdSkipService extends AccessibilityService {
         }
     }
 
-    /** 链式跳转回弹（默认开） */
     private boolean chainReboundEnabled() {
         try {
             JSONObject st = loadState();
@@ -1103,7 +828,7 @@ public class AdSkipService extends AccessibilityService {
         }
     }
 
-    /* ───────── 统计与日志（JSON 持久化，页面通过 JSBridge 读取） ───────── */
+    /* ───────── 统计与日志 ───────── */
 
     private void bumpManualStat(JSONObject st, String pkg) {
         try {
@@ -1128,7 +853,6 @@ public class AdSkipService extends AccessibilityService {
         }
     }
 
-    /** 通用统计：kind = auto / back / popup / chain */
     private void bumpStat(String pkg, String kind) {
         synchronized (lock) {
             try {
@@ -1154,47 +878,6 @@ public class AdSkipService extends AccessibilityService {
             } catch (Exception ignored) {
             }
         }
-    }
-
-    private void bumpAuto(String pkg, Target t) {
-        synchronized (lock) {
-            try {
-                JSONObject st = loadState();
-                JSONObject stats = st.optJSONObject("stats");
-                if (stats == null) {
-                    stats = new JSONObject();
-                    st.put("stats", stats);
-                }
-                stats.put("auto", stats.optInt("auto", 0) + 1);
-                JSONObject byApp = stats.optJSONObject("byApp");
-                if (byApp == null) {
-                    byApp = new JSONObject();
-                    stats.put("byApp", byApp);
-                }
-                JSONObject a = byApp.optJSONObject(pkg);
-                if (a == null) {
-                    a = new JSONObject();
-                    byApp.put(pkg, a);
-                }
-                a.put("auto", a.optInt("auto", 0) + 1);
-                if (t.ruleId != null && t.ruleId.length() > 0) {
-                    JSONObject rules = st.optJSONObject("rules");
-                    JSONArray list = rules == null ? null : rules.optJSONArray(pkg);
-                    if (list != null) {
-                        for (int i = 0; i < list.length(); i++) {
-                            JSONObject r = list.optJSONObject(i);
-                            if (r != null && t.ruleId.equals(r.optString("viewId", ""))) {
-                                r.put("auto", r.optInt("auto", 0) + 1);
-                                break;
-                            }
-                        }
-                    }
-                }
-                saveState(st);
-            } catch (Exception ignored) {
-            }
-        }
-        appendLog("⚡ 已自动点击 " + shortPkg(pkg) + " 的「" + t.label + "」（" + t.how + "）");
     }
 
     private void appendLog(String msg) {
@@ -1223,8 +906,7 @@ public class AdSkipService extends AccessibilityService {
         return getSharedPreferences(PREFS, MODE_PRIVATE);
     }
 
-    /* ───────── 内存聚合 + 延迟落盘（能耗治理） ─────────
-       内存态 + 15s 合并落盘，onDestroy / UI 快照读取时立即 flush。 */
+    /* ───────── 内存聚合 + 延迟落盘 ───────── */
 
     private org.json.JSONObject stateInMemory;
 
@@ -1241,7 +923,6 @@ public class AdSkipService extends AccessibilityService {
         return stateInMemory;
     }
 
-    /** 只改内存 + 调度合并落盘（15s 内多次写合并为一次闪存写入） */
     private void saveState(org.json.JSONObject st) {
         stateInMemory = st;
         scheduleFlush();
@@ -1252,11 +933,9 @@ public class AdSkipService extends AccessibilityService {
             if (flushScheduled) return;
             flushScheduled = true;
         }
-        // lambda 由 d8 脱糖（与 v3.0.0 同路径，已验证）
         handler.postDelayed(() -> flushNow(), FLUSH_DELAY_MS);
     }
 
-    /** 立即落盘（幂等；onDestroy 与 UI 读取前调用） */
     public void flushNow() {
         synchronized (lock) {
             flushScheduled = false;

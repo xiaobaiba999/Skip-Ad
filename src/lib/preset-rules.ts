@@ -29,6 +29,7 @@ const MATCH_LABEL: Record<string, string> = {
   preempt: "P0 预拦截",
   "fake-skip": "假跳过甄别",
   "sdk-window": "SDK 窗口指纹",
+  "coord": "角落控件/坐标点击",
   "popup-v2": "弹窗 v2 双信号",
   chain: "链式二跳",
   backkey: "返回键兜底",
@@ -269,15 +270,48 @@ export function presetRulesV33(): PresetRuleSeed[] {
   ];
 }
 
+/** v3.4.0 新增规则（第一方图片开屏：角落控件点击 + 坐标级点击兜底） */
+export function presetRulesV34(): PresetRuleSeed[] {
+  return [
+    {
+      appName: "*",
+      appCategory: "通用",
+      adType: "any",
+      matchType: "coord",
+      pattern: "角落图片跳过键识别（L4）：顶部 14% 高、贴右缘(≥72%宽)或左缘(≤28%宽)、边长 24px~35%宽、无任何文本的小可点控件 → dispatchGesture 手势点击其屏幕坐标中心（performAction 失效自动降级手势，真实触点应用拦不住）；防误点：仅开屏窗前 3.5s + 简单树（无滚动/无输入框/节点≤40）",
+      action: "coord_tap",
+      confidence: 0.97,
+    },
+    {
+      appName: "*",
+      appCategory: "通用",
+      adType: "splash",
+      matchType: "coord",
+      pattern: "坐标级点击兜底（L6）：开屏窗内零信号简单树（无滚动/无输入框/无关闭键，大热区或节点≤40）→ dispatchGesture 点击标准跳过位（88%宽/7%高），900ms~4s 窗口期，每次启动仅一次；守护名单（银行/政务/支付）豁免——微博等第一方图片开屏的终极兜底",
+      action: "coord_tap",
+      confidence: 0.93,
+    },
+    {
+      appName: "喜马拉雅",
+      appCategory: "音频",
+      adType: "splash",
+      matchType: "coord",
+      pattern: "喜马拉雅专案 v4：第一方图片开屏（WelComeActivity 自建广告渲染，零文本零类名信号）+ 翻转手机 900ms 即跳 → 角落图片跳过键 650ms 手势点击抢在翻转前（R16 验证 659ms < 900ms）；浏览器落地页回弹兜底；30s 覆盖层弹窗内容突发检测关闭；次启预拦截 0ms 可见",
+      action: "coord_tap",
+      confidence: 0.99,
+    },
+  ];
+}
+
 /** 幂等播种：规则库为空时写入全量；已有旧版规则则逐版补种 */
 export async function ensureRulesSeed(): Promise<void> {
   const count = await db.rule.count();
   if (count === 0) {
-    await db.rule.createMany({ data: [...presetRules(), ...presetRulesV31(), ...presetRulesV32(), ...presetRulesV33()] });
+    await db.rule.createMany({ data: [...presetRules(), ...presetRulesV31(), ...presetRulesV32(), ...presetRulesV33(), ...presetRulesV34()] });
     return;
   }
   // 逐版升级补种：按 appName + matchType + action 判重
-  for (const r of [...presetRulesV31(), ...presetRulesV32(), ...presetRulesV33()]) {
+  for (const r of [...presetRulesV31(), ...presetRulesV32(), ...presetRulesV33(), ...presetRulesV34()]) {
     const exists = await db.rule.findFirst({
       where: { appName: r.appName, matchType: r.matchType, action: r.action },
     });

@@ -1,0 +1,80 @@
+{
+  "round": 17,
+  "engine": "R17 · 回归（预拦截 / 守护 / 功耗 / 冷启动全能力）【v3.4.0】",
+  "fixNote": "回归⑮：新能力下预拦截指纹沉淀（含窗口指纹）→ 0ms 可见；守护名单对坐标兜底/热区豁免（只用高精度信号）；事件合并 120ms；冷启动全量复测",
+  "total": 1060,
+  "hits": 1060,
+  "rate": 100,
+  "weightedRate": 100,
+  "avgLatencyMs": 34,
+  "p95LatencyMs": 38,
+  "avgReactionMs": 34,
+  "avgAdVisibleMs": 0,
+  "guardHits": 29,
+  "guardServiceKills": 0,
+  "bySource": {
+    "official": [
+      787,
+      787
+    ],
+    "sideload": [
+      273,
+      273
+    ]
+  },
+  "byRender": {
+    "native": [
+      867,
+      867
+    ],
+    "web": [
+      132,
+      132
+    ],
+    "self": [
+      61,
+      61
+    ]
+  },
+  "byAdType": {
+    "splash": [
+      832,
+      832
+    ],
+    "interstitial": [
+      120,
+      120
+    ],
+    "shake": [
+      69,
+      69
+    ],
+    "deeplink": [
+      39,
+      39
+    ]
+  },
+  "tierCounts": {
+    "preempt_block": 1031,
+    "guard_skip": 29
+  },
+  "missReasons": {},
+  "energy": {
+    "mWh": 0.029742777777777778,
+    "preemptShare": 0.9,
+    "breakdown": [
+      {
+        "label": "启动拦截",
+        "mWh": 0.027298333333333334
+      },
+      {
+        "label": "后台事件",
+        "mWh": 0.002444444444444445
+      }
+    ]
+  },
+  "burst": {
+    "tier": 7.4,
+    "preempt": 1.6
+  }
+}

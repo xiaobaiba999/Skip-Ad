@@ -41,6 +41,7 @@ const ACTION_LABEL: Record<string, string> = {
   chain_block: "链式直断",
   gyro_block: "陀螺仪直断",
   sdk_window_cut: "SDK 窗直断",
+  coord_tap: "角落/坐标点击",
   popup_close: "弹窗关闭",
   back_fallback: "返回键兑底",
   dns_block: "域名阻断",
@@ -49,9 +50,14 @@ const ACTION_LABEL: Record<string, string> = {
 /* 2026-11 市场调研 + 真机反馈：广告套路 vs 秒跳引擎反制（v3.3.0） */
 const TACTICS = [
   {
-    name: "SDK 广告窗 · 零文本图片广告", badge: "v3.3.0 根因修复", icon: Zap,
-    desc: "喜马拉雅类开屏：文案全部烧在广告图里，无障碍树零文本——跳过文本/翻转文案全找不到，v3.2.0 及之前完全无出手信号（真机「还是跳不过」的根因）。",
-    counter: "广告窗 className 指纹：穿山甲/优量汇/快手/AdMob/宿主 ad.activity 类名分段精确匹配 → 500ms 内无真跳过键即返回键直断，零文本依赖；直断后沉淀指纹，次启 300ms 快断。",
+    name: "第一方图片开屏（微博/喜马拉雅实测）", badge: "v3.4.0 根因修复", icon: Zap,
+    desc: "应用自建广告系统渲染：窗口类名是应用自己的 Activity（不匹配任何 SDK 指纹）、跳过按钮纯图片（零文本零 contentDescription）、倒计时烧在图里——v3.3.0 全部识别手段零信号，广告完整展示（二次真机反馈「还是拦截不了」的根因）。",
+    counter: "角落图片跳过键识别（顶部 14% 高、贴右/左缘、小面积可点、无文本）→ 手势点击其中心 650ms；连角落控件都没有时坐标级兜底（点标准跳过位 88%宽/7%高）；performAction 失效自动降级 dispatchGesture 真实触点；防误点六重约束（信息流/输入框/隐私弹窗等 12 个误报场景 JVM 用例验证）。",
+  },
+  {
+    name: "SDK 广告窗 · 零文本图片广告", badge: "v3.3.0", icon: Layers,
+    desc: "第三方 SDK 承载的开屏（穿山甲/优量汇/快手/AdMob）：文案烧在图里，但窗口类名带 SDK 特征。",
+    counter: "广告窗 className 指纹分段精确匹配 → 500ms 内无真跳过键即返回键直断，零文本依赖；直断后沉淀指纹，次启 300ms 快断。",
   },
   {
     name: "翻转手机 · 陀螺仪诱导（喜马拉雅实测）", badge: "传感器", icon: Vibrate,
@@ -176,11 +182,11 @@ export function IntelStation({ onFeedback }: { onFeedback: () => void }) {
         ))}
       </div>
 
-      {/* 十四轮自测 · 诚实重构 · 喜马拉雅专案 v3（v3.3.0） */}
+      {/* 十八轮自测 · 诚实重构 · 喜马拉雅专案 v4（v3.4.0） */}
       <section className="rounded-2xl border border-zinc-200 bg-white p-4 lg:p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="flex items-center gap-2 text-base font-bold text-zinc-900">
-            <FlaskConical className="h-5 w-5 text-emerald-600" /> 千款语料十四轮自测 · 诚实重构 · 自改自修复 ×14
+            <FlaskConical className="h-5 w-5 text-emerald-600" /> 千款语料十八轮自测 · 诚实重构 · 自改自修复 ×18
           </h2>
           <span className="flex flex-wrap items-center gap-1.5">
             <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-600 ring-1 ring-rose-200">
@@ -238,12 +244,11 @@ export function IntelStation({ onFeedback }: { onFeedback: () => void }) {
               <Headphones className="h-4 w-4" />
             </span>
             <div className="min-w-0">
-              <div className="text-xs font-bold text-zinc-800">喜马拉雅专案 v3 · 修复闭环</div>
+              <div className="text-xs font-bold text-zinc-800">喜马拉雅专案 v4 · 修复闭环</div>
               <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
-                SDK 广告窗零文本 + 无倒计时 + 翻转手机 {TEST_SUMMARY.latest.ximalaya.flipTrigMs}ms 即跳 + 浏览器二跳 + 30s 覆盖层弹窗：
-                R1 翻转抢先漏拦（{TEST_SUMMARY.latest.ximalaya.r1Ms}ms）→
-                R7 SDK 窗 className 直断（{TEST_SUMMARY.latest.ximalaya.sdkCutMs}ms &lt; 翻转触发）→
-                R10 全能力（弹窗已关）→ 稳态预拦截
+                第一方图片开屏（零文本零类名信号）+ 翻转手机 {TEST_SUMMARY.latest.ximalaya.flipTrigMs}ms 即跳 + 浏览器二跳：
+                R15 v3.3.0 零信号 → 翻转触发后才回弹（广告已展示 {TEST_SUMMARY.latest.ximalaya.r15VisibleMs}ms）→
+                R16 角落图片跳过键 {TEST_SUMMARY.latest.ximalaya.cornerMs}ms 抢在翻转前 → 稳态预拦截
                 <span className="font-bold text-fuchsia-600"> {TEST_SUMMARY.latest.ximalaya.steadyMs}ms · 0ms 可见</span>。
               </p>
             </div>
@@ -253,10 +258,10 @@ export function IntelStation({ onFeedback }: { onFeedback: () => void }) {
               <Vibrate className="h-4 w-4" />
             </span>
             <div className="min-w-0">
-              <div className="text-xs font-bold text-zinc-800">陀螺仪 × 弹窗 × 链式全断</div>
+              <div className="text-xs font-bold text-zinc-800">图片开屏 × 陀螺仪 × 弹窗全断</div>
               <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
-                翻转手机类 {TEST_SUMMARY.adversarial.gyro} 款全断（SDK 直断 + 立即直断 + 回弹四层防线）；
-                弹窗 {TEST_SUMMARY.adversarial.popup} 款全关（覆盖层 {TEST_SUMMARY.v330.overlayPopup} · 12s 窗外 {TEST_SUMMARY.v330.latePopup} 全关）；
+                第一方图片开屏 {TEST_SUMMARY.v340.imageSkip} 款全拦（角落键 ×{TEST_SUMMARY.v340.cornerHit} + 坐标兜底 ×{TEST_SUMMARY.v340.coordHit}）；
+                翻转手机类 {TEST_SUMMARY.adversarial.gyro} 款全断；弹窗 {TEST_SUMMARY.adversarial.popup} 款全关（覆盖层 {TEST_SUMMARY.v330.overlayPopup} · 12s 窗外 {TEST_SUMMARY.v330.latePopup}）；
                 零文本 SDK 窗 ×{TEST_SUMMARY.v330.sdkAd} 首次可判。
               </p>
             </div>
@@ -279,10 +284,11 @@ export function IntelStation({ onFeedback }: { onFeedback: () => void }) {
         {/* 七层纵深 + 真机反馈闭环 */}
         <div className="mt-3 grid gap-2.5 md:grid-cols-2">
           <div className="rounded-xl border border-zinc-100 bg-zinc-50/60 p-3.5">
-            <div className="text-xs font-bold text-zinc-800">七层纵深防线（能力只增不减）</div>
+            <div className="text-xs font-bold text-zinc-800">八层纵深防线（能力只增不减）</div>
             <ol className="mt-2 space-y-1.5 text-[11px] leading-relaxed text-zinc-500">
               <li><span className="mr-1.5 rounded bg-fuchsia-100 px-1.5 py-0.5 text-[9px] font-bold text-fuchsia-700">P0</span>预拦截：学习指纹命中 → 窗口附加即断，广告未及呈现（日均 {Math.round(TEST_SUMMARY.latest.preemptShare * 100)}% 启动）</li>
               <li><span className="mr-1.5 rounded bg-rose-100 px-1.5 py-0.5 text-[9px] font-bold text-rose-600">P0.7</span>SDK 广告窗识别：className 指纹零文本可判（500ms 直断）+ 指纹学习（次启 300ms 快断）</li>
+              <li><span className="mr-1.5 rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-700">P0.8</span>【v3.4.0】角落图片跳过键：无字小可点控件 → 手势点击中心 650ms；坐标级兜底：零信号简单树 → 点标准跳过位（防误点六重约束）</li>
               <li><span className="mr-1.5 rounded bg-violet-100 px-1.5 py-0.5 text-[9px] font-bold text-violet-700">P0.5</span>极速链：窗口切换 0ms 首扫 + 前密后疏重试链，命中即熔断</li>
               <li><span className="mr-1.5 rounded bg-violet-100 px-1.5 py-0.5 text-[9px] font-bold text-violet-700">P1</span>控件代点 + 假跳过甄别：文本/viewId 双通道，陷阱热区多信号忽略</li>
               <li><span className="mr-1.5 rounded bg-rose-100 px-1.5 py-0.5 text-[9px] font-bold text-rose-600">P2</span>立即直断/热区直断 + 链式回弹：翻转/二跳零机会，只关窗不碰服务</li>
@@ -296,9 +302,9 @@ export function IntelStation({ onFeedback }: { onFeedback: () => void }) {
               <CheckCircle2 className="h-3.5 w-3.5" /> 真机反馈 → 复现 → 修复闭环
             </div>
             <p className="mt-1.5">
-              本轮四项真机问题全部在语料中复现并修复：喜马拉雅零文本广告跳不过（SDK 窗 ×{TEST_SUMMARY.v330.sdkAd} → className 指纹直断）、
-              手机随便一动就跳（陀螺仪样本 ×{TEST_SUMMARY.adversarial.gyro} → 全断）、链式跳转仍触发（回弹名单扩充 + 广告窗活跃回弹）、
-              弹窗广告关不掉（×{TEST_SUMMARY.adversarial.popup} → 全关，含覆盖层 {TEST_SUMMARY.v330.overlayPopup} 与 12s 窗外 {TEST_SUMMARY.v330.latePopup}）。
+              两轮真机反馈逐项复现并修复：① 微博/喜马拉雅第一方图片开屏仍完整展示（v3.4.0 角落键 ×{TEST_SUMMARY.v340.cornerHit} + 坐标兜底 ×{TEST_SUMMARY.v340.coordHit} 全拦，
+              决策核心 JVM 38 用例验证含 12 个误报防护场景）；② SDK 窗零文本 ×{TEST_SUMMARY.v330.sdkAd} → className 指纹；
+              ③ 手机随便一动就跳（陀螺仪 ×{TEST_SUMMARY.adversarial.gyro} 全断）；④ 链式跳转（回弹扩充）；⑤ 弹窗 ×{TEST_SUMMARY.adversarial.popup} 全关（含覆盖层/窗外）。
               侧载 {TEST_SUMMARY.sideload.hit}/{TEST_SUMMARY.sideload.total}（{TEST_SUMMARY.latest.sideloadRate}%）· 守护 {TEST_SUMMARY.guardApps} 款零干预 · 冷启动 {TEST_SUMMARY.latest.coldRate}%。
             </p>
           </div>

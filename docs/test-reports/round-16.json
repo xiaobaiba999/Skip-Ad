@@ -1,0 +1,88 @@
+{
+  "round": 16,
+  "engine": "R16 · 角落控件点击 + 坐标级点击兜底 → 100%【v3.4.0】",
+  "fixNote": "修复⑭：L4 角落无字小可点控件（图片跳过键）→ 手势点击其中心 650ms；L6 坐标级点击兜底（dispatchGesture 真实触点点标准跳过位 88%宽/7%高）950ms，防误点六重约束（开屏窗内/无滚动/无输入框/无关闭键/每次启动一次/守护名单豁免）——决策核心 JVM 38 用例验证",
+  "total": 1060,
+  "hits": 1060,
+  "rate": 100,
+  "weightedRate": 100,
+  "avgLatencyMs": 2194,
+  "p95LatencyMs": 4845,
+  "avgReactionMs": 333,
+  "avgAdVisibleMs": 2193,
+  "guardHits": 29,
+  "guardServiceKills": 0,
+  "bySource": {
+    "official": [
+      787,
+      787
+    ],
+    "sideload": [
+      273,
+      273
+    ]
+  },
+  "byRender": {
+    "native": [
+      867,
+      867
+    ],
+    "web": [
+      132,
+      132
+    ],
+    "self": [
+      61,
+      61
+    ]
+  },
+  "byAdType": {
+    "splash": [
+      832,
+      832
+    ],
+    "interstitial": [
+      120,
+      120
+    ],
+    "shake": [
+      69,
+      69
+    ],
+    "deeplink": [
+      39,
+      39
+    ]
+  },
+  "tierCounts": {
+    "corner_click": 31,
+    "fast_hit": 687,
+    "skip_discrim": 84,
+    "sdk_ad_cut": 65,
+    "gyro_immediate": 86,
+    "coord_tap": 22,
+    "hot_zone_cut": 49,
+    "guard_skip": 29,
+    "gyro_break": 3,
+    "chain_rebound": 4
+  },
+  "missReasons": {},
+  "energy": {
+    "mWh": 0.12947222222222227,
+    "preemptShare": 0,
+    "breakdown": [
+      {
+        "label": "启动拦截",
+        "mWh": 0.12525000000000003
+      },
+      {
+        "label": "后台事件",
+        "mWh": 0.004222222222222223
+      }
+    ]
+  },
+  "burst": {
+    "tier": 10,
+    "preempt": 1.6
+  }
+}

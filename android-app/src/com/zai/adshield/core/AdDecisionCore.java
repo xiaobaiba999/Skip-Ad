@@ -1,0 +1,434 @@
+package com.zai.adshield.core;
+
+import java.util.ArrayList;
+
+/**
+ * 秒跳决策核心（v3.4.0 · 纯 Java · 零 Android 依赖 · JVM 可单测）
+ * ─────────────────────────────────────────────────────────────
+ * 设计动机（2026-11 真机反馈：微博/喜马拉雅等主流应用仍拦截失败）：
+ *  · 第一方开屏广告（应用自建广告系统渲染）既无 SDK 窗口类名特征，
+ *    跳过按钮又是纯图片（零文本零 contentDescription）——v3.3.0 及之前
+ *    的全部识别手段（跳过文本/翻转文案/className 指纹）对此零信号，
+ *    引擎从不出手，广告完整展示（「好几版迭代还是相同问题」的根因）。
+ *  · v3.4.0 对策（本类决策阶梯，全部可单测）：
+ *    L1 文本跳过键（含 contentDescription）→ 代点（performAction 失效改手势点击）
+ *    L2 SDK/学习 className 窗口指纹 → 返回键直断（500ms / 学习指纹 300ms）
+ *    L3 无倒计时翻转/摇一摇文案 → 120ms 立即直断；带倒计时(假跳过) → 800ms 直断
+ *    L4 【新】角落无字小可点控件（疑似图片跳过键，右上/左上角小面积可点）
+ *        → 手势点击其屏幕坐标中心（微博类图片跳过键的正解）
+ *    L5 全屏热区（自绘图片广告三条件）→ 900ms 返回键直断（守护名单豁免）
+ *    L6 【新】开屏窗坐标级点击兜底：简单树(无滚动/无输入框/节点少)且无任何
+ *        信号 → dispatchGesture 点击标准跳过位(88%宽,7%高)，每次启动一次，
+ *        守护名单豁免（防误点）
+ *    P  弹窗窗期：角标强信号 / Dialog+≥2营销话术弱信号 → 代点关闭
+ *  · 决策输出与执行分离：本类只产出 Decision（动作+坐标+原因），
+ *    服务侧负责 performAction / dispatchGesture / GLOBAL_ACTION_BACK。
+ */
+public final class AdDecisionCore {
+
+    private AdDecisionCore() {
+    }
+
+    /* ── 节点抽象（服务侧用 AccessibilityNodeInfo 适配；测试用 FakeNode） ── */
+    public interface NodeView {
+        String text();
+
+        String desc();
+
+        String cls();
+
+        boolean clickable();
+
+        boolean scrollable();
+
+        boolean editable(); // EditText 类
+
+        int[] bounds(); // {left, top, right, bottom}，未知返回 null
+
+        int childCount();
+
+        NodeView child(int i);
+
+        NodeView parent(); // 可空
+    }
+
+    /* ── 动作常量 ── */
+    public static final String A_CLICK_BOUNDS = "click_bounds"; // 点击控件（代点/手势）
+    public static final String A_TAP_POINT = "tap_point";       // 坐标级点击（手势兜底）
+    public static final String A_BACK = "back";                 // 返回键直断
+    public static final String A_CLOSE = "close";               // 弹窗关闭键
+    public static final String A_NONE = "none";
+
+    /* ── 时序参数（ms） ── */
+    public static final long CLS_BREAK_MS = 500;          // SDK 窗直断时限
+    public static final long CLS_LEARNED_BREAK_MS = 300;  // 学习指纹快断
+    public static final long GYRO_IMMEDIATE_MS = 120;     // 无倒计时立即直断
+    public static final long GYRO_BREAK_MS = 800;         // 带倒计时(假跳过)直断
+    public static final long CORNER_MIN_MS = 600;         // 角落控件最早出手
+    public static final long CORNER_MAX_MS = 3500;        // 角落控件最晚（过窗防误点）
+    public static final long HOT_ZONE_MS = 900;           // 热区直断
+    public static final long COORD_TAP_MS = 900;          // 坐标兜底最早出手
+    public static final long COORD_TAP_MAX_MS = 4000;     // 坐标兜底最晚
+
+    /* ── 阈值参数 ── */
+    public static final double HOT_ZONE_AREA = 0.55;   // 热区：≥55% 屏幕面积
+    public static final int HOT_ZONE_MAX_NODES = 12;
+    public static final double SKIP_AREA_MAX = 0.35;   // 真跳过键面积上限
+    public static final double SKIP_WIDTH_MAX = 0.55;
+    public static final double CORNER_TOP_MAX = 0.14;  // 角落：顶部 14% 高内
+    public static final double CORNER_RIGHT_MIN = 0.72; // 右缘 ≥72% 宽
+    public static final double CORNER_LEFT_MAX = 0.28;  // 或左缘 ≤28% 宽
+    public static final int CORNER_MIN_PX = 24;        // 角落控件最小像素
+    public static final int AD_LIKE_MAX_NODES = 40;    // 简单树节点上限
+    public static final double COORD_X = 0.88;         // 标准跳过位
+    public static final double COORD_Y = 0.07;
+
+    /* ── 文案特征库（与 2026-11 市场调研同步） ── */
+    public static final String[] SKIP_TEXTS = {"跳过", "关闭广告"};
+    public static final String[] GYRO_HINTS = {"翻转", "摇一摇", "摇晃", "晃动", "摇动", "扭一扭", "转动手机", "倾斜手机", "拿起手机"};
+    public static final String[] CLOSE_TEXTS = {"×", "x", "X", "✕", "✖", "╳", "关闭", "close", "不感兴趣", "我知道了", "知道了", "关闭广告", "跳过", "忽略", "暂不"};
+    public static final String[] BADGE_TEXTS = {"广告", "推广", "赞助", "广告推广", "sponsored", "promoted", "sponsor"};
+    public static final String[] CTA_TEXTS = {"立即领取", "点击领取", "领取红包", "限时", "秒杀", "恭喜", "马上抢", "立即下载", "立即抢购", "0元领", "0元", "免费领", "点击进入", "立即查看", "开通会员", "领取礼包", "大奖"};
+    public static final String[] GUARD_PKG_HINTS = {"bank", "icbc", "cmb", "ccb", "psbc", "abchina", "boc", "unionpay", "gov", "alipay", "955", "12345"};
+    public static final String[] AD_TARGET_HINTS = {
+            "com.jingdong", "com.taobao", "com.tmall", "com.xunmeng", "com.achievo.vipshop",
+            "com.suning.juniper", "com.dangdang", "com.eastmoney", "com.amazon.mShop",
+            "com.android.vending", "com.xiaomi.market", "com.huawei.appmarket",
+            "com.heytap.market", "com.bbk.appstore", "com.tencent.android.qqdownloader",
+            "com.ss.android.ugc", "com.smile.gifmaker", "com.kuaishou", "tv.danmaku.bili",
+            "com.zhihu.android", "com.xingin.xhs", "com.dragon.read",
+            "com.tencent.mm", "com.tencent.mobileqq", "com.eg.android.AlipayGphone",
+            "com.sankuai.meituan", "com.dianping.v1", "com.sdu.didi.psnger",
+            "com.android.browser", "com.android.chrome", "com.sec.android.app.sbrowser",
+            "com.UCMobile", "com.quark.browser", "com.tencent.mtt", "org.mozilla.firefox",
+            "com.microsoft.emmx", "com.heytap.browser", "com.vivo.browser", "com.mi.globalbrowser"
+    };
+
+    /* ───────── 扫描结果 ───────── */
+
+    public static final class ScanFind {
+        public boolean foundSkip;      // 真「跳过」文本控件（小面积可点）
+        public NodeView skipNode;
+        public int[] skipBounds;
+        public String skipLabel;
+        public boolean fakeSkip;       // 假跳过热区（「跳过」字样但大面积/不可点）
+        public boolean gyroHint;       // 翻转/摇一摇诱导文案
+        public boolean adBadge;        // 广告角标
+        public String badgeLabel;
+        public boolean foundClose;     // 弹窗关闭键
+        public NodeView closeNode;
+        public int[] closeBounds;
+        public String closeLabel;
+        public int ctaCount;           // 营销话术命中数
+        public int nodeCount;
+        public boolean editPresent;    // 存在输入框（正常业务界面）
+        public boolean scrollPresent;  // 存在可滚动容器（信息流/主页）
+        public boolean hotZone;        // 全屏大热区
+        public int[] cornerBounds;     // 【v3.4.0】角落无字小可点控件（疑似图片跳过键）
+        public NodeView cornerNode;
+        public boolean dialogForm;     // 根节点 Dialog/Popup 形态
+    }
+
+    /* ───────── 决策上下文（服务侧填充） ───────── */
+
+    public static final class Ctx {
+        public int screenW;
+        public int screenH;
+        public long elapsedMs;        // 距窗口切换
+        public boolean splashLive;    // 开屏窗内（≤12s）
+        public boolean popupLive;     // 弹窗窗期内
+        public boolean guard;         // 守护名单（银行/政务/支付）
+        public boolean coordTapUsed;  // 本次启动已用过坐标兜底
+        public boolean sdkAdWin;      // 窗口类名命中 SDK 指纹
+        public boolean learnedCls;    // className 学习指纹命中
+        public int budgetNodes = 600; // 扫描节点预算
+    }
+
+    /* ───────── 决策输出 ───────── */
+
+    public static final class Decision {
+        public String action = A_NONE;
+        public NodeView node;   // click/close 的目标控件
+        public int[] bounds;    // click_bounds 目标边界
+        public int x;           // tap_point 坐标
+        public int y;
+        public String reason = "";
+
+        public static Decision none() {
+            return new Decision();
+        }
+    }
+
+    /* ═════════ 控件树遍历（多信号一次收集） ═════════ */
+
+    public static ScanFind walk(NodeView root, Ctx ctx) {
+        ScanFind f = new ScanFind();
+        if (root == null) return f;
+        String rootCls = nz(root.cls()).toLowerCase();
+        f.dialogForm = rootCls.contains("dialog") || rootCls.contains("popup");
+        int[] budget = {ctx.budgetNodes};
+        visit(root, 0, budget, f, ctx);
+        return f;
+    }
+
+    private static void visit(NodeView node, int depth, int[] budget, ScanFind f, Ctx ctx) {
+        if (node == null || depth > 32 || budget[0] <= 0) return;
+        budget[0]--;
+        f.nodeCount++;
+        try {
+            String text = nz(node.text());
+            String desc = nz(node.desc());
+            String label = text.length() > 0 ? text : desc;
+            String cls = nz(node.cls()).toLowerCase();
+            if (node.editable() || cls.contains("edittext")) f.editPresent = true;
+            if (node.scrollable() || cls.contains("scrollview") || cls.contains("recyclerview")
+                    || cls.contains("viewpager") || cls.contains("listview")) f.scrollPresent = true;
+
+            int[] b = node.bounds();
+            boolean clickable = node.clickable();
+            double areaRatio = areaRatio(b, ctx);
+
+            // 全屏热区：可点且 ≥55% 屏幕
+            if (!f.hotZone && clickable && areaRatio >= HOT_ZONE_AREA) f.hotZone = true;
+
+            if (label.length() > 0) {
+                if (label.length() <= 14 && matchesSkip(label)) {
+                    NodeView click = resolveClickable(node, 4);
+                    if (click != null && isSmallClick(click, ctx)) {
+                        if (!f.foundSkip) {
+                            f.foundSkip = true;
+                            f.skipNode = click;
+                            f.skipBounds = click.bounds();
+                            f.skipLabel = label;
+                        }
+                    } else {
+                        f.fakeSkip = true; // 大面积/不可点 = 图内假跳过陷阱
+                    }
+                } else if (label.length() <= 22 && matchesAny(label, GYRO_HINTS)) {
+                    f.gyroHint = true;
+                } else if (label.length() <= 6 && isCloseText(label)) {
+                    NodeView click = resolveClickable(node, 4);
+                    if (click != null && isSmallClick(click, ctx) && !f.foundClose) {
+                        f.foundClose = true;
+                        f.closeNode = click;
+                        f.closeBounds = click.bounds();
+                        f.closeLabel = label;
+                    }
+                } else if (isAdBadge(label)) {
+                    f.adBadge = true;
+                    f.badgeLabel = label;
+                } else if (label.length() <= 14 && matchesAny(label, CTA_TEXTS)) {
+                    f.ctaCount++;
+                }
+            } else if (clickable && b != null && f.cornerBounds == null) {
+                // 【v3.4.0】角落无字小可点控件：疑似图片跳过键（微博/喜马拉雅第一方开屏）
+                if (isCornerControl(b, ctx)) {
+                    f.cornerBounds = b;
+                    f.cornerNode = node;
+                }
+            }
+
+            int n = node.childCount();
+            for (int i = 0; i < n; i++) {
+                visit(node.child(i), depth + 1, budget, f, ctx);
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** 角落控件判定：顶部 14% 高内、贴右缘(≥72%)或左缘(≤28%)、边长 24px~35% 宽、无任何文本 */
+    static boolean isCornerControl(int[] b, Ctx ctx) {
+        if (b == null || ctx.screenW <= 0 || ctx.screenH <= 0) return false;
+        int w = b[2] - b[0];
+        int h = b[3] - b[1];
+        if (w < CORNER_MIN_PX || h < CORNER_MIN_PX) return false;
+        if (w > ctx.screenW * 0.35 || h > ctx.screenH * 0.20) return false;
+        if (b[1] > ctx.screenH * CORNER_TOP_MAX) return false;
+        boolean rightEdge = b[2] >= ctx.screenW * CORNER_RIGHT_MIN;
+        boolean leftEdge = b[0] <= ctx.screenW * CORNER_LEFT_MAX;
+        return rightEdge || leftEdge;
+    }
+
+    /** 向上找可点击祖先（最多 4 层） */
+    static NodeView resolveClickable(NodeView node, int maxUp) {
+        NodeView cur = node;
+        for (int i = 0; i < maxUp && cur != null; i++) {
+            if (cur.clickable()) return cur;
+            cur = cur.parent();
+        }
+        return null;
+    }
+
+    static boolean isSmallClick(NodeView n, Ctx ctx) {
+        if (n == null || !n.clickable()) return false;
+        int[] b = n.bounds();
+        if (ctx.screenW <= 0 || b == null) return true; // 无屏幕信息时放宽
+        double ratio = areaRatio(b, ctx);
+        int w = b[2] - b[0];
+        return ratio < SKIP_AREA_MAX && w < ctx.screenW * SKIP_WIDTH_MAX;
+    }
+
+    static double areaRatio(int[] b, Ctx ctx) {
+        if (b == null || ctx.screenW <= 0 || ctx.screenH <= 0) return 0;
+        double area = (double) (b[2] - b[0]) * (b[3] - b[1]);
+        return area / ((double) ctx.screenW * ctx.screenH);
+    }
+
+    /* ═════════ 决策阶梯 ═════════ */
+
+    public static Decision decide(ScanFind f, Ctx ctx) {
+        /* ── 开屏/插屏窗内 ── */
+        if (ctx.splashLive) {
+            // L1 文本跳过键（文本或 contentDescription）→ 代点
+            if (f.foundSkip && f.skipBounds != null) {
+                return click(f.skipNode, f.skipBounds, "skip_text");
+            }
+            // L2 SDK / 学习 className 窗口指纹 → 返回键直断
+            long clsBreak = ctx.learnedCls ? CLS_LEARNED_BREAK_MS : CLS_BREAK_MS;
+            if ((ctx.sdkAdWin || ctx.learnedCls) && ctx.elapsedMs >= clsBreak) {
+                return back(ctx.learnedCls ? "sdk_window_learned" : "sdk_window");
+            }
+            // L3 陀螺仪/假跳过：无倒计时立即直断；带倒计时(假跳过) 800ms 直断
+            if (f.gyroHint && !f.fakeSkip && ctx.elapsedMs >= GYRO_IMMEDIATE_MS) {
+                return back("gyro_immediate");
+            }
+            if ((f.gyroHint || f.fakeSkip) && ctx.elapsedMs >= GYRO_BREAK_MS) {
+                return back("gyro_break");
+            }
+            // L4 角落无字小可点控件（图片跳过键）→ 手势点击其中心
+            //     防误点：仅开屏窗前 3.5s + 简单树（无滚动/无输入框/节点≤40）
+            if (f.cornerBounds != null && !f.scrollPresent && !f.editPresent
+                    && f.nodeCount <= AD_LIKE_MAX_NODES
+                    && ctx.elapsedMs >= CORNER_MIN_MS && ctx.elapsedMs <= CORNER_MAX_MS) {
+                return click(f.cornerNode, f.cornerBounds, "corner_image_skip");
+            }
+            // L5 全屏热区（自绘图片广告）→ 返回键直断（守护名单豁免）
+            if (f.hotZone && !ctx.guard && !f.editPresent && f.nodeCount <= HOT_ZONE_MAX_NODES
+                    && ctx.elapsedMs >= HOT_ZONE_MS) {
+                return back("hot_zone");
+            }
+            // L6 坐标级点击兜底：开屏窗内简单树且零信号 → 点标准跳过位
+            //    条件最严：无滚动、无输入框、无关闭键、未用过、非守护、900ms~4s
+            if (isAdLike(f) && !ctx.guard && !ctx.coordTapUsed
+                    && !f.foundClose && ctx.elapsedMs >= COORD_TAP_MS && ctx.elapsedMs <= COORD_TAP_MAX_MS) {
+                Decision d = new Decision();
+                d.action = A_TAP_POINT;
+                d.x = (int) (ctx.screenW * COORD_X);
+                d.y = (int) (ctx.screenH * COORD_Y);
+                d.reason = "coord_fallback";
+                return d;
+            }
+        }
+
+        /* ── 弹窗窗期（独立于开屏窗） ── */
+        if (ctx.popupLive && f.foundClose && f.closeBounds != null) {
+            boolean strong = f.adBadge;                    // 角标强信号
+            boolean weak = f.dialogForm && f.ctaCount >= 2; // Dialog + ≥2 营销话术
+            if (strong || weak) {
+                Decision d = click(f.closeNode, f.closeBounds, strong ? "popup_badge" : "popup_cta");
+                d.action = A_CLOSE;
+                return d;
+            }
+        }
+
+        return Decision.none();
+    }
+
+    /** 简单树判定（广告页特征：无滚动、无输入框，且(大热区 或 节点少)） */
+    static boolean isAdLike(ScanFind f) {
+        if (f.scrollPresent || f.editPresent) return false;
+        return f.hotZone || f.nodeCount <= AD_LIKE_MAX_NODES;
+    }
+
+    private static Decision click(NodeView node, int[] bounds, String reason) {
+        Decision d = new Decision();
+        d.action = A_CLICK_BOUNDS;
+        d.node = node;
+        d.bounds = bounds;
+        d.reason = reason;
+        return d;
+    }
+
+    private static Decision back(String reason) {
+        Decision d = new Decision();
+        d.action = A_BACK;
+        d.reason = reason;
+        return d;
+    }
+
+    /* ═════════ SDK 广告窗指纹（className 分段精确匹配） ═════════ */
+
+    public static boolean isAdActivityClass(String cls) {
+        if (cls == null || cls.length() < 6) return false;
+        String c = cls.toLowerCase();
+        if (c.contains("qq.e.ads") || c.contains("gms.ads") || c.contains("bytedance.sdk")
+                || c.contains(".ad.activity") || c.contains(".ads.activity")
+                || c.contains("baidu.mobads") || c.contains("csjad") || c.contains("unionad")) return true;
+        String[] seg = c.split("[.$]");
+        for (String s : seg) {
+            if (s.length() < 3) continue;
+            if (s.equals("adactivity") || s.equals("advertactivity")) return true;
+            if (s.contains("openadsdk") || s.contains("adsdk") || s.contains("kwad")
+                    || s.contains("gdtadv") || s.contains("admob") || s.contains("sigmob")
+                    || s.contains("adcolony") || s.contains("applovin") || s.contains("vungle")
+                    || s.contains("mbridge") || s.contains("tanx") || s.contains("mobads")
+                    || s.contains("splashad") || s.contains("adsplash") || s.contains("landingpage")
+                    || s.contains("adpage") || s.contains("adlanding")) return true;
+        }
+        return false;
+    }
+
+    public static boolean isGuardPkg(String pkg) {
+        if (pkg == null) return false;
+        String p = pkg.toLowerCase();
+        return matchesAny(p, GUARD_PKG_HINTS);
+    }
+
+    public static boolean isAdTarget(String pkg) {
+        if (pkg == null) return false;
+        for (String h : AD_TARGET_HINTS) {
+            if (pkg.startsWith(h) || pkg.contains(h)) return true;
+        }
+        return false;
+    }
+
+    /* ═════════ 文案匹配 ═════════ */
+
+    public static boolean matchesSkip(String s) {
+        if (s == null) return false;
+        String lower = s.toLowerCase();
+        if (lower.contains("skip") || lower.contains("跳过")) return true;
+        return matchesAny(s, SKIP_TEXTS);
+    }
+
+    public static boolean isCloseText(String s) {
+        if (s == null) return false;
+        String t = s.trim();
+        String lower = t.toLowerCase();
+        for (String k : CLOSE_TEXTS) {
+            if (t.equals(k) || lower.equals(k)) return true;
+        }
+        return false;
+    }
+
+    public static boolean isAdBadge(String label) {
+        if (label == null) return false;
+        String t = label.trim();
+        String lower = t.toLowerCase();
+        if (t.equals("广告") || t.equals("推广") || t.equals("赞助") || t.equals("广告推广")) return true;
+        if (lower.equals("ad") || lower.equals("sponsored") || lower.equals("promoted")) return true;
+        return t.length() <= 8 && (t.startsWith("广告 ") || t.startsWith("广告·") || t.endsWith(" 广告"));
+    }
+
+    static boolean matchesAny(String s, String[] keys) {
+        if (s == null) return false;
+        for (String k : keys) {
+            if (s.contains(k)) return true;
+        }
+        return false;
+    }
+
+    static String nz(String s) {
+        return s == null ? "" : s.trim();
+    }
+}
