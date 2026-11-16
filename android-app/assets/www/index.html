@@ -15,7 +15,7 @@
       <div class="logo">⚡</div>
       <div>
         <div class="brand-name">开屏卫士</div>
-        <div class="brand-sub" id="brand-sub">秒跳引擎 · 演示场</div>
+        <div class="brand-sub" id="brand-sub">秒跳引擎 · 首页</div>
       </div>
     </div>
     <span class="ver-badge" id="ver-badge">v?</span>
@@ -43,7 +43,7 @@
 
   <main id="main">
 
-    <!-- ───────── 页1：演示场 ───────── -->
+    <!-- ───────── 页1：首页 ───────── -->
     <section class="page active" id="page-drill">
       <div class="card status-card" id="service-card">
         <div class="status-row">
@@ -57,35 +57,48 @@
         <div class="hint">设置 → 无障碍 → 已下载的应用 → 开屏卫士</div>
         <div class="stat-grid">
           <div class="stat"><div class="num" id="st-auto">0</div><div class="lbl">自动秒跳</div></div>
+          <div class="stat"><div class="num" id="st-back">0</div><div class="lbl">诱导直断</div></div>
+          <div class="stat"><div class="num" id="st-popup">0</div><div class="lbl">弹窗广告</div></div>
+          <div class="stat"><div class="num" id="st-chain">0</div><div class="lbl">跳转回弹</div></div>
           <div class="stat"><div class="num" id="st-manual">0</div><div class="lbl">学习样本</div></div>
           <div class="stat"><div class="num" id="st-rules">0</div><div class="lbl">学习规则</div></div>
         </div>
       </div>
 
-      <!-- 手机演练器（引擎常开，无对照/对抗练习） -->
+      <!-- 防护能力开关（v3.2.0） -->
       <div class="card">
         <div class="card-head">
-          <span>开屏演练 · 秒跳引擎</span>
-          <span class="tag tag-green">五层纵深 · 常开</span>
+          <span>🛡 防护能力</span>
+          <span class="tag tag-green">极速链 · 0ms 首扫</span>
         </div>
-        <div class="chips" id="strategy-chips"></div>
-        <div class="drill-row">
-          <button class="btn btn-primary" id="btn-launch">🚀 启动 App</button>
-          <span class="shield-label">再次启动同一形态 = <b>P0 预拦截</b></span>
-        </div>
-      </div>
-      <div class="phone-wrap">
-        <div class="phone">
-          <div class="screen" id="phone-screen">
-            <div class="statusbar"><span id="sb-time">--:--</span><span class="notch"></span><span class="sb-icons">▮▲🔋</span></div>
-            <div id="phone-body"></div>
+        <div class="switch-row">
+          <div class="sw-text">
+            <div class="sw-title">开屏秒跳（极速链）</div>
+            <div class="sw-desc">窗口切换 0ms 首扫 + 前密后疏重试，命中即停；「翻转手机 / 摇一摇」诱导 0.8s 无真跳过键直接温和关闭广告窗</div>
           </div>
+          <span class="tag tag-green">常开</span>
         </div>
-      </div>
-      <div class="card">
-        <div class="card-head"><span>当前策略学习进度</span><span class="tag" id="dp-conf">置信度 0%</span></div>
-        <div class="progress"><div class="progress-bar" id="dp-bar"></div></div>
-        <div class="log-box" id="dp-log"></div>
+        <div class="switch-row">
+          <div class="sw-text">
+            <div class="sw-title">应用内弹窗广告屏蔽</div>
+            <div class="sw-desc">识别「广告」角标 + 关闭键（× / 关闭 / 不感兴趣 / 我知道了）→ 自动代点关闭</div>
+          </div>
+          <label class="switch"><input type="checkbox" id="toggle-popup" checked><span class="slider"></span></label>
+        </div>
+        <div class="switch-row">
+          <div class="sw-text">
+            <div class="sw-title">诱导跳转回弹</div>
+            <div class="sw-desc">开屏广告拉起电商 / 商店 / 短视频时，返回键送回原应用，不给链式二跳任何机会</div>
+          </div>
+          <label class="switch"><input type="checkbox" id="toggle-chain" checked><span class="slider"></span></label>
+        </div>
+        <div class="switch-row">
+          <div class="sw-text">
+            <div class="sw-title">智能学习（观察你的习惯）</div>
+            <div class="sw-desc">沉淀每个应用的跳过控件指纹，下次启动 viewId 定向直达，越用越快</div>
+          </div>
+          <label class="switch"><input type="checkbox" id="toggle-learning" checked><span class="slider"></span></label>
+        </div>
       </div>
 
       <!-- 问题反馈（内置加密通道，无 Token 输入） -->
@@ -96,13 +109,14 @@
         </div>
         <select id="fb-type" class="fb-select">
           <option value="missed">漏拦截：开屏广告没被秒跳</option>
-          <option value="shake_leak">摇一摇仍被跳转</option>
+          <option value="gyro_leak">翻转/摇一摇仍被跳转</option>
+          <option value="popup_leak">弹窗广告没被关闭</option>
           <option value="false_block">误拦截：正常操作被拦</option>
           <option value="crash">闪退 / 卡顿</option>
           <option value="suggestion">功能建议</option>
           <option value="other">其他</option>
         </select>
-        <textarea id="fb-desc" rows="3" placeholder="例：某 App 开屏跳过键延迟 5 秒出现，没被拦住……"></textarea>
+        <textarea id="fb-desc" rows="3" placeholder="例：某 App 开屏是「翻转手机」跳转，没被拦住……"></textarea>
         <button class="btn btn-primary btn-block" id="btn-feedback">提交（内置加密通道 · 零配置）</button>
         <div id="fb-result"></div>
         <div id="fb-history"></div>
@@ -113,14 +127,14 @@
     <section class="page" id="page-intel">
       <div class="card intro-card">
         <div class="card-head">
-          <span>🧪 千款语料自测 · 自查自改 ×3</span>
+          <span>🧪 千款语料自测 · 十轮自改 ×2</span>
           <span class="tag tag-green" id="intel-rate">--%</span>
         </div>
         <div id="intel-rounds"></div>
         <div class="mini-grid">
           <div class="mini-card">
             <div class="mc-num" id="intel-total">--</div>
-            <div class="mc-lbl">测试应用（130 真实 + 880 生成）</div>
+            <div class="mc-lbl">测试应用（真实 + 生成）</div>
           </div>
           <div class="mini-card">
             <div class="mc-num" id="intel-reaction">--</div>
@@ -145,9 +159,8 @@
       <div class="card">
         <div class="card-head">
           <span>🧠 学习规则</span>
-          <label class="switch"><input type="checkbox" id="toggle-learning" checked><span class="slider"></span></label>
         </div>
-        <div class="muted small">按你的使用习惯（应用 / 场景 / 时段）动态沉淀，侧载应用与官方渠道一视同仁</div>
+        <div class="muted small">按你的使用习惯（应用 / 场景 / 时段）动态沉淀，侧载应用与官方渠道一视同仁；开关在首页「防护能力」</div>
         <div id="rules-list"></div>
       </div>
       <div class="card">
@@ -163,9 +176,10 @@
         <div class="stat-grid">
           <div class="stat"><div class="num" id="en-events">0</div><div class="lbl">处理事件</div></div>
           <div class="stat"><div class="num" id="en-scans">0</div><div class="lbl">控件树扫描</div></div>
+          <div class="stat"><div class="num" id="en-backs">0</div><div class="lbl">返回键直断</div></div>
           <div class="stat"><div class="num" id="en-auto">0</div><div class="lbl">代点次数</div></div>
         </div>
-        <div class="muted small">事件驱动 · 零后台轮询；闪存写入 15s 合并落盘，扫描预算 260 节点。</div>
+        <div class="muted small">事件驱动 · 零后台轮询；系统级事件合并 120ms，命中即熔断扫描链，闪存写入 15s 合并落盘。</div>
       </div>
     </section>
 
@@ -185,8 +199,16 @@
           <button class="btn btn-ghost btn-sm" id="btn-check-update">检查</button>
         </div>
         <div id="update-body">
-          <div class="muted small">检测到新版时本页直接下载，无需跳转浏览器；同签名覆盖安装，学习数据保留。</div>
+          <div class="muted small">检查后可直接在下方下载 APK 并安装，全程不出本页；同签名覆盖安装，学习数据保留。</div>
         </div>
+        <!-- 页内下载进度（与顶部横幅共用通道） -->
+        <div class="ub-progress-wrap" id="page-progress-wrap" style="display:none">
+          <div class="ub-progress"><div class="ub-progress-bar" id="page-bar"></div></div>
+          <div class="ub-progress-text" id="page-progress-text">准备中…</div>
+        </div>
+        <button class="btn btn-primary btn-block" id="page-dl-btn" style="display:none">本页直接下载（不跳转）</button>
+        <button class="btn btn-primary btn-block" id="page-install-btn" style="display:none">立即安装</button>
+        <div id="page-dl-note" class="ub-note" style="display:none"></div>
       </div>
 
       <div class="card">
@@ -194,13 +216,13 @@
         <div class="changelog" id="changelog"></div>
       </div>
 
-      <p class="foot-note">学习数据仅存本机；联网仅「问题反馈」与「检查更新」；只代点「跳过」，不屏蔽广告本身。</p>
+      <p class="foot-note">学习数据仅存本机；联网仅「问题反馈」与「检查更新」；只代点「跳过 / 关闭」，不屏蔽广告本身。</p>
     </section>
   </main>
 
   <!-- 底部导航 -->
   <nav class="tabbar">
-    <button class="tabbtn active" data-page="drill"><span class="ti">⚔️</span>演示场</button>
+    <button class="tabbtn active" data-page="drill"><span class="ti">🏠</span>首页</button>
     <button class="tabbtn" data-page="intel"><span class="ti">📡</span>情报站</button>
     <button class="tabbtn" data-page="learn"><span class="ti">🧠</span>学习中心</button>
     <button class="tabbtn" data-page="about"><span class="ti">ℹ️</span>关于</button>

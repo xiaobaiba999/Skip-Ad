@@ -1,9 +1,10 @@
 /**
- * 演练场场景应用定义（v3.1.0）
- * 7 个典型应用覆盖全部广告形态与对抗特征：
+ * 演练场场景应用定义（v3.2.0）
+ * 8 个典型应用覆盖全部广告形态与对抗特征：
  *  电商·标准开屏 / 游戏·摇一摇 / 视频·Deeplink 诱导 /
  *  银行·政务·支付·守护模式（拦广告但绝不终止服务）/
- *  喜马拉雅·假跳过陷阱 + 链式二跳（2026-11 专案）
+ *  喜马拉雅·无倒计时 + 跳过广告 + 翻转手机陀螺仪诱导 + 链式二跳（2026-11 专案 v2）/
+ *  邻里团购·应用内弹窗广告（广告角标 + 关闭键）
  */
 import type { AdType, AppCategory, AdTraits } from "./instant-engine";
 
@@ -26,7 +27,7 @@ export interface ScenarioApp {
   ruleName: string; // 命中的预置规则名
   icon: string; // lucide 图标名（组件内映射）
   gradient: string; // 图标渐变
-  screen: "mall" | "game" | "bank" | "gov" | "pay" | "video" | "audio";
+  screen: "mall" | "game" | "bank" | "gov" | "pay" | "video" | "audio" | "groupbuy";
   ad: ScenarioAd;
   note: string; // 演练场卡片的一句话说明
   traits?: AdTraits; // 广告对抗特征（假跳过 / 链式二跳 / 真跳过延迟）
@@ -60,21 +61,21 @@ export const SCENARIO_APPS: ScenarioApp[] = [
     category: "音频",
     adType: "splash",
     guard: false,
-    ruleName: "专案·假跳过甄别 + 链式断链",
+    ruleName: "专案 v2·陀螺仪诱导直断 + 链式回弹",
     icon: "headphones",
     gradient: "from-orange-500 to-amber-400",
     screen: "audio",
     ad: {
-      brand: "橙意购物节",
-      title: "暖冬狂欢购",
-      subtitle: "摇一摇抽免单 · 点击任意处直达会场",
-      ctaText: "立即参与",
-      theme: "ecommerce",
-      countdownSec: 5,
-      landingHint: "倒计时归零自动跳落地页，并将二跳外部商店",
+      brand: "京东企业采购",
+      title: "来京东企业采购 达量返千元E卡",
+      subtitle: "3C数码企业超省月 · AirPods 5 企业价",
+      ctaText: "立即下单",
+      theme: "finance",
+      countdownSec: 0,
+      landingHint: "翻转手机即跳京东详情页，并二跳外部商店",
     },
-    note: "假跳过陷阱 + 链式二跳（专案修复）",
-    traits: { fakeSkip: true, chainJump: true, realSkipDelayMs: 5100 },
+    note: "无倒计时·跳过广告·翻转手机诱导（专案 v2）",
+    traits: { fakeSkip: true, chainJump: true, gyroFlip: true, noCountdown: true, realSkipDelayMs: 5100 },
   },
   {
     key: "game",
@@ -180,6 +181,27 @@ export const SCENARIO_APPS: ScenarioApp[] = [
       landingHint: "倒计时归零自动唤起外部 App（二跳）",
     },
     note: "Deeplink：自动唤起外部应用",
+  },
+  {
+    key: "groupbuy",
+    name: "邻里团购",
+    category: "生活",
+    adType: "popup",
+    guard: false,
+    ruleName: "全局·广告角标 + 关闭键双信号",
+    icon: "shopping-basket",
+    gradient: "from-lime-500 to-green-500",
+    screen: "groupbuy",
+    ad: {
+      brand: "周末大促会场",
+      title: "周末生鲜大促",
+      subtitle: "满 59 减 20 · 今日 24 点截止",
+      ctaText: "去逛逛",
+      theme: "ecommerce",
+      countdownSec: 0,
+      landingHint: "应用内弹窗广告（带「广告」角标与小号关闭键）",
+    },
+    note: "应用内弹窗：角标 + 关闭键双信号",
   },
 ];
 

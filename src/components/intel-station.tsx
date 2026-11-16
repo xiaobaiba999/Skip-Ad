@@ -8,7 +8,7 @@ import { TEST_SUMMARY } from "@/lib/test-summary";
 import {
   ShieldAlert, Timer, EyeOff, MousePointerClick, Vibrate, LayoutGrid, Layers, Link2, Link2Off,
   Zap, Gauge, BrainCircuit, ShieldCheck, Landmark, Globe, Ban, Wrench, RefreshCw,
-  ExternalLink, ListChecks, Newspaper, FlaskConical, BatteryCharging, PackageOpen,
+  ExternalLink, ListChecks, Newspaper, FlaskConical, BatteryCharging,
   Headphones, CheckCircle2,
 } from "lucide-react";
 
@@ -39,31 +39,53 @@ const ACTION_LABEL: Record<string, string> = {
   guard_skip: "守护代点",
   preempt_block: "P0 预拦截",
   chain_block: "链式直断",
+  gyro_block: "陀螺仪直断",
+  popup_close: "弹窗关闭",
   back_fallback: "返回键兑底",
   dns_block: "域名阻断",
 };
 
-/* 2026-11 市场调研：广告套路 vs 秒跳引擎反制 */
+/* 2026-11 市场调研 + 真机反馈：广告套路 vs 秒跳引擎反制（v3.2.0） */
 const TACTICS = [
   {
+    name: "翻转手机 · 陀螺仪诱导（喜马拉雅实测）", badge: "传感器", icon: Vibrate,
+    desc: "开屏底部提示「翻转手机，跳转详情页或第三方应用」，无倒计时，手机一动就跳别的 App——无障碍无法冻结应用内的传感器监听。",
+    counter: "三层防线：极速链 0ms 首扫抢在翻转前命中「跳过广告」；0.8s 仍无真跳过键 → 返回键温和直断广告窗；若跳转已发生 → 返回键弹回原应用。",
+  },
+  {
+    name: "应用内弹窗广告", badge: "弹窗", icon: LayoutGrid,
+    desc: "使用中突然弹出的运营/广告弹窗：带「广告」角标，关闭键很小甚至伪装成图片。",
+    counter: "「广告」角标（短文本精确匹配）+ 关闭键（×/关闭/不感兴趣/我知道了）双信号 → 代点关闭；窗口 10s 内冷却 2.5s，无角标的正常弹窗一律不动。",
+  },
+  {
+    name: "翻转手机 · 陀螺仪诱导（喜马拉雅实测）", badge: "传感器", icon: Vibrate,
+    desc: "开屏底部提示「翻转手机，跳转详情页或第三方应用」，无倒计时，手机一动就跳别的 App——无障碍无法冻结应用内的传感器监听。",
+    counter: "三层防线：极速链 0ms 首扫抢在翻转前命中「跳过广告」；0.8s 仍无真跳过键 → 返回键温和直断广告窗；若跳转已发生 → 返回键弹回原应用。",
+  },
+  {
+    name: "应用内弹窗广告", badge: "弹窗", icon: LayoutGrid,
+    desc: "使用中突然弹出的运营/广告弹窗：带「广告」角标，关闭键很小甚至伪装成 × 图片。",
+    counter: "「广告」角标（短文本精确匹配）+ 关闭键（×/关闭/不感兴趣/我知道了）双信号 → 代点关闭；窗口 10s 内冷却 2.5s，无角标的正常弹窗一律不动。",
+  },
+  {
     name: "假跳过陷阱（喜马拉雅专案）", badge: "开屏", icon: MousePointerClick,
-    desc: "广告图内嵌一个像模像样的「跳过 5」热区，点击即跳落地页；真跳过延迟 5.1s 才出现。",
+    desc: "广告图内嵌一个像模像样的「跳过」热区，点击即跳落地页；真跳过延迟 5.1s 才出现。",
     counter: "多信号甄别：全屏可点击容器 / 图文混排 / 出现时序与倒计时不符 → 判定为陷阱并忽略，静候真跳过；链式二跳直接窗口级阻断。",
   },
   {
     name: "链式二跳连环跳转", badge: "跳转", icon: Link2,
-    desc: "倒计时归零自动跳落地页，落地页再自动重定向到外部应用/商店，层层叠加防不胜防。",
-    counter: "含链式跳转的开屏直接拦截屏蔽：返回键温和关闭广告窗，不点任何广告元素，二跳零机会。",
+    desc: "倒计时归零或翻转触发自动跳落地页，落地页再自动重定向到外部应用/商店，层层叠加防不胜防。",
+    counter: "含链式跳转的开屏直接拦截屏蔽：返回键温和关闭广告窗 + 广告宿主 6s 保护期内被电商/商店抢占即弹回，二跳零机会。",
   },
   {
-    name: "倒计时 + 小小跳过键", badge: "开屏", icon: Timer,
-    desc: "3~5 秒倒计时，跳过键越做越小，考验手速。",
-    counter: "引擎在时间窗内毫秒级定位「跳过」控件并代点，人机差距被抹平。",
+    name: "无倒计时 · 跳过广告", badge: "开屏", icon: Timer,
+    desc: "有的广告带倒计时，有的不带（喜马拉雅这类就没有）——右上角直接是「跳过广告」，但被广告方延迟挂载或深嵌套。",
+    counter: "极速链：窗口切换 0ms 即首扫 + 前密后疏重试链 [0/120/240/400/650/1000ms…]，「跳过广告」文案直配，命中即熔断。",
   },
   {
     name: "延迟出现的跳过键", badge: "开屏", icon: EyeOff,
     desc: "跳过键延迟 2~5 秒才出现，出现前无处可点，诱导误触广告主体。",
-    counter: "持续监听窗口内容变化（TYPE_WINDOW_CONTENT_CHANGED），按钮一出现在控件树即被点击。",
+    counter: "12s 时间窗 + 重试链持续监听窗口内容变化，按钮一出现在控件树即被点击。",
   },
   {
     name: "全屏热区 / 假关闭 ×", badge: "开屏/插屏", icon: LayoutGrid,
@@ -73,7 +95,7 @@ const TACTICS = [
   {
     name: "摇一摇传感器跳转", badge: "传感器", icon: Vibrate,
     desc: "读取加速度计，晃动超阈值即跳转。实测部分灵敏到「拿起手机即跳转」；行业标准（2023 / 2025-07 安全要求）：加速度 ≥15m/s²、转角 ≥35°、持续 ≥3s。",
-    counter: "引擎侧挂起传感器监听，低于行业标准的激进阈值事件全部丢弃——复杂摇一摇广告也跳不出去。",
+    counter: "识别摇一摇文案 → 极速代点抢在传感器触发前；0.8s 无真跳过键直接返回键直断广告窗，跳转已发生则弹回。",
   },
   {
     name: "Deeplink 连环二跳", badge: "跳转", icon: Link2Off,
@@ -163,7 +185,7 @@ export function IntelStation({ onFeedback }: { onFeedback: () => void }) {
         ))}
       </div>
 
-      {/* 十轮自测 · 五层防线 · 喜马拉雅专案（v3.1.0） */}
+      {/* 十轮自测 · 六层防线 · 喜马拉雅专案 v2（v3.2.0） */}
       <section className="rounded-2xl border border-zinc-200 bg-white p-4 lg:p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="flex items-center gap-2 text-base font-bold text-zinc-900">
@@ -171,7 +193,7 @@ export function IntelStation({ onFeedback }: { onFeedback: () => void }) {
           </h2>
           <span className="flex flex-wrap items-center gap-1.5">
             <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-600 ring-1 ring-rose-200">
-              对抗样本：假跳过×{TEST_SUMMARY.adversarial.fakeSkip} · 链式二跳×{TEST_SUMMARY.adversarial.chainJump}
+              对抗样本：假跳过×{TEST_SUMMARY.adversarial.fakeSkip} · 链式×{TEST_SUMMARY.adversarial.chainJump} · 陀螺仪×{TEST_SUMMARY.adversarial.gyro} · 弹窗×{TEST_SUMMARY.adversarial.popup}
             </span>
             <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-bold text-emerald-700 ring-1 ring-emerald-200">
               {TEST_SUMMARY.total} 款 · 拦截率 {TEST_SUMMARY.latest.rate}%
@@ -196,7 +218,7 @@ export function IntelStation({ onFeedback }: { onFeedback: () => void }) {
             <tbody>
               {TEST_SUMMARY.rounds.map((r) => {
                 const last = r.round === TEST_SUMMARY.rounds.length;
-                const mid = r.round >= 8;
+                const mid = r.round >= 5;
                 return (
                   <tr key={r.round} className={cn("border-b border-zinc-50", last && "font-bold")}>
                     <td className={cn("py-1.5 pr-2 tabular-nums", last ? "text-emerald-600" : "text-zinc-500")}>{r.round}</td>
@@ -213,22 +235,34 @@ export function IntelStation({ onFeedback }: { onFeedback: () => void }) {
           </table>
         </div>
         <p className="mt-2 text-[10px] leading-relaxed text-zinc-400">
-          R1 为 v3.0.0 引擎在对抗样本下的诚实复测（旧报告 91.58% 混有假命中：误点假跳过被记为拦截成功）；
-          每轮针对上轮短板修复，R8 起全量 100%，R9 冷启动 100%，R10 双跑逐字段一致。
+          R1 为 v3.1.0 引擎在新对抗样本（陀螺仪诱导 / 弹窗广告）下的诚实复测——真机反馈的「翻转抢先漏拦」与「弹窗未关」全部复现；
+          每轮针对上轮短板修复，R5 起全量 100%，R9 冷启动（首次遭遇）100%，R10 双跑逐字段一致。
         </p>
 
-        {/* 喜马拉雅专案 + 能耗 + 侧载 */}
+          {/* 喜马拉雅专案 v2 + 能耗 + 陀螺仪/弹窗 */}
         <div className="mt-4 grid gap-2.5 lg:grid-cols-3">
           <div className="flex items-start gap-2.5 rounded-xl border border-rose-100 bg-rose-50/50 p-3.5">
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-orange-500 to-amber-400 text-white">
               <Headphones className="h-4 w-4" />
             </span>
             <div className="min-w-0">
-              <div className="text-xs font-bold text-zinc-800">喜马拉雅专案 · 修复闭环</div>
+              <div className="text-xs font-bold text-zinc-800">喜马拉雅专案 v2 · 修复闭环</div>
               <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
-                假跳过陷阱 + 真跳过延迟 5.1s + 链式二跳：R1 误点被带飞 → R4 甄别（{TEST_SUMMARY.latest.ximalaya.r4Ms}ms）→
-                R5 链式直断（{TEST_SUMMARY.latest.ximalaya.r5Ms}ms）→ 稳态预拦截
+                无倒计时 +「跳过广告」+ 假跳过陷阱 + 翻转手机诱导：R1 翻转抢先漏拦（{TEST_SUMMARY.latest.ximalaya.r1Ms}ms）→
+                R3 陀螺仪直断（{TEST_SUMMARY.latest.ximalaya.r3Ms}ms）→ 稳态预拦截
                 <span className="font-bold text-fuchsia-600"> {TEST_SUMMARY.latest.ximalaya.steadyMs}ms · 0ms 可见</span>。
+              </p>
+            </div>
+          </div>
+          <div className="flex items-start gap-2.5 rounded-xl border border-zinc-100 bg-zinc-50/60 p-3.5">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-rose-500 to-orange-400 text-white">
+              <Vibrate className="h-4 w-4" />
+            </span>
+            <div className="min-w-0">
+              <div className="text-xs font-bold text-zinc-800">陀螺仪诱导 × 弹窗广告全断</div>
+              <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
+                翻转手机类 {TEST_SUMMARY.adversarial.gyro} 款全断（极速链 + 直断 + 回弹三层防线）；
+                应用内弹窗 {TEST_SUMMARY.adversarial.popup} 款全关（角标 + 关闭键双信号）。
               </p>
             </div>
           </div>
@@ -237,23 +271,11 @@ export function IntelStation({ onFeedback }: { onFeedback: () => void }) {
               <BatteryCharging className="h-4 w-4" />
             </span>
             <div className="min-w-0">
-              <div className="text-xs font-bold text-zinc-800">功耗：预拦截零扫描 · 短时功耗大降</div>
+              <div className="text-xs font-bold text-zinc-800">功耗：极速链反而更省</div>
               <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
-                日均 {TEST_SUMMARY.latest.energyMWh}mWh（较 v3.0.0 -{TEST_SUMMARY.latest.energyDropPct}%）；
-                启动瞬时（前 10s）{TEST_SUMMARY.rounds[2].burstTierMWs}mWs → {TEST_SUMMARY.rounds[9].burstPreemptMWs}mWs（-{TEST_SUMMARY.latest.burstDropPct}%）。
-                手段：预拦截零扫描 / viewId 定向查找 2.6→0.4mWs / 命中即休眠。
-              </p>
-            </div>
-          </div>
-          <div className="flex items-start gap-2.5 rounded-xl border border-zinc-100 bg-zinc-50/60 p-3.5">
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500 to-fuchsia-600 text-white">
-              <PackageOpen className="h-4 w-4" />
-            </span>
-            <div className="min-w-0">
-              <div className="text-xs font-bold text-zinc-800">侧载与守护 · 一视同仁</div>
-              <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
-                非官方渠道 {TEST_SUMMARY.sideload.hit}/{TEST_SUMMARY.sideload.total}（{TEST_SUMMARY.latest.sideloadRate}%）；
-                守护应用 {TEST_SUMMARY.guardApps} 款广告照拦、服务零干预（十轮断言全部通过）。
+                日均 {TEST_SUMMARY.latest.energyMWh}mWh（较 R1 -{TEST_SUMMARY.latest.energyDropPct}%）；
+                启动瞬时（前 10s）{TEST_SUMMARY.rounds[0].burstTierMWs}mWs → {TEST_SUMMARY.rounds[9].burstPreemptMWs}mWs（-{TEST_SUMMARY.latest.burstDropPct}%）。
+                手段：事件合并 120ms / 命中即熔断 / 预拦截零扫描。
               </p>
             </div>
           </div>
@@ -262,23 +284,26 @@ export function IntelStation({ onFeedback }: { onFeedback: () => void }) {
         {/* 五层纵深 + 原不可见攻坚 */}
         <div className="mt-3 grid gap-2.5 md:grid-cols-2">
           <div className="rounded-xl border border-zinc-100 bg-zinc-50/60 p-3.5">
-            <div className="text-xs font-bold text-zinc-800">五层纵深防线（能力只增不减）</div>
+            <div className="text-xs font-bold text-zinc-800">六层纵深防线（能力只增不减）</div>
             <ol className="mt-2 space-y-1.5 text-[11px] leading-relaxed text-zinc-500">
               <li><span className="mr-1.5 rounded bg-fuchsia-100 px-1.5 py-0.5 text-[9px] font-bold text-fuchsia-700">P0</span>预拦截：学习指纹命中 → 窗口附加即断，广告未及呈现（日均 {Math.round(TEST_SUMMARY.latest.preemptShare * 100)}% 启动）</li>
+              <li><span className="mr-1.5 rounded bg-violet-100 px-1.5 py-0.5 text-[9px] font-bold text-violet-700">P0.5</span>极速链：窗口切换 0ms 首扫 + 前密后疏重试链，命中即熔断</li>
               <li><span className="mr-1.5 rounded bg-violet-100 px-1.5 py-0.5 text-[9px] font-bold text-violet-700">P1</span>控件代点 + 假跳过甄别：文本/viewId 双通道，陷阱热区多信号忽略</li>
-              <li><span className="mr-1.5 rounded bg-rose-100 px-1.5 py-0.5 text-[9px] font-bold text-rose-600">P2</span>链式直断 / 返回键兜底：窗口级温和关闭，不点任何广告元素</li>
-              <li><span className="mr-1.5 rounded bg-sky-100 px-1.5 py-0.5 text-[9px] font-bold text-sky-700">P3</span>定向域名阻断：学习名单 + 启动窗突发本地过滤，广告请求即断</li>
-              <li><span className="mr-1.5 rounded bg-emerald-100 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700">S</span>传感器挂起 + 守护模式：摇一摇事件冻结；支付/银行/政务服务零干预</li>
+              <li><span className="mr-1.5 rounded bg-rose-100 px-1.5 py-0.5 text-[9px] font-bold text-rose-600">P2</span>陀螺仪诱导直断 + 链式回弹：翻转/二跳零机会，只关窗不碰服务</li>
+              <li><span className="mr-1.5 rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-700">P2.6</span>弹窗广告屏蔽：角标 + 关闭键双信号，无角标正常弹窗不动</li>
+              <li><span className="mr-1.5 rounded bg-sky-100 px-1.5 py-0.5 text-[9px] font-bold text-sky-700">P3</span>返回键兜底 / 定向域名阻断：无控件广告请求即断</li>
+              <li><span className="mr-1.5 rounded bg-emerald-100 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700">S</span>守护模式：支付/银行/政务广告照拦、服务零干预</li>
             </ol>
           </div>
           <div className="flex flex-col justify-center rounded-xl bg-zinc-900 p-3.5 text-[11px] leading-relaxed text-zinc-300">
             <div className="flex items-center gap-1.5 font-bold text-emerald-400">
-              <CheckCircle2 className="h-3.5 w-3.5" /> 原「结构性不可见」攻坚结果
+              <CheckCircle2 className="h-3.5 w-3.5" /> 真机反馈 → 复现 → 修复闭环
             </div>
             <p className="mt-1.5">
-              v3.0.0 的诚实边界（85 款无控件广告）在本版全部拿下：返回键兜底 {TEST_SUMMARY.latest.backRecovered} 款 +
-              定向域名阻断 {TEST_SUMMARY.latest.dnsRecovered} 款 → 全量 100%；
-              十轮双跑确定性一致，冷启动（首次遭遇）通过率 {TEST_SUMMARY.latest.coldRate}%。
+              本轮三项真机问题全部在语料中复现并修复：翻转手机跳转抢先（陀螺仪样本 ×63 → 全断）、
+              链式跳转仍触发（回弹兜底）、弹窗广告未关（×105 → 全关）。
+              无控件广告：返回键兜底 {TEST_SUMMARY.latest.backRecovered} 款 + 域名阻断 {TEST_SUMMARY.latest.dnsRecovered} 款 → 100%；
+              侧载 {TEST_SUMMARY.sideload.hit}/{TEST_SUMMARY.sideload.total}（{TEST_SUMMARY.latest.sideloadRate}%）· 守护 {TEST_SUMMARY.guardApps} 款零干预 · 冷启动 {TEST_SUMMARY.latest.coldRate}%。
             </p>
           </div>
         </div>
@@ -417,5 +442,5 @@ export function IntelStation({ onFeedback }: { onFeedback: () => void }) {
 }
 
 function adTypeShort(t: string): string {
-  return { splash: "开屏", interstitial: "插屏", shake: "摇一摇", deeplink: "跳转", any: "任意" }[t] ?? t;
+  return { splash: "开屏", interstitial: "插屏", shake: "摇一摇", deeplink: "跳转", popup: "弹窗", any: "任意" }[t] ?? t;
 }

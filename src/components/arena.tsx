@@ -7,17 +7,18 @@ import { planInstantBlock, AD_TYPE_LABEL, type BlockPlan } from "@/lib/instant-e
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
-  ShoppingBag, Rocket, Landmark, Building2, Wallet, Play, Phone, MessageCircle,
+  ShoppingBag, ShoppingBasket, Rocket, Landmark, Building2, Wallet, Play, Phone, MessageCircle,
   Globe, Camera, Signal, Wifi, BatteryFull, Zap, ShieldCheck, Headphones,
   Link2Off, ChevronLeft, Search, ScanLine, ArrowLeftRight, Receipt, TrendingUp,
   PiggyBank, UserRound, FileText, CalendarClock, ThumbsUp, Share2,
-  Flame, Tv, Music2, Activity, Gauge, Timer, Vibrate, Layers,
+  Flame, Tv, Music2, Activity, Gauge, Timer, Vibrate, Layers, X, Smartphone, Apple,
 } from "lucide-react";
 
 type Stage = "home" | "launch" | "ad" | "flash" | "main";
 
 const APP_ICONS: Record<string, React.ElementType> = {
   "shopping-bag": ShoppingBag,
+  "shopping-basket": ShoppingBasket,
   rocket: Rocket,
   landmark: Landmark,
   "building-2": Building2,
@@ -162,21 +163,35 @@ export function Arena({ onFeedback }: { onFeedback: () => void }) {
   /* ── 引擎拦截（广告展示中） ── */
   useEffect(() => {
     if (stage !== "ad" || !app || !plan) return;
-    const isAdversarial = !!app.traits?.fakeSkip && !!app.traits?.chainJump;
+    const isAdversarial = !!app.traits?.fakeSkip && (!!app.traits?.chainJump || !!app.traits?.gyroFlip);
+    const isPopup = app.adType === "popup";
     const timers: ReturnType<typeof setTimeout>[] = [];
-    if (isAdversarial) {
-      // 喜马拉雅类：假跳过甄别 → 忽略陷阱 → 链式二跳识别 → 窗口级直断
-      timers.push(setTimeout(() => setFakePhase("scanning"), 500));
-      timers.push(setTimeout(() => setFakePhase("ignored"), 1500));
-      timers.push(setTimeout(() => setFakePhase("chain"), 2500));
+    if (isPopup) {
+      // 应用内弹窗广告：角标识别 → 关闭键定位 → 双信号代点关闭
+      timers.push(setTimeout(() => setFakePhase("scanning"), 400));
+      timers.push(setTimeout(() => setFakePhase("ignored"), 1000));
       timers.push(
         setTimeout(() => {
           setBlocks((n) => n + 1);
           setMsSum((s) => s + plan.totalMs);
-          pushLog({ app: app.name, kind: "block", text: `${plan.ruleName} · 链式二跳直接阻断`, ms: plan.totalMs });
-          void postEvent(plan, "假跳过甄别 + 链式直断");
+          pushLog({ app: app.name, kind: "block", text: `${plan.ruleName} · 弹窗广告已关闭`, ms: plan.totalMs });
+          void postEvent(plan, "角标 + 关闭键双信号关闭");
           setStage("flash");
-        }, 3200),
+        }, 1700),
+      );
+    } else if (isAdversarial) {
+      // 喜马拉雅类：极速链首扫 → 忽略假跳过 + 识别翻转文案 → 陀螺仪诱导直断 + 回弹
+      timers.push(setTimeout(() => setFakePhase("scanning"), 400));
+      timers.push(setTimeout(() => setFakePhase("ignored"), 1100));
+      timers.push(setTimeout(() => setFakePhase("chain"), 1900));
+      timers.push(
+        setTimeout(() => {
+          setBlocks((n) => n + 1);
+          setMsSum((s) => s + plan.totalMs);
+          pushLog({ app: app.name, kind: "block", text: `${plan.ruleName} · ${app.traits?.gyroFlip ? "陀螺仪诱导直断 + 回弹" : "链式二跳直接阻断"}`, ms: plan.totalMs });
+          void postEvent(plan, app.traits?.gyroFlip ? "陀螺仪诱导直断 + 链式回弹" : "假跳过甄别 + 链式直断");
+          setStage("flash");
+        }, 2700),
       );
     } else {
       timers.push(
@@ -255,14 +270,14 @@ export function Arena({ onFeedback }: { onFeedback: () => void }) {
             <div className="min-w-0">
               <div className="flex items-center gap-2 text-sm font-bold text-zinc-900">
                 秒跳引擎 · 运行中
-                <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-bold text-white">五层纵深</span>
+                <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-bold text-white">六层纵深</span>
               </div>
               <p className="mt-0.5 text-[11px] text-zinc-500">
-                P0 预拦截 → P1 假跳过甄别+代点 → P2 链式直断/返回键兜底 → P3 域名阻断；守护应用只拦广告、不碰服务
+                P0 预拦截 → 极速链 0ms 首扫 → 陀螺仪诱导直断/链式回弹 → 弹窗广告屏蔽 → 域名阻断；守护应用只拦广告、不碰服务
               </p>
             </div>
             <div className="ml-auto hidden shrink-0 items-center gap-1 text-[10px] font-bold text-emerald-700 sm:flex">
-              <Layers className="h-3.5 w-3.5" /> 1010 款语料 100%
+              <Layers className="h-3.5 w-3.5" /> 1060 款语料 100%
             </div>
           </div>
         </div>
@@ -331,7 +346,7 @@ export function Arena({ onFeedback }: { onFeedback: () => void }) {
         {/* 场景速览 + 会话日志 */}
         <div className="grid gap-4 md:grid-cols-2">
           <div className="rounded-2xl border border-zinc-200 bg-white p-4">
-            <h3 className="text-sm font-bold text-zinc-900">七大场景</h3>
+            <h3 className="text-sm font-bold text-zinc-900">八大场景</h3>
             <ul className="mt-2.5 space-y-2">
               {SCENARIO_APPS.map((a) => {
                 const Icon = APP_ICONS[a.icon];
@@ -448,7 +463,7 @@ function HomeScreen({ onLaunch }: { onLaunch: (a: ScenarioApp) => void }) {
       </div>
       {/* 壁纸提示 */}
       <div className="mx-5 mb-2 rounded-xl bg-white/60 px-3 py-2 text-center text-[10px] leading-relaxed text-zinc-500 backdrop-blur">
-        点击应用体验秒跳 · 银行/政务/支付为守护模式 · 喜马拉雅为专案演示
+        点击应用体验秒跳 · 银行/政务/支付为守护模式 · 喜马拉雅为陀螺仪专案 · 邻里团购为弹窗广告
       </div>
       {/* Dock */}
       <div className="mx-4 mb-3 flex items-center justify-around rounded-2xl bg-white/70 p-2.5 backdrop-blur">
@@ -485,13 +500,83 @@ function AdStage({
   onTapFakeSkip: () => void;
 }) {
   const isShake = app.adType === "shake";
-  const isAdversarial = !!app.traits?.fakeSkip && !!app.traits?.chainJump;
+  const isAdversarial = !!app.traits?.fakeSkip && (!!app.traits?.chainJump || !!app.traits?.gyroFlip);
+  const isPopup = app.adType === "popup";
+  const isGyro = !!app.traits?.gyroFlip;
 
   const overlayText =
-    fakePhase === "scanning" ? "假跳过甄别中 · 多信号核验热区"
-    : fakePhase === "ignored" ? "已忽略假「跳过」陷阱 · 监听中"
-    : fakePhase === "chain" ? "链式二跳识别 → 升级直接阻断"
+    fakePhase === "scanning"
+      ? isPopup
+        ? "弹窗多信号扫描中 · 寻找「广告」角标与关闭键"
+        : "极速链首扫中 · 假跳过甄别 + 翻转文案识别"
+    : fakePhase === "ignored"
+      ? isPopup
+        ? "已确认「广告」角标 + 关闭键 → 双信号成立"
+        : isGyro
+          ? "已忽略假「跳过」陷阱 · 识别到「翻转手机」文案"
+          : "已忽略假「跳过」陷阱 · 监听中"
+    : fakePhase === "chain"
+      ? isGyro
+        ? "陀螺仪诱导 → 返回键直断 + 二跳回弹"
+        : "链式二跳识别 → 升级直接阻断"
     : "秒跳引擎拦截中…";
+
+  /* 应用内弹窗广告：主页内容 + 底部弹层广告（角标 + 小号关闭键） */
+  if (isPopup) {
+    return (
+      <div className="relative min-h-0 flex-1" data-testid="ad-stage">
+        <GroupBuyScreen compact />
+        {/* 弹窗广告层 */}
+        <div className="absolute inset-x-4 bottom-4 z-20 overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-zinc-200">
+          <div className="flex">
+            <div className="h-24 w-24 shrink-0 bg-gradient-to-br from-rose-500 to-orange-400" />
+            <div className="min-w-0 flex-1 p-3">
+              <div className="flex items-center gap-1.5">
+                <span className="rounded bg-zinc-800/80 px-1 text-[8px] font-black text-white">广告</span>
+                <span className="truncate text-[11px] font-bold text-zinc-800">{app.ad.brand}</span>
+              </div>
+              <div className="mt-1 truncate text-[12px] font-black text-zinc-900">{app.ad.title}</div>
+              <div className="truncate text-[10px] text-zinc-500">{app.ad.subtitle}</div>
+              <button type="button" className="mt-1.5 rounded-full bg-rose-500 px-3 py-1 text-[10px] font-black text-white">
+                {app.ad.ctaText}
+              </button>
+            </div>
+            {/* 关闭键：引擎双信号确认后代点 */}
+            <button
+              type="button"
+              data-testid="btn-popup-close"
+              className={cn(
+                "absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-bold transition",
+                fakePhase === "ignored" || fakePhase === "chain"
+                  ? "bg-emerald-500 text-white ring-2 ring-emerald-300"
+                  : "bg-zinc-200/80 text-zinc-500",
+              )}
+              aria-label="关闭广告"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </div>
+        </div>
+        {/* 引擎状态覆盖层 */}
+        <div className="absolute inset-x-0 top-2 z-30 flex justify-center">
+          <div className={cn(
+            "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[10px] font-semibold backdrop-blur",
+            fakePhase === "ignored" || fakePhase === "chain" ? "bg-emerald-600/85 text-white" : "bg-black/45 text-white/90",
+          )}>
+            {fakePhase === "ignored" || fakePhase === "chain"
+              ? <ShieldCheck className="h-3 w-3" />
+              : <Zap className="h-3 w-3 animate-pulse text-amber-300" />}
+            {overlayText}
+          </div>
+        </div>
+        {plan.preempt === false && (
+          <div className="absolute left-2.5 top-2.5 z-20 rounded-full bg-fuchsia-600/90 px-2 py-0.5 text-[9px] font-bold text-white">
+            首拦学习指纹 · 下次启动预拦截
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="relative flex-1" data-testid="ad-stage">
@@ -504,11 +589,11 @@ function AdStage({
           data-testid="btn-skip"
           className="absolute right-2.5 top-2.5 z-20 rounded-full bg-black/35 px-2.5 py-1 text-[10px] font-semibold text-white backdrop-blur"
         >
-          跳过
+          {app.traits?.noCountdown ? "跳过广告" : "跳过"}
         </button>
       )}
 
-      {/* 假跳过陷阱（喜马拉雅类：广告图内嵌的大号假「跳过」，点击即跳转） */}
+      {/* 假跳过陷阱（喜马拉雅类：广告图内嵌的大号假「跳过」，点击即跳转；无倒计时形态文案直配） */}
       {isAdversarial && (
         <button
           type="button"
@@ -523,13 +608,24 @@ function AdStage({
         >
           {fakePhase === "ignored" || fakePhase === "chain" ? (
             <>
-              <span className="line-through decoration-rose-500 decoration-2">跳过 5</span>
+              <span className="line-through decoration-rose-500 decoration-2">{app.traits?.noCountdown ? "跳过广告" : "跳过 5"}</span>
               <span className="rounded bg-rose-500 px-1 text-[9px]">陷阱已忽略</span>
             </>
           ) : (
-            <>跳过 5</>
+            <>{app.traits?.noCountdown ? "跳过广告" : "跳过 5"}</>
           )}
         </button>
+      )}
+
+      {/* 陀螺仪诱导提示条（喜马拉雅实测：翻转手机，跳转详情页或第三方应用） */}
+      {isGyro && (
+        <div className={cn(
+          "absolute bottom-11 left-1/2 z-20 flex max-w-[92%] -translate-x-1/2 items-center gap-1 rounded-full bg-black/55 px-3 py-1.5 text-[10px] font-bold text-white backdrop-blur transition",
+          fakePhase === "chain" && "bg-rose-600/80",
+        )} data-testid="gyro-hint">
+          <Smartphone className={cn("h-3.5 w-3.5", fakePhase === "chain" ? "text-white" : "animate-pulse text-amber-300")} />
+          翻转手机，跳转详情页或第三方应用
+        </div>
       )}
 
       {/* 摇一摇角标 */}
@@ -876,6 +972,45 @@ function AudioScreen() {
               </span>
             </div>
           ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── 邻里团购主页（弹窗广告宿主） ── */
+function GroupBuyScreen({ compact = false }: { compact?: boolean }) {
+  const goods = [
+    { name: "红颜草莓 2 盒", price: "¥19.9", g: "from-rose-400 to-red-500", tag: "热卖" },
+    { name: "本地青菜 3 斤", price: "¥6.8", g: "from-lime-400 to-green-500", tag: "今日到货" },
+    { name: "土鸡蛋 30 枚", price: "¥25.0", g: "from-amber-400 to-orange-500", tag: "补货" },
+    { name: "纯牛奶 12 盒", price: "¥39.9", g: "from-sky-400 to-blue-500", tag: "满减" },
+  ];
+  return (
+    <div className={cn("flex min-h-0 flex-1 flex-col bg-zinc-50", compact && "min-h-0")}>
+      <AppHeader app={SCENARIO_APPS.find((a) => a.key === "groupbuy")!} right={<Search className="h-4 w-4" />} />
+      <div className={cn("overflow-y-auto", compact ? "flex-1" : "min-h-0 flex-1")}>
+        <div className="p-3">
+          <div className="mb-3 rounded-xl bg-gradient-to-r from-lime-500 to-green-500 p-3 text-white">
+            <div className="text-sm font-black">周末自提团 · 楼下驿站 17:00 开柜</div>
+            <div className="text-[10px] opacity-90">2.1 万人参团 · 本小区已拼 342 单</div>
+          </div>
+          <div className="grid grid-cols-2 gap-2.5">
+            {goods.map((g) => (
+              <div key={g.name} className="overflow-hidden rounded-xl bg-white ring-1 ring-zinc-100">
+                <div className={cn("relative h-20 bg-gradient-to-br", g.g)}>
+                  <span className="absolute left-1.5 top-1.5 rounded bg-black/35 px-1 text-[8px] font-bold text-white">{g.tag}</span>
+                </div>
+                <div className="p-2">
+                  <div className="truncate text-[11px] font-bold text-zinc-800">{g.name}</div>
+                  <div className="mt-0.5 flex items-center justify-between">
+                    <span className="text-xs font-black text-rose-600">{g.price}</span>
+                    <span className="rounded-full bg-rose-500 px-2 py-0.5 text-[9px] font-bold text-white">加购</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>

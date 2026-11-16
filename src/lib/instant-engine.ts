@@ -1,23 +1,28 @@
 /**
- * 秒跳引擎（Instant Skip Engine · v3.1.0 · 五层纵深）
+ * 秒跳引擎（Instant Skip Engine · v3.2.0 · 六层纵深）
  * ─────────────────────────────────────────────────────────────
- * 设计基准（2026-11 市场调研 + 喜马拉雅专案复盘）：
+ * 设计基准（2026-11 市场调研 + 喜马拉雅专案 v2 复盘）：
  *  · P0 预拦截：学习指纹（广告容器签名 + viewId + 出现时机）命中即
  *    在窗口附加阶段阻断——广告未及呈现，用户零感知、引擎零扫描。
+ *  · P0.5 极速链：窗口切换 0ms 即首扫（原 350ms）+ 前密后疏重试链，
+ *    命中即熔断——喜马拉雅类「无倒计时 + 跳过广告」秒级命中。
  *  · P1 控件代点：「跳过|Skip」文本 + viewId 双通道（李跳跳 / GKD 同源）；
  *    假跳过甄别：广告图内嵌假「跳过」热区（全屏可点击容器 / 图文混排 /
  *    出现时序与倒计时不符）多信号判定后直接忽略，绝不代点。
- *  · P2 直接阻断：链式二跳广告（落地页自动重定向 / 倒计时归零即跳）
- *    升级为窗口级直接拦截——返回键温和关闭，不点任何广告元素；
- *    无控件可见的顽固广告同样由返回键兜底。
+ *  · P2 陀螺仪诱导直断：「翻转手机跳详情页/第三方应用」类（无障碍无法
+ *    冻结应用内传感器监听）——0.8s 内仍无真跳过键 → 返回键温和直断
+ *    广告窗（只关窗，不碰进程与服务），抢先于翻转触发。
+ *  · P2.5 链式回弹：广告宿主被判定后 6s 内拉起电商/商店/短视频 →
+ *    返回键弹回原应用，不给二跳任何机会（含倒计时归零自动跳场景）。
+ *  · P2.6 弹窗广告屏蔽：应用内弹窗「广告」角标 + 关闭键（×/关闭/
+ *    不感兴趣/我知道了）双信号 → 代点关闭，窗口 10s 内冷却 2.5s。
  *  · P3 域名阻断：结构性不可见且返回键无效的极少数，定向域名热名单
  *    + 启动窗突发本地过滤，广告请求即断（广告根本加载不出来）。
- *  · S 传感器守护：摇一摇行业标准（≥15m/s²、≥35°、≥3s）以下的激进
- *    触发一律挂起；支付/银行/政务类应用广告照拦、服务绝不终止。
+ *  · 守护模式：支付/银行/政务类应用广告照拦、服务绝不终止。
  */
 
-export type AdType = "splash" | "interstitial" | "shake" | "deeplink";
-export type AppCategory = "电商" | "游戏" | "银行" | "政务" | "支付" | "视频" | "音频";
+export type AdType = "splash" | "interstitial" | "shake" | "deeplink" | "popup";
+export type AppCategory = "电商" | "游戏" | "银行" | "政务" | "支付" | "视频" | "音频" | "生活";
 export type BlockAction =
   | "instant_skip"
   | "sensor_block"
@@ -25,10 +30,12 @@ export type BlockAction =
   | "guard_skip"
   | "preempt_block"
   | "chain_block"
+  | "gyro_block"
+  | "popup_close"
   | "back_fallback"
   | "dns_block"
   | "miss";
-export type ScenarioKind = "normal" | "shake" | "deeplink" | "guard";
+export type ScenarioKind = "normal" | "shake" | "deeplink" | "guard" | "popup";
 
 export interface PipelineStep {
   label: string;
@@ -57,6 +64,7 @@ export const AD_TYPE_LABEL: Record<AdType, string> = {
   interstitial: "插屏广告",
   shake: "摇一摇广告",
   deeplink: "Deeplink 诱导跳转",
+  popup: "应用内弹窗广告",
 };
 
 export const ACTION_LABEL: Record<BlockAction, string> = {
@@ -66,12 +74,14 @@ export const ACTION_LABEL: Record<BlockAction, string> = {
   guard_skip: "守护模式代点",
   preempt_block: "P0 预拦截",
   chain_block: "链式跳转直接阻断",
+  gyro_block: "陀螺仪诱导直断 + 回弹",
+  popup_close: "弹窗广告代点关闭",
   back_fallback: "返回键兜底",
   dns_block: "定向域名阻断",
   miss: "漏拦截（用户手动）",
 };
 
-/** 广告对抗特征（喜马拉雅专案沉淀） */
+/** 广告对抗特征（喜马拉雅专案 v2 沉淀） */
 export interface AdTraits {
   /** 广告图内嵌假「跳过」热区（点击即跳转，非真跳过） */
   fakeSkip?: boolean;
@@ -79,6 +89,10 @@ export interface AdTraits {
   chainJump?: boolean;
   /** 真跳过控件出现延迟（毫秒；假跳过陷阱的陪衬，真跳过往往很晚才出现） */
   realSkipDelayMs?: number;
+  /** 陀螺仪诱导：底部提示「翻转手机，跳转详情页或第三方应用」，无倒计时，手机一动就跳 */
+  gyroFlip?: boolean;
+  /** 无倒计时（喜马拉雅实测：右上角直接是「跳过广告」，无 Xs 倒计时文案） */
+  noCountdown?: boolean;
 }
 
 const jitter = (base: number, spread: number) =>
@@ -167,15 +181,47 @@ export function planInstantBlock(
     };
   }
 
-  /* ── 开屏 / 插屏：按对抗特征分流 ── */
+  /* ── 应用内弹窗广告：角标 + 关闭键双信号 → 代点关闭 ── */
+  if (app.adType === "popup") {
+    const steps: PipelineStep[] = [
+      { label: "弹窗窗口捕获", detail: "TYPE_WINDOW_STATE_CHANGED（Dialog/PopupWindow）→ 进入弹窗识别窗（10s）", atMs: 0 },
+      { label: "多信号同扫", detail: "一次 DFS 收集：「广告」角标（短文本精确匹配）+ 关闭键（×/关闭/不感兴趣/我知道了）+ 跳过键", atMs: jitter(14, 6) },
+      {
+        label: app.guard ? "守护·代点关闭" : "双信号确认代点",
+        detail: app.guard
+          ? "「广告」角标 + 关闭键同时在场 → 代点关闭键；温和策略，进程与服务零干预"
+          : "「广告」角标 + 关闭键同时在场 → 代点关闭键（防误伤：无角标的正常弹窗一律不动）",
+        atMs: jitter(38, 10),
+      },
+      { label: "冷却保护", detail: "关闭后 2.5s 冷却，避免连环弹窗被误点；窗口出栈确认", atMs: jitter(52, 12) },
+    ];
+    const totalMs = steps[steps.length - 1].atMs;
+    return {
+      action: app.guard ? "guard_skip" : "popup_close",
+      scenario: app.guard ? "guard" : "popup",
+      ruleName: app.learnedRuleName ?? app.ruleName,
+      steps,
+      totalMs,
+      engineMs: totalMs,
+      waitMs: 0,
+      confidence: Math.min(99.2, (app.learnedRuleName ? 96 : 92) + (app.guard ? 1.5 : 0) + 2),
+      headline: app.guard
+        ? `守护模式 · 弹窗广告已关闭，${app.category}应用服务保持运行`
+        : "弹窗广告已关闭 · 角标 + 关闭键双信号",
+      subline: `${app.name} · ${AD_TYPE_LABEL[app.adType]} · ${ACTION_LABEL[app.guard ? "guard_skip" : "popup_close"]}`,
+      preempt: false,
+    };
+  }
+
+  /* ── 开屏 / 插屏：按对抗特征分流（极速链 0ms 首扫起步） ── */
   const steps: PipelineStep[] = [
-    { label: "捕获窗口", detail: "TYPE_WINDOW_STATE_CHANGED → 命中开屏时间窗（启动 3.5s 内）", atMs: 0 },
+    { label: "捕获窗口", detail: "TYPE_WINDOW_STATE_CHANGED → 命中开屏时间窗（启动 12s 内）", atMs: 0 },
     {
-      label: app.learnedRuleName ? "viewId 定向查找" : "控件树快照",
+      label: app.learnedRuleName ? "viewId 定向查找" : "极速链首扫（0ms）",
       detail: app.learnedRuleName
         ? `findAccessibilityNodeInfosByViewId 直达跳过控件（学习指纹，免全树扫描）`
-        : "AccessibilityNodeInfo 递归遍历，提取 text / viewId / 控件面积",
-      atMs: jitter(11, 6),
+        : "窗口切换 0ms 即首扫（原 350ms）+ 前密后疏重试链 [0/120/240/400/650/1000ms…]，命中即熔断",
+      atMs: jitter(8, 5),
     },
   ];
   let waitMs = 0;
@@ -183,27 +229,33 @@ export function planInstantBlock(
   if (traits.fakeSkip) {
     steps.push({
       label: "假跳过甄别",
-      detail: "广告图内嵌「跳过」热区：全屏可点击容器 / 图文混排 / 出现时序与倒计时不符 → 判定为陷阱并忽略",
-      atMs: jitter(26, 8),
+      detail: `广告图内嵌「跳过」热区：全屏可点击容器 / 图文混排 / 出现时序${traits.noCountdown ? "无倒计时可校验" : "与倒计时不符"} → 判定为陷阱并忽略`,
+      atMs: jitter(18, 6),
     });
   }
 
-  if (traits.chainJump) {
-    // 链式二跳广告：直接拦截屏蔽（用户指令：含链式跳转的开屏直接拦截），不等待真跳过
+  if (traits.chainJump || traits.gyroFlip) {
+    // 链式二跳 / 陀螺仪诱导广告：直接拦截屏蔽，不等真跳过（用户指令：含链式跳转的开屏直接拦截）
     steps.push(
       {
-        label: "链式二跳识别",
-        detail: "广告容器携带自动重定向 Scheme（落地页 → 外部应用二跳特征）→ 升级为直接阻断",
-        atMs: jitter(38, 8),
+        label: traits.gyroFlip ? "陀螺仪诱导识别" : "链式二跳识别",
+        detail: traits.gyroFlip
+          ? "底部提示「翻转手机，跳转详情页或第三方应用」→ 无障碍无法冻结应用内传感器监听 → 升级为抢先直断"
+          : "广告容器携带自动重定向 Scheme（落地页 → 外部应用二跳特征）→ 升级为直接阻断",
+        atMs: jitter(28, 8),
       },
       {
         label: app.guard ? "守护·返回键温和关闭" : "窗口级直接阻断",
         detail: app.guard
-          ? "GLOBAL_ACTION_BACK 温和关闭广告窗，不点任何广告元素，服务零干预"
-          : "GLOBAL_ACTION_BACK 直接关闭广告窗，不点任何广告元素、不给二跳任何机会",
-        atMs: jitter(52, 10),
+          ? "GLOBAL_ACTION_BACK 温和关闭广告窗，不点任何广告元素，服务零干预（抢在翻转触发前）"
+          : "GLOBAL_ACTION_BACK 直接关闭广告窗，不点任何广告元素（抢在翻转/二跳触发前）",
+        atMs: jitter(42, 10),
       },
-      { label: "链路校验", detail: "广告窗口出栈 + Scheme 队列清空确认，直进主页", atMs: jitter(64, 12) },
+      {
+        label: "回弹兜底",
+        detail: "若跳转已发起：广告宿主 6s 保护期内被电商/商店/短视频抢占 → 返回键弹回原应用，链路彻底断开",
+        atMs: jitter(56, 12),
+      },
     );
   } else {
     if (traits.fakeSkip) {
@@ -219,35 +271,37 @@ export function planInstantBlock(
       steps.push({
         label: "守护名单识别",
         detail: `「${app.category}」类应用 → 温和策略：仅代点跳过，进程与服务零干预`,
-        atMs: jitter(32, 6) + waitMs,
+        atMs: jitter(26, 6) + waitMs,
       });
     }
     steps.push(
       {
         label: "精准代点",
-        detail: `performAction(ACTION_CLICK) 命中真「跳过」控件中心${traits.fakeSkip ? "（假跳过热区已忽略）" : ""}`,
-        atMs: jitter(42, 10) + waitMs,
+        detail: `performAction(ACTION_CLICK) 命中真「跳过」控件中心${traits.fakeSkip ? "（假跳过热区已忽略）" : ""}${traits.noCountdown ? "（无倒计时形态，「跳过广告」文案直配）" : ""}`,
+        atMs: jitter(34, 8) + waitMs,
       },
-      { label: "关闭校验", detail: "广告窗口出栈确认，直进应用主页", atMs: jitter(61, 14) + waitMs },
+      { label: "关闭校验", detail: "广告窗口出栈确认，直进应用主页", atMs: jitter(50, 12) + waitMs },
     );
   }
 
   const totalMs = steps[steps.length - 1].atMs;
-  const action: BlockAction = traits.chainJump
-    ? app.guard ? "guard_skip" : "chain_block"
+  const action: BlockAction = traits.chainJump || traits.gyroFlip
+    ? app.guard ? "guard_skip" : traits.gyroFlip ? "gyro_block" : "chain_block"
     : app.guard ? "guard_skip" : "instant_skip";
   const confidence = Math.min(
     99.4,
-    (app.learnedRuleName ? 97 : 93) + (traits.fakeSkip || traits.chainJump ? 2 : 0) + (app.guard ? 1.5 : 0) + 0.8,
+    (app.learnedRuleName ? 97 : 93) + (traits.fakeSkip || traits.chainJump || traits.gyroFlip ? 2 : 0) + (app.guard ? 1.5 : 0) + 0.8,
   );
 
-  const headline = traits.chainJump
-    ? "链式跳转已直接阻断 · 二跳零机会"
-    : traits.fakeSkip
-      ? "假跳过陷阱已甄别 · 真跳过秒点"
-      : app.guard
-        ? `守护模式 · 广告已拦截，${app.category}应用服务保持运行`
-        : "开屏广告已秒跳 · 直达主页";
+  const headline = traits.gyroFlip
+    ? "陀螺仪诱导已直断 · 翻转跳转零机会"
+    : traits.chainJump
+      ? "链式跳转已直接阻断 · 二跳零机会"
+      : traits.fakeSkip
+        ? "假跳过陷阱已甄别 · 真跳过秒点"
+        : app.guard
+          ? `守护模式 · 广告已拦截，${app.category}应用服务保持运行`
+          : "开屏广告已秒跳 · 直达主页";
 
   const subline = `${app.name} · ${AD_TYPE_LABEL[app.adType]} · ${ACTION_LABEL[action]}${app.learnedRuleName ? "（学习规则）" : ""}`;
 

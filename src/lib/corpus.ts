@@ -1,16 +1,19 @@
 /**
- * 千款热门应用兼容性测试语料库（v3.1.0 · 含对抗样本层）
+ * 千款热门应用兼容性测试语料库（v3.2.0 · 含对抗样本层）
  * ─────────────────────────────────────────────────────────────
  * · REAL 层：130 款真实国民应用（真实包名，依据 2026-11 国内应用市场
  *   公开信息整理；包名以主流应用商店在架版本为准）。
- * · GEN 层：880 款确定性生成式长尾应用（种子固定，完全可复现），
+ * · GEN 层：930 款确定性生成式长尾应用（种子固定，完全可复现），
  *   分类权重与获取渠道（官方商店 / 第三方侧载）按真实市场分布建模。
  * · 渲染建模：native（原生控件树）86.5% / web（H5，其中 60% 无障碍
  *   树可见）/ self（自绘，其中 35% 角落有原生跳过小控件）——诚实反映
  *   「哪些广告结构上可见、哪些不可见」。
- * · 对抗样本层（v3.1.0 新增，喜马拉雅专案沉淀）：
+ * · 对抗样本层（v3.1.0 喜马拉雅专案沉淀 + v3.2.0 扩充）：
  *   fakeSkip（广告图内嵌假「跳过」热区，点击即跳转）、
  *   chainJump（倒计时归零自动跳落地页并二跳外部应用）、
+ *   gyroFlip（无倒计时 + 底部「翻转手机，跳转详情页或第三方应用」陀螺仪
+ *   诱导，手机一动就跳，2026-11 喜马拉雅实测）、
+ *   popup（应用内弹窗广告：「广告」角标 + 小号关闭键）、
  *   backResponsive（无控件广告对返回键是否响应）。
  * · 能耗画像：每款应用的开屏事件量（事件数 = 引擎工作量的输入）。
  */
@@ -37,6 +40,10 @@ export interface CorpusApp {
   fakeSkip: boolean;
   /** 链式二跳（倒计时归零自动跳落地页 → 再跳外部应用/商店） */
   chainJump: boolean;
+  /** 陀螺仪诱导（v3.2.0）：无倒计时 + 「翻转手机跳详情页/第三方应用」，手机一动就跳 */
+  gyroFlip: boolean;
+  /** 应用内弹窗广告（v3.2.0）：「广告」角标 + 小号关闭键（与开屏类型正交） */
+  popup: boolean;
   /** 无控件可见时，广告窗口对返回键是否响应（约 82%） */
   backResponsive: boolean;
   /** 热度 0~100（决定抽样权重与事件量） */
@@ -230,9 +237,11 @@ function mkApp(row: RealRow): CorpusApp {
   const webviewA11y = rnd() < 0.6;
   const hybridSkip = rnd() < 0.35;
   const hot = 60 + Math.round(rnd() * 40);
-  // 对抗样本：约 8% 假跳过陷阱 / 约 8% 链式二跳（确定性派生）
+  // 对抗样本：约 8% 假跳过陷阱 / 约 8% 链式二跳 / 约 7% 陀螺仪诱导 / 约 11% 弹窗广告（确定性派生）
   const fakeSkip = (adType === "splash" || adType === "interstitial") && rnd() < 0.08;
   const chainJump = adType === "splash" && rnd() < 0.08;
+  const gyroFlip = adType === "splash" && rnd() < 0.07;
+  const popup = rnd() < 0.11;
   const backResponsive = rnd() < 0.82;
   const app: CorpusApp = {
     pkg,
@@ -247,27 +256,31 @@ function mkApp(row: RealRow): CorpusApp {
     hybridSkip,
     fakeSkip,
     chainJump,
+    gyroFlip,
+    popup,
     backResponsive,
     hot,
   };
-  // 喜马拉雅专案画像（2026-11 实测特征）：假跳过陷阱 + 真跳过延迟 5.1s + 链式二跳
+  // 喜马拉雅专案 v2 画像（2026-11 实测特征）：无倒计时 + 「跳过广告」+
+  // 假跳过陷阱 + 真跳过延迟 5.1s + 链式二跳 + 「翻转手机」陀螺仪诱导
   if (pkg === "com.ximalaya.ting.android") {
     app.fakeSkip = true;
     app.chainJump = true;
+    app.gyroFlip = true;
     app.skipDelayMs = 5100;
     app.hot = 98;
   }
   return app;
 }
 
-/* ───────── GEN 层：880 款确定性生成式长尾 ───────── */
+/* ───────── GEN 层：930 款确定性生成式长尾 ───────── */
 
-/** 分类 → 生成数量（权重按真实应用市场长尾分布；合计 880） */
+/** 分类 → 生成数量（权重按真实应用市场长尾分布；合计 930） */
 const GEN_PLAN: [string, number][] = [
-  ["工具", 140], ["游戏", 120], ["电商", 90], ["视频", 65], ["资讯", 60],
-  ["社交", 55], ["教育", 45], ["健康", 45], ["出行", 40], ["本地生活", 35],
+  ["工具", 150], ["游戏", 130], ["电商", 90], ["视频", 65], ["资讯", 65],
+  ["社交", 60], ["教育", 50], ["健康", 50], ["出行", 40], ["本地生活", 40],
   ["阅读", 30], ["摄影", 30], ["金融理财", 25], ["音频", 20], ["旅行", 20],
-  ["办公", 15], ["其他", 45],
+  ["办公", 15], ["其他", 50],
 ];
 
 /** 品牌词库（生成式长尾，与 REAL 层无重名） */
@@ -339,6 +352,8 @@ function genLayer(): CorpusApp[] {
       const hybridSkip = rnd() < 0.35;
       const fakeSkip = (adType === "splash" || adType === "interstitial") && rnd() < 0.12;
       const chainJump = adType === "splash" && rnd() < 0.1;
+      const gyroFlip = adType === "splash" && rnd() < 0.08;
+      const popup = rnd() < 0.11;
       const backResponsive = rnd() < 0.82;
       const hot = Math.round(Math.pow(rnd(), 2) * 60 + 4); // 长尾幂律：多数低热度
       out.push({
@@ -354,6 +369,8 @@ function genLayer(): CorpusApp[] {
         hybridSkip,
         fakeSkip,
         chainJump,
+        gyroFlip,
+        popup,
         backResponsive,
         hot,
       });
@@ -365,7 +382,7 @@ function genLayer(): CorpusApp[] {
 
 let cached: CorpusApp[] | null = null;
 
-/** 全量语料：REAL 130 + GEN 880 = 1010 款（构建一次后缓存） */
+/** 全量语料：REAL 130 + GEN 930 = 1060 款（构建一次后缓存） */
 export function buildCorpus(): CorpusApp[] {
   if (cached) return cached;
   cached = [...REAL.map(mkApp), ...genLayer()];

@@ -1,4 +1,4 @@
-/* 由 scripts/corpus-test.ts 自动生成（勿手改）· 2026-11-16T04:17:11 UTC */
+/* 由 scripts/corpus-test.ts 自动生成（勿手改）· 2026-11-16T04:52:27 UTC */
 export interface TestSummaryRound {
   round: number; name: string; rate: number; weightedRate: number;
   reactionMs: number; p95Ms: number; adVisibleMs: number; energyMWh: number;
@@ -6,138 +6,141 @@ export interface TestSummaryRound {
 }
 export interface TestSummary {
   total: number; real: number; generated: number;
-  adversarial: { fakeSkip: number; chainJump: number };
+  adversarial: { fakeSkip: number; chainJump: number; gyro: number; popup: number };
   sideload: { hit: number; total: number };
   guardApps: number;
   rounds: TestSummaryRound[];
   latest: {
     rate: number; coldRate: number; sideloadRate: number; reactionMs: number; adVisibleMs: number;
     energyMWh: number; energyDropPct: number; burstDropPct: number; preemptShare: number;
+    gyroAll: boolean; popupAll: boolean;
     missInvisible: number; backRecovered: number; dnsRecovered: number;
     deterministic: boolean; guardZeroKills: boolean; ximalayaOk: boolean;
-    ximalaya: { r1Ms: number; r4Ms: number; r5Ms: number; steadyMs: number; steadyVisibleMs: number };
+    ximalaya: { r1Ms: number; r3Ms: number; steadyMs: number; steadyVisibleMs: number };
   };
 }
 export const TEST_SUMMARY: TestSummary = {
-  "total": 1010,
+  "total": 1060,
   "real": 130,
-  "generated": 880,
+  "generated": 930,
   "adversarial": {
-    "fakeSkip": 102,
-    "chainJump": 87
+    "fakeSkip": 107,
+    "chainJump": 89,
+    "gyro": 63,
+    "popup": 105
   },
   "sideload": {
-    "hit": 257,
-    "total": 257
+    "hit": 273,
+    "total": 273
   },
   "guardApps": 29,
   "rounds": [
     {
       "round": 1,
-      "name": "基线 v3.0.0 + 对抗样本",
-      "rate": 57.62,
-      "weightedRate": 57.98,
-      "reactionMs": 268,
-      "p95Ms": 3294,
-      "adVisibleMs": 1561,
-      "energyMWh": 0.559,
-      "burstTierMWs": 42.6,
+      "name": "基线 v3.1.0 终态 + 新对抗样本",
+      "rate": 84.81,
+      "weightedRate": 83.31,
+      "reactionMs": 269,
+      "p95Ms": 4823,
+      "adVisibleMs": 2084,
+      "energyMWh": 0.13,
+      "burstTierMWs": 10,
       "burstPreemptMWs": 1.6
     },
     {
       "round": 2,
-      "name": "+学习规则（12s 窗）",
-      "rate": 82.48,
-      "weightedRate": 84.13,
-      "reactionMs": 284,
-      "p95Ms": 4958,
-      "adVisibleMs": 2420,
-      "energyMWh": 0.662,
-      "burstTierMWs": 50.8,
+      "name": "+极速链（0ms 首扫）",
+      "rate": 86.51,
+      "weightedRate": 85.1,
+      "reactionMs": 266,
+      "p95Ms": 4811,
+      "adVisibleMs": 2066,
+      "energyMWh": 0.13,
+      "burstTierMWs": 10.1,
       "burstPreemptMWs": 1.6
     },
     {
       "round": 3,
-      "name": "+能耗治理（v3.0.0 现状）",
-      "rate": 82.48,
-      "weightedRate": 84.13,
-      "reactionMs": 240,
-      "p95Ms": 4908,
-      "adVisibleMs": 2376,
-      "energyMWh": 0.244,
-      "burstTierMWs": 19.2,
+      "name": "+陀螺仪诱导直断",
+      "rate": 88.96,
+      "weightedRate": 88.27,
+      "reactionMs": 292,
+      "p95Ms": 4804,
+      "adVisibleMs": 2023,
+      "energyMWh": 0.13,
+      "burstTierMWs": 10.1,
       "burstPreemptMWs": 1.6
     },
     {
       "round": 4,
-      "name": "+假跳过甄别",
-      "rate": 91.58,
-      "weightedRate": 92.18,
-      "reactionMs": 243,
-      "p95Ms": 4913,
-      "adVisibleMs": 2427,
-      "energyMWh": 0.244,
-      "burstTierMWs": 19.2,
+      "name": "+链式跳转回弹",
+      "rate": 90.09,
+      "weightedRate": 89.47,
+      "reactionMs": 302,
+      "p95Ms": 4804,
+      "adVisibleMs": 2009,
+      "energyMWh": 0.13,
+      "burstTierMWs": 10.1,
       "burstPreemptMWs": 1.6
     },
     {
       "round": 5,
-      "name": "+链式二跳直断",
-      "rate": 92.38,
-      "weightedRate": 92.67,
-      "reactionMs": 258,
-      "p95Ms": 4871,
-      "adVisibleMs": 2205,
-      "energyMWh": 0.238,
-      "burstTierMWs": 18.7,
+      "name": "+弹窗广告屏蔽 → 100%",
+      "rate": 100,
+      "weightedRate": 100,
+      "reactionMs": 304,
+      "p95Ms": 4823,
+      "adVisibleMs": 2014,
+      "energyMWh": 0.13,
+      "burstTierMWs": 10.1,
       "burstPreemptMWs": 1.6
     },
     {
       "round": 6,
-      "name": "+P0 预拦截",
-      "rate": 92.38,
-      "weightedRate": 92.67,
+      "name": "+P0 预拦截回归",
+      "rate": 100,
+      "weightedRate": 100,
       "reactionMs": 34,
       "p95Ms": 38,
       "adVisibleMs": 0,
-      "energyMWh": 0.04,
-      "burstTierMWs": 13.4,
+      "energyMWh": 0.035,
+      "burstTierMWs": 10.1,
       "burstPreemptMWs": 1.6
     },
     {
       "round": 7,
-      "name": "+返回键兜底",
-      "rate": 98.22,
-      "weightedRate": 98.33,
-      "reactionMs": 64,
-      "p95Ms": 542,
-      "adVisibleMs": 32,
-      "energyMWh": 0.04,
-      "burstTierMWs": 14.3,
-      "burstPreemptMWs": 1.6
-    },
-    {
-      "round": 8,
-      "name": "+定向域名阻断 → 100%",
-      "rate": 100,
-      "weightedRate": 100,
-      "reactionMs": 40,
-      "p95Ms": 39,
-      "adVisibleMs": 0,
-      "energyMWh": 0.028,
-      "burstTierMWs": 18.9,
-      "burstPreemptMWs": 1.6
-    },
-    {
-      "round": 9,
-      "name": "+定向查找 · 分级调度",
+      "name": "+守护模式回归",
       "rate": 100,
       "weightedRate": 100,
       "reactionMs": 34,
       "p95Ms": 38,
       "adVisibleMs": 0,
-      "energyMWh": 0.034,
-      "burstTierMWs": 9.5,
+      "energyMWh": 0.035,
+      "burstTierMWs": 10.1,
+      "burstPreemptMWs": 1.6
+    },
+    {
+      "round": 8,
+      "name": "+功耗再治理（120ms 合并）",
+      "rate": 100,
+      "weightedRate": 100,
+      "reactionMs": 34,
+      "p95Ms": 38,
+      "adVisibleMs": 0,
+      "energyMWh": 0.03,
+      "burstTierMWs": 7.5,
+      "burstPreemptMWs": 1.6
+    },
+    {
+      "round": 9,
+      "name": "+冷启动全能力回归",
+      "rate": 100,
+      "weightedRate": 100,
+      "reactionMs": 34,
+      "p95Ms": 38,
+      "adVisibleMs": 0,
+      "energyMWh": 0.03,
+      "burstTierMWs": 7.5,
       "burstPreemptMWs": 1.6
     },
     {
@@ -148,8 +151,8 @@ export const TEST_SUMMARY: TestSummary = {
       "reactionMs": 34,
       "p95Ms": 38,
       "adVisibleMs": 0,
-      "energyMWh": 0.034,
-      "burstTierMWs": 9.5,
+      "energyMWh": 0.03,
+      "burstTierMWs": 7.5,
       "burstPreemptMWs": 1.6
     }
   ],
@@ -159,20 +162,21 @@ export const TEST_SUMMARY: TestSummary = {
     "sideloadRate": 100,
     "reactionMs": 34,
     "adVisibleMs": 0,
-    "energyMWh": 0.034,
-    "energyDropPct": 86,
-    "burstDropPct": 92,
+    "energyMWh": 0.03,
+    "energyDropPct": 77,
+    "burstDropPct": 84,
     "preemptShare": 0.9,
+    "gyroAll": true,
     "missInvisible": 0,
-    "backRecovered": 59,
-    "dnsRecovered": 18,
+    "backRecovered": 60,
+    "dnsRecovered": 12,
+    "popupAll": true,
     "deterministic": true,
     "guardZeroKills": true,
     "ximalayaOk": true,
     "ximalaya": {
-      "r1Ms": 9100,
-      "r4Ms": 5365,
-      "r5Ms": 420,
+      "r1Ms": 1600,
+      "r3Ms": 847,
       "steadyMs": 34,
       "steadyVisibleMs": 0
     }

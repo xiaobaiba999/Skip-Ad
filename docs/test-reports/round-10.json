@@ -1,9 +1,9 @@
 {
   "round": 10,
-  "engine": "R10 · 全量回归 ×2（确定性 · 守护零干预 · 喜马拉雅专案断言）",
-  "fixNote": "终检：全矩阵双跑结果逐字段一致；守护应用 29 款全部广告照拦且服务零干预；喜马拉雅 R1 误点→R4 甄别→R5 直断→R6+ 预拦截全链路验证",
-  "total": 1010,
-  "hits": 1010,
+  "engine": "R10 · 全量回归 ×2（确定性 · 喜马拉雅 v2 · 陀螺仪 · 弹窗断言）",
+  "fixNote": "终检：全矩阵双跑逐字段一致；陀螺仪诱导全量断言；弹窗广告全量断言；守护应用零干预；喜马拉雅 R1 翻转抢先→R3 直断→R6+ 预拦截全链路",
+  "total": 1060,
+  "hits": 1060,
   "rate": 100,
   "weightedRate": 100,
   "avgLatencyMs": 34,
@@ -14,69 +14,69 @@
   "guardServiceKills": 0,
   "bySource": {
     "official": [
-      753,
-      753
+      787,
+      787
     ],
     "sideload": [
-      257,
-      257
+      273,
+      273
     ]
   },
   "byRender": {
     "native": [
-      826,
-      826
+      867,
+      867
     ],
     "web": [
-      124,
-      124
+      132,
+      132
     ],
     "self": [
-      60,
-      60
+      61,
+      61
     ]
   },
   "byAdType": {
     "splash": [
-      799,
-      799
+      832,
+      832
     ],
     "interstitial": [
-      108,
-      108
+      120,
+      120
     ],
     "shake": [
-      66,
-      66
+      69,
+      69
     ],
     "deeplink": [
-      37,
-      37
+      39,
+      39
     ]
   },
   "tierCounts": {
-    "preempt_block": 878,
+    "preempt_block": 923,
     "guard_skip": 29,
-    "sensor_block": 66,
-    "intent_block": 37
+    "sensor_block": 69,
+    "intent_block": 39
   },
   "missReasons": {},
   "energy": {
-    "mWh": 0.034086388888888895,
+    "mWh": 0.029828111111111118,
     "preemptShare": 0.9,
     "breakdown": [
       {
         "label": "启动拦截",
-        "mWh": 0.02986416666666667
+        "mWh": 0.027383666666666674
       },
       {
         "label": "后台事件",
-        "mWh": 0.004222222222222223
+        "mWh": 0.002444444444444445
       }
     ]
   },
   "burst": {
-    "tier": 9.5,
+    "tier": 7.5,
     "preempt": 1.6
   }
 }

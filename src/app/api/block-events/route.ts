@@ -4,12 +4,13 @@ import type { AdType, BlockAction, ScenarioKind } from "@/lib/instant-engine";
 
 export const dynamic = "force-dynamic";
 
-const AD_TYPES = ["splash", "interstitial", "shake", "deeplink"];
+const AD_TYPES = ["splash", "interstitial", "shake", "deeplink", "popup"];
 const ACTIONS = [
   "instant_skip", "sensor_block", "intent_block", "guard_skip",
-  "preempt_block", "chain_block", "back_fallback", "dns_block", "miss",
+  "preempt_block", "chain_block", "gyro_block", "popup_close",
+  "back_fallback", "dns_block", "miss",
 ];
-const SCENARIOS = ["normal", "shake", "deeplink", "guard"];
+const SCENARIOS = ["normal", "shake", "deeplink", "guard", "popup"];
 
 /**
  * POST /api/block-events —— 演练场拦截埋点
@@ -38,11 +39,12 @@ export async function POST(req: NextRequest) {
       note: typeof b.note === "string" ? b.note : undefined,
     };
 
-    const r = b.kind === "miss" ? await recordMiss(input) : await recordBlock(input);
+    const r: { event?: { id: number | string }; id?: number | string; learnedCreated?: boolean } =
+      b.kind === "miss" ? await recordMiss(input) : await recordBlock(input);
     return NextResponse.json({
       ok: true,
-      id: "event" in r ? r.event.id : r.id,
-      learnedCreated: "learnedCreated" in r ? r.learnedCreated : false,
+      id: String(r.event?.id ?? r.id),
+      learnedCreated: r.learnedCreated ?? false,
     });
   } catch (e) {
     console.error("[block-events POST]", e);

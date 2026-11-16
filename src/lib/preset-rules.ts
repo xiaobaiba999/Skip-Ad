@@ -167,22 +167,64 @@ export function presetRulesV31(): PresetRuleSeed[] {
       appCategory: "音频",
       adType: "splash",
       matchType: "chain",
-      pattern: "喜马拉雅专案：广告图内嵌假「跳过」热区 + 真跳过延迟 5.1s + 倒计时归零链式二跳 → 假跳过甄别 + 窗口级直接阻断 + 次启预拦截",
-      action: "chain_block",
-      confidence: 0.97,
+      pattern: "喜马拉雅专案 v2：无倒计时 + 右上角「跳过广告」+ 图内假「跳过」热区 + 底部「翻转手机，跳转详情页或第三方应用」陀螺仪诱导 + 链式二跳 → 极速链 0ms 首扫直配「跳过广告」；0.8s 无真跳过键返回键直断；二跳回弹兑底；次启预拦截",
+      action: "gyro_block",
+      confidence: 0.98,
     },
   ];
 }
 
-/** 幂等播种：规则库为空时写入全量；已有旧版规则则补种 v3.1.0 新规则 */
+/** v3.2.0 六层纵深新增规则（极速链 / 陀螺仪直断 / 链式回弹 / 弹窗广告屏蔽） */
+export function presetRulesV32(): PresetRuleSeed[] {
+  return [
+    {
+      appName: "*",
+      appCategory: "通用",
+      adType: "splash",
+      matchType: "timing",
+      pattern: "极速链：窗口切换 0ms 即首扫（原 350ms）+ 前密后疏重试链 [0/120/240/400/650/1000ms…] 覆盖 12s 窗，命中即熔断后续扫描",
+      action: "instant_skip",
+      confidence: 0.97,
+    },
+    {
+      appName: "*",
+      appCategory: "通用",
+      adType: "splash",
+      matchType: "sensor",
+      pattern: "陀螺仪诱导直断：识别「翻转手机/摇一摇」文案后 0.8s 内仍无真跳过键 → GLOBAL_ACTION_BACK 温和直断广告窗（只关窗不碰服务），抢先于翻转触发",
+      action: "gyro_block",
+      confidence: 0.96,
+    },
+    {
+      appName: "*",
+      appCategory: "通用",
+      adType: "any",
+      matchType: "chain",
+      pattern: "链式跳转回弹：广告宿主被判定后 6s 内被电商/商店/短视频包名抢占前台 → 返回键弹回原应用，链路彻底断开",
+      action: "chain_block",
+      confidence: 0.95,
+    },
+    {
+      appName: "*",
+      appCategory: "通用",
+      adType: "popup",
+      matchType: "fake-skip",
+      pattern: "弹窗广告屏蔽：「广告」角标（短文本精确匹配）+ 关闭键（×/x/关闭/不感兴趣/我知道了）双信号同时在场 → 代点关闭；窗口 10s 内冷却 2.5s，无角标正常弹窗不动",
+      action: "popup_close",
+      confidence: 0.94,
+    },
+  ];
+}
+
+/** 幂等播种：规则库为空时写入全量；已有旧版规则则逐版补种 */
 export async function ensureRulesSeed(): Promise<void> {
   const count = await db.rule.count();
   if (count === 0) {
-    await db.rule.createMany({ data: [...presetRules(), ...presetRulesV31()] });
+    await db.rule.createMany({ data: [...presetRules(), ...presetRulesV31(), ...presetRulesV32()] });
     return;
   }
-  // v3.1.0 升级补种：按 appName + matchType + action 判重
-  for (const r of presetRulesV31()) {
+  // 逐版升级补种：按 appName + matchType + action 判重
+  for (const r of [...presetRulesV31(), ...presetRulesV32()]) {
     const exists = await db.rule.findFirst({
       where: { appName: r.appName, matchType: r.matchType, action: r.action },
     });

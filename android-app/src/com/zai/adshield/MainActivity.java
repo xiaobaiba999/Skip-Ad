@@ -154,7 +154,7 @@ public class MainActivity extends Activity {
             return Downloader.progress(a);
         }
 
-        /** v3.0.0 能耗画像：本次开机累计（事件/扫描/估算 µWh） */
+        /** v3.2.0 能耗画像：本次开机累计（事件/扫描/返回键 + 弹窗/回弹战果） */
         @JavascriptInterface
         public String energyStats() {
             AdSkipService s = AdSkipService.instance;
@@ -164,8 +164,11 @@ public class MainActivity extends Activity {
                     out.put("ok", true);
                     out.put("events", s.energyEvents);
                     out.put("scans", s.energyScans);
-                    // 近似模型：0.22µWh/事件 + 0.72µWh/扫描 + 0.56µWh/代点（代点≈扫描数命中场景）
-                    double microWh = s.energyEvents * 0.22 + s.energyScans * 0.72;
+                    out.put("backs", s.energyBacks);
+                    out.put("popup", s.popupBlocks);
+                    out.put("chain", s.chainRebounds);
+                    // 近似模型：0.22µWh/事件 + 0.72µWh/扫描 + 0.9µWh/返回键（含回弹）
+                    double microWh = s.energyEvents * 0.22 + s.energyScans * 0.72 + s.energyBacks * 0.9;
                     out.put("microWh", Math.round(microWh * 10) / 10.0);
                 } else {
                     out.put("ok", false);

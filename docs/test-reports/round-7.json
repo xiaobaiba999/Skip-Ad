@@ -1,95 +1,73 @@
 {
   "round": 7,
-  "engine": "R7 · 返回键兜底（无控件广告 GLOBAL_ACTION_BACK 温和关闭）",
-  "fixNote": "修复⑥：WebView 不暴露无障碍树/纯自绘的顽固广告——返回键温和关闭广告窗口（约 82% 响应）",
-  "total": 1010,
-  "hits": 992,
-  "rate": 98.22,
-  "weightedRate": 98.33,
-  "avgLatencyMs": 64,
-  "p95LatencyMs": 542,
-  "avgReactionMs": 64,
-  "avgAdVisibleMs": 32,
+  "engine": "R7 · 守护模式回归（银行/政务/支付 · 零干预）",
+  "fixNote": "回归⑥：新能力（直断/回弹/弹窗关闭）全部温和化——只关广告窗与弹窗、只弹回二跳，绝不终止进程/服务",
+  "total": 1060,
+  "hits": 1060,
+  "rate": 100,
+  "weightedRate": 100,
+  "avgLatencyMs": 34,
+  "p95LatencyMs": 38,
+  "avgReactionMs": 34,
+  "avgAdVisibleMs": 0,
   "guardHits": 29,
   "guardServiceKills": 0,
   "bySource": {
     "official": [
-      741,
-      753
+      787,
+      787
     ],
     "sideload": [
-      251,
-      257
+      273,
+      273
     ]
   },
   "byRender": {
     "native": [
-      826,
-      826
+      867,
+      867
     ],
     "web": [
-      111,
-      124
+      132,
+      132
     ],
     "self": [
-      55,
-      60
+      61,
+      61
     ]
   },
   "byAdType": {
     "splash": [
-      788,
-      799
+      832,
+      832
     ],
     "interstitial": [
-      101,
-      108
+      120,
+      120
     ],
     "shake": [
-      66,
-      66
+      69,
+      69
     ],
     "deeplink": [
-      37,
-      37
+      39,
+      39
     ]
   },
   "tierCounts": {
-    "preempt_block": 801,
-    "back_fallback": 59,
+    "preempt_block": 923,
     "guard_skip": 29,
-    "sensor_block": 66,
-    "intent_block": 37
+    "sensor_block": 69,
+    "intent_block": 39
   },
-  "missReasons": {
-    "miss_invisible（结构性不可见）": [
-      "磐石相册1（工具·官方·H5）",
-      "灵犀诊所3（工具·官方·H5）",
-      "松果课堂5（游戏·官方·自绘）",
-      "枫叶相册5（游戏·官方·H5）",
-      "朗月圈子5（游戏·侧载·H5）",
-      "晨风相机6（游戏·侧载·H5）",
-      "松果快递6（游戏·官方·H5）",
-      "远航书房6（游戏·官方·自绘）",
-      "远航工场7（游戏·官方·自绘）",
-      "朗月影院8（游戏·官方·自绘）",
-      "新叶花园12（视频·官方·H5）",
-      "破晓快递19（健康·侧载·H5）",
-      "海豚诊所23（本地生活·官方·H5）",
-      "溪谷旅行23（阅读·侧载·H5）",
-      "芳草相册23（阅读·官方·H5）",
-      "星云日程24（摄影·侧载·自绘）",
-      "星云书房25（金融理财·官方·H5）",
-      "拾光圈子25（金融理财·侧载·H5）"
-    ]
-  },
+  "missReasons": {},
   "energy": {
-    "mWh": 0.03994268465832978,
-    "preemptShare": 0.9267367473559006,
+    "mWh": 0.034827222222222225,
+    "preemptShare": 0.9,
     "breakdown": [
       {
         "label": "启动拦截",
-        "mWh": 0.03572046243610756
+        "mWh": 0.030605000000000004
       },
       {
         "label": "后台事件",
@@ -98,7 +76,7 @@
     ]
   },
   "burst": {
-    "tier": 14.3,
+    "tier": 10.1,
     "preempt": 1.6
   }
 }
