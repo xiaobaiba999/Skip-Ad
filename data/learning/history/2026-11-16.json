@@ -1,16 +1,16 @@
 {
   "meta": {
     "version": "2.0.0",
-    "generatedAt": "2026-11-16T02:17:32.997Z",
+    "generatedAt": "2026-11-16T02:29:55.356Z",
     "timezone": "Asia/Shanghai",
     "purpose": "学习中心夜间自动同步——为后续版本迭代提供规则与画像参考"
   },
   "stats": {
-    "totalBlocks": 4,
+    "totalBlocks": 9,
     "totalMisses": 3,
-    "guardBlocks": 1,
-    "avgLatencyMs": 64,
-    "successRate": 0.5714
+    "guardBlocks": 3,
+    "avgLatencyMs": 63,
+    "successRate": 0.75
   },
   "learnedRules": [
     {
@@ -33,16 +33,28 @@
         "avgMs": 420
       },
       {
-        "appName": "星际远征",
-        "category": "游戏",
-        "count": 2,
-        "avgMs": 180
-      },
-      {
         "appName": "惠银银行",
         "category": "银行",
+        "count": 3,
+        "avgMs": 65
+      },
+      {
+        "appName": "星际远征",
+        "category": "游戏",
+        "count": 3,
+        "avgMs": 139
+      },
+      {
+        "appName": "惠民支付",
+        "category": "支付",
         "count": 1,
-        "avgMs": 68
+        "avgMs": 65
+      },
+      {
+        "appName": "刷刷视频",
+        "category": "视频",
+        "count": 1,
+        "avgMs": 60
       }
     ],
     "hourHistogram": [
@@ -56,7 +68,7 @@
       0,
       0,
       0,
-      7,
+      12,
       0,
       0,
       0,
@@ -72,25 +84,36 @@
       0
     ],
     "scenarioDistribution": {
-      "normal": 2,
-      "shake": 1,
-      "guard": 1
+      "shake": 3,
+      "guard": 3,
+      "deeplink": 1,
+      "normal": 2
     }
   },
   "hotPresetRules": [
+    {
+      "appName": "惠银银行",
+      "pattern": "惠银银行：viewId 精确定位跳过控件（无障碍快照）",
+      "hitCount": 3
+    },
+    {
+      "appName": "星际远征",
+      "pattern": "星际远征：加速度计监听冻结（激进阈值确认）",
+      "hitCount": 2
+    },
     {
       "appName": "极选商城",
       "pattern": "极选商城：viewId 精确定位跳过控件（无障碍快照）",
       "hitCount": 1
     },
     {
-      "appName": "星际远征",
-      "pattern": "星际远征：加速度计监听冻结（激进阈值确认）",
+      "appName": "惠民支付",
+      "pattern": "惠民支付：加速度计监听冻结（激进阈值确认）",
       "hitCount": 1
     },
     {
-      "appName": "惠银银行",
-      "pattern": "惠银银行：viewId 精确定位跳过控件（无障碍快照）",
+      "appName": "刷刷视频",
+      "pattern": "刷刷视频：广告层 Intent 过滤 + 商城 Scheme 黑名单",
       "hitCount": 1
     },
     {
@@ -107,19 +130,59 @@
       "appName": "*",
       "pattern": "面积安全阀：只代点 <35% 屏面积控件，全屏热区/假关闭 × 直接忽略",
       "hitCount": 0
-    },
-    {
-      "appName": "*",
-      "pattern": "加速度阈值 <15m/s²、转角 <35°、持续 <3s 的传感器事件视为激进广告 → 挂起监听",
-      "hitCount": 0
-    },
-    {
-      "appName": "*",
-      "pattern": "广告窗口内发起的 Scheme / Universal Link 一律拦截，跳转链系统层断开",
-      "hitCount": 0
     }
   ],
   "recentEvents": [
+    {
+      "id": "cmwin4ian000qt4n53rhk56b7",
+      "ts": 1794795877535,
+      "appName": "惠民支付",
+      "action": "sensor_block",
+      "adType": "shake",
+      "latencyMs": 65,
+      "success": true,
+      "scenario": "shake"
+    },
+    {
+      "id": "cmwin4e1d000pt4n5a02vk4ry",
+      "ts": 1794795872018,
+      "appName": "惠银银行",
+      "action": "guard_skip",
+      "adType": "splash",
+      "latencyMs": 67,
+      "success": true,
+      "scenario": "guard"
+    },
+    {
+      "id": "cmwin48pv000ot4n5xhvsohnx",
+      "ts": 1794795865123,
+      "appName": "刷刷视频",
+      "action": "intent_block",
+      "adType": "deeplink",
+      "latencyMs": 60,
+      "success": true,
+      "scenario": "deeplink"
+    },
+    {
+      "id": "cmwin3ws9000nt4n5dghzjlrj",
+      "ts": 1794795849657,
+      "appName": "星际远征",
+      "action": "sensor_block",
+      "adType": "shake",
+      "latencyMs": 59,
+      "success": true,
+      "scenario": "shake"
+    },
+    {
+      "id": "cmwimw3pn000mt4n59lkfbie2",
+      "ts": 1794795485387,
+      "appName": "惠银银行",
+      "action": "guard_skip",
+      "adType": "splash",
+      "latencyMs": 60,
+      "success": true,
+      "scenario": "guard"
+    },
     {
       "id": "cmwimtte7000jt4n5gx9l6k8t",
       "ts": 1794795378704,
@@ -148,46 +211,6 @@
       "adType": "splash",
       "latencyMs": 775,
       "success": false,
-      "scenario": "normal"
-    },
-    {
-      "id": "cmwimtgoz000ft4n5uzqibv02",
-      "ts": 1794795362244,
-      "appName": "星际远征",
-      "action": "miss",
-      "adType": "shake",
-      "latencyMs": 300,
-      "success": false,
-      "scenario": "normal"
-    },
-    {
-      "id": "cmwimt6lv000et4n54hqj228m",
-      "ts": 1794795349171,
-      "appName": "星际远征",
-      "action": "sensor_block",
-      "adType": "shake",
-      "latencyMs": 59,
-      "success": true,
-      "scenario": "shake"
-    },
-    {
-      "id": "cmwimt3g0000dt4n5qjvltw0l",
-      "ts": 1794795345072,
-      "appName": "惠银银行",
-      "action": "guard_skip",
-      "adType": "splash",
-      "latencyMs": 68,
-      "success": true,
-      "scenario": "guard"
-    },
-    {
-      "id": "cmwimsx7c000ct4n5mcy5b9x7",
-      "ts": 1794795336984,
-      "appName": "极选商城",
-      "action": "instant_skip",
-      "adType": "splash",
-      "latencyMs": 67,
-      "success": true,
       "scenario": "normal"
     }
   ]
