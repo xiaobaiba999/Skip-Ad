@@ -1,15 +1,15 @@
 {
   "round": 10,
-  "engine": "R10 · 全量回归 ×2（确定性 · 喜马拉雅 v2 · 陀螺仪 · 弹窗断言）",
-  "fixNote": "终检：全矩阵双跑逐字段一致；陀螺仪诱导全量断言；弹窗广告全量断言；守护应用零干预；喜马拉雅 R1 翻转抢先→R3 直断→R6+ 预拦截全链路",
+  "engine": "R10 · 回弹扩充 + 广告窗活跃回弹 + 落地页弹回 → 100%【v3.3.0】",
+  "fixNote": "修复⑨：回弹名单新增微信/QQ/支付宝/美团/知乎/小红书/B站/主流浏览器；引擎仍见到广告信号时任意跳转目标都弹回（广告窗活跃回弹）；广告判定 3s 内同包拉起 WebView 落地页同样弹回",
   "total": 1060,
   "hits": 1060,
   "rate": 100,
   "weightedRate": 100,
-  "avgLatencyMs": 34,
-  "p95LatencyMs": 38,
-  "avgReactionMs": 34,
-  "avgAdVisibleMs": 0,
+  "avgLatencyMs": 2274,
+  "p95LatencyMs": 4848,
+  "avgReactionMs": 310,
+  "avgAdVisibleMs": 2274,
   "guardHits": 29,
   "guardServiceKills": 0,
   "bySource": {
@@ -55,28 +55,32 @@
     ]
   },
   "tierCounts": {
-    "preempt_block": 923,
+    "fast_hit": 735,
+    "skip_discrim": 84,
+    "sdk_ad_cut": 66,
+    "gyro_immediate": 86,
+    "hot_zone_cut": 53,
     "guard_skip": 29,
-    "sensor_block": 69,
-    "intent_block": 39
+    "gyro_break": 3,
+    "chain_rebound": 4
   },
   "missReasons": {},
   "energy": {
-    "mWh": 0.029828111111111118,
-    "preemptShare": 0.9,
+    "mWh": 0.12976388888888896,
+    "preemptShare": 0,
     "breakdown": [
       {
         "label": "启动拦截",
-        "mWh": 0.027383666666666674
+        "mWh": 0.12554166666666672
       },
       {
         "label": "后台事件",
-        "mWh": 0.002444444444444445
+        "mWh": 0.004222222222222223
       }
     ]
   },
   "burst": {
-    "tier": 7.5,
+    "tier": 10,
     "preempt": 1.6
   }
 }

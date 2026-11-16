@@ -51,6 +51,10 @@ public final class Downloader {
             }
             DownloadManager dm = (DownloadManager) ctx.getSystemService(Context.DOWNLOAD_SERVICE);
             if (dm == null) return err("系统下载服务不可用");
+            // v3.3.0：切换下载通道时清理旧任务（避免下载列表/通知堆积）
+            if (oldId > 0 && !url.equals(oldUrl)) {
+                try { dm.remove(oldId); } catch (Exception ignored) { }
+            }
             DownloadManager.Request req = new DownloadManager.Request(Uri.parse(url));
             req.setTitle("开屏卫士 更新");
             req.setDescription(fileName);

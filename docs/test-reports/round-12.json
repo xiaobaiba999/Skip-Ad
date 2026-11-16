@@ -1,0 +1,80 @@
+{
+  "round": 12,
+  "engine": "R12 · 守护模式回归（银行/政务/支付 · 零干预）",
+  "fixNote": "回归⑪：新能力全部温和化——热区启发式对守护名单豁免（只用 className/文本高精度信号）；只关广告窗与弹窗、只弹回二跳，绝不终止进程/服务",
+  "total": 1060,
+  "hits": 1060,
+  "rate": 100,
+  "weightedRate": 100,
+  "avgLatencyMs": 34,
+  "p95LatencyMs": 38,
+  "avgReactionMs": 34,
+  "avgAdVisibleMs": 0,
+  "guardHits": 29,
+  "guardServiceKills": 0,
+  "bySource": {
+    "official": [
+      787,
+      787
+    ],
+    "sideload": [
+      273,
+      273
+    ]
+  },
+  "byRender": {
+    "native": [
+      867,
+      867
+    ],
+    "web": [
+      132,
+      132
+    ],
+    "self": [
+      61,
+      61
+    ]
+  },
+  "byAdType": {
+    "splash": [
+      832,
+      832
+    ],
+    "interstitial": [
+      120,
+      120
+    ],
+    "shake": [
+      69,
+      69
+    ],
+    "deeplink": [
+      39,
+      39
+    ]
+  },
+  "tierCounts": {
+    "preempt_block": 1031,
+    "guard_skip": 29
+  },
+  "missReasons": {},
+  "energy": {
+    "mWh": 0.0347763888888889,
+    "preemptShare": 0.9,
+    "breakdown": [
+      {
+        "label": "启动拦截",
+        "mWh": 0.03055416666666667
+      },
+      {
+        "label": "后台事件",
+        "mWh": 0.004222222222222223
+      }
+    ]
+  },
+  "burst": {
+    "tier": 10,
+    "preempt": 1.6
+  }
+}

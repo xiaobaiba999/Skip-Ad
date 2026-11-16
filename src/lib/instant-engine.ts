@@ -1,24 +1,24 @@
 /**
- * 秒跳引擎（Instant Skip Engine · v3.2.0 · 六层纵深）
+ * 秒跳引擎（Instant Skip Engine · v3.3.0 · 七层纵深）
  * ─────────────────────────────────────────────────────────────
- * 设计基准（2026-11 市场调研 + 喜马拉雅专案 v2 复盘）：
- *  · P0 预拦截：学习指纹（广告容器签名 + viewId + 出现时机）命中即
+ * 设计基准（2026-11 市场调研 + 喜马拉雅专案 v3 复盘 · 真机反馈驱动）：
+ *  · P0 预拦截：学习指纹（广告容器签名 + viewId + 窗口 className）命中即
  *    在窗口附加阶段阻断——广告未及呈现，用户零感知、引擎零扫描。
- *  · P0.5 极速链：窗口切换 0ms 即首扫（原 350ms）+ 前密后疏重试链，
- *    命中即熔断——喜马拉雅类「无倒计时 + 跳过广告」秒级命中。
- *  · P1 控件代点：「跳过|Skip」文本 + viewId 双通道（李跳跳 / GKD 同源）；
- *    假跳过甄别：广告图内嵌假「跳过」热区（全屏可点击容器 / 图文混排 /
- *    出现时序与倒计时不符）多信号判定后直接忽略，绝不代点。
- *  · P2 陀螺仪诱导直断：「翻转手机跳详情页/第三方应用」类（无障碍无法
- *    冻结应用内传感器监听）——0.8s 内仍无真跳过键 → 返回键温和直断
- *    广告窗（只关窗，不碰进程与服务），抢先于翻转触发。
- *  · P2.5 链式回弹：广告宿主被判定后 6s 内拉起电商/商店/短视频 →
- *    返回键弹回原应用，不给二跳任何机会（含倒计时归零自动跳场景）。
- *  · P2.6 弹窗广告屏蔽：应用内弹窗「广告」角标 + 关闭键（×/关闭/
- *    不感兴趣/我知道了）双信号 → 代点关闭，窗口 10s 内冷却 2.5s。
- *  · P3 域名阻断：结构性不可见且返回键无效的极少数，定向域名热名单
- *    + 启动窗突发本地过滤，广告请求即断（广告根本加载不出来）。
- *  · 守护模式：支付/银行/政务类应用广告照拦、服务绝不终止。
+ *  · P0.7 SDK 广告窗识别：广告窗 className 指纹（穿山甲/优量汇/快手/AdMob/
+ *    宿主 ad.activity）分段精确匹配——文案烧在图里的零文本广告首次可判，
+ *    500ms 无真跳过键即返回键直断（喜马拉雅类根因修复）。
+ *  · P0.5 极速链：窗口切换 0ms 即首扫 + 前密后疏重试链，命中即熔断。
+ *  · P1 控件代点：「跳过|Skip」文本 + viewId 双通道；假跳过甄别。
+ *  · P2 立即直断/热区直断：无倒计时翻转文案首扫即断（~120ms）；自绘零文本
+ *    广告全屏热区（≥55% 可点 + 节点≤12 + 无输入框）900ms 直断（守护名单
+ *    豁免）；返回键被拦自动补一次（每窗最多 2 次）。
+ *  · P2.5 链式回弹：广告窗 6s 保护期内被电商/商店/短视频/微信/支付宝/
+ *    浏览器抢占 → 返回键弹回；广告窗仍活跃时任意目标都弹回；广告判定 3s
+ *    内同包拉起 WebView 落地页同样弹回。
+ *  · P2.6 弹窗广告 v2：角标（广告/推广/赞助/AD/Sponsored）+ 关闭键双信号；
+ *    Dialog 形态 + ≥2 条营销话术弱信号；弹窗窗期独立于开屏窗；覆盖层
+ *    内容突发检测（1.5s 内 ≥3 次内容变化）。
+ *  · P3 守护模式：支付/银行/政务类应用广告照拦、服务绝不终止。
  */
 
 export type AdType = "splash" | "interstitial" | "shake" | "deeplink" | "popup";
@@ -31,6 +31,7 @@ export type BlockAction =
   | "preempt_block"
   | "chain_block"
   | "gyro_block"
+  | "sdk_window_cut"
   | "popup_close"
   | "back_fallback"
   | "dns_block"
@@ -75,13 +76,14 @@ export const ACTION_LABEL: Record<BlockAction, string> = {
   preempt_block: "P0 预拦截",
   chain_block: "链式跳转直接阻断",
   gyro_block: "陀螺仪诱导直断 + 回弹",
+  sdk_window_cut: "SDK 广告窗指纹直断",
   popup_close: "弹窗广告代点关闭",
   back_fallback: "返回键兜底",
   dns_block: "定向域名阻断",
   miss: "漏拦截（用户手动）",
 };
 
-/** 广告对抗特征（喜马拉雅专案 v2 沉淀） */
+/** 广告对抗特征（喜马拉雅专案 v3 沉淀） */
 export interface AdTraits {
   /** 广告图内嵌假「跳过」热区（点击即跳转，非真跳过） */
   fakeSkip?: boolean;
@@ -93,6 +95,9 @@ export interface AdTraits {
   gyroFlip?: boolean;
   /** 无倒计时（喜马拉雅实测：右上角直接是「跳过广告」，无 Xs 倒计时文案） */
   noCountdown?: boolean;
+  /** v3.3.0：SDK 广告窗（穿山甲/优量汇/快手/宿主 ad.activity）——文案烧在图里，
+   * 无障碍树零文本，仅窗口 className 指纹可判（真机「还是跳不过」的根因） */
+  sdkWindow?: boolean;
 }
 
 const jitter = (base: number, spread: number) =>
@@ -235,28 +240,55 @@ export function planInstantBlock(
   }
 
   if (traits.chainJump || traits.gyroFlip) {
-    // 链式二跳 / 陀螺仪诱导广告：直接拦截屏蔽，不等真跳过（用户指令：含链式跳转的开屏直接拦截）
-    steps.push(
-      {
-        label: traits.gyroFlip ? "陀螺仪诱导识别" : "链式二跳识别",
-        detail: traits.gyroFlip
-          ? "底部提示「翻转手机，跳转详情页或第三方应用」→ 无障碍无法冻结应用内传感器监听 → 升级为抢先直断"
-          : "广告容器携带自动重定向 Scheme（落地页 → 外部应用二跳特征）→ 升级为直接阻断",
-        atMs: jitter(28, 8),
-      },
-      {
-        label: app.guard ? "守护·返回键温和关闭" : "窗口级直接阻断",
-        detail: app.guard
-          ? "GLOBAL_ACTION_BACK 温和关闭广告窗，不点任何广告元素，服务零干预（抢在翻转触发前）"
-          : "GLOBAL_ACTION_BACK 直接关闭广告窗，不点任何广告元素（抢在翻转/二跳触发前）",
-        atMs: jitter(42, 10),
-      },
-      {
-        label: "回弹兜底",
-        detail: "若跳转已发起：广告宿主 6s 保护期内被电商/商店/短视频抢占 → 返回键弹回原应用，链路彻底断开",
-        atMs: jitter(56, 12),
-      },
-    );
+    // v3.3.0：SDK 广告窗 className 指纹零文本可判，500ms 直断抢在翻转前（根因修复）
+    if (traits.sdkWindow) {
+      steps.push(
+        {
+          label: "SDK 广告窗识别",
+          detail: "TYPE_WINDOW_STATE_CHANGED 的窗口 className 命中广告 SDK 指纹（穿山甲/优量汇/快手/宿主 ad.activity）——文案烧在图里、无障碍树零文本也能判",
+          atMs: jitter(9, 5),
+        },
+        {
+          label: "极速链复核",
+          detail: "0/120/240/400ms 重试链内未发现真跳过键（跳过文案同样烧在图里）——不等 0.8s，直接升级直断",
+          atMs: 500,
+        },
+        {
+          label: app.guard ? "守护·返回键温和关闭" : "返回键直断",
+          detail: app.guard
+            ? "GLOBAL_ACTION_BACK 温和关闭广告窗，不点任何广告元素，服务零干预（抢在翻转触发前）"
+            : "GLOBAL_ACTION_BACK 直接关闭广告窗，不点任何广告元素（抢在翻转/二跳触发前）",
+          atMs: jitter(522, 8),
+        },
+        {
+          label: "回弹 + 指纹沉淀",
+          detail: "若跳转已发起：任意目标（含浏览器/微信）弹回原应用；沉淀窗口 className 指纹，次启 300ms 快断",
+          atMs: jitter(640, 12),
+        },
+      );
+    } else {
+      steps.push(
+        {
+          label: traits.gyroFlip ? "陀螺仪诱导识别" : "链式二跳识别",
+          detail: traits.gyroFlip
+            ? "底部提示「翻转手机，跳转详情页或第三方应用」→ 无障碍无法冻结应用内传感器监听 → 升级为抢先直断"
+            : "广告容器携带自动重定向 Scheme（落地页 → 外部应用二跳特征）→ 升级为直接阻断",
+          atMs: jitter(28, 8),
+        },
+        {
+          label: app.guard ? "守护·返回键温和关闭" : "窗口级直接阻断",
+          detail: app.guard
+            ? "GLOBAL_ACTION_BACK 温和关闭广告窗，不点任何广告元素，服务零干预（抢在翻转触发前）"
+            : "GLOBAL_ACTION_BACK 直接关闭广告窗，不点任何广告元素（抢在翻转/二跳触发前）",
+          atMs: jitter(42, 10),
+        },
+        {
+          label: "回弹兜底",
+          detail: "若跳转已发起：广告宿主 6s 保护期内被电商/商店/短视频/微信/浏览器抢占 → 返回键弹回原应用，链路彻底断开",
+          atMs: jitter(56, 12),
+        },
+      );
+    }
   } else {
     if (traits.fakeSkip) {
       // 假跳过但无链式：甄别后等待真跳过控件挂载（真跳过通常延迟出现）
@@ -285,15 +317,19 @@ export function planInstantBlock(
   }
 
   const totalMs = steps[steps.length - 1].atMs;
-  const action: BlockAction = traits.chainJump || traits.gyroFlip
-    ? app.guard ? "guard_skip" : traits.gyroFlip ? "gyro_block" : "chain_block"
-    : app.guard ? "guard_skip" : "instant_skip";
+  const action: BlockAction = traits.sdkWindow && (traits.chainJump || traits.gyroFlip)
+    ? app.guard ? "guard_skip" : "sdk_window_cut"
+    : traits.chainJump || traits.gyroFlip
+      ? app.guard ? "guard_skip" : traits.gyroFlip ? "gyro_block" : "chain_block"
+      : app.guard ? "guard_skip" : "instant_skip";
   const confidence = Math.min(
     99.4,
     (app.learnedRuleName ? 97 : 93) + (traits.fakeSkip || traits.chainJump || traits.gyroFlip ? 2 : 0) + (app.guard ? 1.5 : 0) + 0.8,
   );
 
-  const headline = traits.gyroFlip
+  const headline = traits.sdkWindow && (traits.chainJump || traits.gyroFlip)
+    ? "SDK 广告窗已直断 · 零文本广告照样拦"
+    : traits.gyroFlip
     ? "陀螺仪诱导已直断 · 翻转跳转零机会"
     : traits.chainJump
       ? "链式跳转已直接阻断 · 二跳零机会"

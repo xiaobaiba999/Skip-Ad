@@ -28,6 +28,8 @@ const MATCH_LABEL: Record<string, string> = {
   learned: "习惯学习",
   preempt: "P0 预拦截",
   "fake-skip": "假跳过甄别",
+  "sdk-window": "SDK 窗口指纹",
+  "popup-v2": "弹窗 v2 双信号",
   chain: "链式二跳",
   backkey: "返回键兜底",
   dns: "定向域名",
@@ -216,15 +218,66 @@ export function presetRulesV32(): PresetRuleSeed[] {
   ];
 }
 
+/** v3.3.0 七层纵深新增规则（SDK 广告窗指纹 / 热区直断 / 弹窗 v2 / 回弹扩充） */
+export function presetRulesV33(): PresetRuleSeed[] {
+  return [
+    {
+      appName: "*",
+      appCategory: "通用",
+      adType: "any",
+      matchType: "sdk-window",
+      pattern: "SDK 广告窗指纹：窗口 className 分段精确匹配广告 SDK（穿山甲 openadsdk / 优量汇 qq.e.ads / 快手 kwad / AdMob / 宿主 .ad.activity / AdActivity…）→ 500ms 无真跳过键即返回键直断，零文本依赖；直断后沉淀窗口指纹，次启 300ms 快断",
+      action: "sdk_window_cut",
+      confidence: 0.98,
+    },
+    {
+      appName: "*",
+      appCategory: "通用",
+      adType: "splash",
+      matchType: "area",
+      pattern: "全屏热区直断：启动窗内「≥55% 屏幕面积可点热区 + 节点数≤12 + 无输入框」三条件判定自绘图片广告 → 900ms 无真跳过键返回键直断；广告拦截返回键自动补一次（每窗最多 2 次）；银行/政务/支付守护名单豁免（只用高精度信号）",
+      action: "gyro_block",
+      confidence: 0.95,
+    },
+    {
+      appName: "*",
+      appCategory: "通用",
+      adType: "popup",
+      matchType: "popup-v2",
+      pattern: "弹窗广告 v2：弹窗窗期独立于开屏 12s 窗（覆盖层内容突发检测：1.5s 内 ≥3 次内容变化即开窗）；角标扩充（广告/推广/赞助/AD/Sponsored/Promoted）+ 关闭键代点；Dialog/PopupWindow 形态 + ≥2 条营销话术弱信号组合；关闭键不可点时 Dialog 返回键兜底",
+      action: "popup_close",
+      confidence: 0.96,
+    },
+    {
+      appName: "*",
+      appCategory: "通用",
+      adType: "any",
+      matchType: "chain",
+      pattern: "回弹名单扩充 + 广告窗活跃回弹：微信/QQ/支付宝/美团/知乎/小红书/B站/主流浏览器入名单；引擎仍见到广告信号时任意跳转目标都弹回；广告判定 3s 内同包拉起 WebView/H5 落地页同样弹回",
+      action: "chain_block",
+      confidence: 0.97,
+    },
+    {
+      appName: "喜马拉雅",
+      appCategory: "音频",
+      adType: "splash",
+      matchType: "sdk-window",
+      pattern: "喜马拉雅专案 v3：SDK 广告窗零文本（文案烧在图里）+ 无倒计时 + 翻转手机 900ms 即跳 + 浏览器二跳 → className 指纹 500ms 直断（抢在翻转前）；浏览器落地页回弹兜底；30s 后首页覆盖层弹窗内容突发检测关闭；次启预拦截 0ms 可见",
+      action: "sdk_window_cut",
+      confidence: 0.99,
+    },
+  ];
+}
+
 /** 幂等播种：规则库为空时写入全量；已有旧版规则则逐版补种 */
 export async function ensureRulesSeed(): Promise<void> {
   const count = await db.rule.count();
   if (count === 0) {
-    await db.rule.createMany({ data: [...presetRules(), ...presetRulesV31(), ...presetRulesV32()] });
+    await db.rule.createMany({ data: [...presetRules(), ...presetRulesV31(), ...presetRulesV32(), ...presetRulesV33()] });
     return;
   }
   // 逐版升级补种：按 appName + matchType + action 判重
-  for (const r of [...presetRulesV31(), ...presetRulesV32()]) {
+  for (const r of [...presetRulesV31(), ...presetRulesV32(), ...presetRulesV33()]) {
     const exists = await db.rule.findFirst({
       where: { appName: r.appName, matchType: r.matchType, action: r.action },
     });

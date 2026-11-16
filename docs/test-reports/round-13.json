@@ -1,0 +1,80 @@
+{
+  "round": 13,
+  "engine": "R13 · 功耗治理 + 冷启动全能力回归（首次遭遇即全拦）",
+  "fixNote": "回归⑫：系统级事件合并 120ms + 扫描链命中即熔断 + viewId 定向查找；关掉预拦截模拟首次遭遇——v3.3.0 全能力路径冷启动全量复测",
+  "total": 1060,
+  "hits": 1060,
+  "rate": 100,
+  "weightedRate": 100,
+  "avgLatencyMs": 34,
+  "p95LatencyMs": 38,
+  "avgReactionMs": 34,
+  "avgAdVisibleMs": 0,
+  "guardHits": 29,
+  "guardServiceKills": 0,
+  "bySource": {
+    "official": [
+      787,
+      787
+    ],
+    "sideload": [
+      273,
+      273
+    ]
+  },
+  "byRender": {
+    "native": [
+      867,
+      867
+    ],
+    "web": [
+      132,
+      132
+    ],
+    "self": [
+      61,
+      61
+    ]
+  },
+  "byAdType": {
+    "splash": [
+      832,
+      832
+    ],
+    "interstitial": [
+      120,
+      120
+    ],
+    "shake": [
+      69,
+      69
+    ],
+    "deeplink": [
+      39,
+      39
+    ]
+  },
+  "tierCounts": {
+    "preempt_block": 1031,
+    "guard_skip": 29
+  },
+  "missReasons": {},
+  "energy": {
+    "mWh": 0.09571944444444448,
+    "preemptShare": 0,
+    "breakdown": [
+      {
+        "label": "启动拦截",
+        "mWh": 0.09327500000000004
+      },
+      {
+        "label": "后台事件",
+        "mWh": 0.002444444444444445
+      }
+    ]
+  },
+  "burst": {
+    "tier": 7.5,
+    "preempt": 1.6
+  }
+}

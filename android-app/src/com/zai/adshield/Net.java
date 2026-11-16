@@ -17,8 +17,10 @@ import java.nio.charset.StandardCharsets;
  * v3.0.0 出口（全部围绕开源仓库本身，内置混淆令牌，界面零配置）：
  *  1. 问题反馈    → POST /repos/{repo}/issues（令牌内置于代码，双层 XOR+Base64 混淆，
  *                   与 Web 端 credentials.ts 同源密文；密文落库不触发密钥扫描）
- *  2. 检查更新    → GET  /repos/{repo}/releases/latest（公开仓库匿名可读）
- *  3. 应用内更新  → 下载交给系统 DownloadManager（见 Downloader.java）
+ *  2. 检查更新    → GET  /repos/{repo}/releases/latest（v3.3.0 起带令牌 + 三重重试 +
+ *                   /releases 列表回退——对抗移动网络/出口的间歇性 404/超时）
+ *  3. 应用内更新  → 下载交给系统 DownloadManager（见 Downloader.java），
+ *                   v3.3.0 起直连失败自动切换镜像通道（Net.mirrorUrls 提供）
  *
  * 约束：为规避 d8 8.2 的非静态内部类 bug，本类不使用任何匿名类/内部类/lambda。
  *       所有方法为同步阻塞调用，仅允许在 JSBridge 线程等后台线程执行。
@@ -136,56 +138,108 @@ public final class Net {
         }
     }
 
-    /* ───────── 检查更新 → GitHub Releases ───────── */
+    /* ───────── 检查更新 → GitHub Releases（v3.3.0：令牌 + 重试 + 列表回退） ───────── */
 
     /**
-     * 获取最新 Release（公开仓库无需令牌）。
-     * @return {ok:true, hasRelease:false} / {ok:true, hasRelease:true, tag, name, notes, url, apkUrl, apkMB, publishedAt, apkFileName}
+     * 获取最新 Release（v3.3.0 三通道：令牌直连 → 重试 → /releases 列表回退）。
+     * 背景真机反馈：检查更新常报“仓库尚未发布版本”或直接无反应——移动网络下
+     * api.github.com 间歇 404/超时；v3.2.0 及之前匿名单次请求，失败即放弃。
+     * @return {ok:true, hasRelease:false} / {ok:true, hasRelease:true, tag, name, notes, url, apkUrl, apkMirrors[], apkFileName, apkMB, publishedAt}
      *         / {ok:false, error}
      */
     public static String latestRelease() {
-        try {
-            String[] r = http("GET", API + "/releases/latest", null, null);
-            int code = Integer.parseInt(r[0]);
-            if (code == 404) {
-                JSONObject out = new JSONObject();
-                out.put("ok", true);
-                out.put("hasRelease", false);
-                return out.toString();
-            }
-            if (code >= 200 && code < 300) {
-                JSONObject d = new JSONObject(r[1]);
-                JSONObject out = new JSONObject();
-                out.put("ok", true);
-                out.put("hasRelease", true);
-                out.put("tag", d.optString("tag_name", ""));
-                out.put("name", d.optString("name", ""));
-                out.put("notes", d.optString("body", ""));
-                out.put("publishedAt", d.optString("published_at", ""));
-                out.put("url", d.optString("html_url", ""));
-                String apkUrl = "";
-                String apkFileName = "adshield.apk";
-                double apkMB = 0;
-                JSONArray assets = d.optJSONArray("assets");
-                if (assets != null) {
-                    for (int i = 0; i < assets.length(); i++) {
-                        JSONObject a = assets.optJSONObject(i);
-                        if (a != null && a.optString("name", "").endsWith(".apk")) {
-                            apkUrl = a.optString("browser_download_url", "");
-                            apkFileName = a.optString("name", "adshield.apk");
-                            apkMB = a.optLong("size", 0) / 1048576.0;
-                            break;
-                        }
-                    }
+        String token = builtInToken();
+        // 通道 1/2：/releases/latest，带令牌重试两次（间隔 800ms）
+        for (int attempt = 1; attempt <= 2; attempt++) {
+            try {
+                String[] r = http("GET", API + "/releases/latest", token, null);
+                int code = Integer.parseInt(r[0]);
+                if (code == 404 && attempt == 1) {
+                    sleep(800); // 间歇性 404：稍候重试一次再下结论
+                    continue;
                 }
-                out.put("apkUrl", apkUrl);
-                out.put("apkFileName", apkFileName);
-                out.put("apkMB", Math.round(apkMB * 100) / 100.0);
-                return out.toString();
+                if (code >= 200 && code < 300) {
+                    return parseRelease(r[1]);
+                }
+                if (code == 404) {
+                    break; // 两次 404 → 走列表回退再下结论
+                }
+                if (attempt == 1) {
+                    sleep(800);
+                    continue;
+                }
+                return err("GitHub 返回 " + code, null);
+            } catch (Exception e) {
+                if (attempt == 2) break;
+                sleep(800);
+            }
+        }
+        // 通道 3：/releases 列表回退（latest 语义不可用时取最新非预发布项）
+        try {
+            String[] r = http("GET", API + "/releases?per_page=8", token, null);
+            int code = Integer.parseInt(r[0]);
+            if (code >= 200 && code < 300) {
+                org.json.JSONArray arr = new org.json.JSONArray(r[1]);
+                for (int i = 0; i < arr.length(); i++) {
+                    org.json.JSONObject d = arr.optJSONObject(i);
+                    if (d == null || d.optBoolean("draft", false) || d.optBoolean("prerelease", false)) continue;
+                    String out = parseRelease(d.toString());
+                    if (out.contains("\"hasRelease\":true")) return out;
+                }
+                JSONObject none = new JSONObject();
+                none.put("ok", true);
+                none.put("hasRelease", false);
+                return none.toString();
             }
             return err("GitHub 返回 " + code, null);
         } catch (Exception e) {
             return err("网络异常：" + safeMsg(e), null);
+        }
+    }
+
+    /** 解析单个 Release JSON → 页面可用结构（含镜像通道列表） */
+    private static String parseRelease(String body) throws Exception {
+        JSONObject d = new JSONObject(body);
+        JSONObject out = new JSONObject();
+        out.put("ok", true);
+        out.put("hasRelease", true);
+        out.put("tag", d.optString("tag_name", ""));
+        out.put("name", d.optString("name", ""));
+        out.put("notes", d.optString("body", ""));
+        out.put("publishedAt", d.optString("published_at", ""));
+        out.put("url", d.optString("html_url", ""));
+        String apkUrl = "";
+        String apkFileName = "adshield.apk";
+        double apkMB = 0;
+        JSONArray assets = d.optJSONArray("assets");
+        if (assets != null) {
+            for (int i = 0; i < assets.length(); i++) {
+                JSONObject a = assets.optJSONObject(i);
+                if (a != null && a.optString("name", "").endsWith(".apk")) {
+                    apkUrl = a.optString("browser_download_url", "");
+                    apkFileName = a.optString("name", "adshield.apk");
+                    apkMB = a.optLong("size", 0) / 1048576.0;
+                    break;
+                }
+            }
+        }
+        out.put("apkUrl", apkUrl);
+        out.put("apkFileName", apkFileName);
+        out.put("apkMB", Math.round(apkMB * 100) / 100.0);
+        // v3.3.0 镜像通道：直连失败时逐个切换（ghfast / gh-proxy 公共加速）
+        JSONArray mirrors = new JSONArray();
+        if (apkUrl.length() > 0) {
+            mirrors.put("https://ghfast.top/" + apkUrl);
+            mirrors.put("https://gh-proxy.com/" + apkUrl);
+        }
+        out.put("apkMirrors", mirrors);
+        return out.toString();
+    }
+
+    private static void sleep(long ms) {
+        try {
+            Thread.sleep(ms);
+        } catch (Exception ignored) {
         }
     }
 

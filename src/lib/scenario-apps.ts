@@ -1,10 +1,10 @@
 /**
- * 演练场场景应用定义（v3.2.0）
+ * 演练场场景应用定义（v3.3.0）
  * 8 个典型应用覆盖全部广告形态与对抗特征：
  *  电商·标准开屏 / 游戏·摇一摇 / 视频·Deeplink 诱导 /
  *  银行·政务·支付·守护模式（拦广告但绝不终止服务）/
- *  喜马拉雅·无倒计时 + 跳过广告 + 翻转手机陀螺仪诱导 + 链式二跳（2026-11 专案 v2）/
- *  邻里团购·应用内弹窗广告（广告角标 + 关闭键）
+ *  喜马拉雅·SDK 广告窗零文本 + 无倒计时 + 翻转手机陀螺仪诱导 + 链式二跳（2026-11 专案 v3）/
+ *  邻里团购·应用内弹窗广告 v2（广告角标 + 关闭键 + 覆盖层突发）
  */
 import type { AdType, AppCategory, AdTraits } from "./instant-engine";
 
@@ -61,7 +61,7 @@ export const SCENARIO_APPS: ScenarioApp[] = [
     category: "音频",
     adType: "splash",
     guard: false,
-    ruleName: "专案 v2·陀螺仪诱导直断 + 链式回弹",
+    ruleName: "专案 v3·SDK 广告窗指纹直断 + 回弹",
     icon: "headphones",
     gradient: "from-orange-500 to-amber-400",
     screen: "audio",
@@ -72,10 +72,10 @@ export const SCENARIO_APPS: ScenarioApp[] = [
       ctaText: "立即下单",
       theme: "finance",
       countdownSec: 0,
-      landingHint: "翻转手机即跳京东详情页，并二跳外部商店",
+      landingHint: "SDK 广告窗零文本，翻转手机即跳浏览器落地页并二跳外部商店",
     },
-    note: "无倒计时·跳过广告·翻转手机诱导（专案 v2）",
-    traits: { fakeSkip: true, chainJump: true, gyroFlip: true, noCountdown: true, realSkipDelayMs: 5100 },
+    note: "SDK 广告窗·零文本·翻转诱导（专案 v3）",
+    traits: { fakeSkip: true, chainJump: true, gyroFlip: true, noCountdown: true, sdkWindow: true, realSkipDelayMs: 5100 },
   },
   {
     key: "game",
@@ -188,7 +188,7 @@ export const SCENARIO_APPS: ScenarioApp[] = [
     category: "生活",
     adType: "popup",
     guard: false,
-    ruleName: "全局·广告角标 + 关闭键双信号",
+    ruleName: "全局·弹窗 v2 双信号 + 内容突发检测",
     icon: "shopping-basket",
     gradient: "from-lime-500 to-green-500",
     screen: "groupbuy",
@@ -201,7 +201,7 @@ export const SCENARIO_APPS: ScenarioApp[] = [
       countdownSec: 0,
       landingHint: "应用内弹窗广告（带「广告」角标与小号关闭键）",
     },
-    note: "应用内弹窗：角标 + 关闭键双信号",
+    note: "应用内弹窗 v2：角标/营销话术 + 覆盖层突发",
   },
 ];
 

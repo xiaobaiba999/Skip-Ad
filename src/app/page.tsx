@@ -43,7 +43,7 @@ export default function Home() {
                   v{APP_VERSION}
                 </span>
               </h1>
-              <p className="text-[11px] text-zinc-500">极速链 0ms 首扫 · 陀螺仪直断 · 链式回弹 · 弹窗屏蔽 · 十轮自测 100%</p>
+              <p className="text-[11px] text-zinc-500">SDK 广告窗指纹 · 极速链 0ms 首扫 · 热区直断 · 链式回弹 · 弹窗 v2 · 十四轮自测 100%</p>
             </div>
           </div>
 

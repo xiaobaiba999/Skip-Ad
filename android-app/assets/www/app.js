@@ -1,4 +1,4 @@
-/* 开屏卫士 v3.2.0 · 离线逻辑（首页 / 情报站 / 学习中心 / 关于 · 应用内页内直更） */
+/* 开屏卫士 v3.3.0 · 离线逻辑（首页 / 情报站 / 学习中心 / 关于 · 应用内页内直更 + 多通道下载） */
 "use strict";
 
 /* ══════════ 环境与存储 ══════════ */
@@ -22,49 +22,56 @@ const store = {
   }
 };
 
-/* ══════════ 静态数据 ══════════ */
+/* ══════════ 静态数据（v3.3.0 · 与仓库 scripts/corpus-test.ts 产出同步） ══════════ */
 
-/* 千款十轮自测结论（v3.2.0 · 与仓库 scripts/corpus-test.ts 产出同步） */
+/* 千款十四轮自测结论（诚实重构模型：v3.2.0 终态 86.79% → v3.3.0 逐项攻坚 100%） */
 const TEST = {
   total: 1060, real: 130, generated: 930,
-  adversarial: { fakeSkip: 107, chainJump: 89, gyro: 63, popup: 105 },
+  v320Rate: 86.79,
+  adversarial: { fakeSkip: 107, chainJump: 89, gyro: 63, popup: 106 },
+  v330: { sdkAd: 518, textlessGyro: 30, overlayPopup: 50, latePopup: 90 },
   rounds: [
-    { no: 1, name: "基线 v3.1.0 终态 + 新对抗样本", rate: 84.81, reaction: 269, energy: 0.130 },
-    { no: 2, name: "+极速链（0ms 首扫·熔断）", rate: 86.51, reaction: 266, energy: 0.130 },
-    { no: 3, name: "+陀螺仪诱导直断", rate: 88.96, reaction: 292, energy: 0.130 },
-    { no: 4, name: "+链式跳转回弹", rate: 90.09, reaction: 296, energy: 0.130 },
-    { no: 5, name: "+弹窗广告屏蔽 → 100%", rate: 100, reaction: 304, energy: 0.130 },
-    { no: 6, name: "+P0 预拦截回归（0ms 可见）", rate: 100, reaction: 34, energy: 0.035 },
-    { no: 7, name: "+守护模式回归（零干预）", rate: 100, reaction: 34, energy: 0.035 },
-    { no: 8, name: "+功耗再治理（120ms 事件合并）", rate: 100, reaction: 34, energy: 0.030 },
-    { no: 9, name: "+冷启动全能力回归", rate: 100, reaction: 34, energy: 0.030 },
-    { no: 10, name: "全量回归 ×2（喜马拉雅 v2 断言）", rate: 100, reaction: 34, energy: 0.030 }
+    { no: 1, name: "基线 v3.1.0 终态（诚实模型）", rate: 77.55, reaction: 250, energy: 0.127 },
+    { no: 2, name: "+极速链（0ms 首扫）", rate: 80, reaction: 247, energy: 0.128 },
+    { no: 3, name: "+陀螺仪诱导直断", rate: 84.43, reaction: 297, energy: 0.130 },
+    { no: 4, name: "+链式回弹（旧名单）", rate: 86.32, reaction: 312, energy: 0.130 },
+    { no: 5, name: "+弹窗屏蔽 v1 → v3.2.0 形态", rate: 86.79, reaction: 314, energy: 0.130 },
+    { no: 6, name: "v3.2.0 终态冷启动复测（诚实）", rate: 86.79, reaction: 314, energy: 0.130 },
+    { no: 7, name: "+SDK 广告窗识别【v3.3.0】", rate: 88.49, reaction: 324, energy: 0.131 },
+    { no: 8, name: "+立即直断/热区/重试【v3.3.0】", rate: 90.09, reaction: 308, energy: 0.130 },
+    { no: 9, name: "+弹窗屏蔽 v2【v3.3.0】", rate: 99.62, reaction: 308, energy: 0.130 },
+    { no: 10, name: "+回弹扩充/活跃回弹 → 100%", rate: 100, reaction: 310, energy: 0.130 },
+    { no: 11, name: "+P0 预拦截回归（0ms 可见）", rate: 100, reaction: 34, energy: 0.035 },
+    { no: 12, name: "+守护模式回归（零干预）", rate: 100, reaction: 34, energy: 0.035 },
+    { no: 13, name: "+功耗治理/冷启动回归", rate: 100, reaction: 34, energy: 0.096 },
+    { no: 14, name: "全量回归 ×2（双跑一致）", rate: 100, reaction: 34, energy: 0.096 }
   ],
   sideload: { hit: 273, total: 273, rate: 100 },
   gyro: { hit: 63, total: 63, rate: 100 },
-  popup: { hit: 105, total: 105, rate: 100 },
-  backRecovered: 60, dnsRecovered: 12, energyDrop: 77, burstDrop: 84
+  popup: { hit: 106, total: 106, rate: 100 },
+  ximalaya: { r1Ms: 900, sdkCutMs: 504, flipTrigMs: 900, steadyMs: 34 },
+  energyDrop: 24, coldRate: 100
 };
 
 /* 最近三个版本（仅此三版，其余全部略去） */
 const CHANGELOG = [
-  { v: "3.2.0", d: "喜马拉雅专案 v2：极速链 0ms 首扫（原 350ms）+ 前密后疏重试，无倒计时/跳过广告类秒级命中 / 陀螺仪诱导（翻转手机跳第三方）：0.8s 无真跳过键直接温和关闭广告窗 / 链式跳转回弹：广告拉起电商/商店被返回键送回 / 新增应用内弹窗广告屏蔽（广告角标+关闭键双信号）/ 功耗：系统事件合并 120ms + 命中即熔断 / 关于页检查更新页内直下修复" },
-  { v: "3.1.0", d: "P0 预拦截（首次拦截沉淀指纹，次启广告未及呈现）/ 喜马拉雅专案 v1：假跳过甄别+链式二跳直断 / 十轮自测自改自修复 1010 款全量 100% / 功耗：预拦截零扫描，启动瞬时功耗 -92%" },
-  { v: "3.0.0", d: "千款兼容自测(1010款·三轮91.58%) / 侧载一视同仁 / 能耗治理-32% / 应用内页内直更 / 内置加密令牌替代 Token 填写" }
+  { v: "3.3.0", d: "根因修复·SDK 广告窗识别（穿山甲/优量汇/快手/宿主 ad.activity 窗口类名指纹，文案烧在图里的零文本广告 500ms 直断，次启 300ms 快断）/ 全屏热区直断（≥55% 可点+节点≤12+无输入框，守护名单豁免）+ 返回键重试 / 弹窗广告 v2（窗期独立于开屏 12s 窗——修复用一会儿后弹窗关不掉；角标扩充推广/赞助/AD；Dialog+营销话术弱信号；覆盖层内容突发检测）/ 链式回弹扩充（微信/支付宝/美团/知乎/小红书/B站/浏览器入名单；广告窗活跃时任意目标都弹回；同包 WebView 落地页弹回）/ 更新链路修复（令牌+重试+列表回退；下载直连失败自动切换镜像通道） / 十四轮自测（诚实重构）：86.79% → 100%，冷启动 100%" },
+  { v: "3.2.0", d: "陀螺仪诱导直断（翻转文案 0.8s 无真跳过键 → 返回键温和直断）/ 链式跳转回弹 / 弹窗广告屏蔽 v1（角标+关闭键）/ 极速链 0ms 首扫 / 十轮自测（旧模型 100%，v3.3.0 诚实重构修正为 86.79%——零文本广告无出手信号）" },
+  { v: "3.1.0", d: "P0 预拦截（首次拦截沉淀指纹，次启广告未及呈现）/ 喜马拉雅专案 v1：假跳过甄别+链式二跳直断 / 十轮自测自改自修复（旧模型）1010 款 100% / 功耗：预拦截零扫描，启动瞬时功耗 -92%" }
 ];
 
 const INTEL = {
   strategies: [
-    { name: "翻转手机 · 陀螺仪诱导（喜马拉雅实测）", badge: "传感器", cls: "badge-sensor", desc: "开屏底部提示「翻转手机，跳转详情页或第三方应用」，无倒计时，手机一动就跳别的 App——无障碍无法冻结应用内的传感器监听。", counter: "极速链 0ms 首扫抢在翻转前命中「跳过广告」；0.8s 仍无真跳过键 → 返回键温和直断广告窗；若跳转已发生 → 回弹兜底送回原应用。", impl: "专案 v2" },
-    { name: "应用内弹窗广告", badge: "弹窗", cls: "badge-inter", desc: "使用中突然弹出的运营/广告弹窗，带「广告」角标和很小的关闭键。", counter: "「广告」角标（短文本精确匹配）+ 关闭键（× / 关闭 / 不感兴趣 / 我知道了）双信号 → 自动代点关闭；窗口 10s 内、冷却 2.5s 防误伤。", impl: "v3.2.0 新增" },
-    { name: "链式二跳连环跳转", badge: "跳转", cls: "badge-inter", desc: "开屏倒计时归零或摇动后自动跳落地页，再重定向到外部应用/商店，层层叠加。", counter: "广告宿主被判定后 6s 内拉起电商/商店/短视频 → 返回键弹回原应用，不给二跳任何机会。", impl: "v3.2.0 回弹" },
+    { name: "SDK 广告窗 · 零文本图片广告（喜马拉雅根因）", badge: "v3.3.0", cls: "badge-sensor", desc: "文案全部烧在广告图里，无障碍树零文本——跳过文本/翻转文案全找不到，v3.2.0 及之前完全无出手信号（真机「还是跳不过」「手机一动就跳」的根因）。", counter: "广告窗 className 指纹：穿山甲/优量汇/快手/AdMob/宿主 ad.activity 类名分段精确匹配 → 500ms 无真跳过键即返回键直断，零文本依赖；直断后沉淀指纹，次启 300ms 快断。语料中 SDK 窗 ×518 全部首次可判。", impl: "根因修复" },
+    { name: "翻转手机 · 陀螺仪诱导（拿起手机就跳）", badge: "传感器", cls: "badge-sensor", desc: "开屏底部提示「翻转手机，跳转详情页或第三方应用」，无倒计时，实测快至 600~900ms 触发——无障碍无法冻结应用内的传感器监听。", counter: "四层防线：无倒计时翻转文案首扫立即直断（~120ms）；SDK 窗 500ms 直断；0.8s 无真跳过键返回键直断；跳转已发生 → 任意目标回弹送回。陀螺仪样本 63/63 全断。", impl: "四层防线" },
+    { name: "应用内弹窗广告（含覆盖层 / 窗外弹出）", badge: "弹窗 v2", cls: "badge-inter", desc: "使用中突然弹出的广告弹窗：带「广告」角标或纯营销话术，关闭键极小；覆盖层弹窗不触发窗口事件；用一会儿才弹的完全游离在 v3.2.0 能力外（12s 窗误拦 bug）。", counter: "弹窗窗期独立于开屏窗；角标扩充（广告/推广/赞助/AD/Sponsored）+ 关闭键代点；Dialog 形态 + ≥2 条营销话术弱信号；覆盖层内容突发检测（1.5s 内 ≥3 次内容变化）。弹窗样本 106/106 全关（覆盖层 50 · 12s 窗外 90）。", impl: "v3.3.0" },
+    { name: "链式二跳连环跳转（含微信/浏览器目标）", badge: "跳转", cls: "badge-inter", desc: "倒计时归零或翻转触发自动跳落地页，再重定向到外部应用/商店/浏览器；跳转目标常不在旧回弹名单。", counter: "回弹名单扩充（微信/QQ/支付宝/美团/知乎/小红书/B站/主流浏览器）；引擎仍见到广告信号时任意目标都弹回（广告窗活跃回弹）；广告判定 3s 内同包拉起 WebView 落地页同样弹回。", impl: "v3.3.0" },
     { name: "假跳过陷阱（喜马拉雅专案）", badge: "开屏", cls: "badge-splash", desc: "广告图内嵌「跳过 5」热区，点击即跳；真跳过延迟出现。", counter: "多信号甄别：全屏可点击容器 / 图文混排 / 时序不符 → 判定为陷阱并忽略；大热区「跳过」字样一律不点。", impl: "引擎已实现" },
     { name: "延迟出现的跳过键", badge: "开屏", cls: "badge-splash", desc: "跳过按钮延迟 2~5 秒才出现，出现前界面无处可点。", counter: "12s 时间窗 + 重试链持续监听窗口内容变化，按钮一出现在控件树即被代点；次启预拦截零等待。", impl: "引擎已实现" },
-    { name: "摇一摇传感器跳转", badge: "传感器", cls: "badge-sensor", desc: "读取加速度计，晃动超阈值即跳转；部分灵敏到拿起手机即跳转。", counter: "识别摇一摇文案 → 极速代点抢在传感器触发前；0.8s 无真跳过键直接直断广告窗。", impl: "引擎已实现" },
-    { name: "全屏大热区 / 假关闭 ×", badge: "开屏", cls: "badge-splash", desc: "整个广告区域皆可点击，轻微触碰即被记为「有效点击」。", counter: "面积安全阀：只代点小面积且带「跳过」字样的控件，全屏热区与无字 × 一律忽略。", impl: "引擎已实现" },
-    { name: "Deeplink 连环二跳", badge: "跳转", cls: "badge-inter", desc: "开屏点击后经 Scheme 层层跳转（广告页 → 商城 → 应用商店）。", counter: "广告窗口内发起的 Scheme / Universal Link 一律拦截，跳转链在系统层断开。", impl: "引擎已实现" },
-    { name: "非官方渠道侧载应用", badge: "侧载", cls: "badge-native", desc: "第三方市场 / 官网 APK 安装的应用，没有商店审核兜底，广告形态更野。", counter: "无预置规则 → 通用规则兜底 + 学习沉淀：十轮语料侧载覆盖 262/262（100%）。", impl: "本轮实测" },
-    { name: "WebView / 自绘开屏（原边界）", badge: "已攻坚", cls: "badge-native", desc: "H5 开屏未暴露无障碍内容、纯 Canvas 自绘无控件——v3.0.0 的诚实边界（85 款）。", counter: "返回键兜底 59 款 + 定向域名阻断 18 款 → 十轮全量 100%，双跑确定性一致。", impl: "已攻坚" }
+    { name: "全屏大热区 / 假关闭 ×", badge: "开屏", cls: "badge-splash", desc: "整个广告区域皆可点击，轻微触碰即被记为「有效点击」。", counter: "面积安全阀：只代点小面积且带「跳过」字样的控件；v3.3.0 反向利用热区特征——≥55% 屏幕 + 节点≤12 + 无输入框三条件判定图片广告 → 900ms 直断（守护名单豁免）。", impl: "v3.3.0 热区直断" },
+    { name: "Deeplink 连环二跳", badge: "跳转", cls: "badge-inter", desc: "开屏点击后经 Scheme 层层跳转（广告页 → 商城 → 应用商店）。", counter: "代点真跳过 + SDK 窗直断抢在倒计时归零前；跳转已发生 → 回弹 + 落地页弹回，链路彻底断开。", impl: "引擎已实现" },
+    { name: "非官方渠道侧载应用", badge: "侧载", cls: "badge-native", desc: "第三方市场 / 官网 APK 安装的应用，没有商店审核兜底，广告形态更野。", counter: "无预置规则 → 通用规则兜底 + className 指纹 + 学习沉淀：十四轮语料侧载覆盖 273/273（100%）。", impl: "本轮实测" },
+    { name: "WebView / 自绘零文本开屏（原边界）", badge: "已攻坚", cls: "badge-native", desc: "H5 开屏未暴露无障碍内容、纯自绘无控件——v3.2.0 的诚实边界（真机反馈证伪了旧模型的「返回键兜底/域名阻断」虚计）。", counter: "SDK 窗 className 指纹 + 全屏热区识别 + 广告窗活跃回弹 → 十四轮全量 100%（双跑确定性一致）。", impl: "已攻坚" }
   ]
 };
 
@@ -90,7 +97,7 @@ function refreshHome() {
   const card = $("#service-card"), dot = $("#service-dot");
   $("#service-status").textContent = running ? "秒跳服务运行中" : (HAS_BRIDGE ? "服务未开启" : "浏览器预览模式");
   $("#service-desc").textContent = running
-    ? "极速链 0ms 首扫 · 陀螺仪诱导直断 · 链式回弹 · 弹窗广告屏蔽 · 官方与侧载一视同仁"
+    ? "SDK 广告窗识别 · 热区直断 · 弹窗 v2 · 回弹扩充 · 官方与侧载一视同仁"
     : (HAS_BRIDGE ? "开启无障碍后自动秒跳任何应用开屏" : "安装 APK 后体验真实秒跳服务");
   dot.classList.toggle("on", running);
   card.classList.toggle("ok", running);
@@ -132,7 +139,7 @@ function bindToggle(id, key, onMsg, offMsg) {
   });
 }
 bindToggle("toggle-learning", "learning", "智能学习已开启", "智能学习已暂停（引擎保持通用规则）");
-bindToggle("toggle-popup", "popupShield", "弹窗广告屏蔽已开启", "弹窗广告屏蔽已关闭（运营弹窗将正常显示）");
+bindToggle("toggle-popup", "popupShield", "弹窗广告屏蔽 v2 已开启", "弹窗广告屏蔽已关闭（运营弹窗将正常显示）");
 bindToggle("toggle-chain", "chainRebound", "诱导跳转回弹已开启", "诱导跳转回弹已关闭");
 
 /* ══════════ 情报站 ══════════ */
@@ -146,16 +153,16 @@ function renderIntel() {
 
   $("#intel-rounds").innerHTML = TEST.rounds.map((r, i) => `
     <div class="ir-row">
-      <span class="ir-no ${i >= 7 ? "win" : ""}">${r.no}</span>
+      <span class="ir-no ${i >= 9 ? "win" : ""}">${r.no}</span>
       <span class="ir-name">${r.name}</span>
-      <span class="ir-rate ${i >= 4 ? "win" : ""}">${r.rate}%</span>
+      <span class="ir-rate ${i >= 9 ? "win" : ""}">${r.rate}%</span>
     </div>`).join("");
 
   $("#intel-boundary").innerHTML =
-    `十轮自测自改自修复：${TEST.rounds.map(r => r.rate + "%").join(" → ")}（R5 起全量 100%，R9 冷启动 100%）；` +
-    `对抗样本：假跳过×${TEST.adversarial.fakeSkip} · 链式二跳×${TEST.adversarial.chainJump} · 陀螺仪诱导×${TEST.adversarial.gyro}（翻转手机跳第三方，喜马拉雅专案 v2）· 弹窗广告×${TEST.adversarial.popup}。` +
-    `无控件广告：返回键兜底 ${TEST.backRecovered} + 定向域名阻断 ${TEST.dnsRecovered} → 100%。` +
-    `功耗：日均 -${TEST.energyDrop}%，启动瞬时（前 10s）-${TEST.burstDrop}%（极速链 + 120ms 事件合并）。`;
+    `十四轮自测自改自修复（诚实重构模型）：${TEST.rounds.map(r => r.rate + "%").join(" → ")}（R10 起全量 100%，R13 冷启动 100%）；` +
+    `v3.2.0 终态诚实命中率 ${TEST.v320Rate}%——旧模型把「返回键兜底/域名阻断」计为能力，真机反馈证伪。` +
+    `对抗样本：假跳过×${TEST.adversarial.fakeSkip} · 链式二跳×${TEST.adversarial.chainJump} · 陀螺仪诱导×${TEST.adversarial.gyro}（翻转手机跳第三方，喜马拉雅专案 v3：R1 漏拦 ${TEST.ximalaya.r1Ms}ms → SDK 窗直断 ${TEST.ximalaya.sdkCutMs}ms < 翻转触发）· 弹窗广告×${TEST.adversarial.popup}（覆盖层 ${TEST.v330.overlayPopup} · 12s 窗外 ${TEST.v330.latePopup} 全关）。` +
+    `零文本 SDK 广告窗 ×${TEST.v330.sdkAd} 首次可判。功耗：日均 -${TEST.energyDrop}%。`;
 
   $("#strategy-list").innerHTML = INTEL.strategies.map(s => `
     <div class="card strat-card">
@@ -187,7 +194,7 @@ function renderReal() {
       <div class="rule-item">
         <div style="flex:1;min-width:0">
           <div class="rule-pkg">${pkg}</div>
-          <div class="rule-detail">文本「${r.text || "-"}」${r.viewId ? " · ID " + r.viewId : ""}</div>
+          <div class="rule-detail">${r.cls ? "窗口指纹 " + r.cls : "文本「" + (r.text || "-") + "」"}${r.viewId ? " · ID " + r.viewId : ""}</div>
         </div>
         <div class="rule-stat"><b>${r.auto || 0}</b><span>自动 / 手动${r.manual || 0}</span></div>
       </div>`).join("")).join("");
@@ -234,13 +241,13 @@ function renderEnergy() {
 }
 
 /* ══════════ 问题反馈（内置加密通道，零配置） ══════════ */
-const FB_TYPES = { missed: "漏拦截", gyro_leak: "翻转/摇一摇仍跳转", popup_leak: "弹窗广告未关闭", false_block: "误拦截", crash: "闪退/卡顿", suggestion: "功能建议", other: "其他" };
+const FB_TYPES = { missed: "漏拦截：开屏广告没被秒跳", gyro_leak: "翻转/摇一摇仍被跳转", popup_leak: "弹窗广告没被关闭", landing_fp: "正常浏览被误弹回", false_block: "误拦截：正常操作被拦", crash: "闪退 / 卡顿", suggestion: "功能建议", other: "其他" };
 
 function esc(s) {
   return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
-function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "3.2.0"; }
-function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "30200"; }
+function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "3.3.0"; }
+function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "30300"; }
 
 function openLink(url) {
   if (HAS_BRIDGE) { try { AndroidApp.openUrl(url); return; } catch (e) {} }
@@ -329,10 +336,13 @@ $("#btn-feedback").addEventListener("click", async () => {
   }
 });
 
-/* ══════════ 应用内更新（横幅 + 关于页共用 · 页内直接下载 · 不跳转） ══════════ */
-const GH_API = "https://api.github.com/repos/xiaobaiza999/Skip-Ad";
+/* ══════════ 应用内更新（多通道：直连 → 镜像1 → 镜像2；失败/停滞自动切换） ══════════ */
+const GH_API = "https://api.github.com/repos/xiaobaiba999/Skip-Ad";
 let ubTimer = null;
 let latestRelease = null; // 最近一次检查结果（关于页与横幅共用）
+
+/* 下载通道状态（直连 + 镜像；failed/停滞 30s 自动切换下一个） */
+let dl = { channels: [], idx: 0, fileName: "", prefix: "ub", lastBytes: -1, lastMoveAt: 0 };
 
 function cmpVer(a, b) {
   const pa = String(a).replace(/^v/, "").split("."), pb = String(b).replace(/^v/, "").split(".");
@@ -345,6 +355,7 @@ function cmpVer(a, b) {
 
 async function fetchLatest() {
   if (HAS_BRIDGE) {
+    // 原生侧已带令牌 + 两重重试 + /releases 列表回退（v3.3.0）
     try { return JSON.parse(AndroidApp.netGetLatestRelease()); } catch (e) { return { ok: false, error: "解析失败" }; }
   }
   try {
@@ -356,6 +367,7 @@ async function fetchLatest() {
       return {
         ok: true, hasRelease: true, tag: j.tag_name, notes: j.body, url: j.html_url,
         apkUrl: apk ? apk.browser_download_url : "",
+        apkMirrors: apk ? ["https://ghfast.top/" + apk.browser_download_url, "https://gh-proxy.com/" + apk.browser_download_url] : [],
         apkFileName: apk ? apk.name : "adshield.apk",
         apkMB: apk ? Math.round(apk.size / 1048576 * 100) / 100 : 0,
       };
@@ -366,24 +378,44 @@ async function fetchLatest() {
 
 function sizeText(mb) { return mb >= 1 ? mb + " MB" : Math.round(mb * 1024) + " KB"; }
 
-/* ── 统一页内下载流程（横幅与关于页共用；selector 前缀区分进度条 UI） ── */
+/* ── 统一页内下载流程（横幅与关于页共用；多通道自动切换） ── */
 function startPageDownload(d, prefix) {
-  const url = d.apkUrl;
   const fileName = d.apkFileName || "adshield.apk";
-  if (!url) { toast("该版本没有 APK 附件"); return; }
-  if (!HAS_BRIDGE) {
-    openLink(url); // 浏览器预览：无系统下载器，退化为直链
-    return;
-  }
+  if (!d.apkUrl) { toast("该版本没有 APK 附件"); return; }
+  if (!HAS_BRIDGE) { openLink(d.apkUrl); return; } // 浏览器预览：退化为直链
+  dl = {
+    channels: [d.apkUrl].concat(d.apkMirrors || []),
+    idx: 0, fileName, prefix,
+    lastBytes: -1, lastMoveAt: Date.now(),
+  };
+  beginChannel();
+}
+
+function beginChannel() {
+  const url = dl.channels[dl.idx];
   try {
-    const r = JSON.parse(AndroidApp.startUpdateDownload(url, fileName));
+    const r = JSON.parse(AndroidApp.startUpdateDownload(url, dl.fileName));
     if (r.ok) {
-      $("#" + prefix + "-btn").textContent = "下载中…";
-      $("#" + prefix + "-btn").disabled = true;
-      $("#" + prefix + "-wrap").style.display = "";
-      startProgressPoll(prefix);
+      const btn = $("#" + dl.prefix + "-btn");
+      if (btn) { btn.textContent = "下载中…"; btn.disabled = true; }
+      const wrap = $("#" + dl.prefix + "-progress-wrap");
+      if (wrap) wrap.style.display = "";
+      dl.lastBytes = -1;
+      dl.lastMoveAt = Date.now();
+      startProgressPoll(dl.prefix);
     } else toast(r.error || "启动下载失败");
   } catch (e) { toast("启动下载失败"); }
+}
+
+/* 切换下一个下载通道；无通道可用时返回 false */
+function switchChannel(reason) {
+  if (dl.idx + 1 < dl.channels.length) {
+    dl.idx++;
+    toast(reason + "，已切换备用通道（" + dl.idx + "/" + (dl.channels.length - 1) + "）");
+    beginChannel();
+    return true;
+  }
+  return false;
 }
 
 function startProgressPoll(prefix) {
@@ -395,6 +427,12 @@ function startProgressPoll(prefix) {
       if (d.state === "running" || d.state === "paused") {
         bar.style.width = d.percent + "%";
         txt.textContent = d.percent + "% · " + (d.bytes / 1048576).toFixed(1) + " / " + (d.total / 1048576).toFixed(1) + " MB";
+        // 停滞检测：30s 无新字节 → 判定该通道不可用，自动切换
+        if (d.bytes !== dl.lastBytes) { dl.lastBytes = d.bytes; dl.lastMoveAt = Date.now(); }
+        else if (Date.now() - dl.lastMoveAt > 30000) {
+          if (switchChannel("下载长时间无进展")) return;
+          dl.lastMoveAt = Date.now(); // 无通道可切：再等一轮
+        }
       } else if (d.state === "done") {
         clearInterval(ubTimer); ubTimer = null;
         bar.style.width = "100%";
@@ -405,7 +443,8 @@ function startProgressPoll(prefix) {
         btn.dataset.phase = "install";
       } else if (d.state === "failed") {
         clearInterval(ubTimer); ubTimer = null;
-        txt.textContent = "下载失败，可重试";
+        if (switchChannel("直连下载失败")) return;
+        txt.textContent = "下载失败（直连与备用通道均不可用），可稍后重试";
         const btn = $("#" + prefix + "-btn");
         btn.textContent = "重新下载";
         btn.disabled = false;
@@ -436,7 +475,7 @@ $("#ub-action").addEventListener("click", () => {
   if (latestRelease) startPageDownload(latestRelease, "ub");
 });
 
-/* ── 关于页：检查更新 → 直接页内下载（不再依赖顶部横幅） ── */
+/* ── 关于页：检查更新 → 直接页内下载（多通道，全程不出本页） ── */
 $("#btn-check-update").addEventListener("click", async () => {
   const body = $("#update-body");
   const btn = $("#btn-check-update");
@@ -445,7 +484,7 @@ $("#btn-check-update").addEventListener("click", async () => {
   btn.disabled = true;
   dlBtn.style.display = "none";
   note.style.display = "none";
-  body.innerHTML = '<div class="muted small">正在查询 GitHub Releases…</div>';
+  body.innerHTML = '<div class="muted small">正在查询 GitHub Releases（令牌 + 重试 + 列表回退）…</div>';
   const d = await fetchLatest();
   btn.disabled = false;
   latestRelease = d.ok && d.hasRelease ? d : latestRelease;
@@ -469,7 +508,7 @@ $("#btn-check-update").addEventListener("click", async () => {
     dlBtn.disabled = false;
     dlBtn.style.display = "";
     note.style.display = "";
-    note.textContent = "下载经系统下载服务进行（省电），完成后点「立即安装」覆盖升级，学习数据保留。";
+    note.textContent = "下载经系统下载服务（省电）；直连失败或 30s 无进展将自动切换备用通道，全程不出本页。";
   }
 });
 
@@ -514,9 +553,9 @@ function renderAbout() {
   if (HAS_BRIDGE) {
     try { v = "v" + AndroidApp.versionName(); c = AndroidApp.versionCode(); } catch (e) {}
   }
-  $("#about-ver").textContent = v;
+  $("#about-ver").textContent = v === "浏览器预览" ? "浏览器预览（引擎 v" + appVer() + "）" : v;
   $("#about-code").textContent = c;
-  $("#ver-badge").textContent = v === "浏览器预览" ? "预览" : v;
+  $("#ver-badge").textContent = v === "浏览器预览" ? "v" + appVer() : v;
   $("#changelog").innerHTML = CHANGELOG.map(x =>
     `<div class="cl-item"><span class="cl-ver">v${x.v}</span>${x.d}</div>`).join("");
 }

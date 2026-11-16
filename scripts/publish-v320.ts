@@ -3,7 +3,7 @@ import { getGithubToken } from "../src/lib/credentials";
 import { readFileSync } from "node:fs";
 
 const TOKEN = getGithubToken();
-const REPO = "xiaobaiza999/Skip-Ad";
+const REPO = "xiaobaiba999/Skip-Ad";
 const API = `https://api.github.com/repos/${REPO}`;
 const H = {
   Authorization: `Bearer ${TOKEN}`,

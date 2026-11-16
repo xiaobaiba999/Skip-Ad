@@ -1,5 +1,5 @@
 /**
- * 千款热门应用兼容性测试语料库（v3.2.0 · 含对抗样本层）
+ * 千款热门应用兼容性测试语料库（v3.3.0 · 含对抗样本层 · 诚实重构）
  * ─────────────────────────────────────────────────────────────
  * · REAL 层：130 款真实国民应用（真实包名，依据 2026-11 国内应用市场
  *   公开信息整理；包名以主流应用商店在架版本为准）。
@@ -8,19 +8,33 @@
  * · 渲染建模：native（原生控件树）86.5% / web（H5，其中 60% 无障碍
  *   树可见）/ self（自绘，其中 35% 角落有原生跳过小控件）——诚实反映
  *   「哪些广告结构上可见、哪些不可见」。
- * · 对抗样本层（v3.1.0 喜马拉雅专案沉淀 + v3.2.0 扩充）：
+ * · 对抗样本层（v3.1.0 喜马拉雅专案沉淀 + v3.2.0 扩充 + v3.3.0 真机反馈重构）：
  *   fakeSkip（广告图内嵌假「跳过」热区，点击即跳转）、
  *   chainJump（倒计时归零自动跳落地页并二跳外部应用）、
- *   gyroFlip（无倒计时 + 底部「翻转手机，跳转详情页或第三方应用」陀螺仪
- *   诱导，手机一动就跳，2026-11 喜马拉雅实测）、
+ *   gyroFlip（无倒计时 + 陀螺仪诱导，手机一动就跳）、
  *   popup（应用内弹窗广告：「广告」角标 + 小号关闭键）、
  *   backResponsive（无控件广告对返回键是否响应）。
+ * · v3.3.0 新增建模（2026-11 真机反馈暴露的盲区）：
+ *   sdkAd（开屏广告窗口为已知广告 SDK Activity——穿山甲/优量汇/快手/
+ *     AdMob/宿主 ad.activity，className 指纹可识别）、
+ *   gyroWindow（陀螺仪广告窗口形态：sdk=SDK 窗零文本 / hostText=宿主窗
+ *     文案可读 / image=自绘图片零文本——v3.2.0 只建模了 hostText）、
+ *   flipTrigMs（翻转/摇一摇触发时刻 500~2500ms——「拿起手机就跳」）、
+ *   jumpTarget（跳转目标：known=旧名单电商商店 / expanded=微信支付宝
+ *     美团知乎小红书 / browser=浏览器落地页 / unknown=其他）、
+ *   popupForm（dialog=独立弹窗有窗口事件 / overlay=覆盖层无窗口事件）、
+ *   popupAtMs（弹窗出现时刻 2s~60s——v3.2.0 弹窗扫描被 12s 开屏窗误拦）、
+ *   popupSignal（badge=带角标 / ctaOnly=无角标但 Dialog 形态+营销话术）。
  * · 能耗画像：每款应用的开屏事件量（事件数 = 引擎工作量的输入）。
  */
 import type { AdType } from "./instant-engine";
 
 export type RenderKind = "native" | "web" | "self";
 export type SourceKind = "official" | "sideload";
+export type GyroWindow = "none" | "sdk" | "hostText" | "image";
+export type JumpTarget = "known" | "expanded" | "browser" | "unknown";
+export type PopupForm = "dialog" | "overlay";
+export type PopupSignal = "badge" | "ctaOnly";
 
 export interface CorpusApp {
   pkg: string;
@@ -48,6 +62,21 @@ export interface CorpusApp {
   backResponsive: boolean;
   /** 热度 0~100（决定抽样权重与事件量） */
   hot: number;
+  /* ── v3.3.0 真机反馈建模（既有字段值与 v3.2.0 完全一致，新增字段追加在随机序列末尾） ── */
+  /** 开屏/插屏广告窗口为已知广告 SDK Activity（className 指纹可识别，约 55%） */
+  sdkAd: boolean;
+  /** 陀螺仪广告窗口形态（仅 gyroFlip 时有意义） */
+  gyroWindow: GyroWindow;
+  /** 翻转/摇一摇触发时刻（ms，500~2500——「拿起手机就跳」） */
+  flipTrigMs: number;
+  /** 跳转目标（v3.2.0 回弹名单只有 known；v3.3.0 扩充至 expanded/browser） */
+  jumpTarget: JumpTarget;
+  /** 弹窗广告形态（dialog 有窗口事件；overlay 无，靠内容突发检测） */
+  popupForm: PopupForm;
+  /** 弹窗出现时刻（ms，距最近窗口切换 2s~60s——v3.2.0 被 12s 开屏窗误拦） */
+  popupAtMs: number;
+  /** 弹窗信号类型（badge=带角标；ctaOnly=无角标但 Dialog 形态+营销话术） */
+  popupSignal: PopupSignal;
 }
 
 /* ───────── 确定性伪随机（可复现） ───────── */
@@ -243,6 +272,7 @@ function mkApp(row: RealRow): CorpusApp {
   const gyroFlip = adType === "splash" && rnd() < 0.07;
   const popup = rnd() < 0.11;
   const backResponsive = rnd() < 0.82;
+  const v330 = model330(rnd, adType, render, webviewA11y, hybridSkip, gyroFlip);
   const app: CorpusApp = {
     pkg,
     name,
@@ -260,17 +290,65 @@ function mkApp(row: RealRow): CorpusApp {
     popup,
     backResponsive,
     hot,
+    ...v330,
   };
-  // 喜马拉雅专案 v2 画像（2026-11 实测特征）：无倒计时 + 「跳过广告」+
-  // 假跳过陷阱 + 真跳过延迟 5.1s + 链式二跳 + 「翻转手机」陀螺仪诱导
+  // 喜马拉雅专案 v3 画像（2026-11 真机实测）：无倒计时 + SDK 广告窗（穿山甲
+  // 聚合，className 指纹可识别）+ 翻转手机 900ms 即跳（拿起就跳）+ 跳浏览器
+  // 落地页（v3.2.0 回弹名单外）+ 首页覆盖层弹窗广告（30s 后弹出，带角标）
   if (pkg === "com.ximalaya.ting.android") {
     app.fakeSkip = true;
     app.chainJump = true;
     app.gyroFlip = true;
     app.skipDelayMs = 5100;
     app.hot = 98;
+    app.sdkAd = true;
+    app.gyroWindow = "sdk";
+    app.flipTrigMs = 900;
+    app.jumpTarget = "browser";
+    app.backResponsive = true;
+    app.popup = true;
+    app.popupForm = "overlay";
+    app.popupAtMs = 30000;
+    app.popupSignal = "badge";
   }
   return app;
+}
+
+/* ───────── v3.3.0 真机反馈建模（追加在既有随机序列末尾，既有字段不变） ───────── */
+
+function model330(
+  rnd: () => number,
+  adType: AdType,
+  render: RenderKind,
+  webviewA11y: boolean,
+  hybridSkip: boolean,
+  gyroFlip: boolean,
+): Pick<CorpusApp, "sdkAd" | "gyroWindow" | "flipTrigMs" | "jumpTarget" | "popupForm" | "popupAtMs" | "popupSignal"> {
+  const isAdWindowType = adType === "splash" || adType === "interstitial";
+  // 约 55% 开屏/插屏由广告 SDK Activity 承载（className 指纹可识别）
+  const sdkAd = isAdWindowType && rnd() < 0.55;
+  // 陀螺仪广告窗口形态：sdk（零文本）/ hostText（文案可读）/ image（自绘零文本）
+  let gyroWindow: GyroWindow = "none";
+  if (gyroFlip) {
+    if (sdkAd) gyroWindow = "sdk";
+    else {
+      const textLike = render === "native" ? true : render === "web" ? webviewA11y : hybridSkip;
+      gyroWindow = rnd() < 0.55 || textLike ? "hostText" : "image";
+    }
+  }
+  // 翻转/摇一摇触发时刻：500~2500ms（「拿起手机就跳」）
+  const flipTrigMs = 500 + Math.round(rnd() * 2000);
+  // 跳转目标：known 45% / expanded 25% / browser 20% / unknown 10%
+  const tRoll = rnd();
+  const jumpTarget: JumpTarget =
+    tRoll < 0.45 ? "known" : tRoll < 0.7 ? "expanded" : tRoll < 0.9 ? "browser" : "unknown";
+  // 弹窗形态：dialog 60%（有窗口事件）/ overlay 40%（覆盖层，仅内容变化）
+  const popupForm: PopupForm = rnd() < 0.6 ? "dialog" : "overlay";
+  // 弹窗出现时刻：距最近窗口切换 2s~60s（v3.2.0 的 12s 窗外弹窗全部漏拦）
+  const popupAtMs = 2000 + Math.round(rnd() * 58000);
+  // 弹窗信号：badge 85% / ctaOnly 15%（覆盖层弹窗均为 SDK 生成，必带角标）
+  const popupSignal: PopupSignal = popupForm === "overlay" ? "badge" : rnd() < 0.85 ? "badge" : "ctaOnly";
+  return { sdkAd, gyroWindow, flipTrigMs, jumpTarget, popupForm, popupAtMs, popupSignal };
 }
 
 /* ───────── GEN 层：930 款确定性生成式长尾 ───────── */
@@ -356,6 +434,7 @@ function genLayer(): CorpusApp[] {
       const popup = rnd() < 0.11;
       const backResponsive = rnd() < 0.82;
       const hot = Math.round(Math.pow(rnd(), 2) * 60 + 4); // 长尾幂律：多数低热度
+      const v330 = model330(rnd, adType, render, webviewA11y, hybridSkip, gyroFlip);
       out.push({
         pkg,
         name,
@@ -373,6 +452,7 @@ function genLayer(): CorpusApp[] {
         popup,
         backResponsive,
         hot,
+        ...v330,
       });
     }
   }

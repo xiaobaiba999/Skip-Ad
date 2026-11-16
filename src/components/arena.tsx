@@ -167,7 +167,7 @@ export function Arena({ onFeedback }: { onFeedback: () => void }) {
     const isPopup = app.adType === "popup";
     const timers: ReturnType<typeof setTimeout>[] = [];
     if (isPopup) {
-      // 应用内弹窗广告：角标识别 → 关闭键定位 → 双信号代点关闭
+      // 应用内弹窗广告 v2：Dialog 窗口事件 → 角标/营销话术双信号 → 代点关闭
       timers.push(setTimeout(() => setFakePhase("scanning"), 400));
       timers.push(setTimeout(() => setFakePhase("ignored"), 1000));
       timers.push(
@@ -175,12 +175,12 @@ export function Arena({ onFeedback }: { onFeedback: () => void }) {
           setBlocks((n) => n + 1);
           setMsSum((s) => s + plan.totalMs);
           pushLog({ app: app.name, kind: "block", text: `${plan.ruleName} · 弹窗广告已关闭`, ms: plan.totalMs });
-          void postEvent(plan, "角标 + 关闭键双信号关闭");
+          void postEvent(plan, "弹窗 v2 双信号关闭");
           setStage("flash");
         }, 1700),
       );
     } else if (isAdversarial) {
-      // 喜马拉雅类：极速链首扫 → 忽略假跳过 + 识别翻转文案 → 陀螺仪诱导直断 + 回弹
+      // 喜马拉雅类：SDK 广告窗 className 识别 → 极速链复核无真跳过键 → 500ms 直断 + 回弹
       timers.push(setTimeout(() => setFakePhase("scanning"), 400));
       timers.push(setTimeout(() => setFakePhase("ignored"), 1100));
       timers.push(setTimeout(() => setFakePhase("chain"), 1900));
@@ -188,8 +188,8 @@ export function Arena({ onFeedback }: { onFeedback: () => void }) {
         setTimeout(() => {
           setBlocks((n) => n + 1);
           setMsSum((s) => s + plan.totalMs);
-          pushLog({ app: app.name, kind: "block", text: `${plan.ruleName} · ${app.traits?.gyroFlip ? "陀螺仪诱导直断 + 回弹" : "链式二跳直接阻断"}`, ms: plan.totalMs });
-          void postEvent(plan, app.traits?.gyroFlip ? "陀螺仪诱导直断 + 链式回弹" : "假跳过甄别 + 链式直断");
+          pushLog({ app: app.name, kind: "block", text: `${plan.ruleName} · ${app.traits?.sdkWindow ? "SDK 广告窗指纹直断 + 回弹" : "陀螺仪诱导直断 + 回弹"}`, ms: plan.totalMs });
+          void postEvent(plan, app.traits?.sdkWindow ? "SDK 广告窗指纹直断 + 链式回弹" : "假跳过甄别 + 链式直断");
           setStage("flash");
         }, 2700),
       );
@@ -270,10 +270,10 @@ export function Arena({ onFeedback }: { onFeedback: () => void }) {
             <div className="min-w-0">
               <div className="flex items-center gap-2 text-sm font-bold text-zinc-900">
                 秒跳引擎 · 运行中
-                <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-bold text-white">六层纵深</span>
+                <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-bold text-white">七层纵深</span>
               </div>
               <p className="mt-0.5 text-[11px] text-zinc-500">
-                P0 预拦截 → 极速链 0ms 首扫 → 陀螺仪诱导直断/链式回弹 → 弹窗广告屏蔽 → 域名阻断；守护应用只拦广告、不碰服务
+                P0 预拦截 → SDK 广告窗指纹识别 → 极速链 0ms 首扫 → 热区/立即直断 → 链式回弹 → 弹窗 v2；守护应用只拦广告、不碰服务
               </p>
             </div>
             <div className="ml-auto hidden shrink-0 items-center gap-1 text-[10px] font-bold text-emerald-700 sm:flex">
@@ -463,7 +463,7 @@ function HomeScreen({ onLaunch }: { onLaunch: (a: ScenarioApp) => void }) {
       </div>
       {/* 壁纸提示 */}
       <div className="mx-5 mb-2 rounded-xl bg-white/60 px-3 py-2 text-center text-[10px] leading-relaxed text-zinc-500 backdrop-blur">
-        点击应用体验秒跳 · 银行/政务/支付为守护模式 · 喜马拉雅为陀螺仪专案 · 邻里团购为弹窗广告
+        点击应用体验秒跳 · 银行/政务/支付为守护模式 · 喜马拉雅为 SDK 广告窗专案 · 邻里团购为弹窗 v2
       </div>
       {/* Dock */}
       <div className="mx-4 mb-3 flex items-center justify-around rounded-2xl bg-white/70 p-2.5 backdrop-blur">
@@ -503,18 +503,23 @@ function AdStage({
   const isAdversarial = !!app.traits?.fakeSkip && (!!app.traits?.chainJump || !!app.traits?.gyroFlip);
   const isPopup = app.adType === "popup";
   const isGyro = !!app.traits?.gyroFlip;
+  const isSdkWin = !!app.traits?.sdkWindow;
 
   const overlayText =
     fakePhase === "scanning"
       ? isPopup
         ? "弹窗多信号扫描中 · 寻找「广告」角标与关闭键"
-        : "极速链首扫中 · 假跳过甄别 + 翻转文案识别"
+        : isSdkWin
+          ? "SDK 广告窗识别中 · className 指纹比对（零文本可判）"
+          : "极速链首扫中 · 假跳过甄别 + 翻转文案识别"
     : fakePhase === "ignored"
       ? isPopup
         ? "已确认「广告」角标 + 关闭键 → 双信号成立"
-        : isGyro
-          ? "已忽略假「跳过」陷阱 · 识别到「翻转手机」文案"
-          : "已忽略假「跳过」陷阱 · 监听中"
+        : isSdkWin
+          ? "SDK 窗指纹命中 · 复核无真跳过键 → 升级直断"
+          : isGyro
+            ? "已忽略假「跳过」陷阱 · 识别到「翻转手机」文案"
+            : "已忽略假「跳过」陷阱 · 监听中"
     : fakePhase === "chain"
       ? isGyro
         ? "陀螺仪诱导 → 返回键直断 + 二跳回弹"

@@ -1,0 +1,80 @@
+{
+  "round": 11,
+  "engine": "R11 · P0 预拦截回归（指纹沉淀 → 0ms 可见）",
+  "fixNote": "回归⑩：R10 全命中沉淀指纹（viewId/text/className 窗口指纹）→ 次启窗口附加即断，0ms 广告可见时间、引擎零扫描",
+  "total": 1060,
+  "hits": 1060,
+  "rate": 100,
+  "weightedRate": 100,
+  "avgLatencyMs": 34,
+  "p95LatencyMs": 38,
+  "avgReactionMs": 34,
+  "avgAdVisibleMs": 0,
+  "guardHits": 29,
+  "guardServiceKills": 0,
+  "bySource": {
+    "official": [
+      787,
+      787
+    ],
+    "sideload": [
+      273,
+      273
+    ]
+  },
+  "byRender": {
+    "native": [
+      867,
+      867
+    ],
+    "web": [
+      132,
+      132
+    ],
+    "self": [
+      61,
+      61
+    ]
+  },
+  "byAdType": {
+    "splash": [
+      832,
+      832
+    ],
+    "interstitial": [
+      120,
+      120
+    ],
+    "shake": [
+      69,
+      69
+    ],
+    "deeplink": [
+      39,
+      39
+    ]
+  },
+  "tierCounts": {
+    "preempt_block": 1031,
+    "guard_skip": 29
+  },
+  "missReasons": {},
+  "energy": {
+    "mWh": 0.0347763888888889,
+    "preemptShare": 0.9,
+    "breakdown": [
+      {
+        "label": "启动拦截",
+        "mWh": 0.03055416666666667
+      },
+      {
+        "label": "后台事件",
+        "mWh": 0.004222222222222223
+      }
+    ]
+  },
+  "burst": {
+    "tier": 10,
+    "preempt": 1.6
+  }
+}

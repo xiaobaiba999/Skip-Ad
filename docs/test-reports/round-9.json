@@ -1,24 +1,24 @@
 {
   "round": 9,
-  "engine": "R9 · 冷启动全能力回归（首次遭遇 · 无指纹）",
-  "fixNote": "回归⑧：关掉预拦截模拟首次遭遇——极速链 + 陀螺仪直断 + 回弹 + 弹窗屏蔽全能力路径全量复测",
+  "engine": "R9 · 弹窗屏蔽 v2（窗期独立 + Dialog/营销话术 + 内容突发）【v3.3.0】",
+  "fixNote": "修复⑧：弹窗窗期独立于开屏 12s 窗（v3.2.0 真机 bug：应用用一会儿后弹出的广告永远关不掉）；Dialog/PopupWindow 窗口事件触发；角标扩充（推广/赞助/AD/Sponsored）；Dialog 形态 + ≥2 条营销话术 + 关闭键弱信号；覆盖层弹窗内容突发检测（1.5s 内 ≥3 次内容变化）",
   "total": 1060,
-  "hits": 1060,
-  "rate": 100,
-  "weightedRate": 100,
-  "avgLatencyMs": 34,
-  "p95LatencyMs": 38,
-  "avgReactionMs": 34,
-  "avgAdVisibleMs": 0,
+  "hits": 1056,
+  "rate": 99.62,
+  "weightedRate": 99.8,
+  "avgLatencyMs": 2280,
+  "p95LatencyMs": 4848,
+  "avgReactionMs": 308,
+  "avgAdVisibleMs": 2280,
   "guardHits": 29,
   "guardServiceKills": 0,
   "bySource": {
     "official": [
-      787,
+      785,
       787
     ],
     "sideload": [
-      273,
+      271,
       273
     ]
   },
@@ -28,17 +28,17 @@
       867
     ],
     "web": [
-      132,
+      129,
       132
     ],
     "self": [
-      61,
+      60,
       61
     ]
   },
   "byAdType": {
     "splash": [
-      832,
+      831,
       832
     ],
     "interstitial": [
@@ -46,7 +46,7 @@
       120
     ],
     "shake": [
-      69,
+      66,
       69
     ],
     "deeplink": [
@@ -55,28 +55,38 @@
     ]
   },
   "tierCounts": {
-    "preempt_block": 923,
+    "fast_hit": 735,
+    "skip_discrim": 84,
+    "sdk_ad_cut": 66,
+    "gyro_immediate": 86,
+    "hot_zone_cut": 53,
     "guard_skip": 29,
-    "sensor_block": 69,
-    "intent_block": 39
+    "gyro_break": 3
   },
-  "missReasons": {},
+  "missReasons": {
+    "gyro_leak（翻转/摇一摇抢先触发跳转）": [
+      "海豚笔记6（游戏·官方·自绘）",
+      "晨风旅行20（健康·官方·H5）",
+      "灯塔星球26（摄影·侧载·H5）",
+      "拾光相册27（金融理财·侧载·H5）"
+    ]
+  },
   "energy": {
-    "mWh": 0.029828111111111118,
-    "preemptShare": 0.9,
+    "mWh": 0.12976388888888896,
+    "preemptShare": 0,
     "breakdown": [
       {
         "label": "启动拦截",
-        "mWh": 0.027383666666666674
+        "mWh": 0.12554166666666672
       },
       {
         "label": "后台事件",
-        "mWh": 0.002444444444444445
+        "mWh": 0.004222222222222223
       }
     ]
   },
   "burst": {
-    "tier": 7.5,
+    "tier": 10,
     "preempt": 1.6
   }
 }
