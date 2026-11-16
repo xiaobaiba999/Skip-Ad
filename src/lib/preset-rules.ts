@@ -170,7 +170,7 @@ export function presetRulesV31(): PresetRuleSeed[] {
       appCategory: "音频",
       adType: "splash",
       matchType: "chain",
-      pattern: "喜马拉雅专案 v2：无倒计时 + 右上角「跳过广告」+ 图内假「跳过」热区 + 底部「翻转手机，跳转详情页或第三方应用」陀螺仪诱导 + 链式二跳 → 极速链 0ms 首扫直配「跳过广告」；0.8s 无真跳过键返回键直断；二跳回弹兑底；次启预拦截",
+      pattern: "喜马拉雅专案 v2：无倒计时 + 右上角「跳过广告」+ 图内假「跳过」热区 + 底部「翻转手机，跳转详情页或第三方应用」陀螺仪诱导 + 链式二跳 → 极速链 0ms 首扫直配「跳过广告」；0.8s 无真跳过键返回键直断；二跳回弹兜底；次启预拦截",
       action: "gyro_block",
       confidence: 0.98,
     },

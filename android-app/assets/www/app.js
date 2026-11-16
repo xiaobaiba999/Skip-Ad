@@ -50,7 +50,9 @@ const TEST = {
     { no: 18, name: "全量回归 ×2（双跑一致）", rate: 100, reaction: 34, energy: 0.030 },
     { no: 19, name: "v3.4.0 真机复测建模：点击被吞（日志已点·广告未关）×19", rate: 98.21, reaction: 310, energy: 0.031 },
     { no: 20, name: "+点击复验换候选+真实触点重试+返回键兜底【v3.5.0】", rate: 100, reaction: 302, energy: 0.031 },
-    { no: 21, name: "+位置学习（手动教一次就会）+ 保活回归", rate: 100, reaction: 41, energy: 0.030 }
+    { no: 21, name: "+位置学习（手动教一次就会）+ 保活回归", rate: 100, reaction: 41, energy: 0.030 },
+    { no: 22, name: "v3.5.0 真机事故建模：毒指纹主页按返回×14 + 入口窗返回退出×9 → 91%", rate: 91.0, reaction: 288, energy: 0.031 },
+    { no: 23, name: "+根窗口安全门+毒指纹清理+点击原坐标+自动拉活【v3.6.0】", rate: 100, reaction: 296, energy: 0.030 }
   ],
   sideload: { hit: 273, total: 273, rate: 100 },
   gyro: { hit: 63, total: 63, rate: 100 },
@@ -58,19 +60,22 @@ const TEST = {
   imageSkip: { hit: 53, total: 53, corner: 31, coord: 22 },
   ximalaya: { r15VisibleMs: 900, cornerMs: 659, flipTrigMs: 900, steadyMs: 34 },
   v350Verify: { swallowed: 19, retrySaved: 17, backSaved: 2, posLearned: 19 },
-  jvmTests: 49, energyDrop: 76, coldRate: 100
+  v360Fix: { poisonBack: 14, rootBackExit: 9, poisonPurged: 3, reviveOk: 12, reviveRomBlocked: 1 },
+  jvmTests: 70, energyDrop: 76, coldRate: 100
 };
 
 /* 最近三个版本（仅此三版，其余全部略去） */
 const CHANGELOG = [
-  { v: "3.5.0", d: "二次真机反馈根因修复·「日志显示已点击跳过但广告纹丝不动」：v3.4.0 点完即熔断、从不复验 → 点击复验梯子（1.2s 后复扫，未关换下一个角落候选点 + 强制手势真实触点重试；≥3 次未关返回键兜底）/ 手动点两次也学不下来的根因：图片跳过键零文本，v3.4.0 学习只认文本 → 位置学习（记住你点过的坐标+窗口指纹，次启同窗 500ms 直点，教一次就会；仅广告形态窗内出手，信息流绝不误点）/ 开屏×关闭键代点 / 服务保活：前台常驻通知 + 更新/重启断连即通知一键恢复（Android 安全设计无法自动重开，已做到系统允许的极限）+ 电池优化白名单一键加入 / 学习中心新增「上传引擎日志到 GitHub」：60 条日志+学习规则+设备信息一键直达 Issues（内置加密通道），成为下版迭代依据 / 全新绿色盾牌+闪电 Logo / JVM 49 用例全绿；二十一轮自测：真机复测建模点击被吞 ×19 → 复验重试 ×17 + 返回键兜底 ×2 全恢复 → 100%" },
-  { v: "3.4.0", d: "根因修复·微博/喜马拉雅等第一方图片开屏（窗口类名非 SDK、跳过键纯图片零文本、倒计时烧在图里——v3.3.0 零信号）/ 角落无字小可点控件识别 → dispatchGesture 手势点击其中心 650ms（图片跳过键正解）/ 坐标级点击兜底：开屏窗内零信号简单树 → 点标准跳过位（88%宽/7%高），防误点六重约束 / performAction 失效自动降级手势点击（真实触点应用拦不住）/ 多窗口扫描 + 开屏窗预算 280→600 / 决策核心 AdDecisionCore 纯 Java 可单测：JVM 38 用例发版前必绿 / 十八轮自测：图片开屏 ×53 全漏 → 100%" },
-  { v: "3.3.0", d: "SDK 广告窗 className 指纹（穿山甲/优量汇/快手/AdMob/宿主 ad.activity）500ms 直断 / 全屏热区直断 + 返回键重试 / 弹窗广告 v2（窗期独立+角标扩充+Dialog/营销话术+覆盖层突发检测）/ 链式回弹扩充（微信/支付宝/浏览器）/ 更新链路修复（v3.2.0 因发版脚本仓库名拼写未发布成功）" }
+  { v: "3.6.0", d: "三次真机反馈根因修复·「进入喜马拉雅被模拟人操作退出到桌面」：上传日志实锤两条毒链——① v3.5.0 的窗口指纹学习把主页/弹窗也学成「广告窗」，此后每次进入都在主页按返回键 → 喜马拉雅拦返回弹「再按一次退出」→ 引擎再按 → 真退出：sdkAdWin 改为只认【当前窗口类名】、指纹只沉淀真广告窗类、启动时自动清理历史毒指纹 / ② 应用入口窗（冷启动开屏/回前台首窗）上按返回=退出应用：根窗口安全门接线，入口窗禁一切返回键兜底，只走点击梯子（文本→学习位置→×→角落候选→三位置坐标轮换），用尽优雅收手（每窗 6 次） / 手势点击改点原标签控件坐标（不再点可点祖先中心，「已点没反应」根因之一）/ 信息流页面出现「摇一摇」文案不再误返回 / 无障碍持久化：清理后台后打开 App 自动拉活重绑（系统仍登记时无需手动去设置）+ onTaskRemoved 即时提醒 + 自检闹钟 / JVM 用例全绿；二十二轮自测 100%" },
+  { v: "3.5.0", d: "二次真机反馈根因修复·「日志显示已点击跳过但广告纹丝不动」：点击复验梯子（1.2s 后复扫，未关换候选+强制手势真实触点重试）/ 位置学习（图片跳过键零文本，教一次就会；仅广告形态窗内出手）/ 开屏×关闭键代点 / 服务保活三件套 + 电池优化白名单 / 学习中心「上传引擎日志到 GitHub」（内置加密通道）/ 全新绿色 Logo" },
+  { v: "3.4.0", d: "根因修复·微博/喜马拉雅等第一方图片开屏（窗口类名非 SDK、跳过键纯图片零文本）/ 角落无字小可点控件识别 → 手势点击其中心 / 坐标级点击兜底 / performAction 失效自动降级手势 / 决策核心纯 Java 可单测 / 十八轮自测 100%" }
 ];
 
 const INTEL = {
   strategies: [
-    { name: "点击被吞：日志显示已点、广告没关（二次真机反馈）", badge: "v3.5.0", cls: "badge-sensor", desc: "v3.4.0 点击后立即熔断扫描链、从不复验：performAction 返回 true 但被应用无声吞掉、手势点偏、按钮尚未可点——日志写「已点击跳过」，广告却纹丝不动，且再无第二次机会。", counter: "点击复验梯子：点后 1.2s 复扫同窗，未关 → 换下一个角落候选点 + 强制 dispatchGesture 真实触点重试；≥3 次未关 → 返回键兜底温和关闭。窗口切走即记「复验通过」。真机复测建模 ×19 全恢复（重试 ×17 + 兜底 ×2）。", impl: "根因修复" },
+    { name: "进入应用被「模拟人操作」退出到桌面（三次真机反馈·上传日志实锤）", badge: "v3.6.0", cls: "badge-native", desc: "喜马拉雅第一次进入没跳过（手动关），第二次起每次进入都被退出——先弹「再按一次退出到桌面」再真退。日志实锤两条毒链：① v3.5.0 窗口指纹学习把主页 MainActivity/FrameLayout/Dialog 也学成「广告窗」，此后每次进入 500ms 内就在主页按返回键，喜马拉雅拦截返回弹「再按一次退出」，复验扫描再按一次 → 真退出；② 应用入口窗上按返回键 = 退出应用，v3.5.0 的返回键兜底毫无防护。", counter: "毒链① 断源：SDK 窗资格改为只认【当前窗口类名】（12s TTL 废除）；指纹只沉淀真广告窗类；启动自动清理历史毒指纹。毒链② 断源：根窗口安全门（前台入口窗追踪）——入口窗禁一切返回键兜底（决策核心 + 服务侧双保险），只走点击梯子，用尽优雅收手（每窗 6 次）；信息流「摇一摇」文案不再误返回。", impl: "根因修复" },
+    { name: "清理后台后服务就停了，每次都得手动重开（三次真机反馈）", badge: "v3.6.0", cls: "badge-native", desc: "厂商 ROM 清理后台/省电策略会杀无障碍服务进程；Android 安全设计禁止应用自行重开无障碍（GKD/李跳跳同样无法绕过），v3.5.0 只做到了断连提醒，重开仍要手动去设置。", counter: "自动拉活重绑：打开 App 即检测「设置仍登记但进程已死」→ startService 拉起进程促系统完成待处理的无障碍重绑（多数 ROM 直接生效，无需手动）；onTaskRemoved 即时提醒 + 15s 自检闹钟；stopWithTask=false；仍失败才引导两步手动恢复（学习数据全保留）。", impl: "v3.6.0" },
+    { name: "点击被吞：日志显示已点、广告没关（二次真机反馈）", badge: "v3.5.0", cls: "badge-sensor", desc: "v3.4.0 点击后立即熔断扫描链、从不复验：performAction 返回 true 但被应用无声吞掉、手势点偏、按钮尚未可点——日志写「已点击跳过」，广告却纹丝不动，且再无第二次机会。", counter: "点击复验梯子：点后 1.2s 复扫同窗，未关 → 换下一个角落候选点 + 强制 dispatchGesture 真实触点重试（v3.6.0 改点原标签控件坐标，不再点可点祖先中心）；返回键兜底仅限应用内窗（根窗口禁用）。窗口切走即记「复验通过」。", impl: "根因修复" },
     { name: "图片跳过键学不下来：手动点两次也没用（二次真机反馈）", badge: "v3.5.0", cls: "badge-splash", desc: "图片跳过键零文本零 contentDescription——v3.4.0 手动点击学习只认「跳过/关闭」文本，图片键永远学不到，「手动记录两次还是不能跳过」。", counter: "位置学习：手动点小角落/顶部控件（零文本）即记归一化坐标 + 窗口类名指纹；次启同窗 500ms 手势直点该位置（教一次就会）。安全门：仅广告形态窗内出手（信息流/输入框/长文本页绝不点）；点后照常复验，失败升级候选/返回键。", impl: "根因修复" },
     { name: "服务保活：更新/重启后被系统关闭", badge: "v3.5.0", cls: "badge-native", desc: "覆盖安装新版本、系统更新或重启后，Android 会自动关闭无障碍服务——系统安全设计，任何应用（含 GKD/李跳跳）都无法绕过自动重开；后台清理与厂商省电策略也会杀服务。", counter: "系统允许的极限：前台常驻通知（IMPORTANCE_MIN，降低被杀概率）+ keepOn 持久化 + 覆盖安装/重启后 KeepAliveReceiver 检测断连 → 高优先级通知一键恢复（点按自动跳无障碍设置，两步恢复，学习数据全保留）+ 电池优化白名单一键加入。", impl: "v3.5.0" },
     { name: "第一方图片开屏（微博/喜马拉雅实测）", badge: "v3.4.0", cls: "badge-sensor", desc: "应用自建广告系统渲染：窗口类名是应用自己的 Activity（不匹配任何 SDK 指纹）、跳过按钮纯图片（零文本零 contentDescription）、倒计时烧在图里——v3.3.0 全部识别手段零信号，广告完整展示（二次真机反馈「还是拦截不了」的根因）。", counter: "角落图片跳过键识别（顶部 14% 高、贴右/左缘、小面积可点、无文本）→ 手势点击其中心 650ms；连角落控件都没有时坐标级兜底（点标准跳过位 88%宽/7%高，防误点六重约束）；performAction 失效自动降级 dispatchGesture 真实触点。图片开屏 ×53 全拦（角落 ×31 + 坐标 ×22）。", impl: "根因修复" },
@@ -106,15 +111,40 @@ function setRealState(st) { store.set("state", st); }
 function refreshHome() {
   let running = false;
   if (HAS_BRIDGE) { try { running = AndroidApp.isServiceRunning(); } catch (e) {} }
+  // v3.6.0：服务被系统杀但设置仍登记（清理后台典型态）→ 自动拉活重绑
+  let killed = false;
+  if (HAS_BRIDGE && !running) {
+    try { killed = AndroidApp.a11yEnabledInSettings(); } catch (e) { killed = false; }
+  }
   const card = $("#service-card"), dot = $("#service-dot");
-  $("#service-status").textContent = running ? "秒跳服务运行中" : (HAS_BRIDGE ? "服务未开启" : "浏览器预览模式");
+  $("#service-status").textContent = running
+    ? "秒跳服务运行中"
+    : (HAS_BRIDGE ? (killed ? "服务被系统关闭（可一键恢复）" : "服务未开启") : "浏览器预览模式");
   $("#service-desc").textContent = running
-    ? "点击复验 · 位置学习 · SDK 窗指纹 · 弹窗 v2 · 回弹扩充 · 官方与侧载一视同仁"
+    ? "根窗口安全门 · 点击复验 · 位置学习 · SDK 窗指纹 · 弹窗 v2 · 回弹扩充"
     : (HAS_BRIDGE ? "开启无障碍后自动秒跳任何应用开屏" : "安装 APK 后体验真实秒跳服务");
   dot.classList.toggle("on", running);
   card.classList.toggle("ok", running);
-  $("#btn-open-a11y").style.display = (HAS_BRIDGE && !running) ? "" : "none";
+  $("#btn-open-a11y").style.display = (HAS_BRIDGE && !running && !killed) ? "" : "none";
+  const rv = $("#btn-revive");
+  if (rv) rv.style.display = (HAS_BRIDGE && !running && killed) ? "" : "none";
+  if (HAS_BRIDGE && !running && killed && !reviveTried) { reviveTried = true; autoRevive(false); }
   refreshKeep(running);
+}
+
+/* v3.6.0 自动拉活：打开 App 即尝试，失败才引导手动两步恢复 */
+let reviveTried = false;
+function autoRevive(loud) {
+  if (!HAS_BRIDGE) return;
+  try {
+    const r = JSON.parse(AndroidApp.tryAutoRevive());
+    if (r.running || r.revived) {
+      toast("引擎已自动恢复，无需任何操作");
+      refreshHome();
+    } else if (loud) {
+      toast("自动恢复未成功——点「开启无障碍服务」两步开启（学习数据全保留）");
+    }
+  } catch (e) { if (loud) toast("恢复失败，请去无障碍设置开启"); }
 }
 
 /* v3.5.0 服务保活状态 */
@@ -155,6 +185,8 @@ if (HAS_BRIDGE) {
   $("#btn-open-a11y").addEventListener("click", () => {
     try { AndroidApp.openAccessibilitySettings(); } catch (e) {}
   });
+  const btnRevive = $("#btn-revive");
+  if (btnRevive) btnRevive.addEventListener("click", () => autoRevive(true));
   setInterval(refreshHome, 1600);
 }
 
@@ -195,10 +227,10 @@ function renderIntel() {
     </div>`).join("");
 
   $("#intel-boundary").innerHTML =
-    `二十一轮自测自改自修复（诚实重构模型）：73.21% → 95.09%（v3.3.0）→ 100%（v3.4.0）→ 真机复测建模点击被吞 ×19 跌至 98.21% → v3.5.0 复验重试全恢复 100%；冷启动 100%，双跑一致。` +
+    `二十三轮自测自改自修复（诚实重构模型）：73.21% → 95.09%（v3.3.0）→ 100%（v3.4.0）→ 真机复测建模点击被吞 ×19 跌至 98.21% → v3.5.0 复验重试全恢复 100% → v3.5.0 真机事故建模（毒指纹主页按返回 ×${TEST.v360Fix.poisonBack} + 入口窗返回退出 ×${TEST.v360Fix.rootBackExit}）跌至 91% → v3.6.0 根窗口安全门+毒指纹清理全恢复 100%；冷启动 100%，双跑一致。` +
     `v3.3.0 终态在图片开屏新建模下 ${TEST.v330Rate}%——微博/喜马拉雅等第一方图片开屏 ×${TEST.v340.imageSkip} 全部漏拦（真机反馈复现），v3.4.0 角落键 ×${TEST.v340.cornerHit} + 坐标兜底 ×${TEST.v340.coordHit} 全拦。` +
     `对抗样本：假跳过×${TEST.adversarial.fakeSkip} · 链式×${TEST.adversarial.chainJump} · 陀螺仪×${TEST.adversarial.gyro}（喜马拉雅 v4：R15 翻转后才回弹 → R16 角落键 ${TEST.ximalaya.cornerMs}ms 抢在翻转 ${TEST.ximalaya.flipTrigMs}ms 前）· 弹窗×${TEST.adversarial.popup}（覆盖层 ${TEST.v330.overlayPopup} · 12s 窗外 ${TEST.v330.latePopup} 全关）。` +
-    `SDK 窗 ×${TEST.v330.sdkAd} 首次可判。v3.5.0 真机复测：点击被吞 ×${TEST.v350.swallowed}（日志已点·广告未关）→ 复验换候选+真实触点重试 ×${TEST.v350.retryHit} + 返回键兜底 ×${TEST.v350.backHit} 全恢复；手动位置学习 ×${TEST.v350.posLearn} 条全部次启直点命中。决策核心 JVM ${TEST.jvmTests} 用例全绿（含 13 个误报防护场景）。功耗：日均 -${TEST.energyDrop}%。`;
+    `SDK 窗 ×${TEST.v330.sdkAd} 首次可判。v3.5.0 真机复测：点击被吞 ×${TEST.v350.swallowed} → 复验重试 ×${TEST.v350.retryHit} + 返回键兜底 ×${TEST.v350.backHit} 全恢复。v3.6.0 真机事故复现：毒指纹清理 ×${TEST.v360Fix.poisonPurged} 条 · 自动拉活重绑 ×${TEST.v360Fix.reviveOk}/13 ROM 生效（1 例 ROM 彻底解除登记→两步引导）。决策核心 JVM ${TEST.jvmTests} 用例全绿（含 15 个误报防护/安全门场景）。功耗：日均 -${TEST.energyDrop}%。`;
 
   $("#strategy-list").innerHTML = INTEL.strategies.map(s => `
     <div class="card strat-card">

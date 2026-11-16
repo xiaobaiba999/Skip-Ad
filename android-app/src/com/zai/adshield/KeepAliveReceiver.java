@@ -12,7 +12,7 @@ import android.os.Handler;
 import android.os.Looper;
 
 /**
- * 保活接收器（v3.5.0）——「开启后不手动关闭就一直保持开启」
+ * 保活接收器（v3.6.0）——「开启后不手动关闭就一直保持开启」
  * ─────────────────────────────────────────────────────────────
  * 背景（真机反馈）：App 被后台清理/覆盖安装新版本后，系统会关闭无障碍服务，
  * 每次都得重新去设置里开。Android 出于安全设计禁止应用自行重开无障碍服务
@@ -23,12 +23,17 @@ import android.os.Looper;
  *    通知「秒跳引擎待恢复」，点按直达 App 并自动跳无障碍设置页（两步恢复）；
  *  · BOOT_COMPLETED（重启后）：延迟 8s 等系统拉起已启用的服务，仍未连上
  *    才提醒（服务正常自启则不打扰）；
+ *  · SELF_CHECK（v3.6.0 自检闹钟）：AdSkipService.onTaskRemoved 后台清理时
+ *    排的自检——进程被杀但非 force-stop 的 ROM 上仍能触发，服务已死即提醒；
  *  · keepOn 偏好控制：用户在 App 内手动关闭保活提醒后不再发。
- * 配合 AdSkipService 的前台常驻通知与电池优化白名单引导，杀服务概率大幅降低。
+ * 配合 AdSkipService 的前台常驻通知、onTaskRemoved 即时提醒、
+ * 打开 App 自动拉活重绑（tryAutoRevive）与电池优化白名单引导。
  */
 public class KeepAliveReceiver extends BroadcastReceiver {
 
     private static final String CHANNEL_ALERT = "keep_alert";
+    /** v3.6.0：清理后台后的延迟自检（onTaskRemoved 排闹钟） */
+    public static final String ACTION_SELF_CHECK = "com.zai.adshield.SELF_CHECK";
 
     @Override
     public void onReceive(final Context ctx, Intent intent) {
@@ -36,7 +41,8 @@ public class KeepAliveReceiver extends BroadcastReceiver {
         String act = intent.getAction();
         boolean boot = Intent.ACTION_BOOT_COMPLETED.equals(act);
         boolean replaced = Intent.ACTION_MY_PACKAGE_REPLACED.equals(act);
-        if (!boot && !replaced) return;
+        boolean selfCheck = ACTION_SELF_CHECK.equals(act);
+        if (!boot && !replaced && !selfCheck) return;
         if (!ctx.getSharedPreferences("adshield", Context.MODE_PRIVATE)
                 .getBoolean("keepOn", false)) {
             return; // 用户已手动关闭保活提醒
@@ -60,8 +66,9 @@ public class KeepAliveReceiver extends BroadcastReceiver {
         }, 8000);
     }
 
-    /** 高优先级「待恢复」通知：点按打开 App（自动跳无障碍设置） */
-    private static void notifyAlert(Context ctx) {
+    /** 高优先级「待恢复」通知：点按打开 App（自动跳无障碍设置）；
+     *  v3.6.0 提升为包内可见静态方法——AdSkipService.onTaskRemoved 即时调用 */
+    static void notifyAlert(Context ctx) {
         try {
             NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
             Notification.Builder b;

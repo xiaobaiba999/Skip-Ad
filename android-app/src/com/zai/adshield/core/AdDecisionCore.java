@@ -6,12 +6,12 @@ import java.util.ArrayList;
  * 秒跳决策核心（v3.6.0 · 纯 Java · 零 Android 依赖 · JVM 可单测）
  * ─────────────────────────────────────────────────────────────
  * v3.6.0 设计动机（三次真机反馈：喜马拉雅二次进入被引擎连按两次返回键
- *  「模拟人操作退出」到桌面——v3.5.0 的返回键兑底在第一方开屏窗=退出应用）：
+ *  「模拟人操作退出」到桌面——v3.5.0 的返回键兜底在第一方开屏窗=退出应用）：
  *  · 返回键只在「返回后仍在应用内」的窗口上安全：SDK 广告窗（独立广告
  *    Activity，下面是应用主页）与应用内窗（主页之上拉起的广告页）。
  *    应用入口窗（rootWindow：冷启动开屏/从后台回前台首窗）上按返回
  *    = 退出应用（喜马拉雅拦截返回弹「再按一次退出」，第二次直接退出）。
- *  · 对策：根窗口禁一切返回键兑底（L3/L4.5/L5），只走点击梯子（文本→
+ *  · 对策：根窗口禁一切返回键兜底（L3/L4.5/L5），只走点击梯子（文本→
  *    学习位置→×关闭键→角落候选→三位置坐标轮换），用尽优雅收手。
  *
  * v3.5.0 设计动机（二次真机反馈：日志显示「已点击跳过」但广告纹丝不动，
@@ -31,7 +31,7 @@ import java.util.ArrayList;
  *         而不是同一个错位置点三遍；v3.6.0 改纯手势点击子控件坐标
  *         （performAction 可能落到大热区祖先=点开广告本体）
  *    L4.5 点击复验失败升级：同一广告窗内点击 ≥3 次仍未关闭 →
- *         返回键兑底【仅应用内窗】（v3.6.0 根窗口豁免，见下）
+ *         返回键兜底【仅应用内窗】（v3.6.0 根窗口豁免，见下）
  *    L5 全屏热区（自绘图片广告三条件）→ 900ms 返回键直断（守护名单豁免）
  *    L6 开屏窗坐标级点击兜底：简单树(无滚动/无输入框/节点少)且无任何
  *        信号 → dispatchGesture 点击标准跳过位，v3.6.0 三位置轮换：
@@ -39,7 +39,7 @@ import java.util.ArrayList;
  *         守护名单豁免（防误点；长文本豁免）
  *    P  弹窗窗期：角标强信号 / Dialog+≥2营销话术弱信号 → 代点关闭
  *  · v3.6.0 根窗口返回键安全门（三次真机反馈：喜马拉雅二次进入被
- *    「模拟人操作退出」——引擎在第一方开屏窗用返回键兑底，喜马拉雅拦截
+ *    「模拟人操作退出」——引擎在第一方开屏窗用返回键兜底，喜马拉雅拦截
  *    返回键弹「再按一次退出到桌面」，引擎再按 → 真退到桌面）：
  *    rootWindow=应用入口窗（从前台其他应用/桌面切来的首个窗口）时，
  *    返回键=退出应用，L3/L4.5/L5 全部禁用；仅 SDK 广告窗（独立广告
@@ -244,7 +244,10 @@ public final class AdDecisionCore {
                         if (!f.foundSkip) {
                             f.foundSkip = true;
                             f.skipNode = click;
-                            f.skipBounds = click.bounds();
+                            // v3.6.0：手势点击用【原标签控件】坐标（点得准），
+                            // 不再用可点祖先中心（祖先常是全屏容器，点中心=点开广告，
+                            // 真机「已点击跳过但广告纹丝不动」根因之一）；performAction 仍走祖先
+                            f.skipBounds = (b != null && areaRatio(b, ctx) < SKIP_AREA_MAX) ? b : click.bounds();
                             f.skipLabel = label;
                         }
                     } else {
@@ -257,7 +260,8 @@ public final class AdDecisionCore {
                     if (click != null && isSmallClick(click, ctx) && !f.foundClose) {
                         f.foundClose = true;
                         f.closeNode = click;
-                        f.closeBounds = click.bounds();
+                        // v3.6.0：同 L1——手势点原标签坐标，performAction 走可点祖先
+                        f.closeBounds = (b != null && areaRatio(b, ctx) < SKIP_AREA_MAX) ? b : click.bounds();
                         f.closeLabel = label;
                     }
                 } else if (isAdBadge(label)) {
@@ -412,24 +416,33 @@ public final class AdDecisionCore {
                 return click(f.closeNode, f.closeBounds, "splash_close");
             }
             // L2 SDK / 学习 className 窗口指纹 → 返回键直断
-            //    （SDK 广告窗是独立 Activity，返回回到应用内页——根窗口也安全）
-            long clsBreak = ctx.learnedCls ? CLS_LEARNED_BREAK_MS : CLS_BREAK_MS;
-            if ((ctx.sdkAdWin || ctx.learnedCls) && ctx.elapsedMs >= clsBreak) {
-                return back(ctx.learnedCls ? "sdk_window_learned" : "sdk_window");
+            //    SDK 广告窗是独立 Activity，返回回到应用内页——根窗口也安全。
+            //    v3.6.0 学习指纹快断加双保险（真机事故：毒指纹把主页学成广告窗
+            //    → 入口窗快断=按返回键退出应用）：① 仅非根窗口或 SDK 窗可快断；
+            //    ② 须为广告形态树（信息流等可滚动页面绝不快断）
+            boolean sdkCut = ctx.sdkAdWin && ctx.elapsedMs >= CLS_BREAK_MS;
+            boolean learnedCut = ctx.learnedCls && ctx.elapsedMs >= CLS_LEARNED_BREAK_MS
+                    && (!ctx.rootWindow || ctx.sdkAdWin) && isAdLike(f);
+            if (sdkCut || learnedCut) {
+                return back(learnedCut && !sdkCut ? "sdk_window_learned" : "sdk_window");
             }
             /* v3.6.0 根窗口返回键安全门 ─────────────────────────────
              * 应用入口窗（冷启动开屏/回前台首窗）上按返回键 = 退出应用。
-             * 真机事故（喜马拉雅）：v3.5.0 返回键兑底 → 喜马拉雅拦截返回
+             * 真机事故（喜马拉雅）：v3.5.0 返回键兜底 → 喜马拉雅拦截返回
              * 弹「再按一次退出到桌面」→ 引擎 600ms 后再按 → 真退到桌面，
              * 用户「第二次进入就被模拟人操作退出来」。
              * 此后 L3/L4.5/L5 的返回键决策仅在应用内窗（返回回到应用内）
              * 或 SDK 广告窗上生效；根窗口只走点击梯子，用尽优雅收手。 */
             boolean backSafe = !ctx.rootWindow || ctx.sdkAdWin;
             // L3 陀螺仪/假跳过：无倒计时立即直断；带倒计时(假跳过) 800ms 直断
-            if (backSafe && f.gyroHint && !f.fakeSkip && ctx.elapsedMs >= GYRO_IMMEDIATE_MS) {
+            //     v3.6.0 加信息流安全门：可滚动/有输入框的页面出现「摇一摇/翻转」文案
+            //     多为互动玩法或 feed 内容（如「摇一摇抽签」），绝不返回键（防主页误退）
+            if (backSafe && f.gyroHint && !f.fakeSkip && !f.scrollPresent && !f.editPresent
+                    && ctx.elapsedMs >= GYRO_IMMEDIATE_MS) {
                 return back("gyro_immediate");
             }
-            if (backSafe && (f.gyroHint || f.fakeSkip) && ctx.elapsedMs >= GYRO_BREAK_MS) {
+            if (backSafe && (f.gyroHint || f.fakeSkip) && !f.scrollPresent && !f.editPresent
+                    && ctx.elapsedMs >= GYRO_BREAK_MS) {
                 return back("gyro_break");
             }
             // L4 角落无字小可点控件（图片跳过键，多候选）→ 手势点击其中心
@@ -443,7 +456,7 @@ public final class AdDecisionCore {
                 CornerCand c = f.corners.get(ctx.clickAttempts);
                 return click(null, c.tapBounds, "corner_image_skip");
             }
-            // L4.5 点击复验失败升级（v3.5.0）：同窗点击 ≥3 次仍未关闭 → 返回键兑底
+            // L4.5 点击复验失败升级（v3.5.0）：同窗点击 ≥3 次仍未关闭 → 返回键兜底
             //     v3.6.0：仅应用内窗（返回回到应用内）；根窗口绝不返回键（防退出）
             if (ctx.clickAttempts >= CLICK_VERIFY_MAX && backSafe && isAdLike(f)
                     && ctx.elapsedMs >= GYRO_BREAK_MS) {

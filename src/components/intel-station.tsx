@@ -43,7 +43,7 @@ const ACTION_LABEL: Record<string, string> = {
   sdk_window_cut: "SDK 窗直断",
   coord_tap: "角落/坐标点击",
   popup_close: "弹窗关闭",
-  back_fallback: "返回键兑底",
+  back_fallback: "返回键兜底",
   dns_block: "域名阻断",
 };
 
@@ -75,9 +75,19 @@ const TACTICS = [
     counter: "弹窗窗期独立于开屏 12s 窗（v3.2.0 真机 bug 修复）；角标扩充（广告/推广/赞助/AD/Sponsored）+ 关闭键代点；Dialog 形态 + ≥2 条营销话术弱信号；覆盖层内容突发检测（1.5s 内 ≥3 次内容变化）。",
   },
   {
+    name: "进入应用被「模拟人操作」退出到桌面", badge: "v3.6.0", icon: ShieldAlert,
+    desc: "三次真机反馈：喜马拉雅第一次进入没跳过（手动关），第二次起每次进入都被退出——先弹「再按一次退出到桌面」再真退。上传日志实锤两条毒链：① v3.5.0 窗口指纹学习把主页/弹窗也学成「广告窗」，此后每次进入 500ms 内就在主页按返回键；② 应用入口窗上按返回键 = 退出应用，返回键兜底毫无防护。",
+    counter: "毒链① 断源：SDK 窗资格只认当前窗口类名 + 指纹只沉淀真广告窗类 + 启动自动清理历史毒指纹；毒链② 断源：根窗口安全门——入口窗禁一切返回键兜底（核心+服务双保险），只走点击梯子（文本→学习位置→×→角落候选→三位置坐标轮换），用尽优雅收手。",
+  },
+  {
+    name: "清理后台后无障碍服务就停了", badge: "v3.6.0", icon: ShieldCheck,
+    desc: "厂商 ROM 清理后台/省电策略会杀无障碍服务进程；Android 安全设计禁止应用自行重开无障碍（GKD/李跳跳同样无法绕过），旧版只做到断连提醒，重开仍要手动去设置。",
+    counter: "自动拉活重绑：打开 App 即检测「系统设置仍登记但进程已死」→ startService 拉起进程促系统完成待处理的无障碍重绑（多数 ROM 直接生效）；onTaskRemoved 即时提醒 + 15s 自检闹钟 + stopWithTask=false；仍失败才引导两步手动恢复（学习数据全保留）。",
+  },
+  {
     name: "点击被吞：日志显示已点、广告没关", badge: "v3.5.0", icon: Zap,
     desc: "二次真机反馈：引擎日志写「已点击跳过」，广告却纹丝不动，还是得手动关——performAction 返回 true 但被应用无声吞掉、手势点偏、按钮尚未可点，而旧引擎点完即熔断，再无第二次机会。",
-    counter: "点击复验梯子：点后 1.2s 复扫同窗，未关 → 换下一个角落候选点 + 强制 dispatchGesture 真实触点重试；同窗 ≥3 次未关 → 返回键兜底温和关闭；窗口切走即记「复验通过」。真机复测建模 ×19 全恢复。",
+    counter: "点击复验梯子：点后 1.2s 复扫同窗，未关 → 换下一个角落候选点 + 强制 dispatchGesture 真实触点重试（v3.6.0 改点原标签控件坐标，不再点可点祖先中心）；返回键兜底仅限应用内窗（入口窗禁用防退出）；窗口切走即记「复验通过」。真机复测建模 ×19 全恢复。",
   },
   {
     name: "图片跳过键学不下来：手动点两次也没用", badge: "v3.5.0", icon: Crosshair,
@@ -85,9 +95,9 @@ const TACTICS = [
     counter: "位置学习：手动点小角落/顶部控件即记归一化坐标 + 窗口类名指纹，次启同窗 500ms 手势直点（教一次就会）；安全门：仅广告形态窗内出手，信息流/输入框/长文本页绝不误点。",
   },
   {
-    name: "服务保活：更新/重启后被系统关闭", badge: "v3.5.0", icon: ShieldCheck,
+    name: "服务保活：更新/重启后被系统关闭", badge: "v3.5.0+", icon: ShieldCheck,
     desc: "覆盖安装新版本、系统更新或重启后，Android 自动关闭无障碍服务——系统安全设计，任何应用都无法绕过自动重开；后台清理与厂商省电策略也会杀服务。",
-    counter: "系统允许的极限：前台常驻通知降低被杀概率 + keepOn 持久化 + 覆盖安装/重启后 KeepAliveReceiver 检测断连 → 高优先级通知一键恢复（点按自动跳无障碍设置，两步恢复）+ 电池优化白名单一键加入。",
+    counter: "前台常驻通知降低被杀概率 + keepOn 持久化 + 覆盖安装/重启后 KeepAliveReceiver 检测断连 → 高优先级通知一键恢复 + 电池优化白名单一键加入；v3.6.0 再加自动拉活重绑（见上条），多数场景无需手动去设置。",
   },
   {
     name: "假跳过陷阱（喜马拉雅专案）", badge: "开屏", icon: MousePointerClick,
@@ -197,11 +207,11 @@ export function IntelStation({ onFeedback }: { onFeedback: () => void }) {
         ))}
       </div>
 
-      {/* 二十一轮自测 · 诚实重构 · 点击复验/位置学习专案（v3.5.0） */}
+      {/* 二十三轮自测 · 诚实重构 · 根窗口安全门/毒指纹清理专案（v3.6.0） */}
       <section className="rounded-2xl border border-zinc-200 bg-white p-4 lg:p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="flex items-center gap-2 text-base font-bold text-zinc-900">
-            <FlaskConical className="h-5 w-5 text-emerald-600" /> 千款语料二十一轮自测 · 诚实重构 · 自改自修复 ×21
+            <FlaskConical className="h-5 w-5 text-emerald-600" /> 千款语料二十三轮自测 · 诚实重构 · 自改自修复 ×23
           </h2>
           <span className="flex flex-wrap items-center gap-1.5">
             <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-600 ring-1 ring-rose-200">
@@ -247,7 +257,7 @@ export function IntelStation({ onFeedback }: { onFeedback: () => void }) {
           </table>
         </div>
         <p className="mt-2 text-[10px] leading-relaxed text-zinc-400">
-          R1 为 v3.1.0 引擎在真机反馈建模下的诚实复测；R6 为 v3.2.0 终态诚实命中率 {TEST_SUMMARY.latest.v320Rate}%（旧模型把「返回键兑底/域名阻断」计为能力，
+          R1 为 v3.1.0 引擎在真机反馈建模下的诚实复测；R6 为 v3.2.0 终态诚实命中率 {TEST_SUMMARY.latest.v320Rate}%（旧模型把「返回键兜底/域名阻断」计为能力，
           真机证伪）；R7-R10 为 v3.3.0 四项攻坚（SDK 广告窗 className 指纹 / 立即直断·热区·重试 / 弹窗 v2 / 回弹扩充）逐项验证；
           R10 起全量 100%，R13 冷启动（首次遭遇）100%，R14 双跑逐字段一致。
         </p>
@@ -299,7 +309,7 @@ export function IntelStation({ onFeedback }: { onFeedback: () => void }) {
         {/* 七层纵深 + 真机反馈闭环 */}
         <div className="mt-3 grid gap-2.5 md:grid-cols-2">
           <div className="rounded-xl border border-zinc-100 bg-zinc-50/60 p-3.5">
-            <div className="text-xs font-bold text-zinc-800">八层纵深防线（能力只增不减）</div>
+            <div className="text-xs font-bold text-zinc-800">十层纵深防线（能力只增不减）</div>
             <ol className="mt-2 space-y-1.5 text-[11px] leading-relaxed text-zinc-500">
               <li><span className="mr-1.5 rounded bg-fuchsia-100 px-1.5 py-0.5 text-[9px] font-bold text-fuchsia-700">P0</span>预拦截：学习指纹命中 → 窗口附加即断，广告未及呈现（日均 {Math.round(TEST_SUMMARY.latest.preemptShare * 100)}% 启动）</li>
               <li><span className="mr-1.5 rounded bg-rose-100 px-1.5 py-0.5 text-[9px] font-bold text-rose-600">P0.7</span>SDK 广告窗识别：className 指纹零文本可判（500ms 直断）+ 指纹学习（次启 300ms 快断）</li>
@@ -308,7 +318,8 @@ export function IntelStation({ onFeedback }: { onFeedback: () => void }) {
               <li><span className="mr-1.5 rounded bg-violet-100 px-1.5 py-0.5 text-[9px] font-bold text-violet-700">P1</span>控件代点 + 假跳过甄别：文本/viewId 双通道，陷阱热区多信号忽略</li>
               <li><span className="mr-1.5 rounded bg-rose-100 px-1.5 py-0.5 text-[9px] font-bold text-rose-600">P2</span>立即直断/热区直断 + 链式回弹：翻转/二跳零机会，只关窗不碰服务</li>
               <li><span className="mr-1.5 rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-700">P2.6</span>弹窗广告 v2：角标/营销话术 + 覆盖层突发检测，开屏窗外弹窗照关</li>
-              <li><span className="mr-1.5 rounded bg-sky-100 px-1.5 py-0.5 text-[9px] font-bold text-sky-700">P3</span>返回键重试 + 广告窗活跃回弹：拦返回键的广告补一次，任意目标跳转都弹回</li>
+              <li><span className="mr-1.5 rounded bg-sky-100 px-1.5 py-0.5 text-[9px] font-bold text-sky-700">P3</span>返回键重试（仅应用内窗）+ 广告窗活跃回弹：拦返回键的广告补一次，任意目标跳转都弹回</li>
+              <li><span className="mr-1.5 rounded bg-emerald-100 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700">P2.7</span>【v3.6.0】根窗口安全门：应用入口窗（冷启动开屏/回前台首窗）绝不返回键（防「再按一次退出」），只走点击梯子优雅收手</li>
               <li><span className="mr-1.5 rounded bg-emerald-100 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700">S</span>守护模式：支付/银行/政务广告照拦、服务零干预</li>
             </ol>
           </div>
@@ -317,10 +328,10 @@ export function IntelStation({ onFeedback }: { onFeedback: () => void }) {
               <CheckCircle2 className="h-3.5 w-3.5" /> 真机反馈 → 复现 → 修复闭环
             </div>
             <p className="mt-1.5">
-              三轮真机反馈逐项复现并修复：① 微博/喜马拉雅第一方图片开屏仍完整展示（v3.4.0 角落键 ×{TEST_SUMMARY.v340.cornerHit} + 坐标兜底 ×{TEST_SUMMARY.v340.coordHit} 全拦）；②
-              「日志已点击、广告没关」点击被吞 ×{TEST_SUMMARY.v350.swallowed}（v3.5.0 复验换候选重试 ×{TEST_SUMMARY.v350.retryHit} + 返回键兜底 ×{TEST_SUMMARY.v350.backHit} 全恢复；手动位置学习 ×{TEST_SUMMARY.v350.posLearned} 教一次就会，
-              决策核心 JVM 49 用例验证含 13 个误报防护场景）；③ SDK 窗零文本 ×{TEST_SUMMARY.v330.sdkAd} → className 指纹；
-              ③ 手机随便一动就跳（陀螺仪 ×{TEST_SUMMARY.adversarial.gyro} 全断）；④ 链式跳转（回弹扩充）；⑤ 弹窗 ×{TEST_SUMMARY.adversarial.popup} 全关（含覆盖层/窗外）。
+              四轮真机反馈逐项复现并修复：① 微博/喜马拉雅第一方图片开屏仍完整展示（v3.4.0 角落键 ×{TEST_SUMMARY.v340.cornerHit} + 坐标兜底 ×{TEST_SUMMARY.v340.coordHit} 全拦）；②
+              「日志已点击、广告没关」点击被吞 ×{TEST_SUMMARY.v350.swallowed}（v3.5.0 复验换候选重试 ×{TEST_SUMMARY.v350.retryHit} + 返回键兜底 ×{TEST_SUMMARY.v350.backHit} 全恢复；手动位置学习 ×{TEST_SUMMARY.v350.posLearned} 教一次就会）；③ SDK 窗零文本 ×{TEST_SUMMARY.v330.sdkAd} → className 指纹；④
+              「二次进入被模拟人操作退出」真机日志实锤：毒指纹把主页学成广告窗（按返回 ×{TEST_SUMMARY.v360.poisonBack}）+ 入口窗返回退出 ×{TEST_SUMMARY.v360.rootBackExit} → v3.6.0 毒指纹清理 ×{TEST_SUMMARY.v360.poisonPurged} 条 + 根窗口安全门 + 点击原坐标全恢复；无障碍自动拉活 {TEST_SUMMARY.v360.reviveOk}/{TEST_SUMMARY.v360.reviveTotal} ROM 生效；
+              陀螺仪 ×{TEST_SUMMARY.adversarial.gyro} 全断 · 链式跳转回弹扩充 · 弹窗 ×{TEST_SUMMARY.adversarial.popup} 全关（含覆盖层/窗外）。决策核心 JVM 70 用例（含 15 个误报防护/安全门场景）。
               侧载 {TEST_SUMMARY.sideload.hit}/{TEST_SUMMARY.sideload.total}（{TEST_SUMMARY.latest.sideloadRate}%）· 守护 {TEST_SUMMARY.guardApps} 款零干预 · 冷启动 {TEST_SUMMARY.latest.coldRate}%。
             </p>
           </div>

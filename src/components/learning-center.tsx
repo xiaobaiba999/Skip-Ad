@@ -94,7 +94,7 @@ export function LearningCenter() {
       ? learnedRules.map((r) => `- ${r.appName}（${r.appCategory}）：${r.pattern} · 命中 ${r.hitCount} 次 · 置信度 ${Math.round(r.confidence * 100)}%${r.enabled ? "" : " · 已停用"}`).join("\n")
       : "- （无学习规则）";
     const context = [
-      `### 版本：v3.5.0（秒跳引擎）· 上传时间：${new Date().toLocaleString("zh-CN", { hour12: false })}`,
+      `### 版本：v3.6.0（秒跳引擎·根窗口安全门+毒指纹清理）· 上传时间：${new Date().toLocaleString("zh-CN", { hour12: false })}`,
       "",
       "### 拦截战绩（累计）",
       `- 拦截 ${profile.totals.blocks} 次 · 漏拦截 ${profile.totals.misses} 次 · 成功率 ${Math.round(profile.totals.successRate * 100)}% · 平均耗时 ${profile.totals.avgLatencyMs}ms · 守护拦截 ${profile.totals.guardBlocks} 次`,

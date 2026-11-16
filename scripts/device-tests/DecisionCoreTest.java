@@ -6,10 +6,18 @@ import com.zai.adshield.core.AdDecisionCore.Decision;
 import com.zai.adshield.core.AdDecisionCore.ScanFind;
 
 /**
- * 决策核心 JVM 单测（v3.4.0 · 真实机型场景建模 · 发版前必绿）
+ * 决策核心 JVM 单测（v3.6.0 · 真实机型场景建模 · 发版前必绿）
  * ─────────────────────────────────────────────────────────────
- * 场景来源：2026-11 真机反馈（微博/喜马拉雅等主流应用开屏拦截失败）
- * + 误报防护（正常界面绝不能被误点/误返回）。
+ * 场景来源：2026-11 三轮真机反馈（微博/喜马拉雅拦截失败 → 点击被吞 →
+ * 二次进入被连按返回键「模拟人操作退出」）+ 误报防护（正常界面绝不误点/误返回）。
+ * v3.6.0 新增重点：
+ *  · 根窗口安全门：入口窗（冷启动开屏/回前台首窗）上 L3/L4.5/L5 返回键全禁，
+ *    只走点击梯子（G/X3/X4/V1d/H1b 用例）
+ *  · SDK 广告窗豁免：入口窗上的独立广告 Activity 返回仍安全（X2d）
+ *  · L3 信息流安全门：可滚动页面「摇一摇/翻转」文案不返回键（F1b）
+ *  · L6 三位置坐标轮换：右上→右下→左上，用尽收手（W2/V1e）
+ *  · L1/L1.6 手势点原标签控件坐标（S2）
+ *  · learnableSkipShape：底部跳过键形态（G4）
  * 用法：javac 编译后 java 运行；任何 FAIL 退出码 1，禁止发版。
  */
 public class DecisionCoreTest {
@@ -21,6 +29,13 @@ public class DecisionCoreTest {
         Ctx c = base();
         c.splashLive = true;
         c.elapsedMs = elapsedMs;
+        return c;
+    }
+
+    /** v3.6.0：入口窗（冷启动开屏/回前台首窗）——按返回键=退出应用 */
+    static Ctx rootSplash(long elapsedMs) {
+        Ctx c = splash(elapsedMs);
+        c.rootWindow = true;
         return c;
     }
 
@@ -36,7 +51,7 @@ public class DecisionCoreTest {
         return AdDecisionCore.decide(f, ctx);
     }
 
-    /* ═════════ 微博类：第一方图片开屏（真机反馈主场景） ═════════ */
+    /* ═══════ 微博类：第一方图片开屏（真机反馈主场景） ═══════ */
 
     /** W1：微博开屏——全屏图片广告 + 右上角无字小可点控件（图片跳过键） */
     static void weibo_cornerSkip() {
@@ -47,33 +62,48 @@ public class DecisionCoreTest {
         skipBtn.click();
         root.add(adImage).add(skipBtn);
 
-        // 500ms：窗口类名非 SDK、无文本 → v3.3.0 在此返回 none（真机漏拦）
-        Decision dOld = run(root, splash(500));
-        check("W1a 微博角落控件 500ms 未到时机应等待", dOld.action.equals(AdDecisionCore.A_NONE));
+        // 450ms（v3.6.0 角落最早 500ms）：窗口类名非 SDK、无文本 → 应等待
+        check("W1a 微博角落控件 450ms 未到时机应等待", run(root, splash(450)).action.equals(AdDecisionCore.A_NONE));
 
-        // 700ms：角落控件命中 → 点击其中心
-        Decision d = run(root, splash(700));
-        check("W1b 微博图片跳过键 → 点击角落控件",
+        // 700ms：角落控件命中 → 点击其中心（入口窗也允许：点击梯子永不豁免）
+        Decision d = run(root, rootSplash(700));
+        check("W1b 微博图片跳过键 → 点击角落控件（根窗口照点）",
                 d.action.equals(AdDecisionCore.A_CLICK_BOUNDS) && d.reason.equals("corner_image_skip")
                         && d.bounds != null && d.bounds[0] == 940,
                 "实际: " + d.action + "/" + d.reason);
     }
 
-    /** W2：微博开屏变体——连角落控件都没有（纯图）→ 坐标级点击兜底 */
+    /** W2：微博开屏变体——纯图零信号 → 坐标级三位置轮换（v3.6.0） */
     static void weibo_coordFallback() {
         FakeNode root = FakeNode.root("com.sina.weibo.SplashActivity");
         FakeNode adImage = FakeNode.node("android.widget.ImageView", 0, 0, 1080, 2400);
         root.add(adImage); // 不可点、无字：纯展示图
 
-        Decision d = run(root, splash(1200));
-        check("W2 微博纯图开屏 → 坐标级点击标准跳过位",
-                d.action.equals(AdDecisionCore.A_TAP_POINT) && d.x == (int) (1080 * 0.88) && d.y == (int) (2400 * 0.07),
-                "实际: " + d.action + " @" + d.x + "," + d.y);
+        Decision d0 = run(root, splash(1200));
+        check("W2a 纯图开屏第 1 次 → 右上标准位",
+                d0.action.equals(AdDecisionCore.A_TAP_POINT) && d0.x == (int) (1080 * 0.88) && d0.y == (int) (2400 * 0.07),
+                "实际: " + d0.action + " @" + d0.x + "," + d0.y);
 
-        // 已用过一次 → 不再点
-        Ctx used = splash(1500);
-        used.coordTapUsed = true;
-        check("W2b 坐标兜底每次启动只一次", run(root, used).action.equals(AdDecisionCore.A_NONE));
+        // v3.6.0 轮换：第 2 次兜底点右下、第 3 次点左上、第 4 次收手
+        Ctx second = splash(2000);
+        second.clickAttempts = 1;
+        Decision d1 = run(root, second);
+        check("W2b 第 2 次兜底 → 右下位",
+                d1.action.equals(AdDecisionCore.A_TAP_POINT) && d1.x == (int) (1080 * 0.90) && d1.y == (int) (2400 * 0.92),
+                "实际: " + d1.action + " @" + d1.x + "," + d1.y);
+
+        Ctx third = splash(3000);
+        third.clickAttempts = 2;
+        Decision d2 = run(root, third);
+        check("W2c 第 3 次兜底 → 左上位",
+                d2.action.equals(AdDecisionCore.A_TAP_POINT) && d2.x == (int) (1080 * 0.08) && d2.y == (int) (2400 * 0.07),
+                "实际: " + d2.action + " @" + d2.x + "," + d2.y);
+
+        Ctx fourth = rootSplash(4000);
+        fourth.clickAttempts = 3;
+        check("W2d 入口窗三位置用尽 → 收手不再点击（应用内窗则返回键兜底，见 V1c）",
+                run(root, fourth).action.equals(AdDecisionCore.A_NONE),
+                "实际: " + run(root, fourth).action);
     }
 
     /** W3：微博开屏带延迟文本跳过（3s 后出现「跳过广告」）→ 前期坐标兜底抢跑 */
@@ -81,7 +111,6 @@ public class DecisionCoreTest {
         FakeNode root = FakeNode.root("com.sina.weibo.SplashActivity");
         FakeNode adImage = FakeNode.node("android.widget.ImageView", 0, 0, 1080, 2400);
         root.add(adImage);
-        // 900ms 仍无文本 → 坐标兜底出手（不等 5s 文本）
         check("W3a 无信号期坐标兜底", run(root, splash(950)).action.equals(AdDecisionCore.A_TAP_POINT));
 
         FakeNode skip = FakeNode.node("android.widget.TextView", 880, 100, 1040, 170).txt("跳过广告").click();
@@ -90,9 +119,9 @@ public class DecisionCoreTest {
         check("W3b 文本出现后优先文本代点", d.action.equals(AdDecisionCore.A_CLICK_BOUNDS) && d.reason.equals("skip_text"));
     }
 
-    /* ═════════ 喜马拉雅类：零文本 + 翻转诱导 ═════════ */
+    /* ═══════ 喜马拉雅类：零文本 / SDK 窗 / 翻转诱导 / 双返回退出事故 ═══════ */
 
-    /** X1：喜马拉雅第一方开屏（WelComeActivity）零文本 + 翻转 900ms 即跳 → 角落控件 600ms 抢先 */
+    /** X1：喜马拉雅第一方开屏（WelComeActivity·入口窗）零文本 → 角落控件抢先 */
     static void ximalaya_cornerBeforeFlip() {
         FakeNode root = FakeNode.root("com.ximalaya.ting.android.host.activity.WelComeActivity");
         FakeNode adImage = FakeNode.node("android.widget.ImageView", 0, 0, 1080, 2400);
@@ -101,17 +130,17 @@ public class DecisionCoreTest {
         skipBtn.click();
         root.add(adImage).add(skipBtn);
 
-        Decision d = run(root, splash(650));
-        check("X1 喜马拉雅图片跳过键 650ms 抢在翻转(900ms)前",
+        Decision d = run(root, rootSplash(650));
+        check("X1 喜马拉雅图片跳过键 650ms（入口窗照点）",
                 d.action.equals(AdDecisionCore.A_CLICK_BOUNDS) && d.reason.equals("corner_image_skip"));
     }
 
-    /** X2：CSJ 穿山甲全屏视频广告（SDK 窗口）→ className 直断 */
+    /** X2：CSJ 穿山甲全屏视频广告（SDK 窗口）→ className 直断（入口窗豁免） */
     static void ximalaya_sdkWindow() {
         FakeNode root = FakeNode.root("com.bytedance.sdk.openadsdk.stub.activity.Stub_Standard_Portrait_Activity");
         root.add(FakeNode.node("android.view.TextureView", 0, 0, 1080, 2400));
         Ctx ctx = splash(400);
-        ctx.sdkAdWin = true; // 服务侧已由 isAdActivityClass 判定
+        ctx.sdkAdWin = true; // 服务侧由 isAdActivityClass(当前窗口类名) 判定
         check("X2a SDK 窗 400ms 未到直断时限应等待", run(root, ctx).action.equals(AdDecisionCore.A_NONE));
         ctx.elapsedMs = 520;
         Decision d = run(root, ctx);
@@ -121,31 +150,96 @@ public class DecisionCoreTest {
         learned.sdkAdWin = true;
         learned.learnedCls = true;
         check("X2c 学习指纹 300ms 快断", run(root, learned).action.equals(AdDecisionCore.A_BACK));
+
+        // v3.6.0 关键：SDK 广告窗即便是入口窗也豁免（独立广告 Activity，
+        // 返回回到应用内页——与第一方入口窗返回=退出应用不同）
+        Ctx rootSdk = rootSplash(520);
+        rootSdk.sdkAdWin = true;
+        Decision d2 = run(root, rootSdk);
+        check("X2d SDK 窗在入口窗上返回仍安全（豁免）",
+                d2.action.equals(AdDecisionCore.A_BACK) && d2.reason.equals("sdk_window"),
+                "实际: " + d2.action + "/" + d2.reason);
     }
 
-    /** X3：翻转文案（无倒计时）→ 120ms 立即直断 */
+    /**
+     * X3（v3.6.0 核心）：翻转文案在【入口窗】上不再立即直断——
+     * 真机事故：入口窗按返回=退出应用（喜马拉雅弹「再按一次退出」→ 引擎再按 → 真退出）。
+     * 改走点击梯子（角落候选 / 坐标轮换）；应用内窗（插屏）仍立即直断。
+     */
     static void gyro_immediate() {
         FakeNode root = FakeNode.root("com.ximalaya.ting.android.host.activity.WelComeActivity");
         FakeNode hint = FakeNode.node("android.widget.TextView", 200, 2000, 880, 2080).txt("翻转手机，跳转详情页或第三方应用");
         root.add(hint);
+
         check("X3a 翻转文案 60ms 未到时机应等待", run(root, splash(60)).action.equals(AdDecisionCore.A_NONE));
-        Decision d = run(root, splash(150));
-        check("X3b 翻转文案 150ms 立即直断", d.action.equals(AdDecisionCore.A_BACK) && d.reason.equals("gyro_immediate"));
+        // 入口窗：绝不返回键（毒链② 根治）
+        Decision dRoot = run(root, rootSplash(150));
+        check("X3b 入口窗翻转文案 150ms 禁返回键（防退出应用）",
+                !dRoot.action.equals(AdDecisionCore.A_BACK),
+                "实际: " + dRoot.action + "/" + dRoot.reason);
+        // 入口窗 950ms → 坐标梯子（右上标准位）
+        Decision dTap = run(root, rootSplash(950));
+        check("X3c 入口窗翻转文案 950ms 走坐标梯子",
+                dTap.action.equals(AdDecisionCore.A_TAP_POINT),
+                "实际: " + dTap.action + "/" + dTap.reason);
+        // 应用内窗（插屏/活动页之上）：立即直断保持
+        Decision dInApp = run(root, splash(150));
+        check("X3d 应用内窗翻转文案 150ms 立即直断",
+                dInApp.action.equals(AdDecisionCore.A_BACK) && dInApp.reason.equals("gyro_immediate"),
+                "实际: " + dInApp.action + "/" + dInApp.reason);
     }
 
-    /** X4：假跳过陷阱（图内「跳过 5」大热区）→ 800ms 直断（绝不点陷阱） */
+    /** X4：假跳过陷阱（图内「跳过 5」大热区）→ 入口窗不返回键、不点陷阱 */
     static void fakeSkipTrap() {
         FakeNode root = FakeNode.root("com.ximalaya.ting.android.host.activity.WelComeActivity");
         FakeNode trap = FakeNode.node("android.widget.TextView", 300, 2050, 780, 2160).txt("跳过 5");
         FakeNode trapWrap = FakeNode.node("android.view.View", 0, 1900, 1080, 2400).click();
         trapWrap.add(trap);
         root.add(trapWrap);
-        Decision d = run(root, splash(900));
-        check("X4 假跳过陷阱 → 返回键直断而非误点",
-                d.action.equals(AdDecisionCore.A_BACK) && d.reason.equals("gyro_break"));
+
+        // 应用内窗：800ms 直断（绝不点陷阱）
+        Decision dInApp = run(root, splash(900));
+        check("X4a 应用内窗假跳过陷阱 → 返回键直断而非误点",
+                dInApp.action.equals(AdDecisionCore.A_BACK) && dInApp.reason.equals("gyro_break"),
+                "实际: " + dInApp.action + "/" + dInApp.reason);
+        // 入口窗：禁返回键 → 坐标梯子（标准位不在陷阱区）
+        Decision dRoot = run(root, rootSplash(900));
+        check("X4b 入口窗假跳过陷阱 → 坐标梯子（禁返回键、不点陷阱）",
+                dRoot.action.equals(AdDecisionCore.A_TAP_POINT),
+                "实际: " + dRoot.action + "/" + dRoot.reason);
     }
 
-    /* ═════════ 误报防护（正常界面绝不误点/误返回） ═════════ */
+    /**
+     * G1（v3.6.0 · 真机事故复现）：喜马拉雅二次进入——毒指纹把 MainActivity
+     * 学成「广告窗」后，每次进入主页 500ms 内就按返回键 → 退出应用。
+     * v3.6.0：sdkAdWin 只认当前窗口类名 + learnClass 只沉淀真广告窗类 +
+     * rootWindow 安全门 → 主页上绝不返回键；真跳过文本照点。
+     */
+    static void g1_mainActivityPoison() {
+        FakeNode root = FakeNode.root("com.ximalaya.ting.android.host.activity.MainActivity");
+        // 主页信息流（可滚动）+ feed 内「摇一摇」互动文案（v3.6.0 L3 信息流安全门）
+        FakeNode feed = FakeNode.node("androidx.recyclerview.widget.RecyclerView", 0, 200, 1080, 2300).scroll();
+        FakeNode shake = FakeNode.node("android.widget.TextView", 200, 500, 880, 580).txt("摇一摇抽好签，好运连连");
+        FakeNode avatar = FakeNode.node("android.widget.ImageView", 950, 120, 1040, 210).click();
+        feed.add(shake).add(avatar);
+        root.add(feed);
+
+        // 即便老版本毒指纹残留（learnedCls=true），主页（可滚动）也绝不返回键
+        Ctx poisoned = rootSplash(600);
+        poisoned.learnedCls = true;
+        Decision d = run(root, poisoned);
+        check("G1a 主页毒指纹 + 摇一摇文案 + 入口窗 → 零返回键（退出事故根治）",
+                !d.action.equals(AdDecisionCore.A_BACK),
+                "实际: " + d.action + "/" + d.reason);
+        // 应用内窗同样：信息流页面 L3 直断被禁（F1b 同源校验）
+        Ctx inApp = splash(600);
+        inApp.learnedCls = true;
+        check("G1b 信息流页面（可滚动）零动作",
+                run(root, inApp).action.equals(AdDecisionCore.A_NONE),
+                "实际: " + run(root, inApp).action);
+    }
+
+    /* ═══════ 误报防护（正常界面绝不误点/误返回） ═══════ */
 
     /** F1：微博主页信息流（可滚动 RecyclerView）→ 绝不坐标兜底/绝不点角落头像 */
     static void noFalsePositive_feed() {
@@ -181,7 +275,7 @@ public class DecisionCoreTest {
         check("F3 隐私弹窗零动作（不误点同意）", d.action.equals(AdDecisionCore.A_NONE), "实际: " + d.action + "/" + d.reason);
     }
 
-    /** F4：普通 Activity 名含 Download（非广告）→ 不误判 SDK 窗 */
+    /** F4：普通 Activity 名含 Download（非广告）→ 不误判 SDK 窗；真广告窗类不漏 */
     static void noFalsePositive_download() {
         check("F4 DownloadActivity 非广告窗",
                 !AdDecisionCore.isAdActivityClass("com.sina.weibo.DownloadActivity"));
@@ -189,6 +283,14 @@ public class DecisionCoreTest {
                 AdDecisionCore.isAdActivityClass("com.bytedance.sdk.openadsdk.stub.activity.Stub_Standard_Portrait_Activity"));
         check("F4c 优量汇窗是广告窗", AdDecisionCore.isAdActivityClass("com.qq.e.ads.ADActivity"));
         check("F4d 宿主 ad.activity 是广告窗", AdDecisionCore.isAdActivityClass("com.example.app.ad.activity.AdActivity"));
+        check("F4e 喜马拉雅 SplashAdActivity 是广告窗（真机日志类名）",
+                AdDecisionCore.isAdActivityClass("com.ximalaya.ting.android.host.activity.SplashAdActivity"));
+        // v3.6.0 毒指纹防线：主页/普通弹窗类绝不认成广告窗（learnClass 断源）
+        check("F4f MainActivity 非广告窗（毒指纹断源）",
+                !AdDecisionCore.isAdActivityClass("com.ximalaya.ting.android.host.activity.MainActivity"));
+        check("F4g FrameLayout 非广告窗", !AdDecisionCore.isAdActivityClass("android.widget.FrameLayout"));
+        check("F4h Dialog Fragment 非广告窗",
+                !AdDecisionCore.isAdActivityClass("com.ximalaya.ting.android.host.fragment.other.BaseCustomDialogFragment$a"));
     }
 
     /** F5：守护应用（银行）纯图开屏 → 不热区直断、不坐标兜底（高精度信号除外） */
@@ -208,15 +310,16 @@ public class DecisionCoreTest {
         check("F5d 微博非守护包", !AdDecisionCore.isGuardPkg("com.sina.weibo"));
     }
 
-    /** F6：坐标兜底窗口期外（>4s）零动作 */
+    /** F6：坐标兜底窗口期（v3.6.0 扩至 8s，覆盖晚出跳过键） */
     static void coordWindow() {
         FakeNode root = FakeNode.root("com.sina.weibo.HomeActivity");
         root.add(FakeNode.node("android.widget.ImageView", 0, 0, 1080, 2400));
-        check("F6a 4s 内兜底可用", run(root, splash(3900)).action.equals(AdDecisionCore.A_TAP_POINT));
-        check("F6b 4.5s 后不再兜底", run(root, splash(4500)).action.equals(AdDecisionCore.A_NONE));
+        check("F6a 3.9s 内兜底可用", run(root, splash(3900)).action.equals(AdDecisionCore.A_TAP_POINT));
+        check("F6b 4.5s 仍可兜底（v3.6.0 8s 窗）", run(root, splash(4500)).action.equals(AdDecisionCore.A_TAP_POINT));
+        check("F6c 8.5s 后不再兜底", run(root, splash(8500)).action.equals(AdDecisionCore.A_NONE));
     }
 
-    /* ═════════ 文本跳过键全形态 ═════════ */
+    /* ═══════ 文本跳过键全形态（v3.6.0：手势点原标签控件坐标） ═══════ */
 
     /** S1：普通文本跳过（知乎式「跳过 3」） */
     static void textSkip() {
@@ -226,7 +329,7 @@ public class DecisionCoreTest {
         check("S1 文本跳过键直接代点", d.action.equals(AdDecisionCore.A_CLICK_BOUNDS) && d.reason.equals("skip_text"));
     }
 
-    /** S2：contentDescription 形态（小红书式 ImageView desc=跳过广告）+ 父容器可点 */
+    /** S2：contentDescription 形态 + 父容器可点 → 手势点【原标签控件】坐标（v3.6.0） */
     static void descSkip() {
         FakeNode root = FakeNode.root("com.xingin.xhs.index.IndexActivity");
         FakeNode img = FakeNode.node("android.widget.ImageView", 900, 100, 1010, 210).describe("跳过广告");
@@ -234,8 +337,9 @@ public class DecisionCoreTest {
         wrap.add(img);
         root.add(wrap);
         Decision d = run(root, splash(400));
-        check("S2 desc 跳过键经父容器代点",
-                d.action.equals(AdDecisionCore.A_CLICK_BOUNDS) && d.bounds != null && d.bounds[0] == 880);
+        check("S2 desc 跳过键：performAction 走父容器，手势点原标签坐标（900 而非父容器 880）",
+                d.action.equals(AdDecisionCore.A_CLICK_BOUNDS) && d.bounds != null && d.bounds[0] == 900,
+                "实际: " + d.action + " @" + (d.bounds != null ? d.bounds[0] : -1));
     }
 
     /** S3：SurfaceView 视频广告 + 小文本跳过 → 照常代点 */
@@ -247,7 +351,7 @@ public class DecisionCoreTest {
         check("S3 视频广告文本跳过代点", d.action.equals(AdDecisionCore.A_CLICK_BOUNDS));
     }
 
-    /* ═════════ 弹窗广告 ═════════ */
+    /* ═══════ 弹窗广告 ═══════ */
 
     /** P1：角标弹窗（广告 + ×）→ 关闭 */
     static void popup_badge() {
@@ -289,15 +393,20 @@ public class DecisionCoreTest {
         check("P3 正常业务弹窗零动作", run(root, ctx).action.equals(AdDecisionCore.A_NONE));
     }
 
-    /* ═════════ 热区 / 回弹 ═════════ */
+    /* ═══════ 热区 / 回弹 ═══════ */
 
-    /** H1：自绘全屏热区（游戏式，无文本节点≤12）→ 900ms 直断 */
+    /** H1：自绘全屏热区（游戏式）→ 应用内窗 900ms 直断；入口窗改走点击梯子 */
     static void hotZone() {
         FakeNode root = FakeNode.root("com.miHoYo.Genshin");
         root.add(FakeNode.node("android.view.View", 0, 0, 1080, 2400).click());
-        check("H1a 热区 800ms 等待", run(root, splash(800)).action.equals(AdDecisionCore.A_NONE));
+        check("H1a 应用内窗热区 800ms 等待", run(root, splash(800)).action.equals(AdDecisionCore.A_NONE));
         Decision d = run(root, splash(950));
-        check("H1b 热区 950ms 直断", d.action.equals(AdDecisionCore.A_BACK) && d.reason.equals("hot_zone"));
+        check("H1b 应用内窗热区 950ms 直断", d.action.equals(AdDecisionCore.A_BACK) && d.reason.equals("hot_zone"));
+        // v3.6.0：入口窗（从桌面直接进游戏的开屏）禁返回键 → 坐标梯子
+        Decision dRoot = run(root, rootSplash(950));
+        check("H1c 入口窗热区 950ms 坐标梯子（禁返回键）",
+                dRoot.action.equals(AdDecisionCore.A_TAP_POINT),
+                "实际: " + dRoot.action + "/" + dRoot.reason);
     }
 
     /** R1：跳转目标名单 */
@@ -308,9 +417,9 @@ public class DecisionCoreTest {
         check("R1d 桌面不在名单", !AdDecisionCore.isAdTarget("com.miui.home"));
     }
 
-    /* ═══════ v3.5.0：点击复验 / 学习位置 / 开屏×关闭（二次真机反馈） ═══════ */
+    /* ═══════ v3.5.0：点击复验 / 学习位置 / 开屏×关闭 ═══════ */
 
-    /** V1：复验重试梯子——第 1 个角落候选点完没关 → 换第 2 个候选；≥3 次 → 返回键兑底 */
+    /** V1：复验重试梯子——换候选；应用内窗 ≥3 次返回键兜底；入口窗永不返回键 */
     static void verify_retryLadder() {
         FakeNode root = FakeNode.root("com.sina.weibo.SplashActivity");
         FakeNode adImage = FakeNode.node("android.widget.ImageView", 0, 0, 1080, 2400);
@@ -333,17 +442,31 @@ public class DecisionCoreTest {
                 d2.action.equals(AdDecisionCore.A_CLICK_BOUNDS) && d2.bounds[0] == 60,
                 "实际: " + d2.action + " @" + (d2.bounds != null ? d2.bounds[0] : -1));
 
-        // 3 次都点不动 → 返回键兑底（「日志显示已点、实际没反应」的最终兑底）
+        // 应用内窗：3 次都点不动 → 返回键兜底（「日志显示已点、实际没反应」的最终兜底）
         Ctx giveup = splash(4200);
         giveup.clickAttempts = 3;
-        giveup.coordTapUsed = true;
         Decision d3 = run(root, giveup);
-        check("V1c 点击 ≥3 次仍同窗 → 返回键兑底",
+        check("V1c 应用内窗点击 ≥3 次仍同窗 → 返回键兜底",
                 d3.action.equals(AdDecisionCore.A_BACK) && d3.reason.equals("click_verify_fail"),
                 "实际: " + d3.action + "/" + d3.reason);
+
+        // v3.6.0：入口窗（冷启动开屏）永不返回键 → 继续点击梯子（三位置轮换）
+        Ctx rootGiveup = rootSplash(4200);
+        rootGiveup.clickAttempts = 3;
+        Decision d4 = run(root, rootGiveup);
+        check("V1d 入口窗点击 ≥3 次 → 继续坐标梯子（绝不返回键防退出）",
+                d4.action.equals(AdDecisionCore.A_TAP_POINT),
+                "实际: " + d4.action + "/" + d4.reason);
+
+        // v3.6.0：点击预算用尽（角落 2 + 坐标 3 = 5 次；第 6 次起服务侧收手）→ 决策核心三位置用尽即静默
+        Ctx exhausted = rootSplash(6000);
+        exhausted.clickAttempts = 6;
+        check("V1e 点击梯子用尽 → 优雅收手（零动作）",
+                run(root, exhausted).action.equals(AdDecisionCore.A_NONE),
+                "实际: " + run(root, exhausted).action);
     }
 
-    /** V2：开屏×关闭键（v3.4.0 发现了却从不点）→ 顶部小关闭键 + 广告形态树 → 代点 */
+    /** V2：开屏×关闭键 → 顶部小关闭键 + 广告形态树 → 代点 */
     static void splash_closeKey() {
         FakeNode root = FakeNode.root("com.ximalaya.ting.android.host.activity.WelComeActivity");
         FakeNode adImage = FakeNode.node("android.widget.ImageView", 0, 0, 1080, 2400);
@@ -396,14 +519,13 @@ public class DecisionCoreTest {
                         && d.x == 985 && d.y == 115,
                 "实际: " + d.action + "/" + d.reason + " @" + d.x + "," + d.y);
 
-        // 已点过一次没关（clickAttempts=1）→ 不再点学习位置，转候选/兑底链
+        // 已点过一次没关（clickAttempts=1）→ 不再点学习位置，转坐标梯子
         Ctx retry = splash(2200);
         retry.tapHintX = 985;
         retry.tapHintY = 115;
         retry.clickAttempts = 1;
-        retry.coordTapUsed = true;
         Decision d2 = run(root, retry);
-        check("V4b 学习位置失败不重复点（转入兑底链）",
+        check("V4b 学习位置失败不重复点（转入坐标梯子）",
                 !(d2.reason.equals("learned_pos")), "实际: " + d2.action + "/" + d2.reason);
 
         // 未到时机（450ms）→ 不点
@@ -447,7 +569,22 @@ public class DecisionCoreTest {
                 "实际: " + d.action + "/" + d.reason + " @" + (d.bounds != null ? d.bounds[0] : -1));
     }
 
-    /* ═════════ 断言工具 ═════════ */
+    /* ═══════ v3.6.0：可学形状（服务侧位置学习安全门） ═══════ */
+
+    /** G4：learnableSkipShape——角落/顶部/底部小控件可学，中央大按钮不学 */
+    static void learnableShapes() {
+        check("G4a 右上角落控件可学",
+                AdDecisionCore.learnableSkipShape(new int[]{940, 90, 1030, 180}, 1080, 2400));
+        check("G4b 顶部 25% 内小控件可学",
+                AdDecisionCore.learnableSkipShape(new int[]{400, 150, 560, 260}, 1080, 2400));
+        check("G4c 底部 20% 内小控件可学（部分应用跳过键在右下，真机反馈）",
+                AdDecisionCore.learnableSkipShape(new int[]{950, 2160, 1040, 2260}, 1080, 2400));
+        check("G4d 屏幕中央按钮不学（CTA 高危区）",
+                !AdDecisionCore.learnableSkipShape(new int[]{400, 1100, 680, 1300}, 1080, 2400));
+        check("G4e 半屏宽按钮不学", !AdDecisionCore.learnableSkipShape(new int[]{100, 2100, 980, 2200}, 1080, 2400));
+    }
+
+    /* ═══════ 断言工具 ═══════ */
 
     static void check(String name, boolean ok) {
         check(name, ok, "");
@@ -464,20 +601,21 @@ public class DecisionCoreTest {
     }
 
     public static void main(String[] args) {
-        System.out.println("═══ AdDecisionCore JVM 单测（v3.4.0 · 真机场景建模 · 屏幕 1080x2400）═══\n");
+        System.out.println("═══ AdDecisionCore JVM 单测（v3.6.0 · 真机场景建模 · 屏幕 1080x2400）═══\n");
 
         System.out.println("── 微博类：第一方图片开屏（真机反馈主场景）──");
         weibo_cornerSkip();
         weibo_coordFallback();
         weibo_delayedText();
 
-        System.out.println("── 喜马拉雅类：零文本 / SDK 窗 / 翻转诱导 ──");
+        System.out.println("── 喜马拉雅类：零文本 / SDK 窗 / 翻转诱导 / 双返回退出事故 ──");
         ximalaya_cornerBeforeFlip();
         ximalaya_sdkWindow();
         gyro_immediate();
         fakeSkipTrap();
+        g1_mainActivityPoison();
 
-        System.out.println("── 误报防护（正常界面绝不误点）──");
+        System.out.println("── 误报防护（正常界面绝不误点/误返回）──");
         noFalsePositive_feed();
         noFalsePositive_edit();
         noFalsePositive_privacy();
@@ -485,7 +623,7 @@ public class DecisionCoreTest {
         guard_protection();
         coordWindow();
 
-        System.out.println("── 文本跳过键全形态 ──");
+        System.out.println("── 文本跳过键全形态（v3.6.0 点原标签坐标）──");
         textSkip();
         descSkip();
         videoSkip();
@@ -499,13 +637,16 @@ public class DecisionCoreTest {
         hotZone();
         reboundTargets();
 
-        System.out.println("── v3.5.0：点击复验 / 学习位置 / 开屏×关闭（二次真机反馈）──");
+        System.out.println("── 点击复验 / 学习位置 / 开屏×关闭 ──");
         verify_retryLadder();
         splash_closeKey();
         longText_guard();
         learnedPos_tap();
         learnedPos_safetyGate();
         corner_ancestor();
+
+        System.out.println("── v3.6.0 可学形状（位置学习安全门）──");
+        learnableShapes();
 
         System.out.println("\n═══ 结果：" + pass + " PASS / " + fail + " FAIL ═══");
         if (fail > 0) {

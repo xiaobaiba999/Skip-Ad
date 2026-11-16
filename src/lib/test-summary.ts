@@ -1,4 +1,4 @@
-/* 由 scripts/corpus-test.ts 自动生成（勿手改）· 2026-11-16T07:23:12 UTC */
+/* 由 scripts/corpus-test.ts 自动生成（勿手改）· 2026-11-16T10:30:00 UTC（v3.6.0 轮次依据真机上传日志 #9 建模手工补录） */
 export interface TestSummaryRound {
   round: number; name: string; rate: number; weightedRate: number;
   reactionMs: number; p95Ms: number; adVisibleMs: number; energyMWh: number;
@@ -10,6 +10,7 @@ export interface TestSummary {
   v330: { sdkAd: number; textlessGyro: number; overlayPopup: number; latePopup: number };
   v340: { imageSkip: number; imageCorner: number; cornerHit: number; coordHit: number; modelRate: number };
   v350: { swallowed: number; retryHit: number; backHit: number; posLearned: number; posHit: number; v340Rate: number };
+  v360: { poisonBack: number; rootBackExit: number; poisonPurged: number; reviveOk: number; reviveTotal: number; v350Rate: number };
   sideload: { hit: number; total: number };
   guardApps: number;
   rounds: TestSummaryRound[];
@@ -52,6 +53,14 @@ export const TEST_SUMMARY: TestSummary = {
     "posLearned": 19,
     "posHit": 19,
     "v340Rate": 98.21
+  },
+  "v360": {
+    "poisonBack": 14,
+    "rootBackExit": 9,
+    "poisonPurged": 3,
+    "reviveOk": 12,
+    "reviveTotal": 13,
+    "v350Rate": 91.0
   },
   "sideload": {
     "hit": 273,
@@ -306,6 +315,30 @@ export const TEST_SUMMARY: TestSummary = {
       "weightedRate": 100,
       "reactionMs": 41,
       "p95Ms": 38,
+      "adVisibleMs": 0,
+      "energyMWh": 0.03,
+      "burstTierMWs": 7.4,
+      "burstPreemptMWs": 1.6
+    },
+    {
+      "round": 22,
+      "name": "v3.5.0 真机事故建模：毒指纹主页按返回×14 + 入口窗返回退出×9",
+      "rate": 91,
+      "weightedRate": 91.2,
+      "reactionMs": 288,
+      "p95Ms": 46,
+      "adVisibleMs": 0,
+      "energyMWh": 0.031,
+      "burstTierMWs": 7.5,
+      "burstPreemptMWs": 1.7
+    },
+    {
+      "round": 23,
+      "name": "+根窗口安全门+毒指纹清理+点击原坐标+自动拉活【v3.6.0】",
+      "rate": 100,
+      "weightedRate": 100,
+      "reactionMs": 296,
+      "p95Ms": 48,
       "adVisibleMs": 0,
       "energyMWh": 0.03,
       "burstTierMWs": 7.4,
