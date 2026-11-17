@@ -77,8 +77,8 @@ async function gh(path, init?) {
 }
 
 async function main() {
-  console.log("▶ 1/3 创建 Release", TAG);
-  const rel = await gh(`/repos/${GITHUB_REPO}/releases`, {
+  console.log("▶ 1/3 创建 Release", TAG, "");
+  const rel = await gh(`/releases`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ tag_name: TAG, name: `开屏卫士 ${TAG} · 订阅主力规则接入 · 复验真换候选 · 应用白名单`, body: notes }),
