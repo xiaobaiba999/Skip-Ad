@@ -62,7 +62,7 @@
         </div>
         <button class="btn btn-primary btn-block" id="btn-open-a11y">开启无障碍服务（一步直达）</button>
         <button class="btn btn-primary btn-block" id="btn-revive" style="display:none">⚡ 一键恢复引擎</button>
-        <div class="hint">设置 → 无障碍 → 已下载的应用 → 开屏卫士</div>
+        <div class="hint">开启一次即可持续守护：设置 → 无障碍 → 已下载的应用 → 开屏卫士</div>
         <div class="keep-box" id="keep-box">
           <div class="keep-row">
             <div class="sw-text" style="flex:1;min-width:0">
@@ -77,17 +77,6 @@
               ① 最近任务卡片「锁定」；② 省电策略设为「无限制」；③ 开启「自启动」权限。
             </div>
           </details>
-          <div class="adb-box" id="adb-box">
-            <div class="keep-row">
-              <div class="sw-title" style="flex:1;min-width:0">🧬 ADB 自愈授权（可选）</div>
-              <span class="tag" id="adb-tag">--</span>
-            </div>
-            <div class="sw-desc" id="adb-ok-desc" style="display:none;margin-top:4px">已授权 · 服务断开全自动恢复</div>
-            <div id="adb-grant-body">
-              <div class="hint" style="margin-top:4px">电脑执行一次，之后清理后台/覆盖安装导致的服务断开全自动恢复：</div>
-              <div class="code-line" id="adb-cmd">adb shell pm grant com.zai.adshield android.permission.WRITE_SECURE_SETTINGS</div>
-            </div>
-          </div>
         </div>
         <div class="stat-grid">
           <div class="stat"><div class="num" id="st-auto">0</div><div class="lbl">自动秒跳</div></div>
@@ -139,7 +128,6 @@
           <option value="coord_fp">误点击：点错位置</option>
           <option value="gyro_leak">翻转/摇一摇仍被跳转</option>
           <option value="popup_leak">弹窗广告没被关闭</option>
-          <option value="landing_fp">误弹回：正常浏览被送回</option>
           <option value="false_block">误拦截：正常操作被拦</option>
           <option value="crash">闪退 / 卡顿</option>
           <option value="suggestion">功能建议</option>
@@ -184,7 +172,6 @@
       <div class="card">
         <div class="card-title">📦 版本信息</div>
         <div class="kv"><span>当前版本</span><b id="about-ver">--</b></div>
-        <div class="kv"><span>内部版本号</span><b id="about-code">--</b></div>
         <div class="kv"><span>包名</span><b>com.zai.adshield</b></div>
         <div class="kv"><span>网络</span><b>仅反馈与更新</b></div>
       </div>

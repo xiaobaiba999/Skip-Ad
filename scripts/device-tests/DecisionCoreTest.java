@@ -6,7 +6,7 @@ import com.zai.adshield.core.AdDecisionCore.Decision;
 import com.zai.adshield.core.AdDecisionCore.ScanFind;
 
 /**
- * 决策核心 JVM 单测（v3.8.0 · 真实机型场景建模 · 发版前必绿）
+ * 决策核心 JVM 单测（v3.14.0 · 真实机型场景建模 · 发版前必绿）
  * ─────────────────────────────────────────────────────────────
  * 场景来源：2026-11 三轮真机反馈（微博/喜马拉雅拦截失败 → 点击被吞 →
  * 二次进入被连按返回键「模拟人操作退出」）+ 误报防护（正常界面绝不误点/误返回）。
@@ -871,6 +871,72 @@ public class DecisionCoreTest {
      *     绝不扫描绝不点击；
      *  ③ isOemUtilityPkg：OEM 工具包（安全中心）位置学习拒收（issue#16
      *     实锤：securitycenter 详情页被学出位置 (91%,9%)）。 */
+    /* ═══ v3.14.0 跳过后反馈弹窗识别（issue#21 + 真机截图：喜马拉雅跳过后
+     * 10 次有 8 次弹「不喜欢/反馈投诉」底部面板）═══ */
+    static void v3140_feedbackSheet() {
+        System.out.println("  ── 真实反馈面板（截图建模：标题+选项+分组+原因行+取消）──");
+        FakeNode sheet = FakeNode.root("android.widget.FrameLayout");
+        sheet.add(FakeNode.node("android.widget.TextView", 340, 1560, 740, 1620).txt("不喜欢"));
+        sheet.add(FakeNode.node("android.widget.Button", 120, 1660, 520, 1780).txt("重复出现"));
+        sheet.add(FakeNode.node("android.widget.Button", 560, 1660, 960, 1780).txt("不喜欢此内容"));
+        sheet.add(FakeNode.node("android.widget.TextView", 120, 1840, 500, 1900).txt("反馈投诉"));
+        sheet.add(FakeNode.node("android.widget.Button", 120, 1940, 480, 2060).txt("虚假广告"));
+        sheet.add(FakeNode.node("android.widget.Button", 500, 1940, 860, 2060).txt("其他问题"));
+        sheet.add(FakeNode.node("android.widget.TextView", 120, 2100, 800, 2160).txt("我为什么会看到广告"));
+        FakeNode cancel = FakeNode.node("android.widget.Button", 120, 2200, 960, 2320).txt("取消").click();
+        sheet.add(cancel);
+        AdDecisionCore.FeedbackFind f1 = AdDecisionCore.findFeedbackSheet(sheet, 80);
+        check("F1 真实面板识别为反馈面板", f1.isSheet);
+        check("F2 找到「取消」键", f1.cancelBounds != null && f1.cancelNode == cancel);
+
+        System.out.println("  ── 安全门：非反馈面板绝不误判 ──");
+        // 信息流长按「不感兴趣」菜单：无强特征（无「我为什么会看到广告/反馈投诉」）
+        FakeNode feedMenu = FakeNode.root("android.widget.PopupWindow");
+        feedMenu.add(FakeNode.node("android.widget.TextView", 100, 900, 500, 960).txt("不喜欢"));
+        feedMenu.add(FakeNode.node("android.widget.Button", 100, 1000, 500, 1120).txt("减少推荐"));
+        feedMenu.add(FakeNode.node("android.widget.Button", 100, 1160, 500, 1280).txt("取消").click());
+        check("F3 长按菜单（无强特征）不判为反馈面板", !AdDecisionCore.findFeedbackSheet(feedMenu, 80).isSheet);
+        // 单一强特征（无第二特征）：双保险不足
+        FakeNode single = FakeNode.root("x");
+        single.add(FakeNode.node("android.widget.TextView", 100, 900, 900, 960).txt("我为什么会看到广告"));
+        check("F4 单一强特征（无第二特征）不判", !AdDecisionCore.findFeedbackSheet(single, 80).isSheet);
+        // 普通内容页：含「其他问题」字样的帮助页（仅弱特征×1）
+        FakeNode helpPage = FakeNode.root("android.widget.ScrollView");
+        helpPage.add(FakeNode.node("android.widget.TextView", 100, 200, 900, 260).txt("帮助与反馈"));
+        helpPage.add(FakeNode.node("android.widget.TextView", 100, 300, 900, 360).txt("其他问题请联系客服"));
+        check("F5 帮助页（仅弱特征）不判", !AdDecisionCore.findFeedbackSheet(helpPage, 80).isSheet);
+        // 空树 / null
+        check("F6 空树不判", !AdDecisionCore.findFeedbackSheet(FakeNode.root("x"), 80).isSheet);
+        check("F7 null 不判", !AdDecisionCore.findFeedbackSheet(null, 80).isSheet);
+
+        System.out.println("  ── 取消键探测边界 ──");
+        // 取消键不可见：面板仍识别，但取消键不返回（服务侧交用户手动收起）
+        FakeNode hiddenCancel = FakeNode.root("android.widget.FrameLayout");
+        hiddenCancel.add(FakeNode.node("android.widget.TextView", 340, 1560, 740, 1620).txt("不喜欢"));
+        hiddenCancel.add(FakeNode.node("android.widget.TextView", 120, 1840, 500, 1900).txt("反馈投诉"));
+        hiddenCancel.add(FakeNode.node("android.widget.Button", 120, 2200, 960, 2320).txt("取消").invisible());
+        AdDecisionCore.FeedbackFind f8 = AdDecisionCore.findFeedbackSheet(hiddenCancel, 80);
+        check("F8 面板识别但不可见取消键不返回", f8.isSheet && f8.cancelBounds == null);
+        // 取消键 desc 形态（无 text，contentDescription=取消）
+        FakeNode descSheet = FakeNode.root("android.widget.FrameLayout");
+        descSheet.add(FakeNode.node("android.widget.TextView", 340, 1560, 740, 1620).txt("不喜欢"));
+        descSheet.add(FakeNode.node("android.widget.TextView", 120, 1840, 500, 1900).txt("反馈投诉"));
+        descSheet.add(FakeNode.node("android.widget.Button", 120, 2200, 960, 2320).describe("取消").click());
+        AdDecisionCore.FeedbackFind f9 = AdDecisionCore.findFeedbackSheet(descSheet, 80);
+        check("F9 desc 取消键可探测（面板识别，desc 取消不作为点击目标）", f9.isSheet && f9.cancelBounds == null);
+        // 预算限制：特征在预算外节点 → 不识别（预算纪律）
+        FakeNode deep = FakeNode.root("x");
+        FakeNode chain = deep;
+        for (int i = 0; i < 30; i++) { FakeNode next = FakeNode.node("android.view.View", 0, 0, 10, 10); chain.add(next); chain = next; }
+        chain.add(FakeNode.node("android.widget.TextView", 0, 0, 100, 40).txt("我为什么会看到广告"));
+        chain.add(FakeNode.node("android.widget.TextView", 0, 0, 100, 40).txt("反馈投诉"));
+        check("F10 预算外特征不识别（预算纪律）", !AdDecisionCore.findFeedbackSheet(deep, 20).isSheet);
+
+        System.out.println("  ── 门控常量 ──");
+        check("F11 跳过后反馈窗期 12s", AdDecisionCore.FEEDBACK_AFTER_SKIP_MS == 12000);
+        check("F12 特征下限 2（双保险）", AdDecisionCore.FEEDBACK_SHEET_MIN_HITS == 2);
+    }
+
     static void v3130_bannerGuards() {
         System.out.println("  ── 短信/来电类覆盖层包识别（isSmsOverlayPkg）──");
         check("S1 MIUI 短信 com.android.mms 拦", AdDecisionCore.isSmsOverlayPkg("com.android.mms"));
@@ -1010,6 +1076,9 @@ public class DecisionCoreTest {
 
         System.out.println("── v3.13.0：验证码横幅/短信包/OEM 工具包三重防护 + 息屏安全门 ──");
         v3130_bannerGuards();
+
+        System.out.println("── v3.14.0：跳过后反馈弹窗识别（喜马拉雅实锤）──");
+        v3140_feedbackSheet();
 
         System.out.println("\n═══ 结果：" + pass + " PASS / " + fail + " FAIL ═══");
         if (fail > 0) {

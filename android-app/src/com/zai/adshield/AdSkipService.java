@@ -36,8 +36,25 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 开屏广告智能跳过服务（无障碍服务实现 · v3.13.0 · 纯跳过引擎）
+ * 开屏广告智能跳过服务（无障碍服务实现 · v3.14.0 · 纯跳过引擎）
  * ─────────────────────────────────────────────────────────────
+ * v3.14.0（issue#21 日志 + 真机截图实锤：喜马拉雅跳过开屏后 10 次有 8 次
+ * 弹出「不喜欢/反馈投诉」底部面板，用户每次都要手动收起）：
+ *  · 跳过后反馈弹窗自动收起：引擎 12s 内自动跳过过的包里出现反馈面板
+ *   （强特征「我为什么会看到广告/反馈投诉」等 + 总特征 ≥2，决策核心
+ *    findFeedbackSheet）→ ① 视为广告已关（反馈面板只在广告关闭后弹出，
+ *    停用换候选重试——issue#21 实锤复验风暴 ×2~4 次的元凶）；② 自动代点
+ *    文案精确为「取消」的控件收起面板（绝不替用户提交任何反馈选项）。
+ *  · 露头就秒提速：手势被系统中断（限流/冲突）→ 退冷却 + 350ms 快速补扫
+ *    重试（此前要等下轮扫描 1.2s+）；内容突发扫描节流 80→50ms（前 4s）。
+ *  · ADB 自愈授权【整体移除】（用户反馈：要电脑执行太麻烦）——
+ *    WRITE_SECURE_SETTINGS 检查/自愈重绑/授权状态卡全部删除；开启服务
+ *    只需一步直达系统开关（openA11yDetail，Android 11+ 只剩一个开关），
+ *    开启一次后前台常驻通知 + onUnbind 保留 + 心跳自检持续守护，退出
+ *    App/清理后台后重进无需重新开启（学习数据全部保留）。
+ *  · 孤儿代码清理：fuseChain（无调用点）、isLauncherLike 私有包装
+ *   （已统一走 AdDecisionCore）删除；弹窗突发日志同包 30s 去重。
+ *
  * v3.13.0（真机反馈：接收验证码时顶部横幅被点掉 + 夜间待机功耗偏高）：
  *  · 验证码横幅四重防护（不再点掉短信/验证码/来电横幅）：
  *    ① 短信/彩信/来电类覆盖层包（mms/smsextra/messaging/incallui）事件
@@ -262,6 +279,12 @@ public class AdSkipService extends AccessibilityService {
     private final java.util.HashMap<String, Long> codeBannerLogAt = new java.util.HashMap<>();
     private final java.util.HashMap<String, Long> headsUpLogAt = new java.util.HashMap<>();
     private final java.util.HashMap<String, Long> misclickLogAt = new java.util.HashMap<>();
+    /* v3.14.0 跳过后反馈弹窗：最近引擎自动跳过时间 / 日志去重 / 代点冷却 */
+    private final java.util.HashMap<String, Long> skipAt = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Long> feedbackLogAt = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Long> feedbackClickAt = new java.util.HashMap<>();
+    /* v3.14.0：弹窗突发日志去重（issue#21：meituan 60s 内 3 条同语刷屏） */
+    private final java.util.HashMap<String, Long> burstLogAt = new java.util.HashMap<>();
     private final java.util.HashMap<String, long[]> burstWin = new java.util.HashMap<>();
     /* v3.5.0：点击复验——本窗已点击次数（换候选/真实触点重试/返回键兜底的依据） */
     private final java.util.HashMap<String, Integer> clickTries = new java.util.HashMap<>();
@@ -307,7 +330,7 @@ public class AdSkipService extends AccessibilityService {
         // v3.6.0：清理 v3.5.0 误学毒指纹（MainActivity/FrameLayout/Dialog 被
         // 学成「广告窗指纹」——用户二次进入被连按返回键退出的根因）
         int purged = purgePoisonFingerprints();
-        appendLog("服务已启动 · v3.13.0 验证码横幅四重防护 + 息屏休眠 + 夜间心跳降频（规则 "
+        appendLog("服务已启动 · v3.14.0 跳过后反馈弹窗自动收起 + 手势中断快速重试 + ADB 自愈移除（规则 "
                 + RuleEngine.stats() + ")"
                 + (purged > 0 ? "｜已清理 " + purged + " 条误学窗口指纹" : ""));
         // v3.9.0：清理毒位置规则（issue#12 实锤：桌面 com.miui.home 学出位置
@@ -821,9 +844,9 @@ public class AdSkipService extends AccessibilityService {
             return;
         }
         final long winStart = winAt(pkg);
-        // v3.9.0：节流 150→80ms（前 4s 内）——开屏「跳过」键晚渲染时更快补扫，
+        // v3.14.0：节流 150→50ms（前 4s 内）——开屏「跳过」键晚渲染时更快补扫，
         // 露头就秒跳；4s 后放宽 300ms 控能耗
-        if (now - winStart < (now - winStart < 4000 ? 80 : 300)) return;
+        if (now - winStart < (now - winStart < 4000 ? 50 : 300)) return;
         final int g = gen.intValue();
         handler.post(() -> {
             Integer cur = scanGen.get(pkg);
@@ -854,14 +877,14 @@ public class AdSkipService extends AccessibilityService {
         if (w[1] >= BURST_COUNT) {
             burstWin.remove(pkg);
             popupUntil.put(pkg, now + POPUP_WINDOW_MS);
-            appendLog("🪟 检测到内容突发（" + shortPkg(pkg) + "）：疑似覆盖层弹窗 → 开启弹窗识别窗");
+            // v3.14.0：日志同包 30s 去重（issue#21：meituan 60s 内 3 条同语刷屏）
+            Long lastB = burstLogAt.get(pkg);
+            if (lastB == null || now - lastB > 30000) {
+                burstLogAt.put(pkg, now);
+                appendLog("🪟 检测到内容突发（" + shortPkg(pkg) + "）：疑似覆盖层弹窗 → 开启弹窗识别窗");
+            }
             nudgePopupScan(pkg, now);
         }
-    }
-
-    private void fuseChain(String pkg) {
-        Integer g = scanGen.get(pkg);
-        scanGen.put(pkg, g == null ? 1 : g + 1);
     }
 
     /* ───────── 扫描与决策执行（逻辑全部在 AdDecisionCore） ───────── */
@@ -885,6 +908,13 @@ public class AdSkipService extends AccessibilityService {
             int[] tapHint = learnedPos(pkg);
             Integer triesBox = clickTries.get(pkg);
             int clickAttempts = triesBox == null ? 0 : triesBox.intValue();
+
+            /* ═══ v3.14.0 跳过后反馈弹窗（issue#21 实锤：喜马拉雅跳过后 10 次
+             * 有 8 次弹「不喜欢/反馈投诉」底部面板）——反馈面板在场 = 广告
+             * 已关的铁证：① 停用换候选重试（复验风暴元凶）；② 代点「取消」
+             * 收起面板。仅 12s 内自动跳过过或本窗复验中的包生效（手动长按
+             * 菜单绝不碰）；命中即接管本轮，绝不透过面板点广告残留跳过键 ═══ */
+            if (handleFeedbackSheet(pkg, roots, clickAttempts, now)) return;
 
             for (int ri = 0; ri < roots.length; ri++) {
                 // v3.13.0 验证码横幅防护②：树内任一节点带「验证码/校验码/
@@ -953,6 +983,58 @@ public class AdSkipService extends AccessibilityService {
             }
         } catch (Exception ignored) {
         }
+    }
+
+    /* ───────── v3.14.0 跳过后反馈弹窗自动收起 ─────────
+     * 喜马拉雅真机截图实锤：跳过开屏后弹出「不喜欢/反馈投诉」底部面板
+     * （重复出现/不喜欢此内容/虚假广告/内容不适/侵权违规/其他问题/
+     * 我为什么会看到广告/取消），10 次有 8 次，用户每次都要手动收起。
+     * 返回 true = 反馈面板在场（本轮接管：停用重试 + 代点取消）。 */
+    private boolean handleFeedbackSheet(String pkg, AccessibilityNodeInfo[] roots, int clickAttempts, long now) {
+        Long lastSkip = skipAt.get(pkg);
+        boolean recentSkip = lastSkip != null && now - lastSkip < AdDecisionCore.FEEDBACK_AFTER_SKIP_MS;
+        if (!recentSkip && clickAttempts <= 0) return false; // 未跳过过/非复验中：绝不碰
+        for (AccessibilityNodeInfo r : roots) {
+            AdDecisionCore.FeedbackFind ff = AdDecisionCore.findFeedbackSheet(new NodeAdapter(r), 80);
+            if (!ff.isSheet) continue;
+            // ① 广告已关铁证：复验直接通过，停用换候选重试
+            clickTries.put(pkg, 0);
+            winClsLearned.remove(pkg);
+            Long lastLog = feedbackLogAt.get(pkg);
+            if (lastLog == null || now - lastLog > 8000) {
+                feedbackLogAt.put(pkg, now);
+                appendLog("✓ 广告已关闭（" + shortPkg(pkg) + "）：跳过后弹出「不喜欢/反馈」面板 → 已停用重试"
+                        + (ff.cancelBounds != null ? "，代点「取消」收起（绝不替你提交任何反馈）" : "（未找到取消键，交给你手动收起）"));
+            }
+            // ② 代点「取消」（同包 2.5s 冷却防抖；手势真实触点首选，
+            //    派发失败降级无障碍代点）
+            if (ff.cancelBounds != null) {
+                Long lastClick = feedbackClickAt.get(pkg);
+                if (lastClick == null || now - lastClick >= 2500) {
+                    int cx = (ff.cancelBounds[0] + ff.cancelBounds[2]) / 2;
+                    int cy = (ff.cancelBounds[1] + ff.cancelBounds[3]) / 2;
+                    if (gestureTap(cx, cy) || performActionOn(ff.cancelNode)) {
+                        feedbackClickAt.put(pkg, now);
+                        lastAutoClickPkg = pkg;
+                        lastAutoClickAt = now;
+                        bumpStat(pkg, "feedback");
+                    }
+                }
+            }
+            return true; // 面板在场：本轮绝不点广告残留跳过键（透过面板=乱点）
+        }
+        return false;
+    }
+
+    /** 无障碍代点 NodeView（反馈面板「取消」键的手势派发失败兑底） */
+    private boolean performActionOn(AdDecisionCore.NodeView node) {
+        try {
+            if (node instanceof NodeAdapter) {
+                return ((NodeAdapter) node).n.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+            }
+        } catch (Exception ignored) {
+        }
+        return false;
     }
 
     /* ───────── v3.9.0 倒计时门控（自 tryScan 抽取，规则/兜底两路共用）─────────
@@ -1085,6 +1167,7 @@ public class AdSkipService extends AccessibilityService {
                 lastAutoClickPkg = pkg;
                 lastAutoClickAt = now;
                 clickTries.put(pkg, attempts + 1);
+                skipAt.put(pkg, now); // v3.14.0：记录引擎出手时刻（跳过后反馈弹窗门控用）
                 if (d.action.equals(AdDecisionCore.A_CLOSE) && f != null) {
                     popupBlocks++;
                     lastPopupAt.put(pkg, now);
@@ -1116,6 +1199,7 @@ public class AdSkipService extends AccessibilityService {
                 lastAutoClickPkg = pkg;
                 lastAutoClickAt = now;
                 clickTries.put(pkg, triesOfClick(pkg) + 1);
+                skipAt.put(pkg, now); // v3.14.0：记录引擎出手时刻（学习位置直点也是跳过出手）
                 energyGestures++;
                 if (isLearned) {
                     appendLog("🎯 学习位置点击（" + shortPkg(pkg) + "）：你手动教过的位置指纹 ("
@@ -1164,8 +1248,10 @@ public class AdSkipService extends AccessibilityService {
         return false;
     }
 
-    /** v3.7.0 手势结果回调（静态内部类，规避 d8 8.2 匿名类 bug）：
-     *  手势被系统中断时记诊断日志——「手势派发成功但被取消」不再静默 */
+    /** v3.7.0 手势结果回调（静态内部类，规避 d8 8.2 匿名类 bug）。
+     *  v3.14.0 露头就秒提速：手势被系统中断（限流/冲突）→ ① 退还点击冷却
+     *  （触点未触达，冷却白占 900ms）；② 350ms 后快速补扫重试（此前要等
+     *  下轮扫描 1.2s+，issue#21 实锤「下轮扫描重试」最慢 4s+） */
     private static final class TapGestureCallback extends GestureResultCallback {
         private final String pkg;
 
@@ -1177,9 +1263,13 @@ public class AdSkipService extends AccessibilityService {
         public void onCancelled(GestureDescription gestureDescription) {
             try {
                 AdSkipService s = instance;
-                if (s != null) {
-                    s.appendLog("⚠ 手势被系统中断（" + s.shortPkg(pkg) + "）：真实触点未触达（系统手势限流/冲突），下轮扫描重试");
-                }
+                if (s == null) return;
+                s.appendLog("⚠ 手势被系统中断（" + s.shortPkg(pkg) + "）：真实触点未触达（系统手势限流/冲突），350ms 后快速重试");
+                s.lastClickAt.remove(pkg); // ① 退冷却：未触达的点击不占 900ms
+                s.handler.postDelayed(() -> { // ② 快速补扫（同窗扫描链直接重扫）
+                    AdSkipService sv = instance;
+                    if (sv != null) sv.tryScan(pkg, sv.winAt(pkg), -1);
+                }, 350);
             } catch (Throwable ignored) {
             }
         }
@@ -1260,11 +1350,6 @@ public class AdSkipService extends AccessibilityService {
     private boolean popupCooldownOK(String pkg, long now) {
         Long t = lastPopupAt.get(pkg);
         return t == null || now - t >= POPUP_COOLDOWN_MS;
-    }
-
-    private boolean isLauncherLike(String pkg) {
-        // v3.9.0：统一走 AdDecisionCore.isLauncherLike（黑名单/回弹/学习三处共用）
-        return AdDecisionCore.isLauncherLike(pkg);
     }
 
     /* ───────── 智能学习：观察手动点击 + className 指纹 ───────── */
@@ -1846,63 +1931,12 @@ public class AdSkipService extends AccessibilityService {
         return c == null ? "" : c.toString().trim();
     }
 
-    /* ───────── v3.8.0 WRITE_SECURE_SETTINGS 自愈重绑（可选高级能力）─────────
-     * Android 安全设计：无障碍服务受 BIND_ACCESSIBILITY_SERVICE 签名级权限保护，
-     * 任何应用（含自己）都不能 startService/bindService 它——v3.6.0/v3.7.0 的
-     * 「startService 拉活重绑」实为 SecurityException，自动恢复从未真正生效。
-     * 系统提供的唯一正道（GKD 进阶玩法同款）：用户经 adb 一次性授权
-     *   adb shell pm grant com.zai.adshield android.permission.WRITE_SECURE_SETTINGS
-     * 之后本应用可直接写 Settings.Secure：
-     *  · 服务被杀未解绑 → 从 ENABLED_ACCESSIBILITY_SERVICES 摘除再写回 →
-     *    系统立刻重新 bind（进程随之拉起）——「清理后台重进要手动开」终结
-     *  · 覆盖安装被系统关闭（MY_PACKAGE_REPLACED 必关）→ 直接写回开启状态 */
-    public static boolean hasSecureWrite(Context ctx) {
-        try {
-            return ctx.checkPermission("android.permission.WRITE_SECURE_SETTINGS",
-                    android.os.Process.myPid(), android.os.Process.myUid())
-                    == android.content.pm.PackageManager.PERMISSION_GRANTED;
-        } catch (Throwable t) {
-            return false;
-        }
-    }
-
-    /** 自愈重绑：true=已发起（重绑异步生效）；未授权返回 false */
-    public static boolean selfHealBind(Context ctx) {
-        if (!hasSecureWrite(ctx)) return false;
-        try {
-            final android.content.ContentResolver cr = ctx.getContentResolver();
-            final String key = Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES;
-            final ComponentName cn = new ComponentName(ctx, AdSkipService.class);
-            final String flat = cn.flattenToString();
-            final String flatShort = cn.flattenToShortString(); // v3.8.1：兼容短格式条目（adb 手动写入场景）
-            final String cur = Settings.Secure.getString(cr, key);
-            // v3.8.1：登记判断双格式匹配——全格式或短格式条目任一命中即视为已登记，
-            // 否则短格式场景会被误判「未登记」再追加产生冗余双条目
-            if (cur == null || !(cur.contains(flat) || cur.contains(flatShort))) {
-                // 未登记（被系统关闭/覆盖安装后清除）→ 直接写回开启
-                String next = (cur == null || cur.trim().isEmpty()) ? flat : cur + ":" + flat;
-                Settings.Secure.putString(cr, key, next);
-                Settings.Secure.putString(cr, Settings.Secure.ACCESSIBILITY_ENABLED, "1");
-                return true;
-            }
-            // 已登记但进程已死 → 摘除再写回，强制系统重绑（bind 会拉起进程）
-            StringBuilder keep = new StringBuilder();
-            for (String s : cur.split(":")) {
-                String t = s.trim();
-                if (t.length() == 0 || t.equals(flat) || t.equals(flatShort)) continue; // v3.8.1：双格式都摘除
-                if (keep.length() > 0) keep.append(':');
-                keep.append(t);
-            }
-            String without = keep.toString();
-            Settings.Secure.putString(cr, key, without); // 摘除 → 系统解绑
-            Thread.sleep(400);                            // 等解绑落地
-            Settings.Secure.putString(cr, key,            // 写回 → 系统 bind（拉起进程）
-                    without.isEmpty() ? flat : without + ":" + flat);
-            return true;
-        } catch (Throwable t) {
-            return false;
-        }
-    }
+    /* ───────── v3.14.0：WRITE_SECURE_SETTINGS 自愈重绑【已移除】─────────
+     * 用户反馈：adb 授权要电脑执行太麻烦，实际几乎无人可用。Android 安全
+     * 设计下无障碍服务无法被应用自行开启/绑定（BIND_ACCESSIBILITY_SERVICE
+     * 签名级权限），唯一正道就是系统设置开关（openA11yDetail 一步直达）。
+     * 开启后持续守护由「前台常驻通知 + onUnbind 保留 + 心跳自检 + 断连提醒」
+     * 四件套负责（KeepAliveReceiver），退出 App/清理后台重进无需重新开启。 */
 
     private String shortPkg(String pkg) {
         if (pkg == null) return "";

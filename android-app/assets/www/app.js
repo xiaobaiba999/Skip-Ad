@@ -22,13 +22,13 @@ const store = {
   }
 };
 
-/* ══════════ 静态数据（v3.13.0 · 精简重构：每版一句话） ══════════ */
+/* ══════════ 静态数据（v3.14.0 · 言简意赅：每版一句话） ══════════ */
 
 /* 最近三个版本 */
 const CHANGELOG = [
-  { v: "3.13.0", d: "验证码横幅四重防护（真机实锤：接收验证码时顶部横幅被引擎点掉）——短信/来电类覆盖层包事件直接丢弃；树内验证码文案窗口绝不扫描；触点被横幅覆盖时拒发手势改走无障碍代点；横幅在场绝不派返回键。待机功耗治理：息屏体眠门（息屏绝不扫描/点击/学习，来电闹钟窗零误点）+ 夜间心跳改 30~45 分钟非精确闹钟（不再每 5 分钟唤醒设备，一晚 96 次唤醒是耗电元凶）。安全中心详情页被学出位置(91%,9%)整治：OEM 工具包位置学习永久拒收+启动清理；越界拒绝日志去重；误触观察口径修正（熟练用户 500ms 手点不再是「误触」）；分应用统计卡移除（看不懂还乱）。" },
-  { v: "3.12.0", d: "链式拦截机制整体移除（issue#14 实锤）：v3.11.0 的三重放行安全门仍拦下了 NFC 碰一碰支付链与「分享到微信」（1.5s 内连按 3 次返回键弹回）——用户意图场景无法穷举，任何安全门都有漏网时刻。引擎职责回归纯跳过：只点「跳过/关闭」，绝不对抗你的任何跳转；同包落地页弹回一并移除（点商品/文章详情跳内置页不再被误弹回）；connectivity 连接检查窗循环误点归零；界面撤下「跳转回弹」开关与统计。" },
-  { v: "3.11.0", d: "链式回弹用户意图安全门（issue#13 实锤修复）：你 2.2s 内刚点过（分享/登录按钮）、系统分享选择器刚出现过、同一目标刚弹回又立刻拉起（你的重试）——三重任一命中即放行，绝不与你对抗；点商品/文章详情跳内置页不再被误弹回；分享面板噪音归零；学习规则明细撤出界面（学习引擎照常工作，界面更清爽）。" },
+  { v: "3.14.0", d: "跳过广告后弹出的「不喜欢/反馈」面板（喜马拉雅 10 次有 8 次）自动点「取消」收起，绝不替你提交反馈；手势被系统中断时 350ms 快速重试，秒跳更快；移除 ADB 自愈授权——开启服务一步直达系统开关，开启一次持续守护。" },
+  { v: "3.13.0", d: "验证码/短信横幅四重防护（接收验证码时横幅绝不被点掉）；息屏零动作 + 夜间心跳降频，待机更省电。" },
+  { v: "3.12.0", d: "链式拦截整体移除：只点「跳过/关闭」，分享、NFC 支付等任何跳转绝不对抗。" },
 ];
 
 /* 内置规则库概览（首页防护能力卡） */
@@ -59,18 +59,17 @@ function refreshHome() {
     try { killed = AndroidApp.a11yEnabledInSettings(); } catch (e) { killed = false; }
   }
   const card = $("#service-card"), dot = $("#service-dot");
-  if (running) { reviveStopRetry = false; reviveHealing = false; } // v3.8.0：已恢复即清除待恢复标记
+  if (running) { reviveStopRetry = false; } // 已恢复即清除待恢复标记
   let statusText = "浏览器预览模式";
   if (running) statusText = "秒跳服务运行中";
   else if (HAS_BRIDGE) {
     if (!killed) statusText = "服务未开启";
-    else if (reviveStopRetry) statusText = "服务待恢复 · 一步直达开关";       // v3.8.0 need_toggle
-    else if (reviveHealing) statusText = "服务被系统关闭（自愈重绑进行中…）"; // v3.8.0 heal_pending
+    else if (reviveStopRetry) statusText = "服务待恢复 · 一步直达开关";       // need_toggle：引导一步直达
     else statusText = "服务被系统关闭（自动恢复中…）";
   }
   $("#service-status").textContent = statusText;
   $("#service-desc").textContent = running
-    ? "内嵌规则引擎 · 露头就秒跳 · 控件中心精准点击 · 桌面黑名单 · 自愈重绑"
+    ? "内嵌规则引擎 · 露头就秒跳 · 开启一次持续守护（退出 App 也不失效）"
     : (HAS_BRIDGE ? "开启无障碍后自动秒跳任何应用开屏（规则内嵌，零云端）" : "安装 APK 后体验真实秒跳服务");
   dot.classList.toggle("on", running);
   card.classList.toggle("ok", running);
@@ -91,7 +90,6 @@ function refreshHome() {
   }
   refreshKeep(running);
   refreshBatteryBanner(running);
-  refreshAdbGrant();
   const rt = $("#rules-tag");
   if (rt) rt.textContent = "v" + appVer() + " · " + RULES_INFO;
 }
@@ -106,10 +104,9 @@ function refreshBatteryBanner(running) {
   banner.style.display = (!bat && running) ? "" : "none";
 }
 
-/* v3.6.0 自动拉活：打开 App 即尝试，失败每 5s 重试（v3.7.0 循环版；v3.8.0 按 reason 分流） */
+/* v3.6.0 自动拉活：打开 App 即尝试，失败每 5s 重试（v3.7.0 循环版；v3.14.0 ADB 自愈已移除，仅剩系统重绑观察） */
 let reviveLastTry = 0;
-let reviveStopRetry = false; // v3.8.0 need_toggle：仍登记但进程重绑未成——不会自愈，停止自动重试免空转
-let reviveHealing = false;   // v3.8.0 heal_pending：自愈重绑已发起待生效——保持每 5s 自动重试
+let reviveStopRetry = false; // need_toggle：仍登记但进程重绑未成——不会自愈，停止自动重试免空转
 function autoRevive(loud) {
   if (!HAS_BRIDGE) return;
   try {
@@ -117,20 +114,12 @@ function autoRevive(loud) {
     if (r.running || r.revived) {
       reviveLastTry = 0;
       reviveStopRetry = false;
-      reviveHealing = false;
-      toast(r.revived || r.selfHeal ? "引擎已自动恢复（系统设置自愈），无需任何操作" : "引擎已自动恢复，无需任何操作");
+      toast("引擎已自动恢复，无需任何操作");
       refreshHome();
     } else if (r.reason === "need_toggle") {
       /* 仍登记但进程重绑未成：自动重试不会自愈——引导一步直达服务开关（学习数据全保留） */
       if (loud || !reviveStopRetry) toast("点下方按钮一步直达服务开关（Android 11+），学习数据全保留");
       reviveStopRetry = true;
-      reviveHealing = false;
-      refreshHome();
-    } else if (r.reason === "heal_pending") {
-      /* WRITE_SECURE_SETTINGS 自愈已发起待生效：保持自动重试直至恢复 */
-      if (loud || !reviveHealing) toast("自愈重绑进行中…");
-      reviveHealing = true;
-      reviveStopRetry = false;
       refreshHome();
     } else if (loud) {
       toast(r.reason === "disabled"
@@ -138,24 +127,6 @@ function autoRevive(loud) {
         : "自动恢复未成功——点「开启无障碍服务（一步直达）」（学习数据全保留）");
     }
   } catch (e) { if (loud) toast("恢复失败，请去无障碍设置开启"); }
-}
-
-/* v3.8.0 ADB 自愈授权状态（WRITE_SECURE_SETTINGS：授权后清理后台/覆盖安装的无障碍关闭全自动恢复） */
-function refreshAdbGrant() {
-  const box = $("#adb-box");
-  if (!box) return;
-  if (!HAS_BRIDGE || typeof AndroidApp.hasSecureWrite !== "function") { box.style.display = "none"; return; }
-  let granted = false;
-  try { granted = !!AndroidApp.hasSecureWrite(); } catch (e) {}
-  if (granted && reviveStopRetry) reviveStopRetry = false; // 刚授权：恢复自动重试，自愈即刻生效
-  const tag = $("#adb-tag");
-  if (tag) {
-    tag.textContent = granted ? "已授权 · 全自动自愈" : "未授权";
-    tag.className = "tag " + (granted ? "tag-green" : "");
-  }
-  const okDesc = $("#adb-ok-desc"), gbody = $("#adb-grant-body");
-  if (okDesc) okDesc.style.display = granted ? "" : "none";
-  if (gbody) gbody.style.display = granted ? "none" : "";
 }
 
 /* v3.5.0 服务保活状态 */
@@ -293,7 +264,7 @@ $("#btn-upload-log").addEventListener("click", () => {
     "## 环境信息（自动附加）",
     "- 设备：" + (dev.brand || "?") + " " + (dev.model || "?") + " · " + (dev.os || "?") + "（SDK " + (dev.sdk || "?") + "）",
     "- 版本：v" + appVer() + "（code " + appCode() + "）· 服务：" + (running ? "运行中" : "未运行") + " · 电池白名单：" + (bat ? "已加入" : "未加入"),
-    "- 战绩：秒跳 " + (s.auto || 0) + " · 直断 " + (s.back || 0) + " · 弹窗 " + (s.popup || 0) + " · 手动样本 " + (s.manual || 0) + " · 热区误触 " + (s.misclick || 0) + "（v3.13.0 口径：仅计全屏热区）",
+    "- 战绩：秒跳 " + (s.auto || 0) + " · 直断 " + (s.back || 0) + " · 弹窗 " + (s.popup || 0) + " · 反馈弹窗收起 " + (s.feedback || 0) + " · 手动样本 " + (s.manual || 0) + " · 热区误触 " + (s.misclick || 0) + "（仅计全屏热区）",
     "- 学习规则：" + ruleCount + " 条（" + pkgCount + " 个应用）",
     "",
     "## 学习规则明细",
@@ -351,13 +322,13 @@ function renderEnergy() {
 }
 
 /* ══════════ 问题反馈（内置加密通道，零配置） ══════════ */
-const FB_TYPES = { missed: "漏拦截：开屏广告没被秒跳", gyro_leak: "翻转/摇一摇仍被跳转", popup_leak: "弹窗广告没被关闭", false_block: "误拦截：正常操作被拦", crash: "闪退 / 卡顿", suggestion: "功能建议", other: "其他" };
+const FB_TYPES = { missed: "漏拦截：开屏没被秒跳", img_ad: "漏拦截：图片广告无跳过键", coord_fp: "误点击：点错位置", gyro_leak: "翻转/摇一摇仍被跳转", popup_leak: "弹窗广告没被关闭", false_block: "误拦截：正常操作被拦", crash: "闪退 / 卡顿", suggestion: "功能建议", other: "其他" };
 
 function esc(s) {
   return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
-function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "3.13.0"; }
-function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "31300"; }
+function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "3.14.0"; }
+function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "31400"; }
 
 function openLink(url) {
   if (HAS_BRIDGE) { try { AndroidApp.openUrl(url); return; } catch (e) {} }
@@ -378,8 +349,8 @@ function engineProfile() {
   const log = (st.log || []).slice(-6).map(l => "  - " + (l.msg || ""));
   const s = st.stats || {};
   return [
-    "- 版本：v" + appVer() + " (code " + appCode() + ") · 环境：" + (HAS_BRIDGE ? "Android APK" : "浏览器预览"),
-    "- 真实引擎：秒跳 " + (s.auto || 0) + " · 诱导直断 " + (s.back || 0) + " · 弹窗关闭 " + (s.popup || 0) + " · 手动样本 " + (s.manual || 0) + " · 学习规则 " + rules + " 条（" + pkgs + " 个应用）",
+    "- 版本：v" + appVer() + " · 环境：" + (HAS_BRIDGE ? "Android APK" : "浏览器预览"),
+    "- 真实引擎：秒跳 " + (s.auto || 0) + " · 诱导直断 " + (s.back || 0) + " · 弹窗关闭 " + (s.popup || 0) + " · 反馈弹窗收起 " + (s.feedback || 0) + " · 手动样本 " + (s.manual || 0) + " · 学习规则 " + rules + " 条（" + pkgs + " 个应用）",
     "- 引擎日志：",
     log.length ? log.join("\n") : "  - （暂无）",
   ].join("\n");
@@ -659,12 +630,11 @@ setTimeout(initUpdate, 600);
 
 /* ══════════ 关于 ══════════ */
 function renderAbout() {
-  let v = "浏览器预览", c = "-";
+  let v = "浏览器预览";
   if (HAS_BRIDGE) {
-    try { v = "v" + AndroidApp.versionName(); c = AndroidApp.versionCode(); } catch (e) {}
+    try { v = "v" + AndroidApp.versionName(); } catch (e) {}
   }
   $("#about-ver").textContent = v === "浏览器预览" ? "浏览器预览（引擎 v" + appVer() + "）" : v;
-  $("#about-code").textContent = c;
   $("#ver-badge").textContent = v === "浏览器预览" ? "v" + appVer() : v;
   $("#changelog").innerHTML = CHANGELOG.map(x =>
     `<div class="cl-item"><span class="cl-ver">v${x.v}</span>${x.d}</div>`).join("");

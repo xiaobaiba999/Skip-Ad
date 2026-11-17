@@ -33,8 +33,11 @@ import org.json.JSONObject;
  * · v3.6.0 自动拉活：清理后台后服务被杀但系统设置仍登记时，打开 App
  *   自动 startService 拉起进程促系统重绑（tryAutoRevive），多数 ROM 无需手动去设置
  * · v3.7.0：拉活等待加长至 5s + 二次拉起；配合服务侧 onUnbind 保留 + 心跳闹钟
- * · v3.8.0：手势真实触点首选（服务侧）+ 无障碍详情页直达一步恢复 +
- *   WRITE_SECURE_SETTINGS 自愈重绑；移除无效的 startService 拉活路径
+ * · v3.8.0：手势真实触点首选（服务侧）+ 无障碍详情页直达一步恢复；
+ *   移除无效的 startService 拉活路径
+ * · v3.14.0：ADB 自愈授权（WRITE_SECURE_SETTINGS）整体移除——开启服务
+ *   一步直达系统开关，开启一次后保活四件套持续守护，退出 App/清理后台
+ *   重进无需重新开启
  */
 public class MainActivity extends Activity {
 
@@ -172,12 +175,6 @@ public class MainActivity extends Activity {
             }
         }
 
-        /** v3.8.0：是否已授权 WRITE_SECURE_SETTINGS（adb 一次性授权后可全自动自愈恢复） */
-        @JavascriptInterface
-        public boolean hasSecureWrite() {
-            return AdSkipService.hasSecureWrite(a);
-        }
-
         /* ───── v3.5.0 保活与诊断桥 ───── */
 
         /** 设备信息（引擎日志上传时自动附带，供迭代定位问题） */
@@ -292,14 +289,15 @@ public class MainActivity extends Activity {
             }
         }
 
-        /** 自动拉活（v3.8.0 重写）：
-         *  · 已授权 WRITE_SECURE_SETTINGS → 直接写系统设置自愈重绑（系统正道）；
-         *  · 设置仍登记且服务死 → 进程已随 App 打开拉起，AMS 通常自动重绑，观察 1.5s；
-         *  · 未登记 → need_toggle/disabled 由页面引导一步恢复。
-         *  （v3.6.0 的 startService 拉活实为 SecurityException——无障碍服务受
-         *   BIND_ACCESSIBILITY_SERVICE 保护，任何应用都不能 start/bind 它，
-         *   「自动恢复未成功」的真因；v3.8.0 已移除该无效路径）
-         *  返回 JSON：{ok, running?, revived?, enabledInSettings?, selfHeal?, reason?} */
+        /** 自动拉活（v3.14.0 简化：ADB 自愈已移除）：
+         *  · 服务已运行 → ok；
+         *  · 设置仍登记且服务死 → 进程已随 App 打开拉起，AMS 通常自动重绑，
+         *    观察 ≤1.5s；仍未重绑 → need_toggle 由页面引导一步直达服务开关；
+         *  · 未登记 → disabled 由页面引导开启。
+         *  （无障碍服务受 BIND_ACCESSIBILITY_SERVICE 保护，任何应用都不能
+         *   start/bind 它——v3.6.0 的 startService 拉活实为 SecurityException；
+         *   v3.8.0 的 WRITE_SECURE_SETTINGS 自愈需 adb 授权太麻烦，v3.14.0 移除）
+         *  返回 JSON：{ok, running?, revived?, enabledInSettings?, reason?} */
         @JavascriptInterface
         public String tryAutoRevive() {
             org.json.JSONObject out = new org.json.JSONObject();
@@ -310,16 +308,6 @@ public class MainActivity extends Activity {
                 }
                 boolean enabled = a11yEnabledInSettings();
                 out.put("enabledInSettings", enabled);
-                if (AdSkipService.hasSecureWrite(a)) {
-                    boolean initiated = AdSkipService.selfHealBind(a);
-                    for (int i = 0; i < 16 && AdSkipService.instance == null; i++) {
-                        Thread.sleep(250); // ≤4s
-                    }
-                    boolean revived = AdSkipService.instance != null;
-                    out.put("ok", revived).put("revived", revived).put("selfHeal", initiated);
-                    if (!revived) out.put("reason", "heal_pending");
-                    return out.toString();
-                }
                 if (!enabled) {
                     out.put("ok", false).put("reason", "disabled");
                     return out.toString();

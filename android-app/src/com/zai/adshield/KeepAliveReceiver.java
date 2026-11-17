@@ -12,22 +12,18 @@ import android.os.Handler;
 import android.os.Looper;
 
 /**
- * 保活接收器（v3.9.0）——「开启后不手动关闭就一直保持开启」
- * ─────────────────────────────────────────────────────────────
- * v3.9.0：心跳自检间隔 15→5 分钟（AdSkipService.HEARTBEAT_MS）——服务被杀后
- *  最多 5 分钟内发现并自愈/提醒，配合 WRITE_SECURE_SETTINGS 全自动恢复；
- *  「清理后台重进又要手动开」的发现延迟大幅缩短。其余机制沿用 v3.8.0：
- * v3.8.0 三项升级（issue#10 二轮「清理后台重进又要手动开无障碍」）：
- *  · 心跳自续期：每次自检闹钟触发后由接收器排下一轮（v3.7.0 的
- *    setInexactRepeating 可被系统无限推迟）——精确闹钟优先，未授权降级
- *    setAndAllowWhileIdle，心跳链永不断；
- *  · WRITE_SECURE_SETTINGS 自愈（GKD 进阶玩法同款）：adb 一次性授权后，
- *    服务被杀/覆盖安装被系统关闭 → 直接写 Settings.Secure 重绑/写回开启，
- *    全自动无需手动；未授权 → 高优通知引导一步恢复（Android 11+ 直达
- *    本服务详情页，只剩一个开关）；
- *  · startService 拉活已移除——无障碍服务受 BIND_ACCESSIBILITY_SERVICE
- *    签名级权限保护，任何应用（含自己）都不能 start/bind 它，v3.6.0 起
- *    的「自动拉活重绑」实为 SecurityException，从未真正生效。
+ * 保活接收器（v3.14.0）——「开启后不手动关闭就一直保持开启」
+ * ─────────────────────────────────────────────────────────
+ * v3.14.0：ADB 自愈（WRITE_SECURE_SETTINGS）整体移除（用户反馈：要电脑
+ *  执行太麻烦）——服务被杀/覆盖安装被关闭时统一走高优「待恢复」通知，
+ *  点按直达本服务无障碍详情页一步恢复（Android 11+ 只剩一个开关）。
+ * v3.13.0：夜间心跳改 30~45 分钟窗口式非精确闹钟（息屏绝不唤醒设备，
+ *  待机功耗治理）。其余机制沿用：
+ * v3.9.0：心跳自检间隔 5 分钟（AdSkipService.HEARTBEAT_MS）——服务被杀后
+ *  最多 5 分钟内发现并提醒；
+ * v3.8.0：心跳自续期（每次自检闹钟触发后由接收器排下一轮，心跳链永不
+ *  断）；startService 拉活已移除——无障碍服务受 BIND_ACCESSIBILITY_SERVICE
+ *  签名级权限保护，任何应用（含自己）都不能 start/bind 它。
  */
 public class KeepAliveReceiver extends BroadcastReceiver {
 
@@ -54,15 +50,15 @@ public class KeepAliveReceiver extends BroadcastReceiver {
             // 闹钟（绝不把设备从 Doze 中唤醒，待机功耗治理）；亮屏仍 5 分钟精确
             AdSkipService.scheduleNextHeartbeat(ctx, System.currentTimeMillis() + AdSkipService.HEARTBEAT_MS, true);
             if (AdSkipService.instance != null) return; // 服务活着，无需动作
-            healOrNotify(ctx);
+            notifyAlert(ctx); // v3.14.0：ADB 自愈已移除，直接高优提醒一步恢复
             return;
         }
         if (AdSkipService.instance != null) return;
 
         if (replaced) {
             // 覆盖安装：系统必然已关闭无障碍服务（Android 安全设计）
-            // v3.8.0：授权过 WRITE_SECURE_SETTINGS → 写回开启状态全自动恢复
-            healOrNotify(ctx);
+            // v3.14.0：ADB 自愈已移除——高优通知引导一步恢复（学习数据全保留）
+            notifyAlert(ctx);
             return;
         }
         // 开机：系统要拉起仍启用的无障碍服务，给 8s（goAsync 预算内）再查
@@ -82,29 +78,8 @@ public class KeepAliveReceiver extends BroadcastReceiver {
         }, 8000);
     }
 
-    /** v3.8.0：服务已死 → 有 WRITE_SECURE_SETTINGS 走系统正道自愈重绑；
-     *  无授权 → 高优「待恢复」通知（Android 11+ 点按直达本服务详情页一个开关） */
-    private void healOrNotify(final Context ctx) {
-        if (!AdSkipService.hasSecureWrite(ctx)) {
-            notifyAlert(ctx);
-            return;
-        }
-        final PendingResult result = goAsync();
-        new Thread(() -> {
-            try {
-                AdSkipService.selfHealBind(ctx);
-                // 等系统完成重绑（bind 拉起进程 + onServiceConnected）
-                for (int i = 0; i < 16 && AdSkipService.instance == null; i++) {
-                    Thread.sleep(300); // ≤4.8s（goAsync 10s 预算内）
-                }
-                if (AdSkipService.instance == null) notifyAlert(ctx); // 自愈未成 → 提醒兜底
-            } catch (Throwable ignored) {
-            } finally {
-                if (result != null) result.finish();
-            }
-        }).start();
-    }
-
+    /** v3.14.0：服务已死 → 高优「待恢复」通知（Android 11+ 点按直达本服务
+     *  详情页一个开关；ADB 自愈路径已随 WRITE_SECURE_SETTINGS 整体移除） */
     /** 高优先级「待恢复」通知：点按打开 App（自动直达本服务无障碍详情页） */
     static void notifyAlert(Context ctx) {
         try {
@@ -127,7 +102,7 @@ public class KeepAliveReceiver extends BroadcastReceiver {
             b.setContentTitle("秒跳引擎待恢复")
                     .setContentText("系统关闭了无障碍服务，点按直达服务开关恢复（Android 11+ 一步）")
                     .setStyle(new Notification.BigTextStyle()
-                            .bigText("系统在覆盖安装、重启或深度清理后会关闭无障碍服务，这是 Android 的安全设计（已 adb 授权 WRITE_SECURE_SETTINGS 的设备会全自动恢复）。\n"
+                            .bigText("系统在覆盖安装、重启或深度清理后会关闭无障碍服务，这是 Android 的安全设计。\n"
                                     + "点按本通知 → 直达「开屏卫士」服务开关 → 打开即恢复（Android 11+ 一步直达；旧系统在无障碍列表中找到「开屏卫士」开启）。学习数据全部保留。"))
                     .setSmallIcon(R.drawable.ic_stat)
                     .setContentIntent(pi)

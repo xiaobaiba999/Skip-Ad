@@ -3,8 +3,21 @@ package com.zai.adshield.core;
 import java.util.ArrayList;
 
 /**
- * 秒跳决策核心（v3.13.0 · 纯 Java · 零 Android 依赖 · JVM 可单测）
+ * 秒跳决策核心（v3.14.0 · 纯 Java · 零 Android 依赖 · JVM 可单测）
  * ─────────────────────────────────────────────────────────────
+ * v3.14.0（issue#21 日志 + 真机截图实锤：喜马拉雅跳过开屏后 10 次有 8 次
+ * 弹出「不喜欢/反馈投诉」底部面板，用户每次都要手动收起；且引擎误判
+ * 「广告未关」连续换候选重试 ×2~4 次）：
+ *  · 新增「跳过后反馈弹窗」识别 findFeedbackSheet：广告 SDK 在广告被
+ *    关闭后弹出的反馈面板（截图特征：标题「不喜欢」+ 选项「重复出现/
+ *    不喜欢此内容」+ 分组「反馈投诉」+「我为什么会看到广告」+ 底部
+ *    「取消」）。反馈面板在场 = 广告已关的铁证（服务侧据此停用重试梯子，
+ *    不再无谓换候选），并代点「取消」收起面板；
+ *  · 安全红线：① 识别需 ≥1 个强特征（「我为什么会看到广告/反馈投诉/
+ *    减少此类广告」——信息流长按菜单没有这些词）且总特征 ≥2 个；
+ *    ② 只点文案精确等于「取消」的控件——绝不替用户提交任何反馈选项；
+ *    ③ 服务侧仅在该包 12s 内自动跳过过或复验中才启用（手动长按菜单
+ *    绝不碰）。
  * v3.13.0（真机反馈：接收验证码时顶部横幅被引擎点掉 + 夜间待机功耗高）：
  *  · 验证码横幅三重保护（纯逻辑部分）：
  *    isSmsOverlayPkg——短信/彩信/来电类覆盖层包（com.android.mms /
@@ -204,6 +217,20 @@ public final class AdDecisionCore {
     public static final String[] CTA_TEXTS = {"立即领取", "点击领取", "领取红包", "限时", "秒杀", "恭喜", "马上抢", "立即下载", "立即抢购", "0元领", "0元", "免费领", "点击进入", "立即查看", "开通会员", "领取礼包", "大奖"};
     public static final String[] GUARD_PKG_HINTS = {"bank", "icbc", "cmb", "ccb", "psbc", "abchina", "boc", "unionpay", "gov", "alipay", "955", "12345"};
     /* v3.12.0：AD_TARGET_HINTS 广告目标名单已删除（链式拦截整体移除，issue#14） */
+
+    /* ═══ v3.14.0 跳过后反馈弹窗特征库（issue#21 + 真机截图：喜马拉雅
+     * 「不喜欢/反馈投诉」底部面板）═══ 强特征 = 广告反馈面板独有文案
+     *（信息流长按「不感兴趣」菜单没有这些词）；弱特征 = 面板常见但
+     * 别处也可能出现的词。判定：≥1 强特征 且 总特征 ≥2（双保险）。 */
+    public static final String[] FEEDBACK_SHEET_STRONG = {
+            "我为什么会看到广告", "反馈投诉", "减少此类广告", "反馈关闭广告",
+    };
+    public static final String[] FEEDBACK_SHEET_WEAK = {
+            "不喜欢", "重复出现", "虚假广告", "内容不适", "其他问题",
+    };
+    public static final int FEEDBACK_SHEET_MIN_HITS = 2;
+    /** 服务侧门控：引擎自动跳过后多久内允许把反馈面板当「跳过后弹窗」处理 */
+    public static final long FEEDBACK_AFTER_SKIP_MS = 12000;
 
     /* ───────── 扫描结果 ───────── */
 
@@ -765,6 +792,57 @@ public final class AdDecisionCore {
         if (s == null) return false;
         return s.contains("验证码") || s.contains("校验码")
                 || s.contains("动态码") || s.contains("动态密码");
+    }
+
+    /* ───────── v3.14.0 跳过后反馈弹窗识别 ───────── */
+
+    /** 反馈面板识别结果 */
+    public static final class FeedbackFind {
+        public boolean isSheet;     // 是「跳过后反馈面板」（强特征 ≥1 且总特征 ≥2）
+        public NodeView cancelNode; // 文案精确为「取消」的控件（可空）
+        public int[] cancelBounds;  // 取消键边界（手势点击目标）
+    }
+
+    /** 有界广度优先识别「跳过后反馈面板」：统计特征文案命中数（去重）+
+     *  找文案精确等于「取消」的可见控件。底部面板树浅，预算 80 零性能顾虑。
+     *  只识别不点击——点不点「取消」由服务侧门控（12s 内自动跳过过）决定。 */
+    public static FeedbackFind findFeedbackSheet(NodeView root, int budget) {
+        FeedbackFind out = new FeedbackFind();
+        if (root == null || budget <= 0) return out;
+        java.util.ArrayDeque<NodeView> q = new java.util.ArrayDeque<>();
+        q.add(root);
+        int seen = 0;
+        java.util.HashSet<String> hits = new java.util.HashSet<>();
+        boolean strong = false;
+        while (!q.isEmpty() && seen < budget) {
+            NodeView n = q.poll();
+            if (n == null) continue;
+            seen++;
+            String text = nz(n.text());
+            String desc = nz(n.desc());
+            String label = text.length() > 0 ? text : desc;
+            if (label.length() > 0) {
+                for (String m : FEEDBACK_SHEET_STRONG) {
+                    if (label.contains(m)) { hits.add(m); strong = true; break; }
+                }
+                for (String m : FEEDBACK_SHEET_WEAK) {
+                    if (label.contains(m)) { hits.add(m); break; }
+                }
+                if (out.cancelNode == null && "取消".equals(text) && n.visible()) {
+                    int[] b = n.bounds();
+                    if (b != null && b.length >= 4 && b[2] > b[0] && b[3] > b[1]) {
+                        out.cancelNode = n;
+                        out.cancelBounds = b;
+                    }
+                }
+            }
+            for (int i = 0; i < n.childCount(); i++) {
+                NodeView c = n.child(i);
+                if (c != null) q.add(c);
+            }
+        }
+        out.isSheet = strong && hits.size() >= FEEDBACK_SHEET_MIN_HITS;
+        return out;
     }
 
     /** v3.13.0：有界广度优先找验证码横幅标记（预算内任一节点 text/desc 命中即真）。
