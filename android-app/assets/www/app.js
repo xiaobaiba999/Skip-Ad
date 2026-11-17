@@ -23,8 +23,8 @@ const store = {
 };
 
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "4.1.0"; }
-function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "40100"; }
+function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "4.2.0"; }
+function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "40200"; }
 
 /* ══════════ 吉祥物（v4.1.0 全新形象：白机器人小侠 + 绿披风跳跃） ══════════
  * 与启动器图标同源；state: on（跳跃浮动）/ off（灰度待命） */
@@ -37,15 +37,11 @@ $("#brand-logo").innerHTML = mascotImg(30, "on", true);
 
 /* ══════════ 版本记录 ══════════ */
 const CHANGELOG = [
+  { v: "4.2.0", d: "用户操作让路（你点开的页面绝不自动关）；微信主界面零扫描（乱划根治）；订阅规则接入弹窗场景 + Activity 限定（导入了就真生效）；日志每 12 小时自动提交；引擎日志翻倍更具体；功耗大降。" },
   { v: "4.1.0", d: "应用内一键暂停/恢复防护（免看系统 10 秒警告）；修复微信拍摄被强退、灵动岛乱点、订阅导入 404；全新 Logo。" },
   { v: "4.0.0", d: "接入 GKD 订阅生态：粘贴链接即可导入 gkd.li 社区规则；内置规则库升级为「文案 + 控件 ID」双引擎；全新界面。" },
   { v: "3.14.0", d: "跳过后弹出的反馈面板自动收起；秒跳提速；开启服务一步直达。" },
 ];
-
-const FB_TYPES = {
-  missed: "开屏广告没跳过", false_block: "正常操作被误拦", popup_leak: "弹窗广告没关闭",
-  coord_fp: "点错了位置", crash: "闪退或卡顿", suggestion: "功能建议", other: "其他",
-};
 
 /* ══════════ 路由 ══════════ */
 $$(".tabbtn").forEach(b => b.addEventListener("click", () => {
@@ -199,63 +195,6 @@ $("#btn-battery").addEventListener("click", () => {
 bindToggle("toggle-popup", "popupShield", "弹窗屏蔽已开启", "弹窗屏蔽已关闭");
 bindToggle("toggle-learning", "learning", "习惯学习已开启", "习惯学习已关闭");
 
-/* ══════════ 首页：反馈 ══════════ */
-function engineProfile() {
-  const st = getRealState();
-  let rules = 0, pkgs = 0;
-  try { Object.keys(st.rules || {}).forEach(k => { const n = (st.rules[k] || []).length; rules += n; if (n) pkgs++; }); } catch (e) {}
-  const log = (st.log || []).slice(-6).map(l => "  - " + (l.msg || ""));
-  const s = st.stats || {};
-  let subLine = "- 订阅：";
-  try {
-    const sub = JSON.parse(AndroidApp.subState());
-    subLine += "内置 " + (sub.builtinApps || 0) + " 款/" + (sub.builtinRules || 0) + " 条"
-      + (sub.remoteOk ? " · 远程「" + (sub.remoteName || "") + "」" + (sub.remoteApps || 0) + " 款/" + (sub.remoteRules || 0) + " 条" : "");
-  } catch (e) { subLine += "内置"; }
-  return [
-    "- 版本：v" + appVer() + " · 环境：" + (HAS_BRIDGE ? "Android APK" : "浏览器预览"),
-    "- 真实引擎：秒跳 " + (s.auto || 0) + " · 弹窗关闭 " + (s.popup || 0) + " · 手动样本 " + (s.manual || 0) + " · 学习规则 " + rules + " 条（" + pkgs + " 个应用）",
-    subLine,
-    "- 引擎日志：",
-    log.length ? log.join("\n") : "  - （暂无）",
-  ].join("\n");
-}
-
-$("#btn-feedback").addEventListener("click", async () => {
-  const type = $("#fb-type").value;
-  const desc = $("#fb-desc").value.trim();
-  const box = $("#fb-result");
-  const btn = $("#btn-feedback");
-  if (desc.length < 5) { box.className = "fb-result err"; box.textContent = "描述再具体一点（至少 5 个字）"; return; }
-
-  const label = FB_TYPES[type] || "其他";
-  const title = "[反馈][" + label + "] " + desc.slice(0, 40) + (desc.length > 40 ? "…" : "");
-  const body = "## 问题描述\n" + desc + "\n\n## 环境信息\n" + engineProfile() + "\n\n— 由开屏卫士 v" + appVer() + " 内置通道自动创建";
-
-  box.className = "fb-result"; box.textContent = "提交中…";
-  btn.disabled = true;
-  let res = null;
-  try {
-    if (HAS_BRIDGE) res = JSON.parse(AndroidApp.netPostIssue(title, body));
-    else {
-      const r = await fetch("https://api.github.com/repos/xiaobaiba999/Skip-Ad/issues", {
-        method: "POST", headers: { Accept: "application/vnd.github+json", "Content-Type": "application/json" },
-        body: JSON.stringify({ title, body }),
-      });
-      const d = await r.json().catch(() => ({}));
-      res = r.ok ? { ok: true, url: d.html_url, number: d.number } : { ok: false, error: "GitHub " + r.status };
-    }
-  } catch (e) { res = { ok: false, error: "提交异常：" + (e.message || e) }; }
-  btn.disabled = false;
-  if (res && res.ok) {
-    box.className = "fb-result ok";
-    box.textContent = "已提交 Issue #" + res.number + "，感谢反馈";
-    $("#fb-desc").value = "";
-  } else {
-    box.className = "fb-result err";
-    box.textContent = (res && res.error) || "未知错误";
-  }
-});
 
 /* ══════════ 订阅页 ══════════ */
 const SUB_EXAMPLE = "https://registry.npmmirror.com/@gkd-kit/subscription/latest/files/dist/gkd.json5";
@@ -528,6 +467,58 @@ $("#page-dl-btn").addEventListener("click", () => {
   if (latestRelease) startPageDownload(latestRelease, "page");
 });
 
+/* ══════════ 引擎画像（日志上传正文 · v4.2.0 更具体） ══════════ */
+function fmtTs(t) {
+  try {
+    const d = new Date(t);
+    const p = (n) => String(n).padStart(2, "0");
+    return p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds());
+  } catch (e) { return "--:--:--"; }
+}
+
+function engineProfile() {
+  const st = getRealState();
+  const s = st.stats || {};
+  let rules = 0, pkgs = 0;
+  try { Object.keys(st.rules || {}).forEach(k => { const n = (st.rules[k] || []).length; rules += n; if (n) pkgs++; }); } catch (e) {}
+  const lines = [];
+  lines.push("- 版本：v" + appVer() + " · 环境：" + (HAS_BRIDGE ? "Android APK" : "浏览器预览") + " · 手动上传");
+  lines.push("- 真实引擎：秒跳 " + (s.auto || 0) + " · 弹窗关闭 " + (s.popup || 0) + " · 返回键 " + (s.back || 0)
+    + " · 反馈面板收起 " + (s.feedback || 0) + " · 手动样本 " + (s.manual || 0) + " · 学习规则 " + rules + " 条（" + pkgs + " 个应用）");
+  // Top5 应用战绩（秒跳/弹窗/手动）
+  try {
+    const byApp = s.byApp || {};
+    const top = Object.keys(byApp).map(k => {
+      const a = byApp[k] || {};
+      return { k, score: (a.auto || 0) + (a.popup || 0) + (a.manual || 0), a };
+    }).filter(x => x.score > 0).sort((x, y) => y.score - x.score).slice(0, 5);
+    if (top.length) {
+      lines.push("- 应用战绩 Top5：" + top.map(x => {
+        const short = x.k.includes(".") ? x.k.slice(x.k.lastIndexOf(".") + 1) : x.k;
+        return short + "(" + (x.a.auto || 0) + "/" + (x.a.popup || 0) + "/" + (x.a.manual || 0) + ")";
+      }).join(" · "));
+    }
+  } catch (e) {}
+  // 订阅命中（内置 + 远程）
+  let subLine = "- 订阅：";
+  try {
+    const sub = JSON.parse(AndroidApp.subState());
+    subLine += "内置 " + (sub.builtinApps || 0) + " 款/" + (sub.builtinRules || 0) + " 条（命中 " + (sub.builtinHits || 0) + "）";
+    if (sub.remoteOk) subLine += " · 远程「" + (sub.remoteName || "") + "」" + (sub.remoteApps || 0) + " 款/" + (sub.remoteRules || 0) + " 条（命中 " + (sub.remoteHits || 0) + "）";
+  } catch (e) { subLine += "内置"; }
+  lines.push(subLine);
+  // 能耗画像
+  try {
+    const en = JSON.parse(AndroidApp.energyStats());
+    if (en && en.ok) lines.push("- 能耗画像（本次开机）：事件 " + en.events + " · 扫描 " + en.scans + " · 手势估算 " + en.microWh + "µWh");
+  } catch (e) {}
+  // 引擎日志：最近 16 条（带时间戳）
+  const log = (st.log || []).slice(-16).map(l => "  - [" + fmtTs(l.t || 0) + "] " + (l.msg || ""));
+  lines.push("- 引擎日志（最近 16 条）：");
+  lines.push(log.length ? log.join("\n") : "  - （暂无）");
+  return lines.join("\n");
+}
+
 /* ══════════ 我的：日志 ══════════ */
 function renderLog() {
   const st = getRealState();
@@ -565,7 +556,6 @@ function openUrl(u) {
   window.open(u, "_blank");
 }
 $("#link-repo").addEventListener("click", () => openUrl("https://github.com/xiaobaiba999/Skip-Ad"));
-$("#link-issues").addEventListener("click", () => openUrl("https://github.com/xiaobaiba999/Skip-Ad/issues"));
 
 /* ══════════ Toast ══════════ */
 let toastTimer = null;

@@ -7,17 +7,29 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * GKD 订阅模型与解析（v4.0.0 订阅融合 · https://gkd.li/guide/subscription）
+ * GKD 订阅模型与解析（v4.0.0 订阅融合 · v4.2.0 全门控重构）
  * ─────────────────────────────────────────────────────────────────────
  * 订阅 = GKD 生态规则的最小载体：apps[] → groups[] → rules[] →
  * matches（选择器）。本地内置订阅与远程导入订阅格式完全一致
  * （JSON5），加载时全部预编译为 GkdSelector——匹配热路径零解析。
  *
+ * v4.2.0（issue#31-37 日志实锤：远程订阅的微信规则在主界面反复命中
+ * 连点 = 「进入微信左右乱划」元凶；订阅导入后弹窗场景永不命中）：
+ *  · activityIds / excludeActivityIds 全量解析并强校验——GKD 社区规则
+ *    的 Activity 限定此前被整体忽略（朋友圈规则在 LauncherUI 也能命中），
+ *    现在非目标 Activity 的规则在扫描前直接跳过（零树遍历，功耗同降）；
+ *  · 无 activityIds 限定的「任意界面」规则加 skip 形态门——目标节点的
+ *    text/desc/vid 必须是跳过/关闭形态，微信底部 Tab 等普通控件绝不代点；
+ *  · actionMaximum（默认 1 次/窗口）与 actionInterval（默认 1000ms）
+ *    按 GKD 语义落地——同窗同一规则绝不机关枪连点；
+ *  · 单遍树扫描：全部候选规则共享一次 DFS + 节点预算（此前每条选择器
+ *    独立遍历全树，20 条规则 = 20 次整树遍历）。
+ *
  * 安全红线（与主引擎一致）：
  *  · 只支持 click / clickNode 动作（back 类规则在加载时直接丢弃
  *    ——链式拦截已整体移除，订阅规则也绝不能触发返回键）；
  *  · 匹配命中的目标节点仍须过主引擎安全闸（可见 + 面积 ≤35% 屏
- *    + 非空 bounds），由 SubscriptionManager.match 统一把关；
+ *    + 非空 bounds）；
  *  · 解析失败的规则跳过、失败的订阅整体拒绝——绝不影响主引擎。
  */
 public final class Subscription {
@@ -29,7 +41,14 @@ public final class Subscription {
         public List<GkdSelector> excludes = new ArrayList<GkdSelector>();
         public boolean clickNode;      // true=performAction 点击控件本身
         public String name;            // 日志标识（group 名 + 序号）
+        /* v4.2.0 GKD 规范字段 */
+        public String[] activityIds = EMPTY_STRS;         // 空 = 任意 Activity
+        public String[] excludeActivityIds = EMPTY_STRS;
+        public int actionMaximum;      // 同窗最多出手次数（0 = 不限，走全局预算）
+        public long actionInterval;    // 同规则两次出手最小间隔 ms（0 = 不限）
     }
+
+    static final String[] EMPTY_STRS = new String[0];
 
     public static final class App {
         public String id;              // 包名（'*' = 全局规则）
@@ -46,9 +65,26 @@ public final class Subscription {
         this.version = version;
     }
 
+    /* ══════════ 运行时限流（SubscriptionManager 注入，纯 Java 可单测） ══════════
+     * actionMaximum / actionInterval 的出手记账。key = 包名|规则名|窗口。 */
+
+    public interface Runtime {
+        /** 是否允许本次出手（间隔/次数双校验） */
+        boolean allowFire(String key, int actionMaximum, long actionInterval);
+
+        /** 记账一次出手 */
+        void onFired(String key);
+    }
+
     /* ══════════ 解析（JSON5 → 模型，选择器全部预编译） ══════════ */
 
     public static Subscription parse(String json5Text) {
+        return parse(json5Text, 1, 1000);
+    }
+
+    /** v4.2.0：带默认限流参数解析（内置订阅 0/0=依赖全局预算与冷却；
+     *  远程订阅按 GKD 语义默认 1 次/窗 + 1000ms 间隔） */
+    public static Subscription parse(String json5Text, int defActionMaximum, long defActionInterval) {
         Object root = Json5.parse(json5Text);
         Map0 m = new Map0(Json5.asMap(root));
         String name = m.str("name", "未命名订阅");
@@ -72,7 +108,8 @@ public final class Subscription {
                 List<Object> rules = normalizeRules(rulesObj);
                 if (rules == null) continue;
                 for (int r = 0; r < rules.size(); r++) {
-                    Rule compiled = compileRule(Json5.asMap(rules.get(r)), gname + "-" + (r + 1));
+                    Rule compiled = compileRule(Json5.asMap(rules.get(r)),
+                            gname + "-" + (r + 1), defActionMaximum, defActionInterval);
                     if (compiled != null) app.rules.add(compiled);
                 }
             }
@@ -96,8 +133,10 @@ public final class Subscription {
         return null;
     }
 
-    /** 单条规则编译：matches/anyMatches → 目标选择器；back 动作丢弃 */
-    static Rule compileRule(java.util.Map<String, Object> rm, String ruleName) {
+    /** 单条规则编译：matches/anyMatches → 目标选择器；back 动作丢弃；
+     *  v4.2.0：activityIds/excludeActivityIds/actionMaximum/actionInterval 全解析 */
+    static Rule compileRule(java.util.Map<String, Object> rm, String ruleName,
+                            int defActionMaximum, long defActionInterval) {
         if (rm == null) return null;
         Map0 m = new Map0(rm);
         String action = m.str("action", "click");
@@ -105,6 +144,10 @@ public final class Subscription {
         Rule r = new Rule();
         r.name = ruleName;
         r.clickNode = "clickNode".equals(action);
+        r.activityIds = m.strList("activityIds");
+        r.excludeActivityIds = m.strList("excludeActivityIds");
+        r.actionMaximum = (int) m.num("actionMaximum", defActionMaximum);
+        r.actionInterval = (long) m.num("actionInterval", defActionInterval);
         addSelectors(r.targets, m.raw.get("matches"));
         addSelectors(r.targets, m.raw.get("anyMatches"));
         addSelectors(r.excludes, m.raw.get("excludeMatches"));
@@ -150,50 +193,133 @@ public final class Subscription {
             Object v = raw.get(k);
             return v instanceof Double ? ((Double) v).doubleValue() : d;
         }
+
+        /** v4.2.0：字符串或字符串数组 → String[]（GKD 的 activityIds 两种写法都合法） */
+        String[] strList(String k) {
+            Object v = raw.get(k);
+            if (v instanceof String) {
+                return new String[]{(String) v};
+            }
+            if (v instanceof List) {
+                List<?> l = (List<?>) v;
+                ArrayList<String> out = new ArrayList<String>(l.size());
+                for (int i = 0; i < l.size(); i++) {
+                    if (l.get(i) instanceof String) out.add((String) l.get(i));
+                }
+                return out.toArray(new String[0]);
+            }
+            return EMPTY_STRS;
+        }
     }
 
-    /* ══════════ 匹配（热路径：全部走预编译选择器） ══════════
-     * 安全闸在这里：目标节点须 可见 + 面积 ≤35% 屏 + bounds 非空——
-     * 与主引擎 RuleEngine 同一道闸，大容器/CTA 巨按钮绝不点。 */
+    /* ══════════ 匹配（v4.2.0 单遍扫描热路径） ══════════
+     * 1. 规则预过滤（包名 + activityIds）——不匹配的规则零树遍历直接出局；
+     * 2. 单次 DFS 共享节点预算，每个节点依次尝试所有候选规则的选择器链
+     *    （此前每条选择器独立 findFirst 全树遍历，N 条规则 = N 次整树）；
+     * 3. 命中节点过安全闸（可见 + 面积 ≤35% 屏 + bounds 非空）；
+     * 4. 无 activityIds 的「任意界面」规则加 skip 形态门；
+     * 5. 运行时限流（actionMaximum/actionInterval）由注入的 Runtime 记账。 */
 
-    /**
-     * 在控件树里跑本订阅中指定应用的规则。
-     * 返回 null = 无命中。（结果为 RuleEngine.Hit，额外字段见
-     * clickNodeAction / src）
-     */
+    private static final class Cand {
+        final App app;
+        final Rule rule;
+
+        Cand(App app, Rule rule) {
+            this.app = app;
+            this.rule = rule;
+        }
+    }
+
     public RuleEngine.Hit match(String pkg, NodeView root, Ctx ctx, int budget) {
+        return match(pkg, root, ctx, budget, null, "");
+    }
+
+    public RuleEngine.Hit match(String pkg, NodeView root, Ctx ctx, int budget,
+                                Runtime rt, String keyPrefix) {
         if (root == null) return null;
+        // ① 规则预过滤：包名 + Activity 限定（零树遍历的最大的功耗优化）
+        List<Cand> cands = new ArrayList<Cand>(8);
         for (int i = 0; i < apps.size(); i++) {
             App app = apps.get(i);
             boolean global = "*".equals(app.id);
             if (!global && !pkg.equals(app.id)) continue; // GKD 语义：包名精确匹配
             for (int j = 0; j < app.rules.size(); j++) {
                 Rule rule = app.rules.get(j);
-                for (int k = 0; k < rule.targets.size(); k++) {
-                    NodeView t = rule.targets.get(k).findFirst(root, budget);
-                    if (t == null) continue;
-                    if (!safeTarget(t, ctx)) continue;
-                    if (excluded(rule, root, budget)) break;
-                    RuleEngine.Hit h = new RuleEngine.Hit();
-                    h.appId = "sub_gkd";
-                    h.label = "gkd:" + app.name + "/" + rule.name;
-                    h.clickNodeAction = rule.clickNode;
-                    h.src = app.name;
-                    h.tapBounds = t.bounds();
-                    NodeView click = AdDecisionCore.resolveClickable(t, 4);
-                    h.clickNode = click;
-                    h.gestureOnly = click == null
-                            || !AdDecisionCore.isSmallClick(click, ctx);
-                    return h;
-                }
+                if (!activityAllowed(rule, ctx.activityId)) continue;
+                cands.add(new Cand(app, rule));
             }
+        }
+        if (cands.isEmpty()) return null; // 微信主界面等场景：绝大多数规则在此出局
+        // ② 单遍 DFS（共享预算）
+        GkdSelector.Exe exe = new GkdSelector.Exe(new int[]{budget});
+        return dfsMulti(cands, root, root, exe, ctx, rt, keyPrefix);
+    }
+
+    private RuleEngine.Hit dfsMulti(List<Cand> cands, NodeView root, NodeView node, GkdSelector.Exe x,
+                                    Ctx ctx, Runtime rt, String keyPrefix) {
+        if (node == null || !x.dec()) return null;
+        for (int i = 0; i < cands.size(); i++) {
+            Cand c = cands.get(i);
+            NodeView t = walkRule(c.rule, node, x);
+            if (t == null) continue;
+            if (!safeTarget(t, ctx)) continue;
+            // 无 activityIds 限定的任意界面规则：目标必须是跳过/关闭形态
+            if (c.rule.activityIds.length == 0
+                    && !AdDecisionCore.looksSkipLike(t.text(), t.desc(), t.viewId())) continue;
+            if (excluded(c.rule, root, x)) continue;
+            // 运行时限流：同窗次数 / 同规则间隔（GKD actionMaximum/actionInterval）
+            if (rt != null) {
+                String key = keyPrefix + c.app.id + "/" + c.rule.name + "@" + ctx.activityId;
+                if (!rt.allowFire(key, c.rule.actionMaximum, c.rule.actionInterval)) continue;
+                rt.onFired(key);
+            }
+            RuleEngine.Hit h = new RuleEngine.Hit();
+            h.appId = "sub_gkd";
+            h.label = "gkd:" + c.app.name + "/" + c.rule.name;
+            h.clickNodeAction = c.rule.clickNode;
+            h.src = c.app.name;
+            h.tapBounds = t.bounds();
+            NodeView click = AdDecisionCore.resolveClickable(t, 4);
+            h.clickNode = click;
+            h.gestureOnly = click == null
+                    || !AdDecisionCore.isSmallClick(click, ctx);
+            return h;
+        }
+        int n = node.childCount();
+        for (int i = 0; i < n; i++) {
+            RuleEngine.Hit r = dfsMulti(cands, root, node.child(i), x, ctx, rt, keyPrefix);
+            if (r != null) return r;
         }
         return null;
     }
 
-    static boolean excluded(Rule rule, NodeView root, int budget) {
+    /** 规则全部选择器链依次在 node 上验证（node 作为末段选择器命中） */
+    static NodeView walkRule(Rule rule, NodeView node, GkdSelector.Exe x) {
+        for (int k = 0; k < rule.targets.size(); k++) {
+            NodeView t = rule.targets.get(k).walkChains(node, x);
+            if (t != null) return t;
+        }
+        return null;
+    }
+
+    /** activityIds 门（GKD 语义：全等或后缀匹配；空数组 = 任意 Activity） */
+    static boolean activityAllowed(Rule rule, String activityId) {
+        String aid = activityId == null ? "" : activityId;
+        for (int i = 0; i < rule.excludeActivityIds.length; i++) {
+            String e = rule.excludeActivityIds[i];
+            if (aid.equals(e) || aid.endsWith(e)) return false;
+        }
+        if (rule.activityIds.length == 0) return true;
+        for (int i = 0; i < rule.activityIds.length; i++) {
+            String a = rule.activityIds[i];
+            if (aid.equals(a) || aid.endsWith(a)) return true;
+        }
+        return false;
+    }
+
+    static boolean excluded(Rule rule, NodeView root, GkdSelector.Exe x) {
         for (int i = 0; i < rule.excludes.size(); i++) {
-            if (rule.excludes.get(i).findFirst(root, budget) != null) return true;
+            if (rule.excludes.get(i).findFirst(root, x) != null) return true;
         }
         return false;
     }
@@ -220,7 +346,9 @@ public final class Subscription {
      * 主引擎五层规则认「文案」；本订阅认「控件 ID（vid）」——真实跳过键
      * 的 viewId 几乎都含 skip（btn_skip / iv_skip / tt_splash_skip_btn /
      * main_ad_skip / skip_view…），ID 比文案更稳（改文案不改 ID）。
-     * 全部加 [visible=true] / [clickable=true] 上下文约束。 */
+     * 全部加 [visible=true] / [clickable=true] 上下文约束。
+     * v4.2.0：内置订阅按 0/0（不限次）解析——出手节奏由全局点击冷却
+     * （0.9s）与同窗点击预算（6 次）统一管制，与主引擎文案规则同权。 */
 
     public static final String BUILTIN_JSON5 =
             "{\n"

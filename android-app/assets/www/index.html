@@ -87,23 +87,6 @@
           <label class="switch"><input type="checkbox" id="toggle-learning" checked><span class="slider"></span></label>
         </div>
       </div>
-
-      <!-- 反馈 -->
-      <div class="card">
-        <div class="card-title">问题反馈</div>
-        <select id="fb-type" class="fb-select">
-          <option value="missed">开屏广告没跳过</option>
-          <option value="false_block">正常操作被误拦</option>
-          <option value="popup_leak">弹窗广告没关闭</option>
-          <option value="coord_fp">点错了位置</option>
-          <option value="crash">闪退或卡顿</option>
-          <option value="suggestion">功能建议</option>
-          <option value="other">其他</option>
-        </select>
-        <textarea id="fb-desc" rows="3" placeholder="哪个应用？什么情况？"></textarea>
-        <button class="btn btn-primary btn-block" id="btn-feedback">提交</button>
-        <div class="fb-result" id="fb-result"></div>
-      </div>
     </section>
 
     <!-- ───────── 订阅 ───────── -->
@@ -177,12 +160,9 @@
         <button class="link-row" id="link-repo">
           <span>GitHub 仓库</span><span class="arrow">›</span>
         </button>
-        <button class="link-row" id="link-issues">
-          <span>问题反馈区</span><span class="arrow">›</span>
-        </button>
       </div>
 
-      <p class="foot-note">数据仅存本机 · 联网仅反馈与更新</p>
+      <p class="foot-note">数据仅存本机 · 联网仅日志与更新 · 日志每 12 小时自动提交一次</p>
     </section>
   </main>
 

@@ -281,6 +281,7 @@ public final class AdDecisionCore {
         public int screenW;
         public int screenH;
         public String pkg;          // v3.10.0：当前应用包名（RuleEngine 分应用规则表用）
+        public String activityId = ""; // v4.2.0：当前窗口类名（GKD 订阅规则 activityIds 限定用）
         public long elapsedMs;        // 距窗口切换
         public boolean splashLive;    // 开屏窗内（≤12s）
         public boolean popupLive;     // 弹窗窗期内
@@ -805,6 +806,33 @@ public final class AdDecisionCore {
                 || c.contains("capture")  // CaptureActivity（拍摄/扫码）
                 || c.contains("shoot")    // ShootActivity（拍摄页）
                 || c.contains("videoedit"); // 视频编辑（紧邻拍摄的敏感操作区）
+    }
+
+    /** v4.2.0：聊天主界面门（issue#31-37 日志实锤：微信主界面 LauncherUI 内
+     *  GKD 订阅规则反复命中连点 = 「进入微信左右乱划」元凶）。微信主界面
+     *  没有任何跳过键（开屏广告从不在 LauncherUI 里出现），主界面期间
+     *  开屏扫描链整体让路——绝不扫描绝不点击，聊天列表滚动的高频内容
+     *  变化也不再触发整树扫描（功耗同步大降）。Dialog 弹窗（青少年模式等）
+     *  是独立窗口事件，不受此门影响。QQ 主界面历史命名 SplashActivity
+     *  与开屏窗无法区分，不纳入（仅微信）。 */
+    public static boolean isChatMainUi(String pkg, String cls) {
+        if (pkg == null || cls == null || cls.length() == 0) return false;
+        if (!"com.tencent.mm".equals(pkg)) return false;
+        return cls.contains("LauncherUI");
+    }
+
+    /** v4.2.0：目标节点是否「跳过/关闭」形态（订阅规则安全门用）——
+     *  无 activityIds 限定的社区规则只允许点 skip/close 形态的控件，
+     *  微信底部的 Tab/翻页指示器等普通控件绝不代点。 */
+    public static boolean looksSkipLike(String text, String desc, String viewId) {
+        if (matchesSkip(text) || isCloseText(text)) return true;
+        if (matchesSkip(desc) || isCloseText(desc)) return true;
+        if (viewId != null) {
+            String v = viewId.toLowerCase();
+            if (v.contains("skip") || v.contains("close") || v.contains("dismiss")
+                    || v.contains("btn_close") || v.contains("ib_close")) return true;
+        }
+        return false;
     }
 
     /** v3.13.0：验证码横幅文案标记——树内任一节点命中即视为验证码/通知横幅，

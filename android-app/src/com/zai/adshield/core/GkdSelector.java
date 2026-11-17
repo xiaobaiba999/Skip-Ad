@@ -332,16 +332,27 @@ public final class GkdSelector {
     public NodeView findFirst(NodeView root, int budget) {
         if (root == null) return null;
         Exe x = new Exe(new int[]{budget});
+        return findFirst(root, x);
+    }
+
+    /** v4.2.0：共享预算版本（排除规则等复用同一次扫描的节点预算，不重复建账） */
+    NodeView findFirst(NodeView root, Exe x) {
+        if (root == null) return null;
         for (int ci = 0; ci < chains.size(); ci++) {
-            NodeView r = walkChain(chains.get(ci), root, x);
+            NodeView r = dfs(chains.get(ci), root, x);
             if (r != null) return r;
         }
         return null;
     }
 
-    private static NodeView walkChain(Chain chain, NodeView root, Exe x) {
-        // DFS 全树：每个节点尝试作为末段选择器的命中
-        return dfs(chain, root, x);
+    /** v4.2.0：在指定节点上验证本选择器的全部链（node 作为末段命中，
+     * 递归遍历由调用方的单遍 DFS 负责）——订阅多规则共享一次树遍历的基石 */
+    NodeView walkChains(NodeView node, Exe x) {
+        for (int ci = 0; ci < chains.size(); ci++) {
+            NodeView r = chains.get(ci).walk(x, node);
+            if (r != null) return r;
+        }
+        return null;
     }
 
     private static NodeView dfs(Chain chain, NodeView node, Exe x) {

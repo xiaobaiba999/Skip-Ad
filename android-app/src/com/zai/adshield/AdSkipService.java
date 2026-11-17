@@ -234,7 +234,26 @@ public class AdSkipService extends AccessibilityService {
     private static final long COOLDOWN_MS = 900;       // 同一应用两次自动点击最小间隔（v3.9.0 1200→900：复验更快）
     private static final long LEARN_WINDOW_MS = 30000; // 手动点击学习宽时间窗
     private static final int MAX_RULES_PER_APP = 8;
-    private static final int MAX_LOG = 60;
+    private static final int MAX_LOG = 120; // v4.2.0：60→120（日志更具体：手动/自动上传携带更多上下文）
+
+    /* ═══ v4.2.0 用户意图让路（issue#31-37：「用户点开弹窗广告落地页又被
+     * 引擎自动关闭，手动重开又被关」根治）═══
+     * 引擎绝不与用户意图对抗：
+     *  · 用户真实点击（非引擎代点）后 4s 内，该应用一律不出手（点击/返回键全部让路）；
+     *  · 用户点击后 2.5s 内切到的新窗口（非 Dialog）= 用户主动打开（广告落地页/详情页），
+     *    30s 内绝不对其任何动作——你打开的页面，绝不替你关。 */
+    private static final long USER_YIELD_MS = 4000;
+    private static final long USER_OPEN_WIN_MS = 2500;
+    private static final long USER_OPEN_GUARD_MS = 30000;
+    private final java.util.HashMap<String, Long> userActAt = new java.util.HashMap<>();
+    private final java.util.HashMap<String, String> userOpenCls = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Long> userOpenUntil = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Long> yieldLogAt = new java.util.HashMap<>();
+    /* v4.2.0：弹窗窗期内容变化补扫节流（4s 后 300ms 一次） */
+    private final java.util.HashMap<String, Long> popupNudgeAt = new java.util.HashMap<>();
+
+    /* v4.2.0：每 12 小时自动提交引擎日志（除用户手动上传外） */
+    public static final long AUTO_LOG_MS = 12 * 60 * 60 * 1000L;
 
     /* 极速链（v3.9.0 前段加密：露头就秒跳——Keep 开屏「跳过」键 0ms 首扫即中，
        60ms 内二连扫兜底渲染延迟；后段保持疏节奏覆盖晚出键） */
@@ -319,6 +338,167 @@ public class AdSkipService extends AccessibilityService {
             }
         }
         return ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_STATE, null);
+    }
+
+    /* ═══ v4.2.0 每 12 小时自动提交引擎日志（KeepAliveReceiver 心跳顺带）═══
+     * 除用户手动上传外的第二条日志通道：默认每 12h 一次，成功才计时；
+     * 服务未运行/暂停/息屏时跳过（等下一轮心跳，绝不夜间耗电）。
+     * 与手动上传同一内置令牌通道（GitHub issue），标题带「自动」标识。 */
+    public static void maybeAutoUploadLog(final Context ctx) {
+        try {
+            final SharedPreferences sp = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+            long last = sp.getLong("autoLogAt", 0);
+            long now = System.currentTimeMillis();
+            if (now - last < AUTO_LOG_MS) return;
+            final AdSkipService s = instance;
+            if (s == null || !masterOn) return;       // 服务活着且在守护才传
+            if (!isScreenOn(ctx)) return;              // 息屏不传（夜间功耗红线）
+            Thread t = new Thread(() -> {
+                try {
+                    String state = snapshotState(ctx);
+                    org.json.JSONObject st = state != null
+                            ? new org.json.JSONObject(state) : new org.json.JSONObject();
+                    String ver = "4.2.0";
+                    try {
+                        ver = ctx.getPackageManager().getPackageInfo(ctx.getPackageName(), 0).versionName;
+                    } catch (Throwable ignored) {
+                    }
+                    String body = buildLogBody(ctx, st, ver, true);
+                    String title = "[引擎日志][v" + ver + "] "
+                            + android.os.Build.BRAND + " " + android.os.Build.MODEL + "（12 小时自动）";
+                    String r = Net.postIssue(title, body);
+                    org.json.JSONObject o = new org.json.JSONObject(r);
+                    if (o.optBoolean("ok")) {
+                        sp.edit().putLong("autoLogAt", System.currentTimeMillis()).apply();
+                        AdSkipService sv = instance;
+                        if (sv != null) {
+                            sv.appendLog("📨 引擎日志已自动提交（每 12 小时一次；手动上传不受影响）");
+                        }
+                    }
+                } catch (Throwable ignored) {
+                }
+            }, "auto-log");
+            t.setDaemon(true);
+            t.start();
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** v4.2.0：日志正文构造（自动/手动共用：状态 + 引擎日志 16 条带时间戳 +
+     *  Top5 应用战绩 + 订阅命中 + 能耗画像） */
+    static String buildLogBody(Context ctx, org.json.JSONObject st, String ver, boolean auto) {
+        try {
+            StringBuilder b = new StringBuilder(1024);
+            b.append("## 设备\n- ").append(android.os.Build.BRAND).append(' ')
+                    .append(android.os.Build.MODEL).append(" · Android ")
+                    .append(android.os.Build.VERSION.RELEASE).append("\n\n## 状态\n");
+            org.json.JSONObject stats = st.optJSONObject("stats");
+            int auto_ = stats == null ? 0 : stats.optInt("auto", 0);
+            int popup = stats == null ? 0 : stats.optInt("popup", 0);
+            int manual = stats == null ? 0 : stats.optInt("manual", 0);
+            int backs = stats == null ? 0 : stats.optInt("back", 0);
+            int feedback = stats == null ? 0 : stats.optInt("feedback", 0);
+            b.append("- 版本：v").append(ver).append(" · 环境：Android APK")
+                    .append(auto ? " · 12h 自动提交" : " · 手动上传").append("\n");
+            b.append("- 真实引擎：秒跳 ").append(auto_).append(" · 弹窗关闭 ").append(popup)
+                    .append(" · 返回键 ").append(backs).append(" · 反馈面板收起 ").append(feedback)
+                    .append(" · 手动样本 ").append(manual).append("\n");
+            // 学习规则统计
+            org.json.JSONObject rules = st.optJSONObject("rules");
+            int ruleCount = 0, pkgs = 0;
+            if (rules != null) {
+                java.util.Iterator<String> it = rules.keys();
+                while (it.hasNext()) {
+                    String k = it.next();
+                    org.json.JSONArray l = rules.optJSONArray(k);
+                    if (l != null && l.length() > 0) {
+                        ruleCount += l.length();
+                        pkgs++;
+                    }
+                }
+            }
+            b.append("- 学习规则：").append(ruleCount).append(" 条（").append(pkgs).append(" 个应用）\n");
+            // Top5 应用战绩
+            org.json.JSONObject byApp = stats == null ? null : stats.optJSONObject("byApp");
+            if (byApp != null && byApp.length() > 0) {
+                b.append("- 应用战绩 Top5：");
+                java.util.ArrayList<String> keys = new java.util.ArrayList<>();
+                java.util.Iterator<String> it = byApp.keys();
+                while (it.hasNext()) keys.add(it.next());
+                keys.sort((x, y) -> {
+                    int ax = scoreOf(byApp.optJSONObject(x));
+                    int ay = scoreOf(byApp.optJSONObject(y));
+                    return ay - ax;
+                });
+                int n = Math.min(5, keys.size());
+                for (int i = 0; i < n; i++) {
+                    org.json.JSONObject a = byApp.optJSONObject(keys.get(i));
+                    if (a == null) continue;
+                    b.append(shortPkgSt(keys.get(i))).append('(')
+                            .append(a.optInt("auto", 0)).append('/')
+                            .append(a.optInt("popup", 0)).append('/')
+                            .append(a.optInt("manual", 0)).append(')');
+                    if (i < n - 1) b.append(" · ");
+                }
+                b.append("\n");
+            }
+            // 订阅命中
+            try {
+                if (ctx != null) {
+                String subJson = SubscriptionManager.stateJson(ctx);
+                org.json.JSONObject sub = new org.json.JSONObject(subJson);
+                b.append("- 订阅：内置 ").append(sub.optInt("builtinApps", 0)).append(" 款/")
+                        .append(sub.optInt("builtinRules", 0)).append(" 条（命中 ")
+                        .append(sub.optInt("builtinHits", 0)).append("）");
+                if (sub.optBoolean("remoteOk", false)) {
+                    b.append(" · 远程「").append(sub.optString("remoteName", "")).append("」")
+                            .append(sub.optInt("remoteApps", 0)).append(" 款/")
+                            .append(sub.optInt("remoteRules", 0)).append(" 条（命中 ")
+                            .append(sub.optInt("remoteHits", 0)).append("）");
+                }
+                b.append("\n");
+                }
+            } catch (Throwable ignored) {
+            }
+            // 能耗画像
+            AdSkipService sv = instance;
+            if (sv != null) {
+                b.append("- 能耗画像（本次开机）：事件 ").append(sv.energyEvents)
+                        .append(" · 扫描 ").append(sv.energyScans)
+                        .append(" · 手势 ").append(sv.energyGestures)
+                        .append(" · 返回键 ").append(sv.energyBacks).append("\n");
+            }
+            // 引擎日志 16 条（带时间戳）
+            org.json.JSONArray log = st.optJSONArray("log");
+            b.append("- 引擎日志（最近 16 条）：\n");
+            if (log != null && log.length() > 0) {
+                int from = Math.max(0, log.length() - 16);
+                java.text.SimpleDateFormat df = new java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US);
+                for (int i = from; i < log.length(); i++) {
+                    org.json.JSONObject e = log.optJSONObject(i);
+                    if (e == null) continue;
+                    long t = e.optLong("t", 0);
+                    b.append("  - [").append(df.format(new java.util.Date(t))).append("] ")
+                            .append(e.optString("msg", "")).append("\n");
+                }
+            } else {
+                b.append("  - （暂无）\n");
+            }
+            return b.toString();
+        } catch (Throwable t) {
+            return "（日志构造异常：" + t + "）";
+        }
+    }
+
+    static int scoreOf(org.json.JSONObject a) {
+        if (a == null) return 0;
+        return a.optInt("auto", 0) + a.optInt("popup", 0) + a.optInt("manual", 0);
+    }
+
+    static String shortPkgSt(String pkg) {
+        if (pkg == null) return "";
+        int i = pkg.lastIndexOf('.');
+        return i >= 0 && pkg.length() - i - 1 > 1 ? pkg.substring(i + 1) : pkg;
     }
 
     /* ═══ v4.1.0 App 内主开关（暂停/恢复，免去看系统设置 10 秒警告）═══
@@ -684,7 +864,10 @@ public class AdSkipService extends AccessibilityService {
                  * 被当「角落跳过键」= 乱点元凶）。只允许走严格门控的弹窗
                  * 识别路径（Dialog 形态 + 角标/营销话术双信号）。 */
                 if (!pkg.equals(lastFgPkg)
-                        && (isDialogClass(cls) || isSmallOverlayWindow(pkg) || !isActiveWindowOf(pkg))) {
+                        && (isDialogClass(cls) || !isActiveWindowOf(pkg) || isSmallOverlayWindow(pkg))) {
+                    /* v4.2.0 IPC 重排：活动窗口归属查询（单次 IPC）前置——
+                     * 常见路径一次短路，小窗全量遍历（getWindows 重 IPC）仅在
+                     * 活动窗口确属该包时才兜底执行（灵动岛小窗包场景） */
                     if (isDialogClass(cls) && !isOemUtilityPkg(pkg)) {
                         popupUntil.put(pkg, now + POPUP_WINDOW_MS);
                         nudgePopupScan(pkg, now);
@@ -696,6 +879,19 @@ public class AdSkipService extends AccessibilityService {
                 // 按返回键 = 退出应用，安全门据此禁一切返回键兜底
                 boolean entering = !pkg.equals(lastFgPkg);
                 lastFgPkg = pkg;
+                /* v4.2.0 用户主动打开窗口标记：用户真实点击后 2.5s 内切到的
+                 * 非 Dialog 新窗口 = 用户主动打开（广告落地页/商品详情页）。
+                 * 30s 内引擎对该窗口零动作——「点开又被自动关、手动重开
+                 * 又被关」根治。引擎代点（lastAutoClick）后打开的窗口
+                 * 不算（那可能是广告自己跳的落地页，但纯跳过引擎也绝不
+                 * 对抗任何跳转——v3.12.0 链式拦截红线）。 */
+                long uAct = userActAtGet(pkg);
+                boolean recentAuto = pkg.equals(lastAutoClickPkg) && (now - lastAutoClickAt) < USER_OPEN_WIN_MS;
+                if (!entering && !isDialogClass(cls) && uAct > 0
+                        && now - uAct < USER_OPEN_WIN_MS && !recentAuto) {
+                    userOpenCls.put(pkg, cls);
+                    userOpenUntil.put(pkg, now + USER_OPEN_GUARD_MS);
+                }
                 // v3.5.0 复验通过：上一窗点过东西且窗口已切走 → 广告已关
                 Integer prevTries = clickTries.get(pkg);
                 if (prevTries != null && prevTries > 0 && !cls.equals(winClassOf(pkg))) {
@@ -748,6 +944,9 @@ public class AdSkipService extends AccessibilityService {
             }
             case AccessibilityEvent.TYPE_VIEW_CLICKED: {
                 if (isOwnAutoClick(pkg, now)) return;
+                // v4.2.0 用户意图让路：真实用户点击 → 4s 让路计时开始；
+                // 学习与误触观察照常（用户手动跳过仍会被学习）
+                userActAt.put(pkg, now);
                 learnFromManualClick(pkg, event, now);
                 observeMisclick(pkg, event, now);
                 break;
@@ -850,6 +1049,35 @@ public class AdSkipService extends AccessibilityService {
         return c == null ? "" : c;
     }
 
+    private long userActAtGet(String pkg) {
+        Long t = userActAt.get(pkg);
+        return t == null ? 0L : t.longValue();
+    }
+
+    /* ───────── v4.2.0 用户意图让路（execute 全动作统一门）─────────
+     * ① 用户真实点击后 4s 内：该应用一律不出手（点击/返回键全让路）；
+     * ② 用户主动打开的窗口（2.5s 内点击后切到的非 Dialog 窗）：30s 保护。
+     * 返回 true = 本轮让路（不出手）。日志同包 8s 去重防刷屏。 */
+    private boolean userYield(String pkg, long now) {
+        long uAct = userActAtGet(pkg);
+        boolean recentAct = uAct > 0 && now - uAct < USER_YIELD_MS;
+        boolean userOpened = false;
+        String uoc = userOpenCls.get(pkg);
+        if (uoc != null && uoc.equals(winClassOf(pkg))) {
+            Long until = userOpenUntil.get(pkg);
+            userOpened = until != null && now < until;
+        }
+        if (!recentAct && !userOpened) return false;
+        Long lastY = yieldLogAt.get(pkg);
+        if (lastY == null || now - lastY > 8000) {
+            yieldLogAt.put(pkg, now);
+            appendLog("🤝 用户操作让路（" + shortPkg(pkg) + "）："
+                    + (userOpened ? "这是你主动打开的页面，30s 内绝不自动关闭"
+                    : "检测到你的点击，4s 内暂不出手"));
+        }
+        return true;
+    }
+
     /** v3.6.0：应用入口窗类名（无记录返回空串 = 非入口窗） */
     private String rootWinClsOf(String pkg) {
         String c = rootWinCls.get(pkg);
@@ -939,6 +1167,9 @@ public class AdSkipService extends AccessibilityService {
     /* ───────── 扫描调度：0ms 首扫 + 前密后疏重试链 ───────── */
 
     private void bumpScanChain(final String pkg) {
+        // v4.2.0 聊天主界面门：微信主界面没有跳过键，16 档定时扫描
+        // 一个都不排（零调度零唤醒，功耗最优；Dialog 弹窗不受影响）
+        if (AdDecisionCore.isChatMainUi(pkg, winClassOf(pkg))) return;
         final long winStart = winAt(pkg);
         Integer g = scanGen.get(pkg);
         final int gen = g == null ? 1 : g + 1;
@@ -960,9 +1191,20 @@ public class AdSkipService extends AccessibilityService {
             return;
         }
         final long winStart = winAt(pkg);
-        // v3.14.0：节流 150→50ms（前 4s 内）——开屏「跳过」键晚渲染时更快补扫，
-        // 露头就秒跳；4s 后放宽 300ms 控能耗
-        if (now - winStart < (now - winStart < 4000 ? 50 : 300)) return;
+        /* v4.2.0 功耗收紧：前 4s 保持 50ms 高频补扫（露头就秒跳不变）；
+         * 4s 后内容变化不再补扫——定点扫描链（5.2/7/9.5/12s）已覆盖晚出
+         * 键，聊天列表滚动/信息流刷新的高频内容变化不再触发整树扫描
+         * （v4.1.0 前 4s 后仍以 300ms 节流补扫 = 微信主界面 CPU 黑洞）。 */
+        long elapsed = now - winStart;
+        if (elapsed < 4000) {
+            if (elapsed < 50) return;          // 前 4s：50ms 高频补扫（露头就秒跳不变）
+        } else if (now < popupUntilGet(pkg)) {
+            Long last = popupNudgeAt.get(pkg); // 弹窗窗期：300ms 节流补扫
+            if (last != null && now - last < 300) return;
+            popupNudgeAt.put(pkg, now);
+        } else {
+            return;                            // 弹窗窗期外：内容变化零补扫
+        }
         final int g = gen.intValue();
         handler.post(() -> {
             Integer cur = scanGen.get(pkg);
@@ -1013,6 +1255,11 @@ public class AdSkipService extends AccessibilityService {
         // v4.1.0：主开关暂停 / 相机窗 —— 扫描链里排着的任务一律作废
         if (!masterOn) return;
         if (AdDecisionCore.isCameraPkg(pkg) || AdDecisionCore.isCameraClass(winClassOf(pkg))) return;
+        // v4.2.0 聊天主界面门：微信 LauncherUI（主界面）没有任何跳过键——
+        // 绝不扫描（订阅规则/角落键/热区全让路），聊天列表高频内容变化
+        // 也不再触发整树扫描（「进入微信左右乱划」根治 + 功耗大降）。
+        // Dialog 弹窗（青少年模式等）是独立窗口类，不受此门影响。
+        if (AdDecisionCore.isChatMainUi(pkg, winClassOf(pkg))) return;
         long now = System.currentTimeMillis();
         long elapsed = now - winStart;
         // v4.1.0 前台门：开屏扫描链只对前台应用生效（非前台包的扫描
@@ -1054,6 +1301,7 @@ public class AdSkipService extends AccessibilityService {
                 ctx.screenW = screenWidth;
                 ctx.screenH = screenHeight;
                 ctx.pkg = pkg; // v3.10.0：分应用规则表
+                ctx.activityId = winClassOf(pkg); // v4.2.0：GKD 订阅规则 activityIds 限定
                 ctx.elapsedMs = Math.max(0, elapsed - ri * 30);
                 ctx.splashLive = splashLive;
                 ctx.popupLive = popupLive;
@@ -1077,12 +1325,17 @@ public class AdSkipService extends AccessibilityService {
                  * Keep 开屏「跳过」文本键：窗口事件 0ms 首扫即中即点=露头秒跳。
                  * v3.10.0：五层规则（分应用表/全局精确/倒计时形态/短包含+诱导否决/
                  * vid skip 族+SDK 窗 close 族） */
-                if (splashLive) {
-                    Hit hit = RuleEngine.match(new NodeAdapter(roots[ri]), ctx);
-                    /* ═══ v4.0.0 GKD 订阅规则接力：主引擎文案五层未命中时，
-                     * 由订阅规则（内置 vid 规则 + 用户导入的 GKD 社区订阅）
-                     * 继续找目标控件——安全闸（可见+面积≤35%屏）与主引擎
-                     * 同源；back 类规则在订阅加载时已丢弃（链式拦截红线） ═══ */
+                if (splashLive || popupLive) {
+                    Hit hit = splashLive ? RuleEngine.match(new NodeAdapter(roots[ri]), ctx) : null;
+                    /* ═══ v4.2.0 GKD 订阅规则接力（弹窗路径同步接驳）═══
+                     * 开屏路径：主引擎文案五层优先，订阅规则（内置 vid +
+                     * 用户导入的 GKD 社区订阅）接力；弹窗路径：决策核心
+                     * 关闭键信号先出手，订阅规则接力（社区更新弹窗/青少年
+                     * 模式等规则真正生效——v4.1.0 前「导入了却零命中」的
+                     * 主因之一就是弹窗场景从不咨询订阅）。
+                     * 全部安全闸与主引擎同源：activityIds 限定 + 可见 +
+                     * 面积≤35%屏 + skip 形态门（无限定规则）+ 同窗次数/
+                     * 间隔限流；back 类规则在订阅加载时已丢弃。 */
                     if (hit == null) {
                         try {
                             hit = SubscriptionManager.match(pkg, new NodeAdapter(roots[ri]), ctx);
@@ -1090,7 +1343,11 @@ public class AdSkipService extends AccessibilityService {
                         }
                     }
                     if (hit != null) {
-                        int cdHit = AdDecisionCore.parseCountdown(hit.label);
+                        /* v4.2.0：订阅规则的 label 是规则名（gkd:微信/组-1），
+                         * 绝不能走倒计时解析（issue#34-37 日志实锤：规则名尾号
+                         * "-1" 被误读成「跳过键 1s 后激活」白等 0.5s+）。倒计时
+                         * 门控只对主引擎文案规则的【真实按钮文案】生效。 */
+                        int cdHit = "sub_gkd".equals(hit.appId) ? 0 : AdDecisionCore.parseCountdown(hit.label);
                         if (!countdownWait(pkg, cdHit, clickAttempts, now)) {
                             Decision rd = new Decision();
                             rd.action = AdDecisionCore.A_CLICK_BOUNDS;
@@ -1142,7 +1399,8 @@ public class AdSkipService extends AccessibilityService {
             }
             // ② 代点「取消」（同包 2.5s 冷却防抖；手势真实触点首选，
             //    派发失败降级无障碍代点）
-            if (ff.cancelBounds != null) {
+            if (ff.cancelBounds != null && !userYield(pkg, now)) {
+                // v4.2.0：用户正在操作时绝不代点「取消」（交给用户自己收起）
                 Long lastClick = feedbackClickAt.get(pkg);
                 if (lastClick == null || now - lastClick >= 2500) {
                     int cx = (ff.cancelBounds[0] + ff.cancelBounds[2]) / 2;
@@ -1234,6 +1492,9 @@ public class AdSkipService extends AccessibilityService {
 
     /** 执行决策；返回 true = 已出手（熔断扫描链） */
     private boolean execute(String pkg, Decision d, ScanFind f, Ctx ctx, boolean clickCoolOK, long now) {
+        // v4.2.0 用户意图让路：任何出手（点击/关闭/返回键/学习位置直点）
+        // 前统一校验——用户 4s 内点击过或正浏览自己打开的页面，一律让路
+        if (userYield(pkg, now)) return false;
         String how = d.action + "/" + d.reason;
         lastGesturePkg = pkg; // v3.7.0：手势取消诊断日志用
         // v3.6.0：点击梯子预算——同窗点击 ≥MAX_CLICKS_PER_WIN 即优雅收手

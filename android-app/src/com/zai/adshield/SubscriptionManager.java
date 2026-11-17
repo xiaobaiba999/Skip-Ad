@@ -1,4 +1,26 @@
-package com.zai.adshield;
+/**
+ * 订阅管理器（v4.0.0 GKD 订阅融合 · v4.2.0 优先级与限流重构）
+ * ─────────────────────────────
+ * 双订阅驱动：①内置订阅（APK 常驻，21 款应用 vid 规则）②远程订阅
+ * （用户粘贴任意 GKD 订阅链接导入——整个 GKD 社区规则生态可用）。
+ *
+ * v4.2.0 优先级决策（issue#31-37：远程优先被陈旧订阅抢跑——「已停止
+ * 维护」的默认订阅在微信主界面连点乱划；而用户自导入的订阅又因只在
+ * 开屏路径接驳而「导入后零命中」）：
+ *  · 内置优先、订阅接力：内置规则经本引擎全量真机验证先出手；远程
+ *    订阅接力，并接入弹窗路径（更新弹窗/青少年模式等社区规则真正生效）；
+ *  · 远程订阅按 GKD 语义限流：actionMaximum 默认 1 次/窗 +
+ *    actionInterval 默认 1000ms；内置订阅不限次（与主引擎文案规则同权，
+ *    由全局 0.9s 点击冷却 + 同窗 6 次预算统一管制）；
+ *  · activityIds 强校验 + 无限定规则的 skip 形态门（见 Subscription）。
+ *
+ * 设计：
+ *  · 编译一次、volatile 快照切换——匹配热路径零锁零解析；
+ *  · 远程订阅 24h 自动静默更新（服务心跳时顺带），失败保留旧版本；
+ *  · 拉取/解析全在后台线程，任何异常只记 lastError 不影响引擎；
+ *  · back 类规则在加载时已丢弃（链式拦截红线），click/clickNode
+ *    命中后仍过主引擎安全闸（可见 + 面积 ≤35%）。
+ */package com.zai.adshield;
 
 import android.content.Context;
 import android.content.SharedPreferences;
@@ -9,11 +31,20 @@ import com.zai.adshield.core.RuleEngine;
 import com.zai.adshield.core.Subscription;
 
 /**
- * 订阅管理器（v4.0.0 GKD 订阅融合）
- * ─────────────────────────────────────
+ * 订阅管理器（v4.0.0 GKD 订阅融合 · v4.2.0 优先级与限流重构）
+ * ─────────────────────────────
  * 双订阅驱动：①内置订阅（APK 常驻，21 款应用 vid 规则）②远程订阅
  * （用户粘贴任意 GKD 订阅链接导入——整个 GKD 社区规则生态可用）。
- * 主引擎五层文案规则仍是第一优先级，订阅规则在其未命中时接力。
+ *
+ * v4.2.0 优先级决策（issue#31-37：远程优先被陈旧订阅抢跑——「已停止
+ * 维护」的默认订阅在微信主界面连点乱划；而用户自导入的订阅又因只在
+ * 开屏路径接驳而「导入后零命中」）：
+ *  · 内置优先、订阅接力：内置规则经本引擎全量真机验证先出手；远程
+ *    订阅接力，并接入弹窗路径（更新弹窗/青少年模式等社区规则真正生效）；
+ *  · 远程订阅按 GKD 语义限流：actionMaximum 默认 1 次/窗 +
+ *    actionInterval 默认 1000ms；内置订阅不限次（与主引擎文案规则同权，
+ *    由全局 0.9s 点击冷却 + 同窗 6 次预算统一管制）；
+ *  · activityIds 强校验 + 无限定规则的 skip 形态门（见 Subscription）。
  *
  * 设计：
  *  · 编译一次、volatile 快照切换——匹配热路径零锁零解析；
@@ -37,6 +68,40 @@ public final class SubscriptionManager {
     static volatile long lastUpdateAt = 0;
     static volatile String lastError = "";
     static volatile int remoteHits = 0;
+    static volatile int builtinHits = 0;
+
+    /* v4.2.0 运行时限流记账（GKD actionMaximum/actionInterval）。
+     * key = 前缀|包名|规则名|Activity；窗口切换 = key 变化 = 次数自然重置 */
+    private static final java.util.HashMap<String, Long> ruleLastFireAt = new java.util.HashMap<>();
+    private static final java.util.HashMap<String, Integer> ruleFireCount = new java.util.HashMap<>();
+
+    static final Subscription.Runtime RUNTIME = new Subscription.Runtime() {
+        @Override
+        public boolean allowFire(String key, int actionMaximum, long actionInterval) {
+            long now = System.currentTimeMillis();
+            if (actionInterval > 0) {
+                Long last = ruleLastFireAt.get(key);
+                if (last != null && now - last < actionInterval) return false;
+            }
+            if (actionMaximum > 0) {
+                Integer n = ruleFireCount.get(key);
+                if (n != null && n >= actionMaximum) return false;
+            }
+            return true;
+        }
+
+        @Override
+        public void onFired(String key) {
+            ruleLastFireAt.put(key, System.currentTimeMillis());
+            Integer n = ruleFireCount.get(key);
+            ruleFireCount.put(key, n == null ? 1 : n + 1);
+            // 记账表防膨胀：超过 512 条整体清空（窗口切换自然重建，丢的只是计数）
+            if (ruleFireCount.size() > 512) {
+                ruleFireCount.clear();
+                ruleLastFireAt.clear();
+            }
+        }
+    };
 
     static boolean loaded = false;
 
@@ -45,8 +110,9 @@ public final class SubscriptionManager {
     public static synchronized void ensureLoaded(Context ctx) {
         if (loaded) return;
         try {
-            // 内置订阅（编译失败不可能——随 APK 自测发布）
-            builtinSub = Subscription.parse(Subscription.BUILTIN_JSON5);
+            // 内置订阅（编译失败不可能——随 APK 自测发布）；0/0 = 不限次，
+            // 出手节奏由全局点击冷却 + 同窗点击预算管制（与主引擎同权）
+            builtinSub = Subscription.parse(Subscription.BUILTIN_JSON5, 0, 0);
         } catch (Exception e) {
             builtinSub = null;
         }
@@ -57,7 +123,7 @@ public final class SubscriptionManager {
             lastUpdateAt = sp.getLong("subUpdatedAt", 0);
             String cached = sp.getString("subCache", null);
             if (cached != null && cached.length() > 0) {
-                remoteSub = Subscription.parse(cached);
+                remoteSub = Subscription.parse(cached, 1, 1000); // GKD 语义默认：1 次/窗 + 1000ms
             }
         } catch (Exception e) {
             lastError = "load: " + e.getMessage();
@@ -66,22 +132,26 @@ public final class SubscriptionManager {
     }
 
     /* ───────── 匹配（服务扫描热路径，只读 volatile 快照） ─────────
-     * 返回 null = 无命中；优先远程订阅（用户主动导入，更精准），
-     * 内置订阅兜底。预算 400 节点（订阅规则晚于主引擎出手，
-     * 树已被主引擎扫过一遍，浅层快查）。 */
+     * v4.2.0 优先级：内置订阅优先（经全量真机验证），远程订阅接力；
+     * 弹窗路径同样接驳（社区更新弹窗/青少年模式规则真正生效）。
+     * 单遍树扫描 + activityIds 预过滤（微信主界面等场景零树遍历）。 */
 
     public static RuleEngine.Hit match(String pkg, NodeView root, Ctx ctx) {
+        Subscription builtin = builtinSub;
+        if (builtin != null) {
+            RuleEngine.Hit h = builtin.match(pkg, root, ctx, 400, RUNTIME, "b|");
+            if (h != null) {
+                builtinHits++;
+                return h;
+            }
+        }
         Subscription remote = remoteEnabled ? remoteSub : null;
         if (remote != null) {
-            RuleEngine.Hit h = remote.match(pkg, root, ctx, 400);
+            RuleEngine.Hit h = remote.match(pkg, root, ctx, 400, RUNTIME, "r|");
             if (h != null) {
                 remoteHits++;
                 return h;
             }
-        }
-        Subscription builtin = builtinSub;
-        if (builtin != null) {
-            return builtin.match(pkg, root, ctx, 400);
         }
         return null;
     }
@@ -197,7 +267,7 @@ public final class SubscriptionManager {
         if (body == null || body.length() < 10) {
             throw new IllegalStateException("订阅内容为空");
         }
-        Subscription parsed = Subscription.parse(body);
+        Subscription parsed = Subscription.parse(body, 1, 1000); // GKD 语义默认：1 次/窗 + 1000ms
         int apps = parsed.apps.size();
         int rules = parsed.ruleCount();
         if (apps == 0 || rules == 0) {
@@ -247,6 +317,7 @@ public final class SubscriptionManager {
         b.append(",\"url\":").append(jsonStr(subUrl == null ? "" : subUrl));
         b.append(",\"updatedAt\":").append(lastUpdateAt);
         b.append(",\"remoteHits\":").append(remoteHits);
+        b.append(",\"builtinHits\":").append(builtinHits);
         b.append(",\"error\":").append(jsonStr(lastError == null ? "" : lastError));
         b.append("}");
         return b.toString();

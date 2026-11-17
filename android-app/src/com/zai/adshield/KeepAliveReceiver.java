@@ -58,6 +58,11 @@ public class KeepAliveReceiver extends BroadcastReceiver {
             }, "sub-update");
             subThread.setDaemon(true);
             subThread.start();
+            // v4.2.0：心跳顺带检查 12h 自动日志提交（未到期/服务未运行/息屏秒回零开销）
+            try {
+                AdSkipService.maybeAutoUploadLog(ctx);
+            } catch (Throwable ignored) {
+            }
             if (AdSkipService.instance != null) return; // 服务活着，无需动作
             notifyAlert(ctx); // v3.14.0：ADB 自愈已移除，直接高优提醒一步恢复
             return;
