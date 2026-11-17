@@ -378,6 +378,12 @@ public final class Subscription {
             // 图片跳过键（CSDN @View <3 FL < [vid="fl_third_ad"]）凭结构锚定过门
             if (c.rule.activityIds.length == 0 && !c.rule.structural
                     && !AdDecisionCore.looksSkipLike(t.text(), t.desc(), t.viewId())) continue;
+            /* v5.0.0 形状门（与主引擎 validSkipTextShape 同源）：无 activityIds
+             * 限定的任意界面规则，目标宽度也须过形状门——全宽行/横幅（列表项
+             * 模板行、「跳过广告 查看详情」banner）绝不代点；activityIds/
+             * 结构规则豁免同上（规则作者已精确限定场景）。 */
+            if (c.rule.activityIds.length == 0 && !c.rule.structural
+                    && !AdDecisionCore.validSkipTextShape(t, t.bounds(), ctx)) continue;
             // v4.3.0 安全红线：全局组（id='*'）无 Activity 限定的规则，目标
             // 文案仍过主引擎诱导词否决——「摇一摇领福利·翻倍领取」类绝不代点
             if ("*".equals(c.app.id) && c.rule.activityIds.length == 0
@@ -468,9 +474,9 @@ public final class Subscription {
 
     public static final String BUILTIN_JSON5 =
             "{\n"
-            + "  id: 20260400,\n"
+            + "  id: 20260500,\n"
             + "  name: '内置规则库',\n"
-            + "  version: 4,\n"
+            + "  version: 5,\n"
             + "  apps: [\n"
             + app("com.zhihu.android", "知乎",
                     "[id=\"com.zhihu.android:id/btn_skip\"]", "[vid=\"btn_skip\"][visible=true]")
@@ -501,8 +507,6 @@ public final class Subscription {
                     "[vid*=\"skip\"][visible=true]")
             + app("com.UCMobile", "UC浏览器",
                     "[vid*=\"skip\"][visible=true]")
-            + app("ctrip.android.view", "携程",
-                    "[vid*=\"skip\"][visible=true]")
             + app("com.autonavi.minimap", "高德地图",
                     "[vid*=\"skip\"][visible=true]")
             + app("com.dianping.v1", "大众点评",
@@ -515,11 +519,143 @@ public final class Subscription {
                     "[vid*=\"skip\"][visible=true]")
             + app("cn.wps.moffice_eng", "WPS",
                     "[vid*=\"skip\"][visible=true]")
+            /* ═══ v5.0.0 必备应用扩充（54 款 · 应用商店热门榜）═══
+             * 从 v5.0.0 默认订阅移植，抖音家族限定 SplashActivity
+             *（小程序/团购容器内规则绝不生效——与 MiniProgramGuard 双保险）。
+             * 只保留开屏「跳过」类规则；「我知道了/关闭」弹窗类规则一律
+             * 不收（无 Dialog 形态门控，误点风险 > 收益）。 */
+            + appSplash("com.ss.android.ugc.aweme", "抖音", "SplashActivity",
+                    new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[text*=\"跳过广告\"]", "@[vid*=\"skip\"]"},
+                    null, 1200)
+            + appSplash("com.ss.android.ugc.aweme.lite", "抖音极速版", "SplashActivity",
+                    new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"},
+                    null, 1200)
+            + appSplash("com.smile.gifmaker", "快手", null,
+                    new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"},
+                    null, 1200)
+            + appSplash("com.kwai.video", "快手极速版", null,
+                    new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"},
+                    null, 1200)
+            + appSplash("com.ss.android.article.news", "今日头条", "SplashActivity",
+                    new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"},
+                    null, 1200)
+            + appSplash("com.ss.android.article.lite", "今日头条极速版", null,
+                    new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]"},
+                    null, 1200)
+            + appSplash("com.tencent.mobileqq", "QQ", null,
+                    new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"},
+                    null, 1200)
+            + appSplash("com.eg.android.AlipayGphone", "支付宝", null,
+                    new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]"},
+                    null, 1200)
+            + appSplash("com.taobao.taobao", "淘宝", null,
+                    new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"},
+                    null, 1200)
+            + appSplash("com.tmall.wireless", "天猫", null,
+                    new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"},
+                    null, 1200)
+            + appSplash("com.xunmeng.pinduoduo", "拼多多", null,
+                    new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"},
+                    null, 1200)
+            + appSplash("me.ele", "饿了么", null,
+                    new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"},
+                    null, 1200)
+            + appSplash("com.hunantv.imgo.activity", "芒果TV", null,
+                    new String[]{"@[text*=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"},
+                    null, 1200)
+            + appSplash("com.tencent.qqmusic", "QQ音乐", null,
+                    new String[]{"@[text*=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"},
+                    null, 1200)
+            + appSplash("com.kugou.android", "酷狗音乐", null,
+                    new String[]{"@[text*=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"},
+                    null, 1200)
+            + appSplash("com.ctrip.android.view.ctriptrip", "携程旅行", null,
+                    new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"},
+                    null, 1200)
+            + appSplash("com.Qunar", "去哪儿旅行", null,
+                    new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"},
+                    null, 1200)
+            + appSplash("com.taobao.trip", "飞猪", null,
+                    new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"},
+                    null, 1200)
+            + appSplash("com.wuba", "58同城", null,
+                    new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"},
+                    null, 1200)
+            + appSplash("com.taobao.idlefish", "闲鱼", null,
+                    new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"},
+                    null, 1200)
+            + appSplash("com.alibaba.android.rimet", "钉钉", null,
+                    new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"},
+                    null, 1200)
+            + appSplash("com.baidu.BaiduMap", "百度地图", null,
+                    new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"},
+                    null, 1200)
+            + appSplash("com.quark.browser", "夸克", null,
+                    new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"},
+                    null, 1200)
+            + appSplash("com.coolapk.market", "酷安", null,
+                    new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"},
+                    null, 1200)
+            + appSplash("com.xiaomi.market", "小米应用商店", null,
+                    new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"},
+                    null, 1200)
+            + appSplash("com.huawei.appmarket", "华为应用市场", null,
+                    new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"},
+                    null, 1200)
+            + appSplash("com.oppo.market", "OPPO软件商店", null,
+                    new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"},
+                    null, 1200)
+            + appSplash("com.bbk.appstore", "vivo应用商店", null,
+                    new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"},
+                    null, 1200)
+            + appSplash("com.shizhuang.duapp", "得物", null,
+                    new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"},
+                    null, 1200)
+            + appSplash("com.achievo.vipshop", "唯品会", null,
+                    new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"},
+                    null, 1200)
+            + appSplash("com.douban.frodo", "豆瓣", null,
+                    new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"},
+                    null, 1200)
+            + appSplash("com.hpbr.bosszhipin", "BOSS直聘", null,
+                    new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"},
+                    null, 1200)
+            + appSplash("com.sdu.didi.psnger", "滴滴出行", null,
+                    new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"},
+                    null, 1200)
             // 全局：穿山甲/优量汇等 SDK 跳过键的通用 vid 形态
             + app("*", "全局通用",
                     "[vid$=\"_skip\"][clickable=true]", "[vid^=\"skip_\"]", "[vid=\"tt_splash_skip_btn\"]")
             + "  ],\n"
             + "}\n";
+
+    /** v5.0.0：带 activityIds 限定 / excludeMatches / actionInterval 的开屏规则组。 */
+    static String appSplash(String id, String name, String activityId, String[] matches,
+                            String[] excludes, long interval) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("    { id: '").append(id).append("', name: '").append(name)
+                .append("', groups: [ { key: 0, name: '开屏广告', rules: [ { ");
+        if (activityId != null) {
+            sb.append("activityIds: ['").append(activityId).append("'], ");
+        }
+        sb.append("matches: [");
+        for (int i = 0; i < matches.length; i++) {
+            if (i > 0) sb.append(", ");
+            sb.append('\'').append(matches[i]).append('\'');
+        }
+        sb.append("]");
+        if (excludes != null && excludes.length > 0) {
+            sb.append(", excludeMatches: [");
+            for (int i = 0; i < excludes.length; i++) {
+                if (i > 0) sb.append(", ");
+                sb.append('\'').append(excludes[i]).append('\'');
+            }
+            sb.append("]");
+        }
+        if (interval > 0) sb.append(", actionInterval: ").append(interval);
+        sb.append(" } ] } ] },\n");
+        return sb.toString();
+    }
 
     static String app(String id, String name, String... selectors) {
         StringBuilder sb = new StringBuilder();

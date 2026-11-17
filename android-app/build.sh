@@ -12,12 +12,21 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 #   ANDROID_TOOLS        工具链根目录（build-tools/、android-34/、jdk/ 相对它解析）
 #   ANDROID_BUILD_TOOLS  aapt2/d8/zipalign/apksigner 所在目录（如 $SDK/build-tools/34.0.0）
 #   ANDROID_PLATFORM_JAR android.jar 完整路径（如 $SDK/platforms/android-34/android.jar）
-#   ANDROID_JDK          JDK 根目录（bin/javac）
-BASE="${ANDROID_TOOLS:-/home/z/my-project/android-tools}"
-BT="${ANDROID_BUILD_TOOLS:-$BASE/build-tools}"
-AJ="${ANDROID_PLATFORM_JAR:-$BASE/android-34/android.jar}"
-JDK="${ANDROID_JDK:-$BASE/jdk}"
-export PATH="$JDK/bin:$BT:$PATH"
+#   ANDROID_JDK          JDK 根目录（bin/javac；仅 JRE 环境自动回退 ECJ）
+#   ANDROID_ECJ          ECJ 编译器 jar 路径（javac 不可用时回退用）
+BASE="${ANDROID_TOOLS:-/home/z/android-tools}"
+BT="${ANDROID_BUILD_TOOLS:-$BASE/bt/android-14}"
+AJ="${ANDROID_PLATFORM_JAR:-$BASE/pf/android-34/android.jar}"
+JDK="${ANDROID_JDK:-}"
+ECJ_JAR="${ANDROID_ECJ:-$BASE/ecj.jar}"
+if [ -n "$JDK" ]; then export PATH="$JDK/bin:$BT:$PATH"; else export PATH="$BT:$PATH"; fi
+
+# 编译器选择：优先 javac，无 javac（仅 JRE）时回退 ECJ
+if command -v javac >/dev/null 2>&1; then
+  COMPILE() { javac --release 8 -nowarn -cp "$AJ" -d "$BUILD/classes" @"$BUILD/sources.txt"; }
+else
+  COMPILE() { java -jar "$ECJ_JAR" -1.8 -warn:none -cp "$AJ" -d "$BUILD/classes" @"$BUILD/sources.txt"; }
+fi
 
 VC="${1:?versionCode 必填，如 1}"
 VN="${2:?versionName 必填，如 1.0.0}"
@@ -42,9 +51,9 @@ aapt2 link -o "$BUILD/base.apk" -I "$AJ" \
   --min-sdk-version 24 --target-sdk-version 34 \
   --auto-add-overlay "$BUILD/res.zip"
 
-echo "▶ 4/6 编译 Java (javac → d8)"
+echo "▶ 4/6 编译 Java (javac/ECJ → d8)"
 find "$ROOT/src" "$BUILD/gen" -name "*.java" > "$BUILD/sources.txt"
-javac --release 8 -nowarn -cp "$AJ" -d "$BUILD/classes" @"$BUILD/sources.txt"
+COMPILE
 # 注意：内部类文件名含 $，必须用 -print0 / xargs -0 传递，避免 shell 展开为空
 find "$BUILD/classes" -name "*.class" -print0 | xargs -0 d8 --release --lib "$AJ" --min-api 24 --output "$BUILD/dex"
 

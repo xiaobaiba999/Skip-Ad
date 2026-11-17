@@ -176,7 +176,7 @@ public class MainActivity extends Activity {
             PackageInfo pi = ctx.getPackageManager().getPackageInfo(ctx.getPackageName(), 0);
             return pi.versionName;
         } catch (Exception e) {
-            return "4.5.0";
+            return "5.0.0";
         }
     }
 

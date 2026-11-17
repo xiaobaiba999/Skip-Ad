@@ -70,3 +70,10 @@ tool-results/
 /examples/
 /mini-services/
 /upload/
+
+# Credentials
+scripts/.github-token
+
+# android-app build artifacts
+android-app/build/
+android-app/build-tests/

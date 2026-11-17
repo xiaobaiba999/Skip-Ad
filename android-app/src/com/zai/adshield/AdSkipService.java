@@ -26,6 +26,7 @@ import com.zai.adshield.core.AdDecisionCore.Ctx;
 import com.zai.adshield.core.AdDecisionCore.Decision;
 import com.zai.adshield.core.AdDecisionCore.NodeView;
 import com.zai.adshield.core.AdDecisionCore.ScanFind;
+import com.zai.adshield.core.MiniProgramGuard;
 import com.zai.adshield.core.RuleEngine;
 import com.zai.adshield.core.RuleEngine.Hit;
 import com.zai.adshield.core.Subscription;
@@ -311,6 +312,8 @@ public class AdSkipService extends AccessibilityService {
     /* v3.13.0 日志去重：位置学习拒绝/验证码横幅/heads-up 保护/热区误触 */
     private final java.util.HashMap<String, Long> posRejectLogAt = new java.util.HashMap<>();
     private final java.util.HashMap<String, Long> codeBannerLogAt = new java.util.HashMap<>();
+    /** v5.0.0：小程序容器树标识兜底日志节流（同包 10s 去重） */
+    private final java.util.HashMap<String, Long> miniGuardLogAt = new java.util.HashMap<>();
     private final java.util.HashMap<String, Long> headsUpLogAt = new java.util.HashMap<>();
     private final java.util.HashMap<String, Long> misclickLogAt = new java.util.HashMap<>();
     /* v3.14.0 跳过后反馈弹窗：最近引擎自动跳过时间 / 日志去重 / 代点冷却 */
@@ -1053,6 +1056,28 @@ public class AdSkipService extends AccessibilityService {
         if (AdDecisionCore.isCameraPkg(pkg) || AdDecisionCore.isCameraClass(cs(event.getClassName()))
                 || AdDecisionCore.isCameraClass(winClassOf(pkg))) return;
 
+        /* ═══ v5.0.0 小程序/团购容器保护（L0 第一层：事件入口）═══
+         * 抖音团购券/微信/支付宝/QQ 小程序容器窗口：事件直接丢弃——
+         * 绝不扫描、绝不点击、绝不学习（issue 用户实锤：点团购券拉起
+         * 小程序，加载页「跳过广告」文案被当真广告关掉，用户被弹回）。
+         * 仅维持窗口/前台追踪（同白名单路径）——容器窗口类必须记录，
+         * 否则后续内容事件查不到容器身份；离开容器回主界面即恢复正常。 */
+        {
+            String evClsMini = cs(event.getClassName());
+            String miniWhy = MiniProgramGuard.matchReason(pkg, evClsMini);
+            if (miniWhy == null) miniWhy = MiniProgramGuard.matchReason(pkg, winClassOf(pkg));
+            if (miniWhy != null) {
+                if (et == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+                    boolean enteringMini = !pkg.equals(lastFgPkg);
+                    lastFgPkg = pkg;
+                    windowAt.put(pkg, now);
+                    winClass.put(pkg, evClsMini);
+                    if (enteringMini) rootWinCls.put(pkg, evClsMini);
+                }
+                return;
+            }
+        }
+
         if (isSystemNoise(pkg)) return;
 
         // v3.13.0 息屏休眠门（夜间功耗治理 + 息屏绝不出手）：息屏 = 用户看不见
@@ -1426,6 +1451,9 @@ public class AdSkipService extends AccessibilityService {
         // v4.2.0 聊天主界面门：微信主界面没有跳过键，16 档定时扫描
         // 一个都不排（零调度零唤醒，功耗最优；Dialog 弹窗不受影响）
         if (AdDecisionCore.isChatMainUi(pkg, winClassOf(pkg))) return;
+        // v5.0.0 小程序容器保护：容器内 16 档定时扫描一个都不排
+        //（零调度零唤醒；离开容器回主界面重新进入开屏窗即恢复）
+        if (MiniProgramGuard.isMiniProgramWindow(pkg, winClassOf(pkg))) return;
         final long winStart = winAt(pkg);
         Integer g = scanGen.get(pkg);
         final int gen = g == null ? 1 : g + 1;
@@ -1567,6 +1595,9 @@ public class AdSkipService extends AccessibilityService {
         // 也不再触发整树扫描（「进入微信左右乱划」根治 + 功耗大降）。
         // Dialog 弹窗（青少年模式等）是独立窗口类，不受此门影响。
         if (AdDecisionCore.isChatMainUi(pkg, winClassOf(pkg))) return;
+        // v5.0.0 小程序容器保护（L0 第二层）：扫描链里排着的任务一律作废
+        //（进入容器前排定的扫描针，出手前再验一次窗口身份）
+        if (MiniProgramGuard.isMiniProgramWindow(pkg, winClassOf(pkg))) return;
         long now = System.currentTimeMillis();
         long elapsed = now - winStart;
         // v4.1.0 前台门：开屏扫描链只对前台应用生效（非前台包的扫描
@@ -1608,6 +1639,13 @@ public class AdSkipService extends AccessibilityService {
                 // 预算 60：横幅窗树极浅，零性能顾虑
                 if (AdDecisionCore.treeHasCodeBannerMarker(new NodeAdapter(roots[ri]), 60)) {
                     codeBannerGuardLog(pkg, now);
+                    continue;
+                }
+                /* v5.0.0 小程序容器保护（树标识兜底）：类名未知的漏网容器
+                 * （树内 miniapp/appbrand/nebula vid 或「小程序」标题）
+                 * 同样保护——只跳过本根的决策，不影响其他窗口。 */
+                if (MiniProgramGuard.treeHasMiniProgramMarker(new NodeAdapter(roots[ri]), 80)) {
+                    miniGuardLog(pkg, now);
                     continue;
                 }
                 energyScans++;
@@ -2022,6 +2060,13 @@ public class AdSkipService extends AccessibilityService {
 
     /** 执行决策；返回 true = 已出手（熔断扫描链） */
     private boolean execute(String pkg, Decision d, ScanFind f, Ctx ctx, boolean clickCoolOK, long now) {
+        /* ═══ v5.0.0 小程序容器保护（L0 第五层：出手前终门）═══
+         * 任何动作（点击/关闭/返回键/学习位置直点）派发前的最后一道门——
+         * 容器内绝不出手（规则引擎/订阅/探针路径不经过决策核心，必须在这里兜住）。 */
+        if (MiniProgramGuard.isMiniProgramWindow(pkg, winClassOf(pkg))) {
+            appendLog("🧩 小程序保护（" + shortPkg(pkg) + "）：容器内绝不动作");
+            return false;
+        }
         // v4.2.0 用户意图让路：任何出手（点击/关闭/返回键/学习位置直点）
         // 前统一校验——用户 4s 内点击过或正浏览自己打开的页面，一律让路
         if (userYield(pkg, now)) return false;
@@ -2292,6 +2337,10 @@ public class AdSkipService extends AccessibilityService {
         //（issue#30：快门/翻转镜头/相册按钮被学成位置 → 下次进相机乱点）
         if (AdDecisionCore.isCameraPkg(pkg) || AdDecisionCore.isCameraClass(winClassOf(pkg))
                 || AdDecisionCore.isCameraClass(cs(event.getClassName()))) return;
+        // v5.0.0 小程序容器保护：容器内的手动操作绝不当「跳过键」学习
+        //（团购券页上的点击位置学了 = 下次进容器乱点）
+        if (MiniProgramGuard.isMiniProgramWindow(pkg, winClassOf(pkg))
+                || MiniProgramGuard.isMiniProgramWindow(pkg, cs(event.getClassName()))) return;
 
         String text = "";
         String viewId = "";
@@ -2688,6 +2737,14 @@ public class AdSkipService extends AccessibilityService {
         if (last != null && now - last < 10000) return;
         codeBannerLogAt.put(pkg, now);
         appendLog("🛡 验证码横幅保护（" + shortPkg(pkg) + "）：检测到验证码/校验码文案 → 本窗口绝不扫描绝不点击");
+    }
+
+    /** v5.0.0：小程序容器树标识兜底命中日志（同验证码横幅 10s 节流）。 */
+    private void miniGuardLog(String pkg, long now) {
+        Long last = miniGuardLogAt.get(pkg);
+        if (last != null && now - last < 10000) return;
+        miniGuardLogAt.put(pkg, now);
+        appendLog("🧩 小程序保护（" + shortPkg(pkg) + "）：检测到小程序容器标识 → 本窗口绝不扫描绝不点击");
     }
 
     /** heads-up 保护日志（同包 10s 去重；pkg 可能为空） */

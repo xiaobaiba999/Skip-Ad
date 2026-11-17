@@ -322,6 +322,12 @@ public final class AdDecisionCore {
     public static ScanFind walk(NodeView root, Ctx ctx) {
         ScanFind f = new ScanFind();
         if (root == null) return f;
+        /* ═══ v5.0.0 小程序/团购容器保护（L0，纵深防御第三层）═══
+         * 抖音团购券/微信/支付宝/QQ 小程序容器内：树扫描直接返回空——
+         * 任何跳过候选/角落候选/热区信号都不收集（服务侧事件入口已拦，
+         * 这里兜住定时扫描/补扫针等迟到路径）。「广告未关」的容器加载页
+         * 文案（「跳过广告」字样）绝不触发点击（issue 抖音团购券根治）。 */
+        if (MiniProgramGuard.isMiniProgramWindow(ctx.pkg, ctx.activityId)) return f;
         String rootCls = nz(root.cls()).toLowerCase();
         f.dialogForm = rootCls.contains("dialog") || rootCls.contains("popup");
         int[] budget = {ctx.budgetNodes};
@@ -672,6 +678,13 @@ public final class AdDecisionCore {
     /* ═════════ 决策阶梯 ═════════ */
 
     public static Decision decide(ScanFind f, Ctx ctx) {
+        /* ═══ v5.0.0 小程序/团购容器保护（L0，纵深防御第四层）═══
+         * 容器上下文里决策恒 NONE——即使 ScanFind 被外层填了候选
+         * （规则引擎/原生探针/订阅命中），也绝不在这里兑换成动作。
+         * 返回键同样禁止：容器内按返回 = 把用户踢出团购券页。 */
+        if (MiniProgramGuard.isMiniProgramWindow(ctx.pkg, ctx.activityId)) {
+            return Decision.none();
+        }
         /* ── 开屏/插屏窗内 ── */
         if (ctx.splashLive) {
             /* v3.7.0 学习位置【前置】到 L1 之前（issue#10 根因）：

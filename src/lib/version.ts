@@ -1,6 +1,6 @@
 /** 版本与 GitHub 仓库信息（Web 端与发布节奏共用） */
-export const APP_VERSION = "4.5.0";
-export const VERSION_CODE = 40500; // major*10000 + minor*100 + patch，随版本单调递增
+export const APP_VERSION = "5.0.0";
+export const VERSION_CODE = 50000; // major*10000 + minor*100 + patch，随版本单调递增
 export const GITHUB_REPO = "xiaobaiba999/Skip-Ad";
 export const GITHUB_API = `https://api.github.com/repos/${GITHUB_REPO}`;
 export const GITHUB_HOME = `https://github.com/${GITHUB_REPO}`;
@@ -18,6 +18,19 @@ export interface VersionEntry {
 /** 「关于」页仅展示最近三个版本（硬约束：数组只保留最新 3 条，
  *  旧版本内容归档在 GitHub Releases 与 git 历史） */
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "5.0.0",
+    code: 50000,
+    date: "2026-11-17",
+    tagline: "小程序保护（抖音团购券被拦截根治）· 内置规则扩到 54 款 · 订阅形状门",
+    notes: [
+      "小程序/团购容器保护（用户实锤：抖音点团购券拉起小程序，加载页「跳过广告」文案被当真广告关掉、用户被弹回）：新增 L0 守卫 MiniProgramGuard——抖音全部小程序/电商容器（MiniAppActivity / CommercializeContainerActivity / PrivilegeDetailActivity / EcPromotionActivity / UnionPromotionActivity / LynxContainer / bae / ecom）+ 微信 AppBrandUI + 支付宝 Nebula + QQ 小程序 + 通用 miniapp 标识，容器内绝不扫描绝不点击绝不学习；树标识兑底（树内 miniapp/appbrand/nebula vid 或「小程序」标题）接住类名未知的漏网容器；issue#45 实锤的 MiniAppChildProcessMultiInsActivity0 同样命中",
+      "五层纵深防御：事件入口 → 扫描链调度 → 扫描执行 → 决策核心 walk/decide → 出手前终门，全部验容器身份——规则引擎/订阅/探针路径不经决策核心，由出手前终门兑底",
+      "内置规则库扩到 54 款必备应用（应用商店热门榜全覆盖：抖音/快手/淘宝/天猫/拼多多/美团/饿了么/四大厂商应用商店/滴滴/钉钉等），抖音家族限定 SplashActivity（与容器守卫双保险）",
+      "订阅规则形状门（与主引擎同源）：无 activityIds 限定的任意界面规则，目标宽度也须过形状门——全宽行/横幅（列表项模板行、「跳过广告 查看详情」banner）绝不代点，内置与社区 GKD 订阅同受益",
+      "升级零门槛：同包名（com.zai.adshield）同签名（adshield.keystore），覆盖安装即升级，无障碍授权无缝保留（服务组件名不变）；150 项 JVM 断言全绿（守卫 29 + 决策管线 22 + 订阅 42 + 回归 15 + 6 机型矩阵 42）",
+    ],
+  },
   {
     version: "4.5.0",
     code: 40500,
@@ -42,17 +55,6 @@ export const VERSION_HISTORY: VersionEntry[] = [
       "H5 开屏按钮晚到救回通道：H5 广告按钮 1~2s 才渲染、内容页早退曾把补扫全让路（「有时候触发不了」元凶）——杀链 400→2000ms + 广告/学习/Dialog 窗绝不杀 + 杀链后内容事件 900ms 节流降频放行",
       "恢复防护零触摸：服务真实绑定态判定（僵尸实例不再假报守护中）+ 深度拉活 6s 每半秒踢一次系统重绑 + 打开 App 即自动拉活——「点恢复防护跳系统设置看 10 秒强制警告」根治",
       "功耗再降：息屏状态广播缓存（热路径零 IPC）· 非前台内容事件一步丢弃 · 晚档扫描预算收紧 · 复验换候选提速",
-    ],
-  },
-  {
-    version: "4.3.0",
-    code: 40300,
-    date: "2026-11-17",
-    tagline: "订阅主力规则接入 · 应用白名单 · 喜马拉雅反馈循环根治",
-    notes: [
-      "GKD 默认订阅 globalGroups 全局开屏组全量解析（CSDN 等第三方 App 漏跳元凶）+ 数字关系符/childCount/text.length/括号布尔全语法",
-      "复验真正换候选（同坐标 6 连击根治）；新增应用白名单（零扫描零点击零学习）；喜马拉雅「为什么关闭广告」循环弹窗根治 + 假倒计时提速",
-      "扫描未命中记诊断日志（窗口类名/树规模/候选样本）；功耗再降（内容页早退 + 补扫节流 bug 修复）",
     ],
   },
 ];

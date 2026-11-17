@@ -23,8 +23,8 @@ const store = {
 };
 
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "4.5.0"; }
-function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "40500"; }
+function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "5.0.0"; }
+function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "50000"; }
 
 /* ══════════ 吉祥物（v4.1.0 全新形象：白机器人小侠 + 绿披风跳跃） ══════════
  * 与启动器图标同源；state: on（跳跃浮动）/ off（灰度待命） */
@@ -37,6 +37,7 @@ $("#brand-logo").innerHTML = mascotImg(30, "on", true);
 
 /* ══════════ 版本记录 ══════════ */
 const CHANGELOG = [
+  { v: "5.0.0", d: "小程序保护（用户实锤根治）：抖音团购券/电商/小程序容器（含微信/支付宝/QQ 小程序）内绝不扫描绝不点击——点团购券不再被弹回；内置规则库扩到 54 款必备应用（抖音/快手/淘宝/拼多多/四大厂商应用商店等），抖音家族限定开屏窗；订阅规则容器内失效双保险。" },
   { v: "4.5.0", d: "乱点根治（菜单/抽屉列表行形状门，参考李跳跳）：进入 App 乱点、抽屉菜单「跳过」项被点、广告关了又点第二下全部根治；原生文本探针（H5 深树漏扫兜底，「有时候触发不了」再降）；系统开关与 App 开关彻底解耦：通知栏一键暂停/恢复（系统无障碍永不关，绝不去系统设置看 10 秒警告）；弹窗屏蔽开关「自动弹回」竞态根治；安全加固（WebView URL 白名单/反馈频控）；打开 App 自动拉活。" },
   { v: "4.4.0", d: "露头就秒大提速：倒计时门控开闸瞬间即点（喜马拉雅/keep 实测快 4~5 秒）；点击后 450ms 快速复验（快于人手补刀）；H5 开屏按钮晚到也能救回（早退误杀根治）；恢复防护深度拉活 6 秒（绝不去系统设置看 10 秒强制警告）；功耗再降（事件热路径零 IPC + 晚档扫描预算收紧）。" },
   { v: "4.3.0", d: "订阅主力规则真正接入：GKD globalGroups 全量解析（CSDN 等第三方 App 不再漏跳）+ 数字关系符/childCount/text.length 全语法；复验真正换候选（同坐标连点根治）；新增应用白名单（选中的应用零打扰）；喜马拉雅「为什么关闭广告」循环根治 + 跳过提速；未命中会记诊断日志；功耗再降（内容页早退 + 滚动风暴节流修复）。" },

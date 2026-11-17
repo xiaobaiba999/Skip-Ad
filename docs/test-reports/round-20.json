@@ -1,0 +1,76 @@
+{
+  "round": 20,
+  "version": "5.0.0",
+  "date": "2026-11-17",
+  "trigger": "用户要求：模拟多类型设备测试 / 应用商店必备 app 适配 / 扫描 issue 日志 / 解决抖音团购券跳转小程序被拦截 / 深度优化防严重 bug / 同步 GitHub",
+  "suites": [
+    {
+      "name": "单元测试（MiniProgramGuardTest · JVM）",
+      "assertions": 29,
+      "passed": 29,
+      "failed": 0,
+      "coverage": [
+        "抖音团购券/小程序容器全家桶：MiniAppActivity / CommercializeContainerActivity / PrivilegeDetailActivity / EcPromotionActivity / UnionPromotionActivity / LynxContainerActivity / bae / 内置浏览器（8 容器全命中）",
+        "抖音极速版（不同包名）/ 快手小程序 / 微信 AppBrandUI / 支付宝 Nebula H5Activity + tinycloud / QQ 小程序",
+        "issue#45 实锤：MiniAppChildProcessMultiInsActivity0（MIUI lifeservices 多实例小程序窗）命中",
+        "通用标识兜底：任意包 miniprogram / mini_app 容器",
+        "负例（绝不误保护）：抖音 SplashActivity（开屏广告合法跳过目标）/ MainActivity / 穿山甲广告窗 / 微信主界面 LauncherUI / null 安全 ×3",
+        "树标识兜底：miniapp vid / 「小程序」标题命中；普通广告树（跳过键+广告 vid）不误报；零预算与 null 树安全"
+      ]
+    },
+    {
+      "name": "决策管线守卫（DecisionGuardTest · JVM）",
+      "assertions": 22,
+      "passed": 22,
+      "failed": 0,
+      "coverage": "4 容器 × walk 零候选/零角落/非热区 + decide 恒 NONE；预填候选（规则路径）在容器上下文拒绝兑换；回归：正常开屏窗（抖音 Splash / 第三方 app）照常收集候选并出手"
+    },
+    {
+      "name": "内置订阅测试（SubscriptionBuiltinTest · JVM）",
+      "assertions": 42,
+      "passed": 42,
+      "failed": 0,
+      "coverage": [
+        "BUILTIN_JSON5 v5 可解析 · 54 款应用在场（29 个关键包名逐一断言）",
+        "抖音规则限定 SplashActivity（activityIds 后缀匹配语义）",
+        "团购券场景三连：开屏窗命中（规则正常工作）/ MiniAppActivity 容器失效（activityIds 门）/ PrivilegeDetailActivity 失效",
+        "快手/淘宝开屏命中；淘宝 vid skip 命中 + 非 skip 语义 vid（jump）被 looksSkipLike 安全门拦",
+        "满宽巨横幅（「跳过广告 查看详情」）绝不命中（v5.0.0 新增订阅形状门）"
+      ]
+    },
+    {
+      "name": "回归测试（RegressionCoreTest · JVM）",
+      "assertions": 15,
+      "passed": 15,
+      "failed": 0,
+      "coverage": "Keep 跳过文本命中 / 穿山甲 vid skip 命中 / 倒计时解析 ×3 / 抽屉菜单陷阱行不命中 + isMenuListRow 单元 / 根窗口禁返回键 + SDK 窗直断照常 / 学习位置健全性门 ×4（含 issue#45 的 (13%,102%) 越界场景）/ 弹窗×关闭键代点"
+    },
+    {
+      "name": "多机型矩阵（MultiDeviceMatrixTest · JVM）",
+      "assertions": 42,
+      "passed": 42,
+      "failed": 0,
+      "coverage": "6 机型画像（MIUI 1080p / Redmi 720p / HyperOS 1440p / 水滴 1080p / 老 720p / 曲面 1440p）× 5 场景（开屏命中+目标在屏内 / 容器零动作 / 菜单陷阱行 / 巨横幅拒绝 / 弹窗关闭）——全 bounds 中心点击，零固定坐标，任意分辨率一致"
+    },
+    {
+      "name": "白盒测试（APK 结构断言）",
+      "assertions": 6,
+      "passed": 6,
+      "failed": 0,
+      "coverage": [
+        "W-1 MiniProgramGuard 编译进 dex（strings 验证）+ 容器标记（commercialize）在场",
+        "W-2 零 disableSelf（虚拟开关架构不回退）",
+        "W-3 服务组件名 .AdSkipService 与 v4.5.0 一致（aapt xmltree 验证——覆盖升级后无障碍授权无缝保留）",
+        "W-4 签名证书 SHA-256 与 v4.5.0 完全一致（adshield.keystore，覆盖安装前提）",
+        "W-5 apksigner verify 通过（v1+v2）",
+        "W-6 package=com.zai.adshield versionCode=50000 versionName=5.0.0（aapt dump badging）"
+      ]
+    }
+  ],
+  "summary": {
+    "total_assertions": 156,
+    "total_passed": 156,
+    "total_failed": 0,
+    "notes": "本轮测试源码首次随仓库发布（android-app/tests/ + run-tests.sh，此前会话只提交报告不提交源码——回归资产可复跑）。发现并修复 1 个移植引入的真实风险：新订阅 text^=跳过 规则会命中全宽横幅/列表行（safeTarget 只有面积门无宽度门），已补订阅形状门（validSkipTextShape 同源）+ 测试固化。"
+  }
+}

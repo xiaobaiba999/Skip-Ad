@@ -2,6 +2,8 @@
 
 移动端「开屏广告 + 跳转广告 + 弹窗广告」智能跳过系统。v3.3.0 APK 约 61KB，零第三方依赖；联网仅两处出口（问题反馈 GitHub Issues / 检查更新 GitHub Releases，v3.3.0 起检查更新带令牌 + 重试 + 列表回退，下载直连失败自动切换镜像通道），学习数据仍全部本地保存。
 
+> **v5.0.0 要点**：小程序/团购容器保护（抖音点团购券被弹回根治——L0 守卫 `core/MiniProgramGuard.java`，抖音/微信/支付宝/QQ 小程序容器内绝不扫描绝不点击，五层纵深防御）· 内置规则库扩到 54 款必备应用（抖音家族限定 SplashActivity）· 订阅规则形状门（全宽横幅/列表行绝不代点）· 测试源码随仓库发布（`tests/` + `run-tests.sh`，150 项断言）。
+>
 > **v3.8.1 要点**：发布加固——开机自愈路径修复（广播窗口保护）· 自愈重绑双格式匹配（全格式/短格式条目）· 恢复通知文案对齐 Android 11+ 一步直达。
 >
 > **v3.8.0 要点**：手势真实触点首选（performAction 首点被广告 SDK 无声吞掉——「点击 4 次不跳转」根因，GKD clickCenter 方法论）· 假跳过手势直点（「跳过」文案+大容器祖先→手势点标签坐标）· vid 跳过键（skip/tt_splash_skip_btn/count_down，GKD 全局规则同款）· visibleToUser 过滤 · 倒计时门控（「跳过 3」将尽 0.5s 前出手即命中）· 候选排序真键优先 · 角落键先于 SDK 直断（500→700ms）· 无障碍自愈重绑（adb 授权 WRITE_SECURE_SETTINGS 后清理后台/覆盖安装全自动恢复；未授权 Android 11+ 一步直达服务详情页）· 心跳精确闹钟自续期 · JVM 100 用例全绿。
@@ -19,11 +21,14 @@ android-app/
 │   ├── MainActivity.java        # WebView 壳 + JSBridge（版本/存储/无障碍设置/联网桥）
 │   ├── AdSkipService.java       # 无障碍智能跳过服务（调度 + 执行：手势点击/返回键/多窗口）
 │   ├── core/AdDecisionCore.java # 决策核心（纯 Java 零 Android 依赖，JVM 可单测）
+│   ├── core/MiniProgramGuard.java # v5.0.0 小程序/团购容器守卫（L0，抖音团购券被拦截根治）
 │   └── Net.java                 # GitHub API 极简客户端（反馈 / 检查更新，零依赖）
 ├── res/                         # 布局/字符串/主题/无障碍配置/图标
 ├── assets/www/                  # 离线页面（首页/学习中心/关于）
 │   （src 下另有 Downloader.java  # 系统下载器封装：应用内页内直更 + 多通道切换）
 ├── keystore/adshield.keystore   # 签名密钥（密码 adshield2026，请妥善保管）
+├── tests/                      # v5.0.0 JVM 测试源码（5 套件 150 断言，随仓库发布）
+├── run-tests.sh                # 测试跑器（ECJ 编译 + 断言计数，发版前必绿）
 └── build.sh                     # 一键构建脚本（本地/CI 通用，支持环境变量定位工具链）
 ```
 
