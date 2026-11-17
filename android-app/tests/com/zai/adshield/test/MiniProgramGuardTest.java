@@ -1,6 +1,10 @@
 package com.zai.adshield.test;
 
+import com.zai.adshield.core.AdDecisionCore;
+import com.zai.adshield.core.AdDecisionCore.Ctx;
+import com.zai.adshield.core.AdDecisionCore.Decision;
 import com.zai.adshield.core.AdDecisionCore.NodeView;
+import com.zai.adshield.core.AdDecisionCore.ScanFind;
 import com.zai.adshield.core.MiniProgramGuard;
 import com.zai.adshield.test.TestHost.SimNode;
 
@@ -58,6 +62,16 @@ public final class MiniProgramGuardTest {
                 "com.alipay.mobile.nebulacore.ui.H5Activity"), "支付宝 Nebula H5Activity");
         TestHost.check(MiniProgramGuard.isMiniProgramWindow("com.eg.android.AlipayGphone",
                 "com.alipay.mobile.tinycloud.ui.TinyCloudActivity"), "支付宝 tinycloud");
+        // v5.1.1（issue#51-55 v4.4.0 实锤）：支付宝 XRiver 新一代容器
+        // （胶囊「收藏到我的小程序/更多/关闭」的「关闭」曾被开屏×关闭键路径代点
+        //  = 用户被踢出小程序——与 #45 抖音团购券同类事故）
+        TestHost.check(MiniProgramGuard.isMiniProgramWindow("com.eg.android.AlipayGphone",
+                "com.alipay.mobile.xriver.ui.XRiverActivity"), "支付宝 XRiverActivity（v5.1.1）");
+        TestHost.check(MiniProgramGuard.isMiniProgramWindow("com.eg.android.AlipayGphone",
+                "XRiverActivity"), "支付宝 XRiverActivity（短类名）");
+        // 支付宝主界面/支付页不误保护
+        TestHost.check(!MiniProgramGuard.isMiniProgramWindow("com.eg.android.AlipayGphone",
+                "com.eg.android.alipay.giftmoney.fragment.GiftMoneyActivity"), "支付宝主界面不误保护");
 
         // QQ 小程序
         TestHost.check(MiniProgramGuard.isMiniProgramWindow("com.tencent.mobileqq",
@@ -100,6 +114,27 @@ public final class MiniProgramGuardTest {
         root2.add(title);
         TestHost.check(MiniProgramGuard.treeHasMiniProgramMarker(root2, 80), "树内「小程序」标题兜底");
 
+        // v5.1.1：树内胶囊特征文案「收藏到我的小程序」→ 容器（issue#51-55 实锤，
+        // 类名未知的漏网 XRiver 容器靠这层接住；胶囊菜单文案在正常内容页几乎不可能出现）
+        SimNode rootXr = new SimNode();
+        rootXr.boundsArr = new int[]{0, 0, 1080, 2400};
+        SimNode capsule = new SimNode("收藏到我的小程序", 700, 170, 990, 230);
+        SimNode moreBtn = new SimNode("更多", 800, 170, 890, 230);
+        SimNode closeBtn = new SimNode("关闭", 910, 170, 1000, 230);
+        rootXr.add(capsule);
+        rootXr.add(moreBtn);
+        rootXr.add(closeBtn);
+        TestHost.check(MiniProgramGuard.treeHasMiniProgramMarker(rootXr, 80),
+                "树内胶囊文案「收藏到我的小程序」兜底（v5.1.1）");
+
+        // v5.1.1：树内 xriver vid → 容器
+        SimNode rootVid = new SimNode();
+        rootVid.boundsArr = new int[]{0, 0, 1080, 2400};
+        SimNode xrView = new SimNode("", 0, 0, 1080, 2200);
+        xrView.vid = "com.alipay.mobile.xriver:id/xr_container";
+        rootVid.add(xrView);
+        TestHost.check(MiniProgramGuard.treeHasMiniProgramMarker(rootVid, 80), "树内 xriver vid 兜底（v5.1.1）");
+
         // 普通广告树 → 不兜底（绝不误伤正常开屏）
         SimNode root3 = new SimNode();
         root3.boundsArr = new int[]{0, 0, 1080, 2400};
@@ -113,6 +148,29 @@ public final class MiniProgramGuardTest {
         // 预算与 null 安全
         TestHost.check(!MiniProgramGuard.treeHasMiniProgramMarker(null, 80), "null 树安全");
         TestHost.check(!MiniProgramGuard.treeHasMiniProgramMarker(root, 0), "零预算安全");
+
+        TestHost.suite("MiniProgramGuard · XRiver 端到端（v5.1.1 issue#51-55）");
+        // 支付宝 XRiver 容器内：胶囊「关闭」键存在，但 walk/decide 恒零动作
+        // （旧版开屏×关闭键路径曾代点它 = 用户被踢出小程序）
+        SimNode xrTree = new SimNode();
+        xrTree.boundsArr = new int[]{0, 0, 1080, 2400};
+        SimNode xrContent = new SimNode("会员权益中心", 200, 900, 880, 1000);
+        SimNode xrClose = TestHost.skipButton("关闭"); // 胶囊关闭键（右上角）
+        xrTree.add(xrContent);
+        xrTree.add(xrClose);
+        Ctx xrCtx = new Ctx();
+        xrCtx.screenW = 1080;
+        xrCtx.screenH = 2400;
+        xrCtx.pkg = "com.eg.android.AlipayGphone";
+        xrCtx.activityId = "com.alipay.mobile.xriver.ui.XRiverActivity";
+        xrCtx.elapsedMs = 800;
+        xrCtx.splashLive = true;
+        ScanFind xrF = AdDecisionCore.walk(xrTree, xrCtx);
+        Decision xrD = AdDecisionCore.decide(xrF, xrCtx);
+        TestHost.check(xrD.action.equals(AdDecisionCore.A_NONE),
+                "XRiver 容器内零动作（胶囊关闭键绝不代点，" + xrD.action + "）");
+        TestHost.check(xrF.skipCands.isEmpty() && xrF.corners.isEmpty() && !xrF.foundClose,
+                "XRiver 容器内树扫描零候选（L0 早退）");
 
         TestHost.done();
     }

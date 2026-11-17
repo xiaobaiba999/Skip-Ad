@@ -19,7 +19,9 @@ package com.zai.adshield.core;
  *
  * 纯 Java · 零 Android 依赖 · JVM 可单测（与 AdDecisionCore 同规约）。
  * 真机日志佐证：issue#45（v4.5.0）小米 2410DPN6CC 出现
- * MiniAppChildProcessMultiInsActivity0 窗口——「miniapp」标记即命中。
+ * MiniAppChildProcessMultiInsActivity0 窗口——「miniapp」标记即命中；
+ * issue#51-55（v4.4.0）支付宝 XRiverActivity 容器胶囊「关闭」被代点
+ * （v5.1.1 增补 xriver 标记 + 胶囊文案兑底）。
  */
 public final class MiniProgramGuard {
 
@@ -55,6 +57,11 @@ public final class MiniProgramGuard {
             "miniapp",
             "h5activity",
             "tinycloud",
+            /* v5.1.1（issue#51-55 v4.4.0 日志实锤）：XRiverActivity——
+             * 支付宝新一代小程序/跨端容器（com.alipay.mobile.xriver），
+             * 胶囊「收藏到我的小程序/更多/关闭」的「关闭」被开屏×关闭键
+             * 路径代点 = 用户被踢出小程序（与 #45 抖音团购券同类事故） */
+            "xriver",
     };
 
     /** 通用容器标记（任何包都生效——厂商/第三方宿主的小程序容器）。 */
@@ -145,12 +152,18 @@ public final class MiniProgramGuard {
         String vid = nz(n.viewId());
         String v = vid.toLowerCase();
         if (v.contains("miniapp") || v.contains("appbrand") || v.contains("mini_program")
-                || v.contains("miniprogram") || v.contains("nebula")) {
+                || v.contains("miniprogram") || v.contains("nebula")
+                /* v5.1.1：XRiver 容器 vid 标识（类名未知的漏网容器兑底） */
+                || v.contains("xriver")) {
             return n;
         }
         String t = nz(n.text());
         String d = nz(n.desc());
         if ("小程序".equals(t) || "小程序".equals(d)) return n;
+        /* v5.1.1：小程序胶囊特征文案（issue#51-55 实锤「收藏到我的小程序」
+         * 胶囊菜单——精确子串，正常内容页几乎不可能出现该文案）；
+         * 微信胶囊「更多/关闭」单独不成立（误伤面大），必须搭配胶囊文案 */
+        if (t.contains("收藏到我的小程序") || d.contains("收藏到我的小程序")) return n;
         for (int i = 0; i < n.childCount(); i++) {
             AdDecisionCore.NodeView r = findMarker(n.child(i), depth + 1, budget);
             if (r != null) return r;
