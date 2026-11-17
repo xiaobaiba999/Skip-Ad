@@ -148,7 +148,7 @@ function renderHero(running, enabledInSettings, masterOn) {
     title.textContent = "未开启";
     sub.textContent = "无障碍跳过服务";
     btn.style.display = "";
-    tip.textContent = "开启一次，持续守护";
+    tip.textContent = "开启时会弹 10 秒安全确认（系统防诈设计），等待后确认即可";
   }
 }
 
@@ -173,13 +173,14 @@ $("#btn-resume").addEventListener("click", () => {
   }, 200);
 });
 
-/* v4.4.0 深度拉活（后台 6s + 系统绑定踢一脚；成功后暂停自动解除）
- * 绝不自动跳系统设置——10 秒强制警告只剩「开关真被关」时才需要 */
+/* v5.2.0 深度拉活（后台 15s 自适应 + 每轮复查登记；成功后暂停自动解除）
+ * 绝不自动跳系统设置——10 秒强制警告只剩「开关真被吊销」时才需要
+ * （issue#56：Redmi 25060RK16C 冷启动重绑慢，旧版 6s 窗口误判） */
 let reviving = false;
 function doRevive() {
   if (!HAS_BRIDGE || reviving) return;
   reviving = true;
-  toast("正在恢复…（最长 6 秒，不用去系统设置）");
+  toast("正在恢复…（最长 15 秒，不用去系统设置）");
   try {
     AndroidApp.tryAutoReviveDeep("__reviveCb");
   } catch (e) {
@@ -197,17 +198,39 @@ window.__reviveCb = (name, r) => {
   reviving = false;
   try {
     if (r.ok) {
-      toast(r.resumed ? "已恢复守护（暂停已自动解除）" : "已恢复守护");
+      const ms = r.reviveMs ? ("（耗时 " + Math.round(r.reviveMs / 100) / 10 + "s）") : "";
+      toast((r.resumed ? "已恢复守护（暂停已自动解除）" : "已恢复守护") + ms);
     } else if (r.reason === "need_toggle") {
       // 系统绑定较慢：引导重试，绝不自动跳系统设置看 10 秒警告
-      toast("系统绑定较慢：锁屏再亮屏后点「一键恢复」重试");
+      toast("系统绑定较慢：再点一次「一键恢复」通常即可");
     } else if (r.reason === "disabled") {
-      toast("服务开关已被系统关闭：需到系统设置重新开启一次");
+      toast("服务开关被系统关闭（清理后台/升级所致）：点「开启服务」直达，10 秒安全确认属正常");
     } else {
       toast("恢复失败，请重试");
     }
   } catch (e) {}
   setTimeout(refreshHome, 400);
+};
+
+/* ═══ v5.2.0 通知入口自动恢复（issue#56 核心修复）═══
+ * 待恢复通知点按 → MainActivity jump_restore/jump_a11y → 本函数：
+ *  · 登记仍在（多数场景）→ 自动深挖拉活，全程不去系统设置；
+ *  · 登记被吊销 → 直达服务开关页（预期管理：明示 10 秒安全确认属正常）。
+ * 旧版 jump_a11y 无条件 500ms 直跳设置，把登记仍在的用户也白送去
+ * 看 10 秒警告——已在入口上消灭。 */
+window.__autoRestore = function (fromNotification) {
+  try { AndroidApp.autoRestoreHandled(); } catch (e) {}
+  let running = false, enabled = false;
+  try { running = !!AndroidApp.isServiceRunning(); } catch (e) {}
+  try { enabled = !!AndroidApp.a11yEnabledInSettings(); } catch (e) {}
+  refreshHome();
+  if (running) { toast("防护守护中"); return; }
+  if (enabled) { doRevive(); return; }
+  // 登记被系统吊销：去设置是唯一出路（预期管理 + 直达开关详情页）
+  toast("服务开关被系统关闭：即将直达开关页，10 秒安全确认后开启即可");
+  setTimeout(() => {
+    try { AndroidApp.openA11yDetail(); } catch (e) {}
+  }, 700);
 };
 
 $("#btn-enable").addEventListener("click", () => {
@@ -235,6 +258,83 @@ $("#btn-battery").addEventListener("click", () => {
   }
   toast("请在系统设置中操作");
 });
+
+/* ══════════ v5.2.0 保活体检（issue#56：防清理后台/覆盖安装吊销无障碍）══════════
+ * 把「防吊销」做进 UI：三项自动检测（服务绑定/通知权限/电池白名单）+
+ * 品牌自适应厂商项（自启动/省电策略直达——HyperOS 清理后台吊销登记的
+ * 两大诱因；近 5 年全品牌）。厂商项无法自动读取（厂商不开放查询 API），
+ * 标记「需手动确认」并提供一键直达。 */
+let kaItemsCache = null;
+function renderKeepAlive() {
+  if (!HAS_BRIDGE) return;
+  const card = $("#ka-card");
+  if (!card) return;
+  let running = false, notif = true, batt = false;
+  try { running = !!AndroidApp.isServiceRunning(); } catch (e) {}
+  try { notif = !!AndroidApp.notifPermGranted(); } catch (e) {}
+  try { batt = !!AndroidApp.isBatteryWhitelisted(); } catch (e) {}
+  let d = kaItemsCache;
+  if (!d) {
+    try { d = JSON.parse(AndroidApp.keepAliveItems()); kaItemsCache = d; } catch (e) { d = null; }
+  }
+  const rows = [];
+  rows.push({ label: "服务绑定", ok: running, desc: running ? "防护引擎在线" : "点上方「一键恢复/开启服务」", action: null });
+  rows.push({ label: "通知权限", ok: notif, desc: notif ? "恢复提醒可送达" : "断连提醒收不到", action: notif ? null : "notif" });
+  rows.push({ label: "电池白名单", ok: batt, desc: batt ? "厂商省电策略不限制" : "防省电策略杀服务", action: batt ? null : "battery" });
+  if (d && d.items && d.items.length) {
+    d.items.forEach((it) => {
+      rows.push({ label: it.label, ok: null, desc: it.desc, action: "oem:" + it.id, manual: true });
+    });
+  }
+  const list = $("#ka-list");
+  if (!list) return;
+  list.innerHTML = "";
+  rows.forEach((r) => {
+    const row = document.createElement("div");
+    row.className = "ka-row";
+    const dot = document.createElement("span");
+    dot.className = "ka-dot " + (r.ok === true ? "ok" : r.ok === false ? "warn" : "manual");
+    const info = document.createElement("div");
+    info.className = "ka-info";
+    const name = document.createElement("div");
+    name.className = "ka-name";
+    name.textContent = r.label + (r.manual ? "（需手动确认）" : "");
+    const desc = document.createElement("div");
+    desc.className = "ka-desc";
+    desc.textContent = r.desc;
+    info.appendChild(name);
+    info.appendChild(desc);
+    row.appendChild(dot);
+    row.appendChild(info);
+    if (r.action) {
+      const btn = document.createElement("button");
+      btn.className = "link-btn";
+      btn.textContent = "去设置";
+      btn.addEventListener("click", () => {
+        if (r.action === "notif") { try { AndroidApp.openNotifSettings(); } catch (e) {} }
+        else if (r.action === "battery") { try { AndroidApp.requestBatteryWhitelist(); } catch (e) {} }
+        else if (r.action && r.action.indexOf("oem:") === 0) {
+          try { AndroidApp.openKeepAliveTarget(r.action.slice(4)); } catch (e) {}
+        }
+      });
+      row.appendChild(btn);
+    } else {
+      row.appendChild(document.createElement("span"));
+    }
+    list.appendChild(row);
+  });
+  const pending = rows.filter((r) => r.ok !== true).length;
+  const chip = $("#ka-chip");
+  if (chip) {
+    chip.textContent = pending === 0 ? "全部通过" : pending + " 项待处理";
+    chip.className = "chip " + (pending === 0 ? "ka-chip-ok" : "ka-chip-warn");
+  }
+  const sub = $("#ka-sub");
+  if (sub && d && d.familyLabel && d.family !== "generic") {
+    sub.textContent = d.familyLabel + "：完成自启动/省电配置，清理后台/升级不掉防护";
+  }
+  card.style.display = "";
+}
 
 bindToggle("toggle-popup", "popupShield", "弹窗屏蔽已开启", "弹窗屏蔽已关闭");
 bindToggle("toggle-learning", "learning", "习惯学习已开启", "习惯学习已关闭");
@@ -702,6 +802,7 @@ function toast(msg) {
 (async function init() {
   refreshHome();
   renderWhitelist(true);
+  renderKeepAlive();
   // v4.4.0 零触摸自愈：打开 App 即发现服务掉线（设置仍登记）→ 自动深度拉活，
   // 用户连「一键恢复」都不用点（点按钮跳系统设置看 10 秒警告的历史遗留痛点
   // 从入口上消灭）。每次页面加载最多自动尝试一次，不循环打扰。
@@ -712,6 +813,14 @@ function toast(msg) {
       }
     } catch (e) {}
   }, 600);
+  // v5.2.0：从系统设置返回（开完开关/配完自启动）即刻刷新——
+  // 用户回 App 的瞬间就能看到「守护中」，不用等 5s 轮询
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      refreshHome();
+      renderKeepAlive();
+    }
+  });
   // 通知权限（Android 13+，保活提醒需要）
   // 更新检查（静默）
   try {
@@ -726,6 +835,9 @@ function toast(msg) {
   } catch (e) {}
   // 每 5s 刷新首页状态（首次进入最关心）
   setInterval(() => {
-    if ($("#page-home").classList.contains("active")) refreshHome();
+    if ($("#page-home").classList.contains("active")) {
+      refreshHome();
+      renderKeepAlive();
+    }
   }, 5000);
 })();

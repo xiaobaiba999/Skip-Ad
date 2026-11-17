@@ -43,6 +43,19 @@ import org.json.JSONObject;
  *   零扫描、恢复零延迟，绝不去系统设置看 10 秒警告）；WebView URL
  *   白名单（JS 桥零远程暴露）；反馈通道频控+长度上限；开关设置走
  *   setStateBool 专用通道（状态竞态根治）；onResume 自动拉活深挖重绑。
+ * · v5.2.0（issue#56：Redmi 25060RK16C 每次退后台/覆盖安装都要看
+ *   10 秒警告，Xiaomi 15 不用）：
+ *   ① 拉活窗口 6s→15s 自适应（RestoreGuard.pollPlan：前 2s 每 300ms
+ *     快踢后段 500ms——低端机冷启动 + HyperOS 3 重绑慢不再误判）；
+ *   ② 拉活循环每轮复查登记——中途被吊销立即停止并返回 disabled（不再
+ *     俊等满 15s）；
+ *   ③ 通知 jump_a11y 不再 500ms 直跳系统设置：改交页面 __autoRestore
+ *     先深挖拉活，真被吊销才直达开关页（含 10 秒安全确认预期管理）；
+ *     onNewIntent 同样处理（通知点按时 App 已开也能触发恢复）；
+ *   ④ 新增保活体检桥：keepAliveItems（近 5 年全品牌自启动/省电策略
+ *     直达候选，硬编码系统包零注入面）+ openKeepAliveTarget（逐候选
+ *     resolveActivity 校验回退）+ notifPermGranted；
+ *   ⑤ 登记判断改 RestoreGuard.registrationState 精确解析（子串误报绝纻）。
  */
 public class MainActivity extends Activity {
 
@@ -77,9 +90,44 @@ public class MainActivity extends Activity {
         requestNotifPermission();
         // v3.5.0：从「待恢复」通知点入 → 自动跳无障碍设置（两步恢复的第一步）
         // （注意：匿名内部类会触发 d8 8.2 NPE bug，一律用 lambda）
-        if (getIntent() != null && getIntent().getBooleanExtra("jump_a11y", false)) {
-            new Handler(Looper.getMainLooper()).postDelayed(this::openA11y, 500);
+        /* v5.2.0：待恢复通知点入（jump_a11y / jump_restore）不再直接跳
+         * 系统设置——旧版无条件 500ms openA11y，把「登记仍在、只是重绑慢」
+         * 的用户也白送去看 10 秒警告（issue#56 痛点放大器）。现改为：
+         * 页面加载后交 __autoRestore 先深挖拉活；真被吊销才直达开关页。 */
+        if (getIntent() != null && (getIntent().getBooleanExtra("jump_a11y", false)
+                || getIntent().getBooleanExtra("jump_restore", false))) {
+            pendingAutoRestore = true;
         }
+    }
+
+    /** v5.2.0：待执行的自动恢复（onCreate/onNewIntent 置位，页面就绪后触发） */
+    private boolean pendingAutoRestore = false;
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        // v5.2.0：通知点按时 App 已在前台（SINGLE_TOP）也要触发恢复流程
+        if (intent != null && (intent.getBooleanExtra("jump_a11y", false)
+                || intent.getBooleanExtra("jump_restore", false))) {
+            pendingAutoRestore = true;
+            triggerAutoRestore();
+        }
+    }
+
+    /** v5.2.0：驱动页面 __autoRestore（页面未就绪时由 onResume 重试触发） */
+    private void triggerAutoRestore() {
+        if (webView == null) return;
+        try {
+            webView.evaluateJavascript(
+                    "window.__autoRestore && window.__autoRestore(true)", null);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** v5.2.0：页面接管后撤销重试（页面回调后不再重复触发） */
+    private void autoRestoreHandled() {
+        pendingAutoRestore = false;
     }
 
     private void requestNotifPermission() {
@@ -133,10 +181,10 @@ public class MainActivity extends Activity {
         if (webView != null) webView.onResume();
         /* v4.5.0 打开 App 即自动拉活（用户核心诉求：打开就是打开了）
          * 但凡系统设置里还登记着服务，打开 App 的瞬间就后台深挖重绑
-         * （v4.4.0 的 6s 深度拉活）——用户点开卫士那一刻防护就在回来的
+         * （v5.2.0 的 15s 深度拉活）——用户点开卫士那一刻防护就在回来的
          * 路上，无需任何手动操作，更不去系统设置。 */
         try {
-            if (!AdSkipService.isAlive() && a11yEnabledInSettings()) {
+            if (!AdSkipService.isAlive() && AdSkipService.registrationPresent(this)) {
                 new Thread(() -> {
                     try {
                         Bridge.deepReviveOnce(this);
@@ -146,19 +194,15 @@ public class MainActivity extends Activity {
             }
         } catch (Throwable ignored) {
         }
-    }
-
-    /** v4.5.0：系统设置是否仍登记本服务（onResume 自动拉活判定用） */
-    private boolean a11yEnabledInSettings() {
-        try {
-            String s = Settings.Secure.getString(
-                    getContentResolver(), Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
-            if (s == null) return false;
-            android.content.ComponentName cn =
-                    new android.content.ComponentName(this, AdSkipService.class);
-            return s.contains(cn.flattenToString()) || s.contains(cn.flattenToShortString());
-        } catch (Throwable t) {
-            return false;
+        /* v5.2.0：通知入口自动恢复——页面可能还在加载（或刚被拉起），
+         * 多次重试直到页面 __autoRestore 接管（autoRestoreHandled 撤销） */
+        if (pendingAutoRestore) {
+            for (int i = 1; i <= 6; i++) {
+                final int delayMs = i * 700;
+                new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                    if (pendingAutoRestore) triggerAutoRestore();
+                }, delayMs);
+            }
         }
     }
 
@@ -345,31 +389,24 @@ public class MainActivity extends Activity {
         /* ───── v3.6.0 自动拉活重绑（清理后台后服务被杀的修复） ───── */
 
         /** 无障碍服务在系统设置里是否仍登记为本应用（读取无需权限）
-         *  ——true 表示服务被系统杀掉但没被关闭，可尝试自动拉活重绑 */
+         *  ——true 表示服务被系统杀掉但没被关闭，可尝试自动拉活重绑
+         *  v5.2.0：改 RestoreGuard 精确解析（子串误报绝纻） */
         @JavascriptInterface
         public boolean a11yEnabledInSettings() {
-            try {
-                String s = Settings.Secure.getString(
-                        a.getContentResolver(), Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
-                if (s == null) return false;
-                android.content.ComponentName cn =
-                        new android.content.ComponentName(a, AdSkipService.class);
-                return s.contains(cn.flattenToString()) || s.contains(cn.flattenToShortString());
-            } catch (Throwable t) {
-                return false;
-            }
+            return AdSkipService.registrationPresent(a);
         }
 
-        /** 自动拉活（v4.4.0 深度拉活版）：
+        /** 自动拉活（v5.2.0 自适应深挖版，RestoreGuard.pollPlan/decideInAppRevive）：
          *  · 服务已运行 → ok（若处于暂停自动解除——用户点「恢复」的意图）
-         *  · 设置仍登记且服务死 → 后台线程深挖最长 6s（v3.14.0 只等 1.5s，
-         *    MIUI/HyperOS 重绑慢的 ROM 不够→被误判 need_toggle→跳系统设置
-         *    看 10 秒强制警告，「恢复防护很麻烦」的元凶）；每 500ms 用
-         *    AccessibilityManager 查询踢一次系统（促使 AMS 重绑）；
+         *  · 设置仍登记且服务死 → 深挖最长 15s（v4.4.0 固定 6s 在低端
+         *    HyperOS 上不够，issue#56 实锤 Redmi 25060RK16C 冷启动 +
+         *    AMS 重绑慢 → 被误判 need_toggle 跳系统设置看 10 秒警告）；
+         *    前 2s 每 300ms 快踢后段 500ms，每轮复查登记（中途被吊销
+         *    立即返回 disabled，不再傻等）；
          *  · 未登记 → disabled 由页面引导开启。
          *  （无障碍服务受 BIND_ACCESSIBILITY_SERVICE 保护，任何应用都不能
          *   start/bind 它；设置页 10 秒强制等待仅剩「开关真被关」时才需要）
-         *  返回 JSON：{ok, running?, revived?, resumed?, enabledInSettings?, reason?} */
+         *  返回 JSON：{ok, running?, revived?, resumed?, reviveMs?, enabledInSettings?, reason?} */
         @JavascriptInterface
         public String tryAutoRevive() {
             org.json.JSONObject out = new org.json.JSONObject();
@@ -380,26 +417,37 @@ public class MainActivity extends Activity {
                     out.put("ok", true).put("running", true).put("resumed", wasPaused);
                     return out.toString();
                 }
-                boolean enabled = a11yEnabledInSettings();
+                boolean enabled = AdSkipService.registrationPresent(a);
                 out.put("enabledInSettings", enabled);
                 if (!enabled) {
                     out.put("ok", false).put("reason", "disabled");
                     return out.toString();
                 }
-                // 设置仍登记：进程已拉起，AMS 自动重绑——深度观察 6s
-                //（每 500ms 踢一次 AccessibilityManager，重绑慢的 ROM 也能等到）
-                long deadline = System.currentTimeMillis() + 6000;
-                while (System.currentTimeMillis() < deadline && !AdSkipService.isAlive()) {
+                // 设置仍登记：进程已拉起，AMS 自动重绑——自适应深挖 15s
+                long started = System.currentTimeMillis();
+                long[] plan = com.zai.adshield.core.RestoreGuard.pollPlan(REVIVE_WINDOW_MS);
+                for (long at : plan) {
+                    long wait = at - (System.currentTimeMillis() - started);
+                    if (wait > 0) Thread.sleep(Math.min(wait, 500));
+                    if (AdSkipService.isAlive()) break;
+                    // v5.2.0：每轮复查登记——HyperOS 若在拉活期间吊销了登记，
+                    // 立即停止（傻等满 15s 只会让用户觉得「转半天没反应」）
+                    if (!AdSkipService.registrationPresent(a)) {
+                        out.put("ok", false).put("reason", "disabled")
+                                .put("enabledInSettings", false);
+                        return out.toString();
+                    }
                     kickA11yManager();
-                    Thread.sleep(500);
                 }
                 boolean revived = AdSkipService.isAlive();
                 if (revived) {
                     boolean wasPaused = !AdSkipService.masterState(a);
                     if (wasPaused) AdSkipService.setMaster(a, true); // 拉活成功 → 暂停自动解除
-                    out.put("ok", true).put("revived", true).put("resumed", wasPaused);
+                    out.put("ok", true).put("revived", true).put("resumed", wasPaused)
+                            .put("reviveMs", System.currentTimeMillis() - started);
                 } else {
-                    out.put("ok", false).put("reason", "need_toggle"); // 页面提示重试/手动，绝不自动跳系统设置
+                    out.put("ok", false).put("reason", "need_toggle") // 页面引导重试，绝不自动跳系统设置
+                            .put("reviveMs", System.currentTimeMillis() - started);
                 }
             } catch (Throwable t) {
                 try {
@@ -410,7 +458,10 @@ public class MainActivity extends Activity {
             return out.toString();
         }
 
-        /** v4.4.0：异步深度拉活（后台线程 6s 深挖，不阻塞 JS Bridge 线程；
+        /** v5.2.0：拉活窗口（6s → 15s；低速设备冷启动 + AMS 重绑覆盖） */
+        static final long REVIVE_WINDOW_MS = 15000;
+
+        /** v4.4.0：异步深度拉活（后台线程 15s 深挖，不阻塞 JS Bridge 线程；
          *  结果经 window.__reviveCb(name, json) 回调） */
         @JavascriptInterface
         public void tryAutoReviveDeep(final String cb) {
@@ -610,26 +661,24 @@ public class MainActivity extends Activity {
         private static volatile long lastPostIssueAt = 0L;
 
         /** v4.5.0：后台深挖拉活（MainActivity.onResume 自动拉活用；
-         *  与页面 tryAutoReviveDeep 同一逻辑，静默版——不打扰 UI） */
+         *  与页面 tryAutoReviveDeep 同一逻辑，静默版——不打扰 UI）。
+         *  v5.2.0：15s 自适应 + 每轮复查登记（吊销即退）。 */
         static String deepReviveOnce(Context ctx) {
             try {
                 if (AdSkipService.isAlive()) {
                     if (!AdSkipService.masterState(ctx)) AdSkipService.setMaster(ctx, true);
                     return "{\"ok\":true,\"running\":true}";
                 }
-                long deadline = System.currentTimeMillis() + 6000;
-                while (System.currentTimeMillis() < deadline && !AdSkipService.isAlive()) {
-                    try {
-                        android.view.accessibility.AccessibilityManager am =
-                                (android.view.accessibility.AccessibilityManager)
-                                        ctx.getSystemService(Context.ACCESSIBILITY_SERVICE);
-                        if (am != null) {
-                            am.getEnabledAccessibilityServiceList(
-                                    android.accessibilityservice.AccessibilityServiceInfo.FEEDBACK_ALL_MASK);
-                        }
-                    } catch (Throwable ignored) {
+                long started = System.currentTimeMillis();
+                long[] plan = com.zai.adshield.core.RestoreGuard.pollPlan(REVIVE_WINDOW_MS);
+                for (long at : plan) {
+                    long wait = at - (System.currentTimeMillis() - started);
+                    if (wait > 0) Thread.sleep(Math.min(wait, 500));
+                    if (AdSkipService.isAlive()) break;
+                    if (!AdSkipService.registrationPresent(ctx)) {
+                        return "{\"ok\":false,\"reason\":\"disabled\"}";
                     }
-                    Thread.sleep(500);
+                    kickA11yManagerOf(ctx);
                 }
                 if (AdSkipService.isAlive()) {
                     if (!AdSkipService.masterState(ctx)) AdSkipService.setMaster(ctx, true);
@@ -639,6 +688,143 @@ public class MainActivity extends Activity {
             } catch (Throwable t) {
                 return "{\"ok\":false,\"reason\":\"error\"}";
             }
+        }
+
+        /** v5.2.0：静态版踢 AMS（deepReviveOnce 用，不依赖 Activity 实例） */
+        private static void kickA11yManagerOf(Context ctx) {
+            try {
+                android.view.accessibility.AccessibilityManager am =
+                        (android.view.accessibility.AccessibilityManager)
+                                ctx.getSystemService(Context.ACCESSIBILITY_SERVICE);
+                if (am != null) {
+                    am.getEnabledAccessibilityServiceList(
+                            android.accessibilityservice.AccessibilityServiceInfo.FEEDBACK_ALL_MASK);
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+
+        /* ═══ v5.2.0 保活体检（issue#56：防「清理后台/覆盖安装吊销无障碍」）═══
+         * 近 5 年全品牌自启动/省电策略直达——候选全部来自 RestoreGuard
+         * 硬编码系统包注册表（id 枚举，零任意组件注入面），逐候选
+         * resolveActivity 校验（manifest queries 已声明可见性），
+         * 全部失败回退应用详情页（永远有下一步）。 */
+
+        /** v5.2.0：直达本应用通知设置页（保活体检「通知权限」项；<8.0 回退应用详情页） */
+        @JavascriptInterface
+        public void openNotifSettings() {
+            try {
+                Intent it = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS);
+                it.putExtra(Settings.EXTRA_APP_PACKAGE, a.getPackageName());
+                it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                a.startActivity(it);
+            } catch (Throwable t) {
+                try {
+                    Intent it = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                            Uri.parse("package:" + a.getPackageName()));
+                    it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    a.startActivity(it);
+                } catch (Throwable ignored) {
+                }
+            }
+        }
+
+        /** 通知权限是否已授予（Android 13+；以下恒 true） */
+        @JavascriptInterface
+        public boolean notifPermGranted() {
+            try {
+                if (Build.VERSION.SDK_INT >= 33) {
+                    return a.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+                            == PackageManager.PERMISSION_GRANTED;
+                }
+            } catch (Throwable ignored) {
+            }
+            return true;
+        }
+
+        /** 保活体检项（品牌自适应）：{family, familyLabel, items:[{id,label,desc}]} */
+        @JavascriptInterface
+        public String keepAliveItems() {
+            org.json.JSONObject o = new org.json.JSONObject();
+            try {
+                String family = com.zai.adshield.core.RestoreGuard.familyOf(
+                        Build.MANUFACTURER, Build.BRAND, Build.MODEL);
+                o.put("family", family);
+                o.put("familyLabel", com.zai.adshield.core.RestoreGuard.familyLabel(family));
+                org.json.JSONArray arr = new org.json.JSONArray();
+                com.zai.adshield.core.RestoreGuard.KeepAliveItem[] items =
+                        com.zai.adshield.core.RestoreGuard.itemsFor(family);
+                for (com.zai.adshield.core.RestoreGuard.KeepAliveItem it : items) {
+                    org.json.JSONObject e = new org.json.JSONObject();
+                    e.put("id", it.id);
+                    e.put("label", it.label);
+                    e.put("desc", it.desc);
+                    arr.put(e);
+                }
+                o.put("items", arr);
+            } catch (Exception ignored) {
+            }
+            return o.toString();
+        }
+
+        /** 直达体检项对应厂商设置页（逐候选 resolveActivity 回退；
+         *  最终回退应用详情页）。返回 {ok, fallback?} */
+        @JavascriptInterface
+        public String openKeepAliveTarget(String id) {
+            org.json.JSONObject out = new org.json.JSONObject();
+            try {
+                String family = com.zai.adshield.core.RestoreGuard.familyOf(
+                        Build.MANUFACTURER, Build.BRAND, Build.MODEL);
+                com.zai.adshield.core.RestoreGuard.KeepAliveItem target = null;
+                for (com.zai.adshield.core.RestoreGuard.KeepAliveItem it
+                        : com.zai.adshield.core.RestoreGuard.itemsFor(family)) {
+                    if (it.id.equals(id)) {
+                        target = it;
+                        break;
+                    }
+                }
+                if (target != null) {
+                    android.content.pm.PackageManager pm = a.getPackageManager();
+                    for (String[] cand : target.candidates) {
+                        try {
+                            Intent it = new Intent();
+                            it.setComponent(new android.content.ComponentName(cand[0], cand[1]));
+                            it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                            if ("miui_pkg".equals(target.extra)) {
+                                it.putExtra("package_name", a.getPackageName());
+                            }
+                            if (pm.resolveActivity(it, 0) != null) {
+                                a.startActivity(it);
+                                out.put("ok", true);
+                                return out.toString();
+                            }
+                        } catch (Throwable ignored) {
+                        }
+                    }
+                }
+                // 全部失败/未知 id：应用详情页（永远可用，权限/电池入口都在）
+                try {
+                    Intent it = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                            Uri.parse("package:" + a.getPackageName()));
+                    it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    a.startActivity(it);
+                    out.put("ok", true).put("fallback", true);
+                } catch (Throwable t) {
+                    out.put("ok", false);
+                }
+            } catch (Throwable t) {
+                try {
+                    out.put("ok", false);
+                } catch (Exception ignored) {
+                }
+            }
+            return out.toString();
+        }
+
+        /** v5.2.0：通知入口自动恢复已被页面接管（撤销 MainActivity 重试链） */
+        @JavascriptInterface
+        public void autoRestoreHandled() {
+            a.autoRestoreHandled();
         }
 
         /** 查询 GitHub 最新 Release（公共仓库匿名可读） */

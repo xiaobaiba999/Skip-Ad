@@ -27,6 +27,7 @@ import com.zai.adshield.core.AdDecisionCore.Decision;
 import com.zai.adshield.core.AdDecisionCore.NodeView;
 import com.zai.adshield.core.AdDecisionCore.ScanFind;
 import com.zai.adshield.core.MiniProgramGuard;
+import com.zai.adshield.core.RestoreGuard;
 import com.zai.adshield.core.RuleEngine;
 import com.zai.adshield.core.RuleEngine.Hit;
 import com.zai.adshield.core.Subscription;
@@ -379,7 +380,37 @@ public class AdSkipService extends AccessibilityService {
      * onServiceConnected=true / onUnbind=false / onDestroy=false。 */
     public static volatile boolean bound = false;
 
-    /** 服务真实存活（已绑定、能收事件）——UI 展示/心跳自检/拉活判定唯一口径 */
+    /** v5.2.0：运行时版本号（缓存；启动横幅不再硬编码——issue#56 实锤
+     *  v5.1.1 用户日志横幅仍显示 v4.5.0 文案，历次迭代忘改） */
+    private static volatile String cachedVersionName;
+
+    static String versionName(Context ctx) {
+        String v = cachedVersionName;
+        if (v != null) return v;
+        try {
+            v = ctx.getPackageManager().getPackageInfo(ctx.getPackageName(), 0).versionName;
+        } catch (Throwable t) {
+            v = "5.2.0";
+        }
+        cachedVersionName = v;
+        return v;
+    }
+
+    /** v5.2.0：本服务是否仍被系统登记为已启用无障碍服务
+     *  （':' 分隔精确解析，RestoreGuard.registrationState——子串误报绝纻） */
+    public static boolean registrationPresent(Context ctx) {
+        try {
+            String s = Settings.Secure.getString(
+                    ctx.getContentResolver(), Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
+            android.content.ComponentName cn =
+                    new android.content.ComponentName(ctx, AdSkipService.class);
+            return RestoreGuard.registrationState(s, cn.flattenToString(), cn.flattenToShortString())
+                    == RestoreGuard.REG_REGISTERED;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
     public static boolean isAlive() {
         return instance != null && bound;
     }
@@ -715,10 +746,14 @@ public class AdSkipService extends AccessibilityService {
         // v4.3.0：应用白名单快照载入
         reloadWhitelist(this);
         int wlN = whitelistSet.size();
-        appendLog("服务已启动 · v4.5.0 乱点根治·原生文本探针·通知栏一键开关（规则 "
-                + RuleEngine.stats() + "）"
-                + (purged > 0 ? "｜已清理 " + purged + " 条误学窗口指纹" : "")
-                + (wlN > 0 ? "｜白名单 " + wlN + " 个应用零打扰" : ""));
+        /* v5.2.0：启动横幅动态版本号（RestoreGuard.startBanner）——
+         * 此前硬编码 v4.5.0 文案，v5.x 每次迭代都没改，issue#56 日志实锤 */
+        appendLog(RestoreGuard.startBanner(versionName(this), RuleEngine.stats(),
+                purged, purgedPos, purgedOem, wlN));
+        // v5.2.0：无障碍登记移除遥测（issue#56 根因链证据）——HyperOS
+        // 清理后台/覆盖安装吊销登记的瞬间打点，未来日志能直接回答
+        // 「服务为什么被关」「什么时候被关」
+        registerA11yRegObserver();
         // v4.0.0 GKD 订阅融合：内置订阅 + 远程订阅（用户导入的 GKD 社区规则）
         SubscriptionManager.ensureLoaded(this);
         Subscription bi = SubscriptionManager.builtinSub;
@@ -824,7 +859,9 @@ public class AdSkipService extends AccessibilityService {
         try {
             if (!prefs().getBoolean(KEY_KEEPON, false)) return;
             handler.postDelayed(() -> {
-                if (instance == null) KeepAliveReceiver.notifyAlert(AdSkipService.this);
+                // v5.2.0：两态通知——按登记状态决定「自动恢复」还是「直达开关」
+                if (instance == null) KeepAliveReceiver.notifyAlert(AdSkipService.this,
+                        AdSkipService.registrationPresent(AdSkipService.this));
             }, 4000);
             scheduleSelfCheckAlarm(15000);
             scheduleHeartbeat();
@@ -966,9 +1003,60 @@ public class AdSkipService extends AccessibilityService {
             if (screenRx != null) unregisterReceiver(screenRx);
         } catch (Throwable ignored) {
         }
+        try {
+            if (a11yRegObserver != null) {
+                getContentResolver().unregisterContentObserver(a11yRegObserver);
+                a11yRegObserver = null;
+            }
+        } catch (Throwable ignored) {
+        }
         flushNow();
         instance = null;
         super.onDestroy();
+    }
+
+    /* ═══ v5.2.0 无障碍登记移除遥测（issue#56：回答「服务为什么被关」）═══
+     * 监听 Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES 变化：本服务
+     * 登记被系统移除的瞬间打点日志 + 排 2.5s 自检（自动拉活或提醒）。
+     * 静态内部类（规避 d8 8.2 匿名类 NPE bug，同 ScreenStateRx）。 */
+    private static final class A11yRegObserver extends android.database.ContentObserver {
+        private final AdSkipService svc;
+
+        A11yRegObserver(AdSkipService svc, Handler h) {
+            super(h);
+            this.svc = svc;
+        }
+
+        @Override
+        public void onChange(boolean selfChange) {
+            try {
+                boolean now = registrationPresent(svc);
+                boolean before = svc.lastRegState;
+                svc.lastRegState = now;
+                if (RestoreGuard.analyzeRegChange(before, now) == RestoreGuard.CHANGE_REVOKED) {
+                    svc.appendLog("⚠️ 无障碍登记被移除（清理后台/覆盖安装/厂商省电管控或手动关闭所致）——若非本人关闭，重开需经系统 10 秒安全确认（厂商防诈设计）；建议完成首页「保活体检」防复发");
+                    // 吊销后 onUnbind/心跳链可能不可靠：立即排自检走两态通知
+                    svc.scheduleSelfCheckAlarm(2500);
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+    }
+
+    private android.database.ContentObserver a11yRegObserver;
+    private volatile boolean lastRegState = true;
+
+    private void registerA11yRegObserver() {
+        try {
+            if (a11yRegObserver != null) return; // 已注册（重连复用实例）
+            lastRegState = true; // onServiceConnected 时必然登记着
+            a11yRegObserver = new A11yRegObserver(this, handler);
+            getContentResolver().registerContentObserver(
+                    Settings.Secure.getUriFor(Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES),
+                    false, a11yRegObserver);
+        } catch (Throwable ignored) {
+            a11yRegObserver = null;
+        }
     }
 
     /* ───────── v4.4.0 息屏缓存（功耗：热路径零 IPC）─────────

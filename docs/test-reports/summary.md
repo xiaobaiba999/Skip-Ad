@@ -78,3 +78,26 @@ className 指纹）对此**零信号**，引擎从不出手（R15 复现：img_l
 - FEEDBACK-DOUBLE-CLICK：反馈面板后杀链（广告关了不点第二下）
 - LOG-AMBIGUITY：`android` 包名歧义（me.ele.android → ele.android，双端）
 - SEC-HARDENING：WebView URL 白名单 · 下载源白名单 · 订阅强制 https · 反馈频控 · kvSet 上限
+
+---
+
+## Round 21 · v5.2.0（2026-11-18）——「10 秒系统警告」根治（issue#56）
+
+**触发**：issue#56 Redmi 25060RK16C（Android 16）每次退后台/覆盖安装都要进系统看 10 秒警告；Xiaomi 15 对照组全程无需。根因：HyperOS 清理后台/覆盖安装会**吊销无障碍登记**（登记没了任何应用都无法编程恢复=只能去系统设置重开撞厂商防诈 10 秒确认）；旧版三处放大器：通知点按无条件直跳设置、拉活窗口 6s 不够低端机、覆盖安装直接假设已关闭。本轮：两态通知 + 15s 自适应拉活（每轮复查登记）+ 广播窗口踢链自愈 + 保活体检卡（近 5 年全品牌自启动/省电策略直达）+ 登记移除 ContentObserver 遥测 + 同态通知 10 分钟冷却；安全同步：signature 级私有广播权限（防伪造 SELF_CHECK）+ 深链候选零注入面；附带修复启动横幅陈旧版本 bug（v5.1.1 日志实锤）与登记子串误报。
+
+**测试矩阵（本轮全绿 453 项）**
+| 套件 | 断言 | 结果 | 覆盖 |
+|---|---|---|---|
+| 恢复防护核心（RestoreGuardTest · 新增） | 106 | ✅ | 品牌归一 22 · 注册表+安全不变量 ×3 · 精确解析 12 · 决策状态机★不变量（登记在绝不引导设置）· 拉活单步★不变量 · 15s 轮询边界 · 动态横幅 · 两态文案 |
+| 存量回归（6 套件） | 321 | ✅ | v5.1.1 全量零回归 |
+| 白盒（APK 结构） | 18 | ✅ | signature 权限 · queries 10 包 · dex/资产符号在场 |
+| 整体（构建/签名/分发） | 8 | ✅ | 签名一致（覆盖升级）· VC 50200 · 三目录分发 MD5 一致 |
+
+**修复清单**
+- TEN-SECOND-REVOKED：HyperOS 吊销登记 → 保活体检卡 + 两态通知根治
+- NOTIFY-JUMP-BLIND：通知点按直跳设置 → __autoRestore 先拉活
+- REVIVE-WINDOW-SHORT：6s 固定窗口 → 15s 自适应 + 中途吊销止损
+- REPLACED-ASSUME-DEAD：覆盖安装假设已死 → SmartRevive 踢链自愈（≤8.2s 广播预算单点 finish）
+- STALE-BANNER / REG-SUBSTRING / NOTIFY-SPAM：横幅版本动态化 · ':' 精确解析 · 通知冷却
+- SEC-PRIVATE-BROADCAST / SEC-DEEPLINK-INJECTION：私有广播权限 · 深链零注入面
+- TELEMETRY-REVOKED：登记移除瞬间打点（未来日志直接回答「何时被谁关」）
