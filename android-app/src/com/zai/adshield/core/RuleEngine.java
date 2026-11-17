@@ -33,6 +33,15 @@ import com.zai.adshield.core.AdDecisionCore.NodeView;
  *    dismiss 族仅在【SDK 广告窗或学习窗】且【屏幕边缘带】出手（纯图片
  *    关闭键的正解，普通页面绝不误点）。
  *
+ * v4.5.0 乱点根治（issue#42-44 实锤抽屉菜单被点击）：文本命中新增
+ *  · 形状门（validSkipTextShape）：标签宽度 ≤55% 屏（自身可点 ≤70%），
+ *    全宽行=列表项/横幅绝不点；
+ *  · 竖列菜单门（isMenuListRow）：≥4 同列同宽竖排兄弟=抽屉/菜单列表行，
+ *    一票否决；
+ *  · 豁免：SDK 广告窗/学习窗（高置信广告场景）。
+ * matchText 升级 public：服务侧原生文本探针（findAccessibilityNodeInfosByText
+ * 深树快路径，李跳跳同款提速）复用同一套规则+形状门。
+ *
  * 与决策核心（AdDecisionCore）的关系：本引擎是【主路径】（规则命中秒点），
  * 决策核心退居兜底（关闭键/角落键/热区/陀螺仪等复杂信号场景）。
  * 全部纯 Java 零 Android 依赖，JVM 可单测（RuleEngineTest）。
@@ -236,8 +245,8 @@ public final class RuleEngine {
         return best;
     }
 
-    /** 文本规则匹配（第0/1/2/3层） */
-    static Hit matchText(String label, int[] b, NodeView node, Ctx ctx) {
+    /** 文本规则匹配（第0/1/2/3层）。v4.5.0 public：服务侧原生文本探针复用 */
+    public static Hit matchText(String label, int[] b, NodeView node, Ctx ctx) {
         String low = label.toLowerCase();
 
         /* 第0层：分应用精确（不受长度上限约束） */
@@ -297,6 +306,16 @@ public final class RuleEngine {
     }
 
     static Hit build(String appId, String label, int[] b, NodeView node, Ctx ctx) {
+        /* ═══ v4.5.0 乱点根治：文本命中形状门（issue#42-44 实锤抽屉菜单
+         * 「跳过」列表项被当跳过键点击）═══
+         * 真跳过键是孤立紧凑控件（≤55% 屏宽；自身可点放宽 70%）；全宽行/
+         * 竖列菜单行（isMenuListRow：≥4 同列同宽竖排兄弟）绝不点。
+         * 豁免：SDK 广告窗/学习窗（ctx 高置信广告场景，跳过键形态可放宽）。 */
+        boolean textRule = !"global_vid".equals(appId) && !"sdk_close_vid".equals(appId);
+        if (textRule && !ctx.sdkAdWin && !ctx.learnedCls
+                && !AdDecisionCore.validSkipTextShape(node, b, ctx)) {
+            return null;
+        }
         Hit h = new Hit();
         h.appId = appId;
         h.label = label;

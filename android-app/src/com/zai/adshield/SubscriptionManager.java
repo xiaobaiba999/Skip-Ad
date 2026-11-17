@@ -174,8 +174,13 @@ public final class SubscriptionManager {
             sp.edit().remove("subUrl").remove("subCache").apply();
             return "{\"ok\":true,\"cleared\":true}";
         }
-        if (!u.startsWith("http://") && !u.startsWith("https://")) {
-            return "{\"ok\":false,\"error\":\"链接须以 http(s):// 开头\"}";
+        /* v4.5.0 安全：订阅源必须 https（明文 http 可被中间人投毒规则——
+         * 恶意规则能让引擎点击任意控件）+ 长度上限 */
+        if (!u.startsWith("https://")) {
+            return "{\"ok\":false,\"error\":\"订阅链接必须为 https://（明文 http 可被投毒，已拒绝）\"}";
+        }
+        if (u.length() > 512) {
+            return "{\"ok\":false,\"error\":\"链接过长\"}";
         }
         String r = fetch(ctx, u, sp);
         return r;

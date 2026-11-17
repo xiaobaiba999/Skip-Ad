@@ -365,43 +365,60 @@ public final class AdDecisionCore {
 
             if (label.length() > 0) {
                 if (label.length() <= 14 && matchesSkip(label)) {
-                    int cd = parseCountdown(label);
-                    if (cd > f.countdownN) f.countdownN = cd; // v3.8.0 倒计时解析（「跳过 3」→3，服务侧门控用）
-                    NodeView click = resolveClickable(node, 4);
-                    if (click != null && isSmallClick(click, ctx) && vis) {
-                        if (!f.foundSkip) {
-                            f.foundSkip = true;
-                            f.skipNode = click;
-                            // v3.6.0：手势点击用【原标签控件】坐标（点得准），
-                            // 不再用可点祖先中心（祖先常是全屏容器，点中心=点开广告，
-                            // 真机「已点击跳过但广告纹丝不动」根因之一）；performAction 仍走祖先
-                            f.skipBounds = (b != null && areaRatio(b, ctx) < SKIP_AREA_MAX) ? b : click.bounds();
-                            f.skipLabel = label;
-                        }
-                        // v3.7.0 多候选收集：广告图内常嵌假「跳过」文本（或同窗多个跳过键），
-                        // 复验第 N 次点第 N 个候选——不再同一坐标点四遍（issue#10 根因）
-                        if (f.skipCands.size() < SKIP_CANDS_MAX) {
-                            SkipCand c = new SkipCand();
-                            c.clickNode = click;
-                            c.tapBounds = (b != null && areaRatio(b, ctx) < SKIP_AREA_MAX) ? b : click.bounds();
-                            c.label = label;
-                            c.selfClick = (click == node);
-                            f.skipCands.add(c);
-                        }
+                    /* ═══ v4.5.0 乱点根治：兜底路径同款形状门（与 RuleEngine.build
+                     * 一致）——菜单/抽屉列表行绝不入候选：issue#42-44 实锤抽屉
+                     * 菜单「跳过」项被点（rule 路径已挡，此处堵 walk→decide 兜底
+                     * 路径）。被拒节点也不设 fakeSkip（菜单行非陷阱信号）。 ═══ */
+                    boolean shapeOk;
+                    if (ctx.sdkAdWin || ctx.learnedCls) {
+                        shapeOk = true; // 高置信广告窗豁免
+                    } else if (b == null || ctx.screenW <= 0) {
+                        shapeOk = true; // 形状未知：保守放行（绝不错杀真开屏）
                     } else {
-                        f.fakeSkip = true; // 大面积/不可点 = 图内假跳过陷阱
-                        // v3.8.0：假跳过≠不可点——大容器可点祖先吞掉 performAction 时，
-                        // 标签自身坐标仍是有效触点（GKD clickCenter 方法论）：手势点标签
-                        // 位置，由应用按坐标分发到真跳过键。仅收角落形态小标签（防中央诱饵）
-                        if (vis && b != null && areaRatio(b, ctx) < FAKE_TAP_AREA_MAX
-                                && learnableSkipShape(b, ctx.screenW, ctx.screenH)
-                                && f.fakeCands.size() < SKIP_CANDS_MAX) {
-                            SkipCand c = new SkipCand();
-                            c.clickNode = click;
-                            c.tapBounds = b;
-                            c.label = label;
-                            c.gestureOnly = true;
-                            f.fakeCands.add(c);
+                        double wRatio = (double) (b[2] - b[0]) / ctx.screenW;
+                        shapeOk = wRatio <= (clickable ? 0.70 : 0.55) && !isMenuListRow(node);
+                    }
+                    if (!shapeOk) {
+                        // 菜单/全宽行：不入 skipCands、不设 fakeSkip、不进倒计时
+                    } else {
+                        int cd = parseCountdown(label);
+                        if (cd > f.countdownN) f.countdownN = cd; // v3.8.0 倒计时解析（「跳过 3」→3，服务侧门控用）
+                        NodeView click = resolveClickable(node, 4);
+                        if (click != null && isSmallClick(click, ctx) && vis) {
+                            if (!f.foundSkip) {
+                                f.foundSkip = true;
+                                f.skipNode = click;
+                                // v3.6.0：手势点击用【原标签控件】坐标（点得准），
+                                // 不再用可点祖先中心（祖先常是全屏容器，点中心=点开广告，
+                                // 真机「已点击跳过但广告纹丝不动」根因之一）；performAction 仍走祖先
+                                f.skipBounds = (b != null && areaRatio(b, ctx) < SKIP_AREA_MAX) ? b : click.bounds();
+                                f.skipLabel = label;
+                            }
+                            // v3.7.0 多候选收集：广告图内常嵌假「跳过」文本（或同窗多个跳过键），
+                            // 复验第 N 次点第 N 个候选——不再同一坐标点四遍（issue#10 根因）
+                            if (f.skipCands.size() < SKIP_CANDS_MAX) {
+                                SkipCand c = new SkipCand();
+                                c.clickNode = click;
+                                c.tapBounds = (b != null && areaRatio(b, ctx) < SKIP_AREA_MAX) ? b : click.bounds();
+                                c.label = label;
+                                c.selfClick = (click == node);
+                                f.skipCands.add(c);
+                            }
+                        } else {
+                            f.fakeSkip = true; // 大面积/不可点 = 图内假跳过陷阱
+                            // v3.8.0：假跳过≠不可点——大容器可点祖先吞掉 performAction 时，
+                            // 标签自身坐标仍是有效触点（GKD clickCenter 方法论）：手势点标签
+                            // 位置，由应用按坐标分发到真跳过键。仅收角落形态小标签（防中央诱饵）
+                            if (vis && b != null && areaRatio(b, ctx) < FAKE_TAP_AREA_MAX
+                                    && learnableSkipShape(b, ctx.screenW, ctx.screenH)
+                                    && f.fakeCands.size() < SKIP_CANDS_MAX) {
+                                SkipCand c = new SkipCand();
+                                c.clickNode = click;
+                                c.tapBounds = b;
+                                c.label = label;
+                                c.gestureOnly = true;
+                                f.fakeCands.add(c);
+                            }
                         }
                     }
                 } else if (label.length() <= 22 && matchesAny(label, GYRO_HINTS)) {
@@ -580,6 +597,76 @@ public final class AdDecisionCore {
     public static boolean saneNormPos(double x, double y) {
         return x >= POS_MIN_NORM && x <= POS_MAX_NORM
                 && y >= POS_MIN_NORM && y <= POS_MAX_NORM;
+    }
+
+    /* ═════════ v4.5.0 乱点根治：竖列菜单/抽屉列表行检测（李跳跳式形状门）═════════
+     * 真机日志实锤（issue#42-44）：应用右侧抽屉（BaseCustomDialogFragment，
+     * 播放历史/录音/扫一扫/切换模式 菜单）被引擎当广告窗扫描，菜单内
+     * 「跳过」字样列表项被当跳过键点击；用户点开抽屉 4s 让路期满后引擎
+     * 连点 2 次 = 「进入 App 乱点」元凶。
+     * 判定核心：沿候选祖先链找【列表容器】——候选所在的行与其 ≥3 个
+     * 兄弟行【同列同宽竖排】（x 重叠、y 互不重叠）= 垂直菜单列表。
+     * ⚠ 比较对象是「候选的祖先行 vs 兄弟行」（行由统一模板渲染必然同宽），
+     * 而非「候选自身 vs 行」（文字总比行窄，比不出差异——v4.5.0 首版教训）。
+     * 纯 Java 零 Android 依赖，JVM 可单测。 */
+    public static boolean isMenuListRow(NodeView node) {
+        try {
+            if (node == null) return false;
+            NodeView self = node;
+            NodeView p = node.parent();
+            for (int lvl = 0; lvl < 3 && p != null; lvl++) {
+                int n = p.childCount();
+                if (n >= 4) {
+                    int[] sb = self.bounds();
+                    if (sb != null && sb[2] > sb[0] && sb[3] > sb[1]) {
+                        int sw = sb[2] - sb[0], sh = sb[3] - sb[1];
+                        int sameCol = 1; // 含候选所在行自身
+                        for (int i = 0; i < n && i < 14; i++) {
+                            NodeView c = p.child(i);
+                            if (c == null || c == self) continue;
+                            int[] cb = c.bounds();
+                            if (cb == null || cb[2] <= cb[0] || cb[3] <= cb[1]) continue;
+                            int cw = cb[2] - cb[0], ch = cb[3] - cb[1];
+                            // ① 同宽（±25%）：菜单行由统一模板渲染，宽度一致
+                            if (Math.abs(cw - sw) > Math.max(sw * 0.25, 1)) continue;
+                            // ② 同列：x 区间与候选行重叠 ≥ 两者较窄者的 50%
+                            int ox = Math.min(sb[2], cb[2]) - Math.max(sb[0], cb[0]);
+                            if (ox < Math.min(cw, sw) * 0.5) continue;
+                            // ③ 竖排：y 中心间隔 ≥ 两者较高者的 60%（互不重叠的行）
+                            int cyS = (sb[1] + sb[3]) / 2, cyC = (cb[1] + cb[3]) / 2;
+                            if (Math.abs(cyC - cyS) < Math.max(sh, ch) * 0.6) continue;
+                            sameCol++;
+                        }
+                        if (sameCol >= 4) return true; // 候选行+3 兄弟行同列同宽 = 列表
+                    }
+                }
+                self = p;
+                p = p.parent();
+            }
+        } catch (Throwable ignored) {
+        }
+        return false;
+    }
+
+    /** v4.5.0：文本规则命中形状门（RuleEngine.build 后置校验共用）。
+     *  真跳过键形态（全分辨率自适应的相对判定，参考李跳跳形状白名单）：
+     *   · 标签控件自身宽度 ≤55% 屏宽（全宽行 = 列表项/横幅，绝不点）；
+     *   · 自身可点的按钮放宽到 ≤70%（部分广告底部「点击跳过」长条按钮）；
+     *   · 竖列菜单行一票否决（isMenuListRow）。
+     *  豁免：SDK 广告窗 / 学习窗指纹窗（上下文已是高置信广告场景）。 */
+    public static boolean validSkipTextShape(NodeView node, int[] b, Ctx ctx) {
+        if (b == null || b.length < 4 || ctx.screenW <= 0) return false;
+        int w = b[2] - b[0];
+        if (w <= 0) return false;
+        boolean selfClickable = false;
+        try {
+            selfClickable = node != null && node.clickable();
+        } catch (Throwable ignored) {
+        }
+        double wRatio = (double) w / ctx.screenW;
+        if (selfClickable ? wRatio > 0.70 : wRatio > 0.55) return false;
+        if (isMenuListRow(node)) return false;
+        return true;
     }
 
     /* ═════════ 决策阶梯 ═════════ */

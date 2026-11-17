@@ -1,6 +1,6 @@
 /** 版本与 GitHub 仓库信息（Web 端与发布节奏共用） */
-export const APP_VERSION = "4.4.0";
-export const VERSION_CODE = 40400; // major*10000 + minor*100 + patch，随版本单调递增
+export const APP_VERSION = "4.5.0";
+export const VERSION_CODE = 40500; // major*10000 + minor*100 + patch，随版本单调递增
 export const GITHUB_REPO = "xiaobaiba999/Skip-Ad";
 export const GITHUB_API = `https://api.github.com/repos/${GITHUB_REPO}`;
 export const GITHUB_HOME = `https://github.com/${GITHUB_REPO}`;
@@ -18,6 +18,19 @@ export interface VersionEntry {
 /** 「关于」页仅展示最近三个版本（硬约束：数组只保留最新 3 条，
  *  旧版本内容归档在 GitHub Releases 与 git 历史） */
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: "4.5.0",
+    code: 40500,
+    date: "2026-11-17",
+    tagline: "乱点根治（李跳跳式形状门）· 系统开关彻底解耦 · 原生探针提速 · 安全加固",
+    notes: [
+      "乱点根治三重防线（issue#42-44 实锤抽屉菜单被点）：① 文本命中形状门——标签宽 ≤55% 屏（自身可点放宽 70%），全宽行/横幅绝不点；② 竖列菜单检测 isMenuListRow——候选祖先行与 ≥3 兄弟行同列同宽竖排 = 抽屉/菜单列表行一票否决（李跳跳形状白名单方法论，rule 与 walk→decide 两条路径全覆盖）；③ 你点开的弹窗/抽屉 30s 零动作（2.5s 意图窗口）",
+      "系统开关与 App 开关彻底解耦（用户核心诉求）：系统无障碍【一直开着永不碰】（零 disableSelf），卫士的开关由 App 内/通知栏一键控制——暂停即全停（零扫描零点击）、恢复即全开，全程绝不去系统设置看 10 秒强制确认；打开 App 自动深挖拉活",
+      "弹窗屏蔽开关「自动弹回」竞态根治：UI 写 prefs 与服务内存态落盘互相覆盖（15s 延迟落盘）——开关改走 setStateBool 专用通道（服务内存本体唯一数据源）",
+      "提速：原生文本探针（findAccessibilityNodeInfosByText 系统原生搜索，无节点预算——H5/WebView 深树 500+ 节点 DFS 预算耗尽漏扫的兑底，李跳跳同款）+ 窗口事件内联首扫（省一跳 handler 5~16ms）；「跳过/跳過」双探针复用全套规则+形状门，零新乱点面",
+      "日志「android」歧义修复：me.ele.android（饿了么）等包不再显示为 android（战绩榜不再误导）；反馈面板收起后杀本窗扫描链（广告关了不点第二下）；安全加固：WebView URL 白名单（JS 桥零远程暴露）/ 下载源域名白名单 / 订阅源强制 https / 反馈频控",
+    ],
+  },
   {
     version: "4.4.0",
     code: 40400,
@@ -40,19 +53,6 @@ export const VERSION_HISTORY: VersionEntry[] = [
       "GKD 默认订阅 globalGroups 全局开屏组全量解析（CSDN 等第三方 App 漏跳元凶）+ 数字关系符/childCount/text.length/括号布尔全语法",
       "复验真正换候选（同坐标 6 连击根治）；新增应用白名单（零扫描零点击零学习）；喜马拉雅「为什么关闭广告」循环弹窗根治 + 假倒计时提速",
       "扫描未命中记诊断日志（窗口类名/树规模/候选样本）；功耗再降（内容页早退 + 补扫节流 bug 修复）",
-    ],
-  },
-  {
-    version: "4.2.0",
-    code: 40200,
-    date: "2026-11-17",
-    tagline: "用户操作让路 · 微信主界面零扫描 · 订阅全门控 · 12h 自动日志",
-    notes: [
-      "用户操作让路：你点击后 4s 内引擎不出手；你点开的广告落地页/详情页 30s 内绝不自动关闭——「点开又被自动关、手动重开又被关」根治",
-      "微信主界面（LauncherUI）零扫描零点击：GKD 订阅规则曾在此反复命中连点（「进入微信左右乱划」元凶），现在整体让路；弹窗不受影响",
-      "GKD 订阅规则全门控：activityIds 强校验（社区规则的 Activity 限定此前被忽略）+ 同窗限次（actionMaximum）+ 间隔（actionInterval）+ 无限定规则 skip 形态门；并接入弹窗场景——「导入了却零命中」根治；内置规则优先、订阅接力",
-      "引擎日志每 12 小时自动提交（手动上传不受影响）；上传内容更具体：16 条带时间戳日志 + Top5 应用战绩 + 订阅命中 + 能耗画像",
-      "功耗整治：订阅规则单遍树扫描（此前每条选择器独立遍历全树）、4s 后内容变化零补扫、前台门 IPC 重排、引擎日志容量翻倍",
     ],
   },
 ];

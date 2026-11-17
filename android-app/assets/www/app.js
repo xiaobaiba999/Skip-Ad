@@ -23,8 +23,8 @@ const store = {
 };
 
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "4.4.0"; }
-function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "40400"; }
+function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "4.5.0"; }
+function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "40500"; }
 
 /* ══════════ 吉祥物（v4.1.0 全新形象：白机器人小侠 + 绿披风跳跃） ══════════
  * 与启动器图标同源；state: on（跳跃浮动）/ off（灰度待命） */
@@ -37,6 +37,7 @@ $("#brand-logo").innerHTML = mascotImg(30, "on", true);
 
 /* ══════════ 版本记录 ══════════ */
 const CHANGELOG = [
+  { v: "4.5.0", d: "乱点根治（菜单/抽屉列表行形状门，参考李跳跳）：进入 App 乱点、抽屉菜单「跳过」项被点、广告关了又点第二下全部根治；原生文本探针（H5 深树漏扫兜底，「有时候触发不了」再降）；系统开关与 App 开关彻底解耦：通知栏一键暂停/恢复（系统无障碍永不关，绝不去系统设置看 10 秒警告）；弹窗屏蔽开关「自动弹回」竞态根治；安全加固（WebView URL 白名单/反馈频控）；打开 App 自动拉活。" },
   { v: "4.4.0", d: "露头就秒大提速：倒计时门控开闸瞬间即点（喜马拉雅/keep 实测快 4~5 秒）；点击后 450ms 快速复验（快于人手补刀）；H5 开屏按钮晚到也能救回（早退误杀根治）；恢复防护深度拉活 6 秒（绝不去系统设置看 10 秒强制警告）；功耗再降（事件热路径零 IPC + 晚档扫描预算收紧）。" },
   { v: "4.3.0", d: "订阅主力规则真正接入：GKD globalGroups 全量解析（CSDN 等第三方 App 不再漏跳）+ 数字关系符/childCount/text.length 全语法；复验真正换候选（同坐标连点根治）；新增应用白名单（选中的应用零打扰）；喜马拉雅「为什么关闭广告」循环根治 + 跳过提速；未命中会记诊断日志；功耗再降（内容页早退 + 滚动风暴节流修复）。" },
   { v: "4.2.0", d: "用户操作让路（你点开的页面绝不自动关）；微信主界面零扫描（乱划根治）；订阅规则接入弹窗场景 + Activity 限定（导入了就真生效）；日志每 12 小时自动提交；引擎日志翻倍更具体；功耗大降。" },
@@ -59,12 +60,21 @@ $$(".tabbtn").forEach(b => b.addEventListener("click", () => {
 /* ══════════ 首页：守护状态 ══════════ */
 function getRealState() { return store.get("state", null) || {}; }
 
+/* ═══ v4.5.0 开关专用通道（状态竞态根治）═══
+ * 「开启弹窗广告屏蔽之后又被 App 自动关闭」根因：UI 直接写 state 只落
+ * prefs，服务内存旧副本落盘时整体覆盖回去 → 开关自动弹回。
+ * 开关一律走 AndroidApp.setStateBool（改服务内存本体，唯一数据源）；
+ * 浏览器演示环境（无桥）回退旧写入。 */
 function bindToggle(id, key, onMsg, offMsg) {
   const el = $("#" + id);
   el.addEventListener("change", () => {
-    const st = getRealState();
-    st[key] = el.checked;
-    setRealState(st);
+    if (HAS_BRIDGE && AndroidApp.setStateBool) {
+      try { AndroidApp.setStateBool(key, el.checked); } catch (e) {}
+    } else {
+      const st = getRealState();
+      st[key] = el.checked;
+      setRealState(st);
+    }
     toast(el.checked ? onMsg : offMsg);
   });
 }
@@ -115,7 +125,7 @@ function renderHero(running, enabledInSettings, masterOn) {
     title.textContent = "已暂停";
     sub.textContent = "跳过与学习均不生效";
     resume.style.display = "";
-    tip.textContent = "应用内一键暂停/恢复，无需去系统设置";
+    tip.textContent = "通知栏也可一键恢复；系统开关一直开着，无需重投权限";
   } else if (running) {
     card.classList.add("on");
     card.classList.remove("paused");
@@ -123,14 +133,14 @@ function renderHero(running, enabledInSettings, masterOn) {
     title.textContent = "守护中";
     sub.textContent = "广告露头就秒跳";
     pause.style.display = "";
-    tip.textContent = "暂停可在应用内一键完成，无需看系统 10 秒警告";
+    tip.textContent = "关闭防护请用此开关/通知栏按钮（别去系统设置关，重开要看 10 秒警告）";
   } else if (enabledInSettings) {
     card.classList.remove("on", "paused");
     mascot.innerHTML = mascotImg(88, "off");
     title.textContent = "服务待恢复";
-    sub.textContent = "清理后台后被系统关闭";
+    sub.textContent = "系统仍登记，正在/可一键重拉";
     revive.style.display = "";
-    tip.textContent = "点「一键恢复」重新拉起";
+    tip.textContent = "点「一键恢复」重新拉起（不碰系统设置，无需 10 秒等待）";
   } else {
     card.classList.remove("on", "paused");
     mascot.innerHTML = mascotImg(88, "off");
@@ -579,6 +589,18 @@ function fmtTs(t) {
   } catch (e) { return "--:--:--"; }
 }
 
+/* ═══ v4.5.0 包名缩写（修「android」歧义）═══
+ * 末段是通用词（android/app/main/ui/...）时取两段——否则 me.ele.android
+ * （饿了么）等应用在日志/战绩里全部显示为「android」，误导排查方向。 */
+const GENERIC_TAILS = new Set(["android", "app", "main", "ui", "mobile", "phone", "client", "core", "sdk", "online", "lite"]);
+function shortPkgName(pkg) {
+  if (!pkg || !String(pkg).includes(".")) return String(pkg || "");
+  const parts = String(pkg).split(".");
+  const last = parts[parts.length - 1];
+  if (GENERIC_TAILS.has(last) && parts.length >= 3) return parts[parts.length - 2] + "." + last;
+  return last;
+}
+
 function engineProfile() {
   const st = getRealState();
   const s = st.stats || {};
@@ -588,7 +610,7 @@ function engineProfile() {
   lines.push("- 版本：v" + appVer() + " · 环境：" + (HAS_BRIDGE ? "Android APK" : "浏览器预览") + " · 手动上传");
   lines.push("- 真实引擎：秒跳 " + (s.auto || 0) + " · 弹窗关闭 " + (s.popup || 0) + " · 返回键 " + (s.back || 0)
     + " · 反馈面板收起 " + (s.feedback || 0) + " · 手动样本 " + (s.manual || 0) + " · 学习规则 " + rules + " 条（" + pkgs + " 个应用）");
-  // Top5 应用战绩（秒跳/弹窗/手动）
+  // Top5 应用战绩（秒跳/弹窗/手动）——v4.5.0：shortPkgName 修「android」歧义
   try {
     const byApp = s.byApp || {};
     const top = Object.keys(byApp).map(k => {
@@ -597,8 +619,7 @@ function engineProfile() {
     }).filter(x => x.score > 0).sort((x, y) => y.score - x.score).slice(0, 5);
     if (top.length) {
       lines.push("- 应用战绩 Top5：" + top.map(x => {
-        const short = x.k.includes(".") ? x.k.slice(x.k.lastIndexOf(".") + 1) : x.k;
-        return short + "(" + (x.a.auto || 0) + "/" + (x.a.popup || 0) + "/" + (x.a.manual || 0) + ")";
+        return shortPkgName(x.k) + "(" + (x.a.auto || 0) + "/" + (x.a.popup || 0) + "/" + (x.a.manual || 0) + ")";
       }).join(" · "));
     }
   } catch (e) {}

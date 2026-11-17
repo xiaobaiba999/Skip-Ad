@@ -532,12 +532,6 @@ public class AdSkipService extends AccessibilityService {
         return a.optInt("auto", 0) + a.optInt("popup", 0) + a.optInt("manual", 0);
     }
 
-    static String shortPkgSt(String pkg) {
-        if (pkg == null) return "";
-        int i = pkg.lastIndexOf('.');
-        return i >= 0 && pkg.length() - i - 1 > 1 ? pkg.substring(i + 1) : pkg;
-    }
-
     /* ═══ v4.1.0 App 内主开关（暂停/恢复，免去看系统设置 10 秒警告）═══
      * 暂停期间服务保持存活（保活四件套不受影响），但绝不扫描、绝不
      * 点击、绝不学习、绝不突发检测；恢复后立即无缝衔接。 */
@@ -550,12 +544,44 @@ public class AdSkipService extends AccessibilityService {
             s.appendLog(on ? "▶ 防护已恢复（App 内一键）"
                     : "⏸ 防护已暂停（App 内一键）：服务保持存活，绝不扫描绝不点击");
         }
+        refreshKeepNotification(ctx); // v4.5.0：通知栏文案/按钮随开关联动
     }
 
     public static boolean masterState(Context ctx) {
         AdSkipService s = instance;
         if (s != null) return masterOn; // 服务活着：内存态即时
         return ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_MASTER, true);
+    }
+
+    /* ═══ v4.5.0 状态竞态根治（「开启弹窗广告屏蔽之后又被 App 自动关闭」）═══
+     * 根因：UI 开关走 kvSet("state") 只写 SharedPreferences，而服务持有
+     * stateInMemory 旧副本——任何战绩/日志更新触发 flushNow() 都会用旧内存
+     * 态【整体覆盖】UI 写入（15s 延迟落盘 = 开关几秒到几分钟内「自动弹回」）。
+     * 对策：开关类设置一律走本方法——服务活着就改【服务内存本体】（唯一
+     * 数据源，落盘自然带新值）；服务死了直接读写 prefs。UI 侧 kvSet 绝不
+     * 再碰 state 开关字段。 */
+    public static void setStateBool(Context ctx, String key, boolean value) {
+        if (!"popupShield".equals(key) && !"learning".equals(key)) return; // 白名单
+        AdSkipService s = instance;
+        if (s != null) {
+            synchronized (s.lock) {
+                try {
+                    JSONObject st = s.loadState();
+                    st.put(key, value);
+                    s.saveState(st);
+                } catch (Throwable ignored) {
+                }
+            }
+            return;
+        }
+        try {
+            SharedPreferences sp = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+            String raw = sp.getString(KEY_STATE, null);
+            JSONObject st = raw != null ? new JSONObject(raw) : new JSONObject();
+            st.put(key, value);
+            sp.edit().putString(KEY_STATE, st.toString()).apply();
+        } catch (Throwable ignored) {
+        }
     }
 
     /* ───────── v4.3.0 应用白名单管理（页面 Bridge / 服务门共用，静态） ───────── */
@@ -665,7 +691,7 @@ public class AdSkipService extends AccessibilityService {
         // v4.3.0：应用白名单快照载入
         reloadWhitelist(this);
         int wlN = whitelistSet.size();
-        appendLog("服务已启动 · v4.4.0 露头就秒·门控到期即点（规则 "
+        appendLog("服务已启动 · v4.5.0 乱点根治·原生文本探针·通知栏一键开关（规则 "
                 + RuleEngine.stats() + "）"
                 + (purged > 0 ? "｜已清理 " + purged + " 条误学窗口指纹" : "")
                 + (wlN > 0 ? "｜白名单 " + wlN + " 个应用零打扰" : ""));
@@ -1111,6 +1137,17 @@ public class AdSkipService extends AccessibilityService {
                 nudgeAt.remove(pkg);      // v4.3.0：新窗重置补扫节流
                 rescueAt.remove(pkg);     // v4.4.0：新窗重置救回节流（旧窗时间戳不得拖慢新窗首救）
                 if (isDialogClass(cls) && !isOemUtilityPkg(pkg)) {
+                    /* ═══ v4.5.0 用户打开的弹窗/抽屉守护（乱点根治第二道闸）═══
+                     * issue#42-44 实锤：用户点开右侧抽屉（BaseCustomDialogFragment
+                     * 菜单），4s 让路期一过引擎就点菜单里的「跳过」列表项。
+                     * 用户 2.5s 内真实点击后弹出的 Dialog = 用户主动打开
+                     * （菜单/分享面板/设置弹窗）→ 30s 引擎零动作（userYield
+                     * 的 userOpened 路径）。与形状门（isMenuListRow）双保险。 */
+                    long dAct = userActAtGet(pkg);
+                    if (dAct > 0 && now - dAct < USER_OPEN_WIN_MS) {
+                        userOpenCls.put(pkg, cls);
+                        userOpenUntil.put(pkg, now + USER_OPEN_GUARD_MS);
+                    }
                     popupUntil.put(pkg, now + POPUP_WINDOW_MS);
                 }
                 if (AdDecisionCore.isAdActivityClass(cls)) {
@@ -1120,6 +1157,12 @@ public class AdSkipService extends AccessibilityService {
                     winClsLearned.put(pkg, Boolean.TRUE);
                 }
                 bumpScanChain(pkg);
+                /* ═══ v4.5.0 露头就秒·内联首扫 ═══
+                 * 0ms 档从「postDelayed 排队等下一轮消息循环」改为窗口事件
+                 * 现场同步出手（省一跳 handler 约 5~16ms，真·露头就秒）。
+                 * 链上 0ms 档随后仍会扫（幂等：点击冷却/复验门自然挡住重复
+                 * 出手），窗口已切则代际护栏自动作废，零副作用。 */
+                tryScan(pkg, winAt(pkg), 0);
                 break;
             }
             case AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED: {
@@ -1482,6 +1525,36 @@ public class AdSkipService extends AccessibilityService {
 
     /* ───────── 扫描与决策执行（逻辑全部在 AdDecisionCore） ───────── */
 
+    /** v4.5.0 原生文本探针：findAccessibilityNodeInfosByText 系统原生子树搜索
+     *  （大小写不敏感包含匹配，无节点预算）——DFS 预算耗尽漏掉深树按钮的
+     *  兜底通道。复用 RuleEngine.matchText 全套规则 + 形状门（含菜单列表
+     *  否决），与 DFS 路径零行为差异，仅搜索方式更快更深。 */
+    private Hit nativeTextProbe(AccessibilityNodeInfo root, Ctx ctx) {
+        try {
+            Hit best = null;
+            for (int probe = 0; probe < 2; probe++) {
+                List<AccessibilityNodeInfo> found = root.findAccessibilityNodeInfosByText(
+                        probe == 0 ? "跳过" : "跳過");
+                if (found == null || found.isEmpty()) continue;
+                for (int i = 0; i < found.size() && i < 10; i++) {
+                    AccessibilityNodeInfo n = found.get(i);
+                    if (n == null) continue;
+                    String text = cs(n.getText());
+                    if (text.length() == 0) text = cs(n.getContentDescription());
+                    if (text.length() == 0) continue;
+                    NodeAdapter ad = new NodeAdapter(n);
+                    int[] b = ad.bounds();
+                    if (b == null || !ad.visible()) continue;
+                    Hit h = RuleEngine.matchText(text, b, ad, ctx);
+                    if (h != null) return h; // 命中即用（matchText 已含形状门）
+                }
+            }
+            return best;
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
     private void tryScan(String pkg, long winStart, long atMs) {
         if (instance == null) return;
         // v4.1.0：主开关暂停 / 相机窗 —— 扫描链里排着的任务一律作废
@@ -1583,6 +1656,16 @@ public class AdSkipService extends AccessibilityService {
                     java.util.ArrayList<Hit> hits = splashLive
                             ? RuleEngine.matchAll(new NodeAdapter(roots[ri]), ctx, 4)
                             : new java.util.ArrayList<Hit>();
+                    /* ═══ v4.5.0 原生文本探针（提速+触发率，李跳跳同款核心路径）═══
+                     * findAccessibilityNodeInfosByText 是系统原生子树搜索，无
+                     * 节点预算限制——H5/WebView 深树（500+ 节点）里 600 预算的
+                     * DFS 常在按钮前耗尽预算 = 「有时候触发不了」残余元凶。
+                     * DFS 未命中时用原生搜索兜底（匹配含「跳过」的全部文本，
+                     * 复用 matchText 全套规则+形状门，零新乱点面）。 */
+                    if (hits.isEmpty()) {
+                        Hit probeHit = nativeTextProbe(roots[ri], ctx);
+                        if (probeHit != null) hits.add(probeHit);
+                    }
                     boolean needSub = hits.isEmpty() || clickAttempts >= hits.size();
                     if (needSub) {
                         try {
@@ -1777,6 +1860,10 @@ public class AdSkipService extends AccessibilityService {
             // ① 广告已关铁证：复验直接通过，停用换候选重试
             clickTries.put(pkg, 0);
             winClsLearned.remove(pkg);
+            // v4.5.0：反馈面板在场 = 广告已关，本窗固定扫描档全部取消
+            //（issue#43-44 实锤：面板收起后 12s 开屏窗仍活着，扫描链继续
+            // 在后续界面找「跳过」文案点击 = 广告关了还乱点第二下）
+            chainKilledAt.put(pkg, winAt(pkg));
             Long lastLog = feedbackLogAt.get(pkg);
             if (lastLog == null || now - lastLog > 8000) {
                 feedbackLogAt.put(pkg, now);
@@ -2633,13 +2720,27 @@ public class AdSkipService extends AccessibilityService {
             it.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
             PendingIntent pi = PendingIntent.getActivity(this, 0, it,
                     PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-            b.setContentTitle("秒跳引擎守护中")
-                    .setContentText("保持开启直到你手动关闭 · 点击进入开屏卫士")
+            /* ═══ v4.5.0 通知栏快捷开关（系统开关与 App 开关彻底解耦）═══
+             * 用户核心诉求：系统无障碍【一直开着永不碰】，卫士的开关由
+             * 通知栏/App 内一键控制——暂停即全停（零扫描零点击），恢复
+             * 即全开，全程绝不去系统设置看 10 秒强制警告。
+             * 显式 Intent + exported=false 接收器：只有本应用通知能触发。 */
+            Intent tg = new Intent(this, MasterToggleReceiver.class);
+            tg.setAction(MasterToggleReceiver.ACTION_TOGGLE_MASTER);
+            PendingIntent tgPi = PendingIntent.getBroadcast(this, 5, tg,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+            boolean on = masterOn;
+            Notification.Action act = new Notification.Action.Builder(
+                    null, on ? "暂停防护（再点恢复）" : "恢复防护", tgPi).build();
+            b.setContentTitle(on ? "秒跳引擎守护中" : "秒跳引擎已暂停")
+                    .setContentText(on ? "广告露头就秒跳 · 点「暂停」立即停手（无需关系统设置）"
+                            : "零扫描零点击 · 点「恢复」立即守护（无需去系统设置）")
                     .setSmallIcon(R.drawable.ic_stat)
                     .setContentIntent(pi)
                     .setOngoing(true)
                     .setShowWhen(false)
-                    .setColor(0xFF10B981);
+                    .setColor(0xFF10B981)
+                    .addAction(act);
             Notification notif = b.build();
             if (Build.VERSION.SDK_INT >= 34) {
                 startForeground(NOTIF_KEEP, notif, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
@@ -2647,6 +2748,18 @@ public class AdSkipService extends AccessibilityService {
                 startForeground(NOTIF_KEEP, notif);
             }
         } catch (Throwable ignored) {
+        }
+    }
+
+    /** v4.5.0：主开关翻转后刷新常驻通知（标题/文案/按钮随 masterOn 联动）。
+     *  静态入口：MasterToggleReceiver（进程可能只有僵尸实例）也能调用。 */
+    public static void refreshKeepNotification(Context ctx) {
+        AdSkipService s = instance;
+        if (s != null) {
+            try {
+                s.startKeepAliveForeground();
+            } catch (Throwable ignored) {
+            }
         }
     }
 
@@ -2790,8 +2903,26 @@ public class AdSkipService extends AccessibilityService {
      * 四件套负责（KeepAliveReceiver），退出 App/清理后台重进无需重新开启。 */
 
     private String shortPkg(String pkg) {
+        return shortPkgSt(pkg);
+    }
+
+    /** v4.5.0：包名缩写（修「android」歧义——issue#42-44 战绩榜 android(49/0/10)
+     *  实为 me.ele.android 等以 .android 结尾的第三方应用，纯展示歧义导致
+     *  误判「引擎在系统包乱点」。末段是通用词（android/app/main/ui/mobile/
+     *  phone/client/core/sdk/online/lite）时回退取两段）。 */
+    static String shortPkgSt(String pkg) {
         if (pkg == null) return "";
         int i = pkg.lastIndexOf('.');
-        return i >= 0 && pkg.length() - i - 1 > 1 ? pkg.substring(i + 1) : pkg;
+        if (i < 0 || pkg.length() - i - 1 <= 1) return pkg;
+        String last = pkg.substring(i + 1);
+        if (GENERIC_TAILS.contains(last)) {
+            int j = pkg.lastIndexOf('.', i - 1);
+            if (j >= 0 && i - j - 1 > 1) return pkg.substring(j + 1);
+        }
+        return last;
     }
+
+    private static final java.util.HashSet<String> GENERIC_TAILS = new java.util.HashSet<>(
+            java.util.Arrays.asList("android", "app", "main", "ui", "mobile",
+                    "phone", "client", "core", "sdk", "online", "lite"));
 }

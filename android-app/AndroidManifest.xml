@@ -58,6 +58,14 @@
                 android:value="AdSkip accessibility service: keep enabled until user manually disables" />
         </service>
 
+        <!-- v4.5.0 通知栏快捷开关：暂停/恢复防护一键翻转（显式 Intent 投递，
+             exported=false + 无 intent-filter = 第三方应用无法伪造触发）。
+             系统无障碍开关永不触碰——卫士开关由 App 内/通知栏一键控制。 -->
+        <receiver
+            android:name=".MasterToggleReceiver"
+            android:enabled="true"
+            android:exported="false" />
+
         <!-- v3.5.0 保活：开机/应用更新后检测服务断开 → 高优先级通知一键恢复
              （Android 会在覆盖安装/系统更新后关闭无障碍服务，系统层无法绕过，
                此接收器保证用户第一时间收到提醒，点按直达恢复流程） -->

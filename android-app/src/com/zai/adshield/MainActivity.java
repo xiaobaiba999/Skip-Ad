@@ -38,6 +38,11 @@ import org.json.JSONObject;
  * · v3.14.0：ADB 自愈授权（WRITE_SECURE_SETTINGS）整体移除——开启服务
  *   一步直达系统开关，开启一次后保活四件套持续守护，退出 App/清理后台
  *   重进无需重新开启
+ * · v4.5.0：系统开关与 App 开关彻底解耦 + 安全加固——系统无障碍开关
+ *   永不触碰（零 disableSelf），卫士开关由 App 内/通知栏一键控制（暂停
+ *   零扫描、恢复零延迟，绝不去系统设置看 10 秒警告）；WebView URL
+ *   白名单（JS 桥零远程暴露）；反馈通道频控+长度上限；开关设置走
+ *   setStateBool 专用通道（状态竞态根治）；onResume 自动拉活深挖重绑。
  */
 public class MainActivity extends Activity {
 
@@ -51,8 +56,21 @@ public class MainActivity extends Activity {
         WebSettings ws = webView.getSettings();
         ws.setJavaScriptEnabled(true);
         ws.setDomStorageEnabled(true);
+        /* ═══ v4.5.0 WebView 安全加固（攻击面收缩）═══
+         * 本地离线页不需要：跨文件/跨域访问、自动开窗、地理定位、表单保存。
+         * 全部显式关闭（默认值随 ROM 版本漂移，显式声明才可靠）。 */
+        try {
+            ws.setAllowFileAccessFromFileURLs(false);
+            ws.setAllowUniversalAccessFromFileURLs(false);
+            ws.setJavaScriptCanOpenWindowsAutomatically(false);
+            ws.setGeolocationEnabled(false);
+            ws.setSaveFormData(false);
+            ws.setSupportZoom(false);
+            WebView.setWebContentsDebuggingEnabled(false); // 绝不开放远程调试
+        } catch (Throwable ignored) {
+        }
         webView.addJavascriptInterface(new Bridge(this), "AndroidApp");
-        webView.setWebViewClient(new WebViewClient());
+        webView.setWebViewClient(new HardenedWebViewClient());
         webView.loadUrl("file:///android_asset/www/index.html");
 
         // v3.5.0 保活：通知权限（13+）——保活常驻通知与恢复提醒必需
@@ -113,6 +131,35 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         if (webView != null) webView.onResume();
+        /* v4.5.0 打开 App 即自动拉活（用户核心诉求：打开就是打开了）
+         * 但凡系统设置里还登记着服务，打开 App 的瞬间就后台深挖重绑
+         * （v4.4.0 的 6s 深度拉活）——用户点开卫士那一刻防护就在回来的
+         * 路上，无需任何手动操作，更不去系统设置。 */
+        try {
+            if (!AdSkipService.isAlive() && a11yEnabledInSettings()) {
+                new Thread(() -> {
+                    try {
+                        Bridge.deepReviveOnce(this);
+                    } catch (Throwable ignored) {
+                    }
+                }, "auto-revive").start();
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** v4.5.0：系统设置是否仍登记本服务（onResume 自动拉活判定用） */
+    private boolean a11yEnabledInSettings() {
+        try {
+            String s = Settings.Secure.getString(
+                    getContentResolver(), Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
+            if (s == null) return false;
+            android.content.ComponentName cn =
+                    new android.content.ComponentName(this, AdSkipService.class);
+            return s.contains(cn.flattenToString()) || s.contains(cn.flattenToShortString());
+        } catch (Throwable t) {
+            return false;
+        }
     }
 
     @Override
@@ -129,7 +176,7 @@ public class MainActivity extends Activity {
             PackageInfo pi = ctx.getPackageManager().getPackageInfo(ctx.getPackageName(), 0);
             return pi.versionName;
         } catch (Exception e) {
-            return "3.8.1";
+            return "4.5.0";
         }
     }
 
@@ -262,10 +309,22 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public void kvSet(String key, String value) {
+            // v4.5.0 安全：value 长度上限（防 prefs 膨胀/DoS；正常页面状态远小于此）
+            if (value != null && value.length() > 262144) return;
             SharedPreferences.Editor e = a.getSharedPreferences("adshield", Context.MODE_PRIVATE).edit();
             if (value == null) e.remove(key);
             else e.putString(key, value);
             e.apply();
+        }
+
+        /* ═══ v4.5.0 开关类设置专用通道（状态竞态根治）═══
+         * 「开启弹窗广告屏蔽之后又被 App 自动关闭」根因：UI 的 kvSet("state")
+         * 只写 prefs，服务的 stateInMemory 旧副本在战绩更新落盘时整体覆盖
+         * 回去（开关自动弹回）。开关一律走这里——服务活着就改服务内存本体
+         * （唯一数据源），UI 绝不再直接写 state 开关字段。 */
+        @JavascriptInterface
+        public void setStateBool(String key, boolean value) {
+            AdSkipService.setStateBool(a, key, value);
         }
 
         @JavascriptInterface
@@ -279,7 +338,7 @@ public class MainActivity extends Activity {
                 PackageInfo pi = a.getPackageManager().getPackageInfo(a.getPackageName(), 0);
                 return pi.versionCode;
             } catch (Exception e) {
-                return 30801;
+                return 40500;
             }
         }
 
@@ -529,10 +588,57 @@ public class MainActivity extends Activity {
 
         /* ───── 问题反馈 / 引擎日志上传（内置令牌，无任何用户配置） ───── */
 
-        /** 创建反馈 Issue（引擎日志上传共用此通道）；令牌内置混淆存储（Net.builtInToken） */
+        /** 创建反馈 Issue（引擎日志上传共用此通道）；令牌内置混淆存储（Net.builtInToken）。
+         *  v4.5.0 安全：标题/正文长度上限 + 15s 频控（防被滥刷 issue 消耗
+         *  配额；WebView URL 劫持防护之外的第二道闸） */
         @JavascriptInterface
         public String netPostIssue(String title, String body) {
-            return Net.postIssue(title, body);
+            try {
+                long now = System.currentTimeMillis();
+                if (now - lastPostIssueAt < 15000) {
+                    return "{\"ok\":false,\"error\":\"提交太频繁，请稍后再试\"}";
+                }
+                lastPostIssueAt = now;
+                String t = title == null ? "" : (title.length() > 128 ? title.substring(0, 128) : title);
+                String b = body == null ? "" : (body.length() > 24000 ? body.substring(0, 24000) : body);
+                return Net.postIssue(t, b);
+            } catch (Throwable t) {
+                return "{\"ok\":false,\"error\":\"内部错误\"}";
+            }
+        }
+
+        private static volatile long lastPostIssueAt = 0L;
+
+        /** v4.5.0：后台深挖拉活（MainActivity.onResume 自动拉活用；
+         *  与页面 tryAutoReviveDeep 同一逻辑，静默版——不打扰 UI） */
+        static String deepReviveOnce(Context ctx) {
+            try {
+                if (AdSkipService.isAlive()) {
+                    if (!AdSkipService.masterState(ctx)) AdSkipService.setMaster(ctx, true);
+                    return "{\"ok\":true,\"running\":true}";
+                }
+                long deadline = System.currentTimeMillis() + 6000;
+                while (System.currentTimeMillis() < deadline && !AdSkipService.isAlive()) {
+                    try {
+                        android.view.accessibility.AccessibilityManager am =
+                                (android.view.accessibility.AccessibilityManager)
+                                        ctx.getSystemService(Context.ACCESSIBILITY_SERVICE);
+                        if (am != null) {
+                            am.getEnabledAccessibilityServiceList(
+                                    android.accessibilityservice.AccessibilityServiceInfo.FEEDBACK_ALL_MASK);
+                        }
+                    } catch (Throwable ignored) {
+                    }
+                    Thread.sleep(500);
+                }
+                if (AdSkipService.isAlive()) {
+                    if (!AdSkipService.masterState(ctx)) AdSkipService.setMaster(ctx, true);
+                    return "{\"ok\":true,\"revived\":true}";
+                }
+                return "{\"ok\":false,\"reason\":\"need_toggle\"}";
+            } catch (Throwable t) {
+                return "{\"ok\":false,\"reason\":\"error\"}";
+            }
         }
 
         /** 查询 GitHub 最新 Release（公共仓库匿名可读） */
@@ -590,14 +696,53 @@ public class MainActivity extends Activity {
             return r;
         }
 
-        /** 用系统浏览器打开链接（仅开源仓库等只读入口；更新下载不走这里） */
+        /** 用系统浏览器打开链接（仅开源仓库等只读入口；更新下载不走这里）。
+         *  v4.5.0 安全：仅允许 http/https（拒绝 file/intent/javascript 等
+         *  危险 scheme 经出桥透传），且仅限本仓库/GitHub 域名。 */
         @JavascriptInterface
         public void openUrl(String url) {
             try {
-                Intent it = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                if (url == null) return;
+                String u = url.trim();
+                if (!u.startsWith("https://") && !u.startsWith("http://")) return;
+                String low = u.toLowerCase();
+                if (!low.contains("github.com") && !low.contains("xiaobaiga999")) return;
+                Intent it = new Intent(Intent.ACTION_VIEW, Uri.parse(u));
                 it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 a.startActivity(it);
             } catch (Exception ignored) {
+            }
+        }
+    }
+
+    /* ═══ v4.5.0 WebView 硬化：URL 劫持防护（攻击面收缩核心）═══
+     * 本地离线页装载了带 GitHub 令牌能力的 JS 桥——若页面被诱导跳转到
+     * 远程页面（更新横幅里的链接/订阅预览/恶意注入），远程页面将直接
+     * 拿到 AndroidApp 桥（netPostIssue 内置令牌、kvSet 任意写）。
+     * 对策：shouldOverrideUrlLoading 白名单制——只允许本应用 asset 目录
+     * 内导航；http(s) 链接一律转交系统浏览器（无桥）；其余 scheme 全部
+     * 拦截。返回 true = 本应用接管，WebView 绝不加载。 */
+    private static final class HardenedWebViewClient extends WebViewClient {
+        @Override
+        public boolean shouldOverrideUrlLoading(WebView view, String url) {
+            try {
+                if (url == null) return true;
+                String u = url.trim();
+                if (u.startsWith("file:///android_asset/")) return false; // 本地页面放行
+                if (u.startsWith("about:")) return false;                  // 页内占位
+                if (u.startsWith("https://") || u.startsWith("http://")) {
+                    try {
+                        // 外部链接 → 系统浏览器打开（无任何 JS 桥暴露）
+                        Intent it = new Intent(Intent.ACTION_VIEW, Uri.parse(u));
+                        it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        view.getContext().startActivity(it);
+                    } catch (Exception ignored) {
+                    }
+                }
+                // file:// 其他路径 / intent:// / javascript: / 自定义 scheme：全部拦截
+                return true;
+            } catch (Throwable t) {
+                return true;
             }
         }
     }

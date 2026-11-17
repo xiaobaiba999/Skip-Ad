@@ -52,3 +52,29 @@ className 指纹）对此**零信号**，引擎从不出手（R15 复现：img_l
 
 **能耗（典型日：45 次启动 + 120 条后台事件）**
 - 日均：R1 0.124 → R18 0.030 mWh（-76%，预拦截占比 90%）
+
+---
+
+## 第 19 轮（v4.5.0 · 2026-11-17）：乱点根治 + 系统开关解耦 + 原生探针提速 + 安全加固
+
+**触发**：issue#42/#43/#44（v4.4.0 日志：`android(49/0/10)` 战绩歧义 + 抽屉菜单被点）+ 用户五项要求
+（最新日志优化 / 弹窗屏蔽开启后被自动关闭 / 恢复防护仍跳系统 10 秒 / 乱点根治参考李跳跳 / 提速 + 安全 + 全套测试）。
+
+**测试矩阵（本轮全绿 279 项）**
+| 套件 | 断言 | 结果 | 覆盖 |
+|---|---|---|---|
+| 单元 V450Test（JVM） | 27 | ✅ | issue#43/44 抽屉原场景复现（rule/walk/decide 三路零动作）· 形状门矩阵 · isMenuListRow 单元 · 主路径回归 · 探针路径 |
+| 回归 RuleEngineTest | 60 | ✅ | v3.10.0 以来 28 组规则用例 |
+| 回归 DecisionCoreTest | 151 | ✅ | 决策阶梯 L1-L6 全量 |
+| 白盒（APK 结构） | 17 | ✅ | 零 disableSelf · MasterToggleReceiver exported=false · WebView 硬化 · 探针/形状门/频控在场（字节级） |
+| 黑盒（bun 模拟桥） | 14 | ✅ | setStateBool 竞态修复 · shortPkgName 歧义 · 产物内容断言 |
+| 整体（签名/资产） | 10 | ✅ | v1+v2 签名 + 指纹一致（覆盖升级）· assets v4.5.0 · 263KB · VC 40500 |
+
+**修复清单**
+- MISC-LICK-DRAWER：抽屉菜单乱点（三重防线：形状门 + isMenuListRow + 用户 Dialog 守护）
+- TOGGLE-RACE：弹窗屏蔽开关自动弹回（服务内存态与 prefs 写入竞态——setStateBool 专用通道）
+- TEN-SECOND-DECOUPLE：系统开关与 App 开关解耦（通知栏一键 + 零 disableSelf + 打开即拉活）
+- SPEED-PROBE：原生文本探针（无预算深树搜索）+ 内联首扫（省一跳 handler）
+- FEEDBACK-DOUBLE-CLICK：反馈面板后杀链（广告关了不点第二下）
+- LOG-AMBIGUITY：`android` 包名歧义（me.ele.android → ele.android，双端）
+- SEC-HARDENING：WebView URL 白名单 · 下载源白名单 · 订阅强制 https · 反馈频控 · kvSet 上限

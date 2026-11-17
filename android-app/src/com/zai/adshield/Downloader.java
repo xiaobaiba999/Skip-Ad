@@ -38,6 +38,24 @@ public final class Downloader {
     public static String start(Context ctx, String url, String fileName) {
         try {
             if (url == null || url.length() < 8) return err("下载链接无效");
+            /* ═══ v4.5.0 安全：下载源白名单 + 文件名净化 ═══
+             * startUpdateDownload 是 JS 桥暴露面——恶意页面（若能突破 WebView
+             * URL 白名单）可把系统下载器当任意文件下载器。仅允许 https 且
+             * 域名限本仓库发布通道（github.com / githubusercontent.com /
+             * ghfast.top 镜像）；文件名仅 [A-Za-z0-9._-]（防路径穿越）。 */
+            String u = url.trim();
+            if (!u.startsWith("https://")) return err("下载链接必须为 https");
+            String low = u.toLowerCase();
+            boolean hostOk = low.contains("github.com")
+                    || low.contains("githubusercontent.com")
+                    || low.contains("ghfast.top");
+            if (!hostOk) return err("下载链接不在允许的发布通道内");
+            String fn = fileName == null ? "adshield.apk"
+                    : fileName.replaceAll("[^A-Za-z0-9._-]", "_");
+            if (fn.length() > 64) fn = fn.substring(fn.length() - 64);
+            if (!fn.toLowerCase().endsWith(".apk")) fn = fn + ".apk";
+            url = u;
+            fileName = fn;
             // 已在下载同一文件 → 幂等返回
             long oldId = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong(KEY_DL_ID, -1);
             String oldUrl = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_DL_URL, "");
