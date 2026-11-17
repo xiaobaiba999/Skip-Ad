@@ -221,6 +221,11 @@ public class AdSkipService extends AccessibilityService {
     private static final String PREFS = "adshield";
     private static final String KEY_STATE = "state";
     private static final String KEY_KEEPON = "keepOn";
+    /* v4.1.0：App 内主开关（免去看系统设置 10 秒警告的暂停/恢复）。
+     * 服务保持存活（保活四件套不受影响），但暂停期间绝不扫描、绝不
+     * 点击、绝不学习、绝不突发检测——只维持窗口/前台追踪，恢复即无缝衔接。 */
+    private static final String KEY_MASTER = "masterOn";
+    static volatile boolean masterOn = true;
 
     private static final int NOTIF_KEEP = 1;   // 前台保活常驻通知
     public static final int NOTIF_ALERT = 2;   // 服务断开提醒（KeepAliveReceiver 发，服务连上即撤）
@@ -316,6 +321,26 @@ public class AdSkipService extends AccessibilityService {
         return ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_STATE, null);
     }
 
+    /* ═══ v4.1.0 App 内主开关（暂停/恢复，免去看系统设置 10 秒警告）═══
+     * 暂停期间服务保持存活（保活四件套不受影响），但绝不扫描、绝不
+     * 点击、绝不学习、绝不突发检测；恢复后立即无缝衔接。 */
+    public static void setMaster(Context ctx, boolean on) {
+        masterOn = on;
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit().putBoolean(KEY_MASTER, on).apply();
+        AdSkipService s = instance;
+        if (s != null) {
+            s.appendLog(on ? "▶ 防护已恢复（App 内一键）"
+                    : "⏸ 防护已暂停（App 内一键）：服务保持存活，绝不扫描绝不点击");
+        }
+    }
+
+    public static boolean masterState(Context ctx) {
+        AdSkipService s = instance;
+        if (s != null) return masterOn; // 服务活着：内存态即时
+        return ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_MASTER, true);
+    }
+
     @Override
     protected void onServiceConnected() {
         super.onServiceConnected();
@@ -331,7 +356,7 @@ public class AdSkipService extends AccessibilityService {
         // v3.6.0：清理 v3.5.0 误学毒指纹（MainActivity/FrameLayout/Dialog 被
         // 学成「广告窗指纹」——用户二次进入被连按返回键退出的根因）
         int purged = purgePoisonFingerprints();
-        appendLog("服务已启动 · v4.0.0 GKD 订阅融合（规则 "
+        appendLog("服务已启动 · v4.1.0 稳定优化（规则 "
                 + RuleEngine.stats() + "）"
                 + (purged > 0 ? "｜已清理 " + purged + " 条误学窗口指纹" : ""));
         // v3.9.0：清理毒位置规则（issue#12 实锤：桌面 com.miui.home 学出位置
@@ -342,10 +367,12 @@ public class AdSkipService extends AccessibilityService {
         // 应用详情页被学出位置 (91%,9%)——下次进详情页 500ms 直点=在权限管理页乱点）
         int purgedOem = purgeOemPosRules();
         if (purgedOem > 0) appendLog("已清理 " + purgedOem + " 条系统工具/短信包误学规则（issue#16 整治，安全中心/短信里的手动操作绝不当「跳过键」）");
+        // v4.1.0：App 内主开关状态载入（暂停后重启服务/手机仍保持暂停）
+        masterOn = prefs().getBoolean(KEY_MASTER, true);
         // v4.0.0 GKD 订阅融合：内置订阅 + 远程订阅（用户导入的 GKD 社区规则）
         SubscriptionManager.ensureLoaded(this);
         Subscription bi = SubscriptionManager.builtinSub;
-        appendLog("🧩 订阅引擎就绪（v4.0.0）：内置订阅 "
+        appendLog("🧩 订阅引擎就绪：内置订阅 "
                 + (bi == null ? 0 : bi.apps.size()) + " 款应用/"
                 + (bi == null ? 0 : bi.ruleCount()) + " 条 GKD 规则"
                 + (SubscriptionManager.remoteSub != null
@@ -607,6 +634,26 @@ public class AdSkipService extends AccessibilityService {
 
         long now = System.currentTimeMillis();
 
+        /* ═══ v4.1.0 App 内主开关（暂停）：只廉价维持窗口/前台追踪，
+         * 绝不扫描、绝不点击、绝不学习、绝不突发检测 ═══ */
+        if (!masterOn) {
+            if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+                String mc = cs(event.getClassName());
+                if (!isDialogClass(mc)) { // Dialog/悬浮窗不改变前台应用
+                    boolean entering = !pkg.equals(lastFgPkg);
+                    lastFgPkg = pkg;
+                    windowAt.put(pkg, now);
+                    winClass.put(pkg, mc);
+                    if (entering) rootWinCls.put(pkg, mc);
+                }
+            }
+            return;
+        }
+
+        // v4.1.0 相机/拍摄窗硬黑名单（issue#30：微信点「拍摄」进相机即被点「×」强退）
+        if (AdDecisionCore.isCameraPkg(pkg) || AdDecisionCore.isCameraClass(cs(event.getClassName()))
+                || AdDecisionCore.isCameraClass(winClassOf(pkg))) return;
+
         if (isSystemNoise(pkg)) return;
 
         // v3.13.0 息屏休眠门（夜间功耗治理 + 息屏绝不出手）：息屏 = 用户看不见
@@ -630,6 +677,20 @@ public class AdSkipService extends AccessibilityService {
         switch (event.getEventType()) {
             case AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED: {
                 String cls = cs(event.getClassName());
+                /* ═══ v4.1.0 前台门（灵动岛/悬浮窗根治，issue#30）═══
+                 * 非前台包的窗口事件（灵动岛展开/悬浮窗/后台服务弹层）：
+                 * 绝不更新前台追踪（灵岛窗口曾被当「新应用进入前台」）、
+                 * 绝不重置开屏窗计时、绝不启动开屏扫描链（灵岛小窗控件
+                 * 被当「角落跳过键」= 乱点元凶）。只允许走严格门控的弹窗
+                 * 识别路径（Dialog 形态 + 角标/营销话术双信号）。 */
+                if (!pkg.equals(lastFgPkg)
+                        && (isDialogClass(cls) || isSmallOverlayWindow(pkg) || !isActiveWindowOf(pkg))) {
+                    if (isDialogClass(cls) && !isOemUtilityPkg(pkg)) {
+                        popupUntil.put(pkg, now + POPUP_WINDOW_MS);
+                        nudgePopupScan(pkg, now);
+                    }
+                    return;
+                }
                 // v3.6.0 根窗口追踪：新进入前台的应用，其首个窗口 = 入口窗
                 //（冷启动开屏 / 从桌面·其他应用回前台的首窗）——入口窗上
                 // 按返回键 = 退出应用，安全门据此禁一切返回键兜底
@@ -667,6 +728,13 @@ public class AdSkipService extends AccessibilityService {
                 break;
             }
             case AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED: {
+                // v4.1.0 前台门：非前台包的内容变化（灵岛动画/悬浮窗刷新）
+                // 绝不扫描、绝不突发检测——灵岛高频内容变化曾被当「内容
+                // 突发→覆盖层弹窗」开启弹窗识别窗 → 乱点灵岛控件
+                if (!pkg.equals(lastFgPkg)) {
+                    if (now < popupUntilGet(pkg)) nudgePopupScan(pkg, now);
+                    break;
+                }
                 if (now - winAt(pkg) < WINDOW_MS) {
                     nudgeScan(pkg, now);
                     break;
@@ -718,7 +786,46 @@ public class AdSkipService extends AccessibilityService {
         }
     }
 
-    private static boolean isDialogClass(String cls) {
+    /** v4.1.0：焦点窗口是否属于 pkg（非 Dialog 的真实前台 Activity 切换）。
+     *  查询失败按 true 放行（绝不错杀真开屏）。 */
+    private boolean isActiveWindowOf(String pkg) {
+        try {
+            AccessibilityNodeInfo r = getRootInActiveWindow();
+            CharSequence rp = r == null ? null : r.getPackageName();
+            return rp == null || pkg.contentEquals(rp); // 拿不到根节点时保守放行
+        } catch (Throwable t) {
+            return true;
+        }
+    }
+
+    /** v4.1.0：pkg 是否只存在「小窗」形态的窗口（灵动岛/悬浮窗：面积 <45%
+     *  屏或高度 <55% 屏）。灵岛小窗控件被当「角落跳过键」= 乱点元凶——
+     *  小窗一律不走开屏阶梯。查不到窗口按 false（Activity 启动竞速期
+     *  保守放行，绝不错杀真开屏）。 */
+    private boolean isSmallOverlayWindow(String pkg) {
+        if (screenWidth <= 0 || screenHeight <= 0) return false;
+        try {
+            List<AccessibilityWindowInfo> wins = getWindows();
+            if (wins == null) return false;
+            for (AccessibilityWindowInfo w : wins) {
+                if (w == null) continue;
+                AccessibilityNodeInfo r = w.getRoot();
+                CharSequence rp = r == null ? null : r.getPackageName();
+                if (rp == null || !pkg.contentEquals(rp)) continue;
+                Rect b = new Rect();
+                w.getBoundsInScreen(b);
+                if (b.isEmpty()) continue;
+                double area = (b.width() * (double) b.height()) / (double) (screenWidth * screenHeight);
+                if (area < 0.45 || b.height() < screenHeight * 0.55) return true;
+                return false; // 存在全屏尺寸窗口 = 真实 Activity，非灵岛
+            }
+            return false;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    private boolean isDialogClass(String cls) {
         if (cls == null) return false;
         String c = cls.toLowerCase();
         return c.contains("dialog") || c.contains("popup");
@@ -877,6 +984,9 @@ public class AdSkipService extends AccessibilityService {
 
     private void detectPopupBurst(String pkg, long now) {
         if (!popupShieldEnabled() || isOemUtilityPkg(pkg)) return;
+        // v4.1.0 前台门：只对前台应用做突发检测（灵岛/悬浮窗动画的高频
+        // 内容变化绝不开弹窗识别窗——乱点元凶）
+        if (!pkg.equals(lastFgPkg)) return;
         long[] w = burstWin.get(pkg);
         if (w == null || now - w[0] > BURST_WIN_MS) {
             burstWin.put(pkg, new long[]{now, 1});
@@ -900,9 +1010,14 @@ public class AdSkipService extends AccessibilityService {
 
     private void tryScan(String pkg, long winStart, long atMs) {
         if (instance == null) return;
+        // v4.1.0：主开关暂停 / 相机窗 —— 扫描链里排着的任务一律作废
+        if (!masterOn) return;
+        if (AdDecisionCore.isCameraPkg(pkg) || AdDecisionCore.isCameraClass(winClassOf(pkg))) return;
         long now = System.currentTimeMillis();
         long elapsed = now - winStart;
-        boolean splashLive = learningEnabled() && elapsed <= WINDOW_MS;
+        // v4.1.0 前台门：开屏扫描链只对前台应用生效（非前台包的扫描
+        // 请求一律降级为弹窗路径——绝不拿灵岛/悬浮窗树走开屏决策阶梯）
+        boolean splashLive = learningEnabled() && elapsed <= WINDOW_MS && pkg.equals(lastFgPkg);
         boolean popupLive = popupShieldEnabled() && now < popupUntilGet(pkg) && popupCooldownOK(pkg, now);
         if (!splashLive && !popupLive) return;
 
@@ -1376,6 +1491,10 @@ public class AdSkipService extends AccessibilityService {
 
     private void learnFromManualClick(String pkg, AccessibilityEvent event, long now) {
         if (now - winAt(pkg) > LEARN_WINDOW_MS) return;
+        // v4.1.0：相机/拍摄窗里的手动操作绝不当「跳过键」学习
+        //（issue#30：快门/翻转镜头/相册按钮被学成位置 → 下次进相机乱点）
+        if (AdDecisionCore.isCameraPkg(pkg) || AdDecisionCore.isCameraClass(winClassOf(pkg))
+                || AdDecisionCore.isCameraClass(cs(event.getClassName()))) return;
 
         String text = "";
         String viewId = "";
@@ -1584,6 +1703,8 @@ public class AdSkipService extends AccessibilityService {
      */
     private void learnPositionFromManualClick(String pkg, AccessibilityNodeInfo src, long now) {
         if (src == null || screenWidth <= 0 || screenHeight <= 0) return;
+        // v4.1.0：相机/拍摄窗绝不学位置（快门/翻转/相册键不是跳过键）
+        if (AdDecisionCore.isCameraPkg(pkg) || AdDecisionCore.isCameraClass(winClassOf(pkg))) return;
         // v3.13.0（issue#16 实锤）：OEM 系统工具包（安全中心/系统管家）与短信
         // 类包的手动操作绝不当「跳过键」学习——securitycenter 应用详情页被学出
         // (91%,9%)，下次进详情页 500ms 直点=在权限管理页乱点

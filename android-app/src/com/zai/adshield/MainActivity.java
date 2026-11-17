@@ -147,6 +147,18 @@ public class MainActivity extends Activity {
             return AdSkipService.instance != null;
         }
 
+        /* ───── v4.1.0 App 内主开关（暂停/恢复，免系统 10 秒警告） ───── */
+
+        @JavascriptInterface
+        public boolean isMasterOn() {
+            return AdSkipService.masterState(a);
+        }
+
+        @JavascriptInterface
+        public void setMasterOn(boolean on) {
+            AdSkipService.setMaster(a, on);
+        }
+
         @JavascriptInterface
         public void openAccessibilitySettings() {
             try {

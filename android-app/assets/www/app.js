@@ -1,4 +1,4 @@
-/* 开屏卫士 v4.0.0 · GKD 订阅融合版 */
+/* 开屏卫士 v4.1.0 · GKD 订阅融合版 */
 "use strict";
 
 /* ══════════ 环境 ══════════ */
@@ -23,43 +23,23 @@ const store = {
 };
 
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "4.0.0"; }
-function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "40000"; }
+function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "4.1.0"; }
+function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "40100"; }
 
-/* ══════════ 跳跳侠（人物 Logo） ══════════
- * 圆脑袋 + 风镜 + 飞披风 + 冲刺腿 + 速度线。
- * state: on（冲刺）/ off（待命） */
-function mascotSvg(size, state) {
+/* ══════════ 吉祥物（v4.1.0 全新形象：白机器人小侠 + 绿披风跳跃） ══════════
+ * 与启动器图标同源；state: on（跳跃浮动）/ off（灰度待命） */
+function mascotImg(size, state, head) {
   const on = state !== "off";
-  const body = on ? "#10b981" : "#9db5a6";
-  const cape = on ? "#059669" : "#8aa899";
-  const lens = on ? "#052e1c" : "#4c5f54";
-  const line = on ? "#6ee7b7" : "#c4d4c8";
-  const dot = on ? "#a7f3d0" : "#8aa899";
-  return `<svg viewBox="0 0 96 96" width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg" class="${on ? "mascot-dash" : ""}">
-  <g stroke="${line}" stroke-width="5" stroke-linecap="round" fill="none">
-    <line class="m-line" x1="6" y1="32" x2="22" y2="32"/>
-    <line class="m-line" x1="3" y1="46" x2="21" y2="46"/>
-    <line class="m-line" x1="8" y1="60" x2="18" y2="60"/>
-  </g>
-  <path d="M47 40 Q26 56 26 78 Q35 76 44 70 L52 66 L48 42 Z" fill="${cape}"/>
-  <path class="m-body" d="M58 72 L48 83" stroke="${body}" stroke-width="9" stroke-linecap="round"/>
-  <path class="m-body" d="M66 70 L77 79" stroke="${body}" stroke-width="9" stroke-linecap="round"/>
-  <rect class="m-body" x="42.5" y="32.5" width="23" height="57" rx="11.5" fill="${body}" transform="rotate(-8 56 60)"/>
-  <path class="m-body" d="M65 52 L83 50" stroke="${body}" stroke-width="8" stroke-linecap="round"/>
-  <circle class="m-body" cx="60" cy="23" r="15.5" fill="${body}"/>
-  <rect x="48.5" y="17.2" width="23" height="8.5" rx="4.2" fill="${lens}"/>
-  <circle cx="63.5" cy="21.5" r="2" fill="${dot}"/>
-</svg>`;
+  return `<img src="${head ? "mascot-head.png" : "mascot.png"}" width="${size}" height="${size}" alt="吉祥物" class="${on ? "on" : "off"}" draggable="false">`;
 }
 
-$("#brand-logo").innerHTML = mascotSvg(34, "on");
+$("#brand-logo").innerHTML = mascotImg(30, "on", true);
 
 /* ══════════ 版本记录 ══════════ */
 const CHANGELOG = [
+  { v: "4.1.0", d: "应用内一键暂停/恢复防护（免看系统 10 秒警告）；修复微信拍摄被强退、灵动岛乱点、订阅导入 404；全新 Logo。" },
   { v: "4.0.0", d: "接入 GKD 订阅生态：粘贴链接即可导入 gkd.li 社区规则；内置规则库升级为「文案 + 控件 ID」双引擎；全新界面。" },
   { v: "3.14.0", d: "跳过后弹出的反馈面板自动收起；秒跳提速；开启服务一步直达。" },
-  { v: "3.13.0", d: "验证码横幅四重防护；息屏零动作更省电。" },
 ];
 
 const FB_TYPES = {
@@ -107,48 +87,75 @@ function refreshHome() {
 
   let running = false;
   let enabledInSettings = false;
+  let masterOn = true;
   if (HAS_BRIDGE) {
     try { running = !!AndroidApp.isServiceRunning(); } catch (e) {}
     try { enabledInSettings = !!AndroidApp.a11yEnabledInSettings(); } catch (e) {}
+    try { masterOn = AndroidApp.isMasterOn() !== false; } catch (e) {}
   }
-  renderHero(running, enabledInSettings);
+  renderHero(running, enabledInSettings, masterOn);
   refreshBattery(running);
 }
 
-function renderHero(running, enabledInSettings) {
+function renderHero(running, enabledInSettings, masterOn) {
   const card = $("#hero-card");
   const mascot = $("#hero-mascot");
   const title = $("#hero-title");
   const sub = $("#hero-sub");
   const btn = $("#btn-enable");
   const revive = $("#btn-revive");
+  const resume = $("#btn-resume");
+  const pause = $("#btn-pause");
   const tip = $("#hero-tip");
-  if (running) {
+  btn.style.display = "none";
+  revive.style.display = "none";
+  resume.style.display = "none";
+  pause.style.display = "none";
+  if (running && !masterOn) {
+    card.classList.remove("on");
+    card.classList.add("paused");
+    mascot.innerHTML = mascotImg(88, "off");
+    title.textContent = "已暂停";
+    sub.textContent = "跳过与学习均不生效";
+    resume.style.display = "";
+    tip.textContent = "应用内一键暂停/恢复，无需去系统设置";
+  } else if (running) {
     card.classList.add("on");
-    mascot.innerHTML = mascotSvg(88, "on");
+    card.classList.remove("paused");
+    mascot.innerHTML = mascotImg(88, "on");
     title.textContent = "守护中";
     sub.textContent = "广告露头就秒跳";
-    btn.style.display = "none";
-    revive.style.display = "none";
-    tip.textContent = "退出应用也持续生效";
+    pause.style.display = "";
+    tip.textContent = "暂停可在应用内一键完成，无需看系统 10 秒警告";
   } else if (enabledInSettings) {
-    card.classList.remove("on");
-    mascot.innerHTML = mascotSvg(88, "off");
+    card.classList.remove("on", "paused");
+    mascot.innerHTML = mascotImg(88, "off");
     title.textContent = "服务待恢复";
     sub.textContent = "清理后台后被系统关闭";
-    btn.style.display = "none";
     revive.style.display = "";
     tip.textContent = "点「一键恢复」重新拉起";
   } else {
-    card.classList.remove("on");
-    mascot.innerHTML = mascotSvg(88, "off");
+    card.classList.remove("on", "paused");
+    mascot.innerHTML = mascotImg(88, "off");
     title.textContent = "未开启";
     sub.textContent = "无障碍跳过服务";
     btn.style.display = "";
-    revive.style.display = "none";
     tip.textContent = "开启一次，持续守护";
   }
 }
+
+/* v4.1.0 App 内主开关：暂停/恢复均不碰系统设置（免 10 秒警告） */
+$("#btn-pause").addEventListener("click", () => {
+  if (!HAS_BRIDGE) return;
+  try { AndroidApp.setMasterOn(false); toast("已暂停 · 恢复时一键即回"); } catch (e) {}
+  setTimeout(refreshHome, 150);
+});
+
+$("#btn-resume").addEventListener("click", () => {
+  if (!HAS_BRIDGE) return;
+  try { AndroidApp.setMasterOn(true); toast("防护已恢复"); } catch (e) {}
+  setTimeout(refreshHome, 150);
+});
 
 $("#btn-enable").addEventListener("click", () => {
   if (HAS_BRIDGE) {
@@ -251,7 +258,7 @@ $("#btn-feedback").addEventListener("click", async () => {
 });
 
 /* ══════════ 订阅页 ══════════ */
-const SUB_EXAMPLE = "https://registry.npmmirror.com/@gkd-kit/subscription/latest/files/gkd.json5";
+const SUB_EXAMPLE = "https://registry.npmmirror.com/@gkd-kit/subscription/latest/files/dist/gkd.json5";
 let subCbSeq = 0;
 
 function subCall(method, ...args) {
@@ -309,7 +316,7 @@ $("#btn-sub-import").addEventListener("click", async () => {
   const url = $("#sub-url").value.trim();
   const box = $("#sub-result");
   if (!url) { box.className = "fb-result err"; box.textContent = "请先粘贴订阅链接"; return; }
-  box.className = "fb-result"; box.textContent = "正在拉取订阅…";
+  box.className = "fb-result"; box.textContent = "正在拉取订阅（失败自动换镜像）…";
   const r = await subCall("subSetUrl", url);
   if (r.ok) {
     box.className = "fb-result ok";

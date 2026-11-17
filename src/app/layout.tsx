@@ -20,10 +20,7 @@ export const metadata: Metadata = {
   keywords: ["开屏广告", "秒跳", "摇一摇拦截", "Skip-Ad", "GKD", "无障碍", "守护模式", "智能学习"],
   manifest: "/manifest.webmanifest",
   icons: {
-    icon: [
-      { url: "/favicon.png", type: "image/png", sizes: "64x64" },
-      { url: "/logo.svg", type: "image/svg+xml" },
-    ],
+    icon: [{ url: "/favicon.png", type: "image/png", sizes: "64x64" }],
     apple: "/icon-192.png",
   },
   appleWebApp: { capable: true, statusBarStyle: "default", title: "Skip-Ad" },

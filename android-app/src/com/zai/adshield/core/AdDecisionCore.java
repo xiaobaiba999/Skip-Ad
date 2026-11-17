@@ -786,6 +786,27 @@ public final class AdDecisionCore {
                 || p.contains("messaging") || p.contains("incallui");
     }
 
+    /** v4.1.0：相机/拍摄类包识别（issue#30 实锤：微信点「拍摄」进相机即被
+     *  引擎点「×」强退）。相机预览界面 = SurfaceView 简单树 + 顶部关闭键，
+     *  与开屏广告窗特征雷同——但相机界面【绝不该被自动点击】，硬黑名单。 */
+    public static boolean isCameraPkg(String pkg) {
+        if (pkg == null) return false;
+        String p = pkg.toLowerCase();
+        return p.contains("camera"); // com.android.camera / GoogleCamera / 各厂商与第三方相机 App
+    }
+
+    /** v4.1.0：相机/拍摄/扫码类窗口类名识别——微信拍摄（plugin.camera.ui.
+     *  CameraActivity）、抖音故事相机、各 App 拍摄页、扫码 CaptureActivity。
+     *  这些窗口绝不扫描、绝不点击、绝不学习。 */
+    public static boolean isCameraClass(String cls) {
+        if (cls == null || cls.length() == 0) return false;
+        String c = cls.toLowerCase();
+        return c.contains("camera")       // CameraActivity / CameraUI
+                || c.contains("capture")  // CaptureActivity（拍摄/扫码）
+                || c.contains("shoot")    // ShootActivity（拍摄页）
+                || c.contains("videoedit"); // 视频编辑（紧邻拍摄的敏感操作区）
+    }
+
     /** v3.13.0：验证码横幅文案标记——树内任一节点命中即视为验证码/通知横幅，
      *  该窗口绝不扫描、绝不点击、绝不学习（银行/支付登录页同理放行，本就无广告可跳）。 */
     public static boolean isCodeBannerMarker(String s) {

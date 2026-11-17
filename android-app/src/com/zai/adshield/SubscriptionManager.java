@@ -135,33 +135,84 @@ public final class SubscriptionManager {
     }
 
     static String fetch(Context ctx, String url, SharedPreferences sp) {
-        try {
-            String body = Net.httpGetRaw(url);
-            if (body == null || body.length() < 10) {
-                lastError = "空响应";
-                return "{\"ok\":false,\"error\":\"订阅内容为空\"}";
+        // v4.1.0 镜像回退链（issue#30：官方订阅链接 404——npmmirror 上
+        // @gkd-kit/subscription 的文件路径已从 /files/gkd.json5 迁到
+        // /files/dist/gkd.json5，旧链接整体失效）：原始链接失败时自动
+        // 依次尝试镜像变体，成功后仍按用户填写的原始 URL 记忆
+        java.util.List<String> variants = mirrorVariants(url);
+        Exception lastEx = null;
+        for (int i = 0; i < variants.size(); i++) {
+            try {
+                return fetchOne(ctx, variants.get(i), url, sp);
+            } catch (Exception e) {
+                lastEx = e;
             }
-            Subscription parsed = Subscription.parse(body);
-            int apps = parsed.apps.size();
-            int rules = parsed.ruleCount();
-            if (apps == 0 || rules == 0) {
-                lastError = "无有效规则";
-                return "{\"ok\":false,\"error\":\"订阅里没有可用的应用规则\"}";
-            }
-            remoteSub = parsed;           // 原子切换快照
-            subUrl = url;
-            lastError = "";
-            lastUpdateAt = System.currentTimeMillis();
-            sp.edit().putString("subUrl", url)
-                    .putString("subCache", body)
-                    .putLong("subUpdatedAt", lastUpdateAt)
-                    .apply();
-            return "{\"ok\":true,\"name\":" + jsonStr(parsed.name)
-                    + ",\"apps\":" + apps + ",\"rules\":" + rules + "}";
-        } catch (Exception e) {
-            lastError = e.getMessage() == null ? "网络失败" : e.getMessage();
-            return "{\"ok\":false,\"error\":" + jsonStr("拉取失败：" + lastError) + "}";
         }
+        String msg = lastEx == null ? "网络失败" : (lastEx.getMessage() == null ? "网络失败" : lastEx.getMessage());
+        lastError = msg;
+        String hint = variants.size() > 1
+                ? "（已自动尝试 " + variants.size() + " 个镜像地址）· 点「官方订阅」可一键填入可用链接"
+                : " · 点「官方订阅」可一键填入可用链接";
+        return "{\"ok\":false,\"error\":" + jsonStr("拉取失败：" + msg + hint) + "}";
+    }
+
+    /** 镜像变体列表：原始 URL 打头，后接按域名规则生成的回退地址 */
+    static java.util.List<String> mirrorVariants(String url) {
+        java.util.ArrayList<String> list = new java.util.ArrayList<>();
+        if (url == null || url.length() == 0) return list;
+        list.add(url);
+        try {
+            // ① npmmirror 官方订阅包路径迁移：files/gkd.json5 → files/dist/gkd.json5
+            if (url.contains("registry.npmmirror.com/@gkd-kit/subscription")
+                    && url.endsWith("/files/gkd.json5")) {
+                list.add(url.substring(0, url.length() - "/gkd.json5".length()) + "/dist/gkd.json5");
+            }
+            // ② GitHub raw / jsdelivr 直连不可达（国内常见）→ 官方订阅切换 npmmirror 镜像
+            boolean gkdOfficial = url.contains("gkd-kit/subscription") || url.contains("gkd-kit/subscription@");
+            if (gkdOfficial && !url.contains("npmmirror.com")) {
+                list.add("https://registry.npmmirror.com/@gkd-kit/subscription/latest/files/dist/gkd.json5");
+            }
+            // ③ raw.githubusercontent.com 任意仓库 → jsdelivr CDN 兜底
+            if (url.startsWith("https://raw.githubusercontent.com/")) {
+                String rest = url.substring("https://raw.githubusercontent.com/".length());
+                int i1 = rest.indexOf('/');
+                int i2 = i1 < 0 ? -1 : rest.indexOf('/', i1 + 1);
+                int i3 = i2 < 0 ? -1 : rest.indexOf('/', i2 + 1);
+                if (i1 > 0 && i2 > i1 && i3 > i2) {
+                    String owner = rest.substring(0, i1);
+                    String repo = rest.substring(i1 + 1, i2);
+                    String branch = rest.substring(i2 + 1, i3);
+                    String path = rest.substring(i3 + 1);
+                    list.add("https://cdn.jsdelivr.net/gh/" + owner + "/" + repo + "@" + branch + "/" + path);
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return list;
+    }
+
+    /** 单地址拉取；fetchUrl = 实际请求地址，rememberUrl = 记忆/展示用的用户原始地址 */
+    static String fetchOne(Context ctx, String fetchUrl, String rememberUrl, SharedPreferences sp) throws Exception {
+        String body = Net.httpGetRaw(fetchUrl);
+        if (body == null || body.length() < 10) {
+            throw new IllegalStateException("订阅内容为空");
+        }
+        Subscription parsed = Subscription.parse(body);
+        int apps = parsed.apps.size();
+        int rules = parsed.ruleCount();
+        if (apps == 0 || rules == 0) {
+            throw new IllegalStateException("订阅里没有可用的应用规则");
+        }
+        remoteSub = parsed;           // 原子切换快照
+        subUrl = rememberUrl;
+        lastError = "";
+        lastUpdateAt = System.currentTimeMillis();
+        sp.edit().putString("subUrl", rememberUrl)
+                .putString("subCache", body)
+                .putLong("subUpdatedAt", lastUpdateAt)
+                .apply();
+        return "{\"ok\":true,\"name\":" + jsonStr(parsed.name)
+                + ",\"apps\":" + apps + ",\"rules\":" + rules + "}";
     }
 
     public static void setEnabled(Context ctx, boolean on) {
