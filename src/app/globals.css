@@ -120,3 +120,34 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* ── 广告演示自定义动画 ── */
+@keyframes ad-pop {
+  0% { transform: scale(0.85); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes app-launch {
+  0% { transform: scale(0.6); opacity: 0; }
+  45% { transform: scale(1.05); opacity: 1; }
+  70% { transform: scale(1); }
+  100% { transform: scale(1); }
+}
+@keyframes fade-slide {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ── 判断引擎 Toast 入场 ── */
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(-10px) scale(0.96); }
+  to { opacity: 1; transform: none; }
+}
+
+/* ── 模拟摇晃：手机壳体感晃动 ── */
+@keyframes phone-shake {
+  0%, 100% { transform: rotate(0deg); }
+  20% { transform: rotate(-1.4deg) translateX(-4px); }
+  40% { transform: rotate(1.4deg) translateX(4px); }
+  60% { transform: rotate(-1deg) translateX(-3px); }
+  80% { transform: rotate(1deg) translateX(3px); }
+}

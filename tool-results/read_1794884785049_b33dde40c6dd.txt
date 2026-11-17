@@ -1,0 +1,696 @@
+     1→/* 开屏卫士 v3.13.0 · 离线逻辑（首页 / 学习中心 / 关于 · 应用内页内直更 + 多通道下载） */
+     2→"use strict";
+     3→
+     4→/* ══════════ 环境与存储 ══════════ */
+     5→const HAS_BRIDGE = !!(window.AndroidApp && window.AndroidApp.kvGet);
+     6→const $ = (s) => document.querySelector(s);
+     7→const $$ = (s) => document.querySelectorAll(s);
+     8→
+     9→const store = {
+    10→  get(k, d) {
+    11→    try {
+    12→      let v = HAS_BRIDGE ? AndroidApp.kvGet(k) : localStorage.getItem("adshield_" + k);
+    13→      return v ? JSON.parse(v) : d;
+    14→    } catch (e) { return d; }
+    15→  },
+    16→  set(k, v) {
+    17→    try {
+    18→      const s = JSON.stringify(v);
+    19→      if (HAS_BRIDGE) AndroidApp.kvSet(k, s);
+    20→      else localStorage.setItem("adshield_" + k, s);
+    21→    } catch (e) {}
+    22→  }
+    23→};
+    24→
+    25→/* ══════════ 静态数据（v3.13.0 · 精简重构：每版一句话） ══════════ */
+    26→
+    27→/* 最近三个版本 */
+    28→const CHANGELOG = [
+    29→  { v: "3.13.0", d: "验证码横幅四重防护（真机实锤：接收验证码时顶部横幅被引擎点掉）——短信/来电类覆盖层包事件直接丢弃；树内验证码文案窗口绝不扫描；触点被横幅覆盖时拒发手势改走无障碍代点；横幅在场绝不派返回键。待机功耗治理：息屏体眠门（息屏绝不扫描/点击/学习，来电闹钟窗零误点）+ 夜间心跳改 30~45 分钟非精确闹钟（不再每 5 分钟唤醒设备，一晚 96 次唤醒是耗电元凶）。安全中心详情页被学出位置(91%,9%)整治：OEM 工具包位置学习永久拒收+启动清理；越界拒绝日志去重；误触观察口径修正（熟练用户 500ms 手点不再是「误触」）；分应用统计卡移除（看不懂还乱）。" },
+    30→  { v: "3.12.0", d: "链式拦截机制整体移除（issue#14 实锤）：v3.11.0 的三重放行安全门仍拦下了 NFC 碰一碰支付链与「分享到微信」（1.5s 内连按 3 次返回键弹回）——用户意图场景无法穷举，任何安全门都有漏网时刻。引擎职责回归纯跳过：只点「跳过/关闭」，绝不对抗你的任何跳转；同包落地页弹回一并移除（点商品/文章详情跳内置页不再被误弹回）；connectivity 连接检查窗循环误点归零；界面撤下「跳转回弹」开关与统计。" },
+    31→  { v: "3.11.0", d: "链式回弹用户意图安全门（issue#13 实锤修复）：你 2.2s 内刚点过（分享/登录按钮）、系统分享选择器刚出现过、同一目标刚弹回又立刻拉起（你的重试）——三重任一命中即放行，绝不与你对抗；点商品/文章详情跳内置页不再被误弹回；分享面板噪音归零；学习规则明细撤出界面（学习引擎照常工作，界面更清爽）。" },
+    32→];
+    33→
+    34→/* 内置规则库概览（首页防护能力卡） */
+    35→const RULES_INFO = "五层全局规则 + 28 款分应用表";
+    36→
+    37→/* ══════════ 路由 ══════════ */
+    38→$$(".tabbtn").forEach(b => b.addEventListener("click", () => {
+    39→  $$(".tabbtn").forEach(x => x.classList.remove("active"));
+    40→  b.classList.add("active");
+    41→  $$(".page").forEach(p => p.classList.remove("active"));
+    42→  $("#page-" + b.dataset.page).classList.add("active");
+    43→  const pg = b.dataset.page;
+    44→  $("#brand-sub").textContent = { drill: "秒跳引擎 · 首页", learn: "习惯学习 · 能耗", about: "版本与更新" }[pg];
+    45→  if (pg === "drill") refreshHome();
+    46→  if (pg === "learn") { renderReal(); renderEnergy(); }
+    47→}));
+    48→
+    49→/* ══════════ 首页：服务状态与统计 ══════════ */
+    50→function getRealState() { return store.get("state", null) || {}; }
+    51→function setRealState(st) { store.set("state", st); }
+    52→
+    53→function refreshHome() {
+    54→  let running = false;
+    55→  if (HAS_BRIDGE) { try { running = AndroidApp.isServiceRunning(); } catch (e) {} }
+    56→  // v3.6.0：服务被系统杀但设置仍登记（清理后台典型态）→ 自动拉活重绑
+    57→  let killed = false;
+    58→  if (HAS_BRIDGE && !running) {
+    59→    try { killed = AndroidApp.a11yEnabledInSettings(); } catch (e) { killed = false; }
+    60→  }
+    61→  const card = $("#service-card"), dot = $("#service-dot");
+    62→  if (running) { reviveStopRetry = false; reviveHealing = false; } // v3.8.0：已恢复即清除待恢复标记
+    63→  let statusText = "浏览器预览模式";
+    64→  if (running) statusText = "秒跳服务运行中";
+    65→  else if (HAS_BRIDGE) {
+    66→    if (!killed) statusText = "服务未开启";
+    67→    else if (reviveStopRetry) statusText = "服务待恢复 · 一步直达开关";       // v3.8.0 need_toggle
+    68→    else if (reviveHealing) statusText = "服务被系统关闭（自愈重绑进行中…）"; // v3.8.0 heal_pending
+    69→    else statusText = "服务被系统关闭（自动恢复中…）";
+    70→  }
+    71→  $("#service-status").textContent = statusText;
+    72→  $("#service-desc").textContent = running
+    73→    ? "内嵌规则引擎 · 露头就秒跳 · 控件中心精准点击 · 桌面黑名单 · 自愈重绑"
+    74→    : (HAS_BRIDGE ? "开启无障碍后自动秒跳任何应用开屏（规则内嵌，零云端）" : "安装 APK 后体验真实秒跳服务");
+    75→  dot.classList.toggle("on", running);
+    76→  card.classList.toggle("ok", running);
+    77→  /* v3.8.0：need_toggle（仍登记但进程重绑未成）时也展示「一步直达」按钮，隐藏不会自愈的重试按钮 */
+    78→  $("#btn-open-a11y").style.display = (HAS_BRIDGE && !running && (!killed || reviveStopRetry)) ? "" : "none";
+    79→  const rv = $("#btn-revive");
+    80→  if (rv) rv.style.display = (HAS_BRIDGE && !running && killed && !reviveStopRetry) ? "" : "none";
+    81→  /* v3.7.0：自动拉活改为循环重试（每 5s 一次直到成功）——此前仅尝试一次，
+    82→   * 部分 ROM 的 AMS 重绑有延迟，一次失败就放弃导致「又要手动去设置」
+    83→   * v3.8.0：need_toggle 后停止自动重试（重绑不成不会自愈，别空转）——
+    84→   * 1.6s 周期仅刷新 isServiceRunning 状态，不再自动调 tryAutoRevive */
+    85→  if (HAS_BRIDGE && !running && killed && !reviveStopRetry) {
+    86→    const now = Date.now();
+    87→    if (!reviveLastTry || now - reviveLastTry > 5000) {
+    88→      reviveLastTry = now;
+    89→      autoRevive(false);
+    90→    }
+    91→  }
+    92→  refreshKeep(running);
+    93→  refreshBatteryBanner(running);
+    94→  refreshAdbGrant();
+    95→  const rt = $("#rules-tag");
+    96→  if (rt) rt.textContent = "v" + appVer() + " · " + RULES_INFO;
+    97→}
+    98→
+    99→/* v3.7.0 电池白名单醒目横幅（issue#10 日志实锤「电池白名单：未加入」） */
+   100→function refreshBatteryBanner(running) {
+   101→  const banner = $("#battery-banner");
+   102→  if (!banner) return;
+   103→  if (!HAS_BRIDGE) { banner.style.display = "none"; return; }
+   104→  let bat = false;
+   105→  try { bat = AndroidApp.isBatteryWhitelisted(); } catch (e) {}
+   106→  banner.style.display = (!bat && running) ? "" : "none";
+   107→}
+   108→
+   109→/* v3.6.0 自动拉活：打开 App 即尝试，失败每 5s 重试（v3.7.0 循环版；v3.8.0 按 reason 分流） */
+   110→let reviveLastTry = 0;
+   111→let reviveStopRetry = false; // v3.8.0 need_toggle：仍登记但进程重绑未成——不会自愈，停止自动重试免空转
+   112→let reviveHealing = false;   // v3.8.0 heal_pending：自愈重绑已发起待生效——保持每 5s 自动重试
+   113→function autoRevive(loud) {
+   114→  if (!HAS_BRIDGE) return;
+   115→  try {
+   116→    const r = JSON.parse(AndroidApp.tryAutoRevive());
+   117→    if (r.running || r.revived) {
+   118→      reviveLastTry = 0;
+   119→      reviveStopRetry = false;
+   120→      reviveHealing = false;
+   121→      toast(r.revived || r.selfHeal ? "引擎已自动恢复（系统设置自愈），无需任何操作" : "引擎已自动恢复，无需任何操作");
+   122→      refreshHome();
+   123→    } else if (r.reason === "need_toggle") {
+   124→      /* 仍登记但进程重绑未成：自动重试不会自愈——引导一步直达服务开关（学习数据全保留） */
+   125→      if (loud || !reviveStopRetry) toast("点下方按钮一步直达服务开关（Android 11+），学习数据全保留");
+   126→      reviveStopRetry = true;
+   127→      reviveHealing = false;
+   128→      refreshHome();
+   129→    } else if (r.reason === "heal_pending") {
+   130→      /* WRITE_SECURE_SETTINGS 自愈已发起待生效：保持自动重试直至恢复 */
+   131→      if (loud || !reviveHealing) toast("自愈重绑进行中…");
+   132→      reviveHealing = true;
+   133→      reviveStopRetry = false;
+   134→      refreshHome();
+   135→    } else if (loud) {
+   136→      toast(r.reason === "disabled"
+   137→        ? "服务未在系统登记——点「开启无障碍服务（一步直达）」开启（学习数据全保留）"
+   138→        : "自动恢复未成功——点「开启无障碍服务（一步直达）」（学习数据全保留）");
+   139→    }
+   140→  } catch (e) { if (loud) toast("恢复失败，请去无障碍设置开启"); }
+   141→}
+   142→
+   143→/* v3.8.0 ADB 自愈授权状态（WRITE_SECURE_SETTINGS：授权后清理后台/覆盖安装的无障碍关闭全自动恢复） */
+   144→function refreshAdbGrant() {
+   145→  const box = $("#adb-box");
+   146→  if (!box) return;
+   147→  if (!HAS_BRIDGE || typeof AndroidApp.hasSecureWrite !== "function") { box.style.display = "none"; return; }
+   148→  let granted = false;
+   149→  try { granted = !!AndroidApp.hasSecureWrite(); } catch (e) {}
+   150→  if (granted && reviveStopRetry) reviveStopRetry = false; // 刚授权：恢复自动重试，自愈即刻生效
+   151→  const tag = $("#adb-tag");
+   152→  if (tag) {
+   153→    tag.textContent = granted ? "已授权 · 全自动自愈" : "未授权";
+   154→    tag.className = "tag " + (granted ? "tag-green" : "");
+   155→  }
+   156→  const okDesc = $("#adb-ok-desc"), gbody = $("#adb-grant-body");
+   157→  if (okDesc) okDesc.style.display = granted ? "" : "none";
+   158→  if (gbody) gbody.style.display = granted ? "none" : "";
+   159→}
+   160→
+   161→/* v3.5.0 服务保活状态 */
+   162→function refreshKeep(running) {
+   163→  if (!HAS_BRIDGE) { const kb = $("#keep-box"); if (kb) kb.style.display = "none"; return; }
+   164→  let keepOn = false, bat = false;
+   165→  try { keepOn = AndroidApp.isKeepOn(); bat = AndroidApp.isBatteryWhitelisted(); } catch (e) {}
+   166→  const tag = $("#keep-tag");
+   167→  const on = keepOn && running;
+   168→  tag.textContent = on ? "守护中" : (keepOn ? "待恢复" : "未开启");
+   169→  tag.className = "tag " + (on ? "tag-green" : (keepOn ? "tag-amber" : ""));
+   170→  $("#keep-desc").textContent = on
+   171→    ? "前台常驻通知已挂载；覆盖安装/重启后若被系统关闭，将立即通知你一键恢复"
+   172→    : (keepOn ? "服务未运行——点上方按钮开启无障碍服务，保活随之生效" : "开启服务后自动开启：前台常驻通知 + 断连提醒恢复");
+   173→  $("#btn-battery").style.display = bat ? "none" : "";
+   174→}
+   175→if (HAS_BRIDGE) {
+   176→  const bindBattery = (id) => {
+   177→    const el = $("#" + id);
+   178→    if (!el) return;
+   179→    el.addEventListener("click", () => {
+   180→      try {
+   181→        const r = JSON.parse(AndroidApp.requestBatteryWhitelist());
+   182→        toast(r.already ? "已在白名单中" : (r.ok ? "已跳转系统白名单页，请允许「开屏卫士」" : "当前系统不支持，可到设置→电池手动处理"));
+   183→      } catch (e) { toast("跳转失败"); }
+   184→    });
+   185→  };
+   186→  bindBattery("btn-battery");
+   187→  bindBattery("btn-battery-big"); // v3.7.0 醒目横幅大按钮
+   188→
+   189→  const st = getRealState();
+   190→  let rules = 0;
+   191→  try { Object.keys(st.rules || {}).forEach(k => rules += (st.rules[k] || []).length); } catch (e) {}
+   192→  const stats = st.stats || {};
+   193→  $("#st-auto").textContent = stats.auto || 0;
+   194→  $("#st-back").textContent = stats.back || 0;
+   195→  $("#st-popup").textContent = stats.popup || 0;
+   196→  $("#st-manual").textContent = stats.manual || 0;
+   197→  $("#st-rules").textContent = rules;
+   198→}
+   199→
+   200→if (HAS_BRIDGE) {
+   201→  $("#btn-open-a11y").addEventListener("click", () => {
+   202→    try {
+   203→      /* v3.8.0：优先直达本服务无障碍详情页（Android 11+ 一个开关一步恢复；老 APK 无此方法或旧系统自动回退列表页） */
+   204→      if (typeof AndroidApp.openA11yDetail === "function") AndroidApp.openA11yDetail();
+   205→      else AndroidApp.openAccessibilitySettings();
+   206→    } catch (e) { try { AndroidApp.openAccessibilitySettings(); } catch (e2) {} }
+   207→  });
+   208→  const btnRevive = $("#btn-revive");
+   209→  if (btnRevive) btnRevive.addEventListener("click", () => autoRevive(true));
+   210→  setInterval(refreshHome, 1600);
+   211→}
+   212→
+   213→/* ══════════ 防护开关（学习 / 弹窗屏蔽） ══════════ */
+   214→function renderToggles() {
+   215→  const st = getRealState();
+   216→  $("#toggle-learning").checked = st.learning !== false;
+   217→  $("#toggle-popup").checked = st.popupShield === true; // v3.9.0 默认关闭（issue#12 内容突发误报整治），学习中心可开启
+   218→  // v3.12.0：chainRebound（诱导跳转回弹）开关已随机制整体移除（issue#14）
+   219→}
+   220→
+   221→function bindToggle(id, key, onMsg, offMsg) {
+   222→  $("#" + id).addEventListener("change", (e) => {
+   223→    const st = getRealState();
+   224→    st[key] = e.target.checked;
+   225→    setRealState(st);
+   226→    toast(e.target.checked ? onMsg : offMsg);
+   227→  });
+   228→}
+   229→bindToggle("toggle-learning", "learning", "智能学习已开启", "智能学习已暂停（引擎保持通用规则）");
+   230→bindToggle("toggle-popup", "popupShield", "弹窗广告屏蔽已开启（默认关闭防误判，可随时关）", "弹窗广告屏蔽已关闭（默认状态：只跳开屏，绝不乱点弹窗）");
+   231→
+   232→/* ══════════ 学习中心（v3.13.0：分应用统计卡整体移除——用户反馈看不懂还乱；
+   233→   引擎照常学习+统计，明细仅随日志上传进 GitHub 诊断；界面只留引擎日志与能耗） ══════════ */
+   234→function renderReal() {
+   235→  const st = getRealState();
+   236→
+   237→  if (!HAS_BRIDGE) {
+   238→    $("#real-log").innerHTML = `<div class="log-box" style="margin-top:8px"><div class="empty">浏览器预览模式<br>安装 APK 后这里展示真实引擎日志</div></div>`;
+   239→    return;
+   240→  }
+   241→
+   242→  const log = st.log || [];
+   243→  $("#real-log").innerHTML = log.slice(-20).reverse().map(l => {
+   244→    const d = new Date(l.t || Date.now());
+   245→    const t = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+   246→    return `<div><span class="t">${t}</span>${l.msg}</div>`;
+   247→  }).join("") || '<div class="empty">暂无日志</div>';
+   248→}
+   249→
+   250→$("#btn-refresh-real").addEventListener("click", () => { renderReal(); renderEnergy(); toast("已刷新"); });
+   251→
+   252→/* ══════════ v3.5.0 引擎日志一键上传（内置加密通道，供下版迭代参考） ══════════ */
+   253→function uploadLogHistory() { return store.get("log_history", []); }
+   254→function renderUploadLogHistory() {
+   255→  const h = uploadLogHistory();
+   256→  if (!h.length) { $("#upload-log-history").innerHTML = ""; return; }
+   257→  $("#upload-log-history").innerHTML =
+   258→    '<div class="muted small" style="margin-top:12px">我的日志上传（本地记录）</div>' +
+   259→    h.slice(-5).reverse().map(x => `
+   260→      <div class="rule-item">
+   261→        <div class="rule-detail">${esc(x.date)} · 日志 ${x.count} 条</div>
+   262→        <div class="muted small">${x.url ? linkBtn(x.url, "Issue #" + x.no) : "未同步"}</div>
+   263→      </div>`).join("");
+   264→}
+   265→
+   266→$("#btn-upload-log").addEventListener("click", () => {
+   267→  const st = getRealState();
+   268→  const log = st.log || [];
+   269→  const btn = $("#btn-upload-log");
+   270→  const box = $("#upload-log-result");
+   271→  const rules = st.rules || {};
+   272→  let ruleCount = 0, pkgCount = 0;
+   273→  Object.keys(rules).forEach(k => { const n = (rules[k] || []).length; ruleCount += n; if (n) pkgCount++; });
+   274→  if (log.length === 0) {
+   275→    box.innerHTML = '<div class="fb-msg err">暂无日志：先开启服务并使用一会儿，或点「刷新」</div>';
+   276→    return;
+   277→  }
+   278→  let dev = {}; try { dev = JSON.parse(AndroidApp.deviceInfo()); } catch (e) {}
+   279→  let running = false; try { running = AndroidApp.isServiceRunning(); } catch (e) {}
+   280→  let bat = false; try { bat = AndroidApp.isBatteryWhitelisted(); } catch (e) {}
+   281→  const s = st.stats || {};
+   282→  const logLines = log.slice(-60).map(l => {
+   283→    const d = new Date(l.t || Date.now());
+   284→    return "- " + d.toLocaleString("zh-CN", { hour12: false }) + " " + (l.msg || "");
+   285→  }).join("\n");
+   286→  const ruleLines = Object.keys(rules).map(pkg =>
+   287→    "- " + pkg + "：" + (rules[pkg] || []).map(r =>
+   288→      r.pos ? "位置(" + Math.round((r.x || 0) * 100) + "%," + Math.round((r.y || 0) * 100) + "%)" + (r.cls ? "@" + r.cls.split(".").pop() : "")
+   289→            : (r.cls ? "窗指纹 " + r.cls : "文本「" + (r.text || "-") + "」"))
+   290→      .join(" | ")).join("\n");
+   291→  const title = "[引擎日志][v" + appVer() + "] " + (dev.brand || "") + " " + (dev.model || "设备") + " · " + (dev.os || "") + "（手动上传）";
+   292→  const body = [
+   293→    "## 环境信息（自动附加）",
+   294→    "- 设备：" + (dev.brand || "?") + " " + (dev.model || "?") + " · " + (dev.os || "?") + "（SDK " + (dev.sdk || "?") + "）",
+   295→    "- 版本：v" + appVer() + "（code " + appCode() + "）· 服务：" + (running ? "运行中" : "未运行") + " · 电池白名单：" + (bat ? "已加入" : "未加入"),
+   296→    "- 战绩：秒跳 " + (s.auto || 0) + " · 直断 " + (s.back || 0) + " · 弹窗 " + (s.popup || 0) + " · 手动样本 " + (s.manual || 0) + " · 热区误触 " + (s.misclick || 0) + "（v3.13.0 口径：仅计全屏热区）",
+   297→    "- 学习规则：" + ruleCount + " 条（" + pkgCount + " 个应用）",
+   298→    "",
+   299→    "## 学习规则明细",
+   300→    ruleLines || "- （无）",
+   301→    "",
+   302→    "## 引擎日志（最近 " + Math.min(60, log.length) + " 条）",
+   303→    logLines,
+   304→    "",
+   305→    "> 本 Issue 由「学习中心 → 引擎日志 → 上传日志到 GitHub」手动创建（内置加密通道），供下一版迭代参考。",
+   306→    "",
+   307→    "— 开屏卫士 v" + appVer(),
+   308→  ].join("\n");
+   309→
+   310→  box.innerHTML = '<div class="fb-msg">正在通过内置加密通道上传（最长约 15s，请勿关闭页面）…</div>';
+   311→  btn.disabled = true;
+   312→  setTimeout(() => {
+   313→    let res = null;
+   314→    try { res = JSON.parse(AndroidApp.netPostIssue(title, body)); }
+   315→    catch (e) { res = { ok: false, error: "提交异常：" + (e.message || e) }; }
+   316→    btn.disabled = false;
+   317→    const h = uploadLogHistory();
+   318→    h.push({ date: new Date().toLocaleString("zh-CN", { hour12: false }), count: Math.min(60, log.length), url: res && res.ok ? res.url : "", no: (res && res.number) || 0 });
+   319→    store.set("log_history", h.slice(-10));
+   320→    renderUploadLogHistory();
+   321→    if (res && res.ok) {
+   322→      box.innerHTML = '<div class="fb-msg ok">日志已上传 ' + linkBtn(res.url, "Issue #" + res.number + " 查看") + "，感谢！它会直接成为下一版迭代的修复依据</div>";
+   323→      toast("引擎日志已上传到 GitHub");
+   324→    } else {
+   325→      box.innerHTML = '<div class="fb-msg err">' + esc((res && res.error) || "未知错误") + "</div>";
+   326→    }
+   327→  }, 60);
+   328→});
+   329→renderUploadLogHistory();
+   330→
+   331→/* 能耗面板 */
+   332→function renderEnergy() {
+   333→  const st = getRealState();
+   334→  $("#en-auto").textContent = (st.stats && st.stats.auto) || 0;
+   335→  if (HAS_BRIDGE) {
+   336→    try {
+   337→      const d = JSON.parse(AndroidApp.energyStats());
+   338→      if (d.ok) {
+   339→        $("#en-events").textContent = d.events;
+   340→        $("#en-scans").textContent = d.scans;
+   341→        $("#en-backs").textContent = d.backs || 0;
+   342→        $("#en-estimate").textContent = d.microWh + "µWh";
+   343→        return;
+   344→      }
+   345→    } catch (e) {}
+   346→  }
+   347→  $("#en-events").textContent = "--";
+   348→  $("#en-scans").textContent = "--";
+   349→  $("#en-backs").textContent = "--";
+   350→  $("#en-estimate").textContent = "服务未开启";
+   351→}
+   352→
+   353→/* ══════════ 问题反馈（内置加密通道，零配置） ══════════ */
+   354→const FB_TYPES = { missed: "漏拦截：开屏广告没被秒跳", gyro_leak: "翻转/摇一摇仍被跳转", popup_leak: "弹窗广告没被关闭", false_block: "误拦截：正常操作被拦", crash: "闪退 / 卡顿", suggestion: "功能建议", other: "其他" };
+   355→
+   356→function esc(s) {
+   357→  return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+   358→}
+   359→function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "3.13.0"; }
+   360→function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "31300"; }
+   361→
+   362→function openLink(url) {
+   363→  if (HAS_BRIDGE) { try { AndroidApp.openUrl(url); return; } catch (e) {} }
+   364→  try { window.open(url, "_blank"); } catch (e) { location.href = url; }
+   365→}
+   366→function linkBtn(url, text) {
+   367→  return '<button class="gh-link" data-url="' + encodeURIComponent(url) + '" href="javascript:void(0)">' + esc(text) + "</button>";
+   368→}
+   369→document.addEventListener("click", (e) => {
+   370→  const a = e.target.closest("[data-url]");
+   371→  if (a) { e.preventDefault(); openLink(decodeURIComponent(a.dataset.url)); }
+   372→});
+   373→
+   374→function engineProfile() {
+   375→  const st = getRealState();
+   376→  let rules = 0, pkgs = 0;
+   377→  try { Object.keys(st.rules || {}).forEach(k => { const n = (st.rules[k] || []).length; rules += n; if (n) pkgs++; }); } catch (e) {}
+   378→  const log = (st.log || []).slice(-6).map(l => "  - " + (l.msg || ""));
+   379→  const s = st.stats || {};
+   380→  return [
+   381→    "- 版本：v" + appVer() + " (code " + appCode() + ") · 环境：" + (HAS_BRIDGE ? "Android APK" : "浏览器预览"),
+   382→    "- 真实引擎：秒跳 " + (s.auto || 0) + " · 诱导直断 " + (s.back || 0) + " · 弹窗关闭 " + (s.popup || 0) + " · 手动样本 " + (s.manual || 0) + " · 学习规则 " + rules + " 条（" + pkgs + " 个应用）",
+   383→    "- 引擎日志：",
+   384→    log.length ? log.join("\n") : "  - （暂无）",
+   385→  ].join("\n");
+   386→}
+   387→
+   388→function fbHistory() { return store.get("fb_history", []); }
+   389→function renderFbHistory() {
+   390→  const h = fbHistory();
+   391→  if (!h.length) { $("#fb-history").innerHTML = ""; return; }
+   392→  $("#fb-history").innerHTML =
+   393→    '<div class="muted small" style="margin-top:12px">我的反馈（本地记录）</div>' +
+   394→    h.slice(-5).reverse().map(x => `
+   395→      <div class="rule-item">
+   396→        <div style="flex:1;min-width:0">
+   397→          <div class="rule-detail">[${esc(x.type)}] ${esc(x.desc)}</div>
+   398→          <div class="muted small">${esc(x.date)}${x.url ? " · " + linkBtn(x.url, "Issue #" + x.no) : " · 未同步"}</div>
+   399→        </div>
+   400→      </div>`).join("");
+   401→}
+   402→
+   403→$("#btn-feedback").addEventListener("click", async () => {
+   404→  const type = $("#fb-type").value;
+   405→  const desc = $("#fb-desc").value.trim();
+   406→  const box = $("#fb-result");
+   407→  const btn = $("#btn-feedback");
+   408→  if (desc.length < 5) { box.innerHTML = '<div class="fb-msg err">描述再具体一点（至少 5 个字）</div>'; return; }
+   409→
+   410→  const label = FB_TYPES[type] || "其他";
+   411→  const title = "[反馈][" + label + "] " + desc.slice(0, 40) + (desc.length > 40 ? "…" : "");
+   412→  const body = "## 问题描述\n" + desc + "\n\n## 环境信息\n" + engineProfile() + "\n\n— 由开屏卫士 v" + appVer() + " 内置加密通道自动创建";
+   413→
+   414→  box.innerHTML = '<div class="fb-msg">正在通过内置加密通道提交…</div>';
+   415→  btn.disabled = true;
+   416→  let res = null;
+   417→  try {
+   418→    if (HAS_BRIDGE) {
+   419→      res = JSON.parse(AndroidApp.netPostIssue(title, body));
+   420→    } else {
+   421→      const r = await fetch("https://api.github.com/repos/xiaobaiba999/Skip-Ad/issues", {
+   422→        method: "POST",
+   423→        headers: { Accept: "application/vnd.github+json", "Content-Type": "application/json" },
+   424→        body: JSON.stringify({ title, body }),
+   425→      });
+   426→      const d = await r.json().catch(() => ({}));
+   427→      res = r.ok ? { ok: true, url: d.html_url, number: d.number }
+   428→                 : { ok: false, error: "GitHub 返回 " + r.status + "：" + (d.message || "未知") };
+   429→    }
+   430→  } catch (e) {
+   431→    res = { ok: false, error: "提交异常：" + (e.message || e) };
+   432→  }
+   433→  btn.disabled = false;
+   434→
+   435→  const h = fbHistory();
+   436→  h.push({ date: new Date().toLocaleString("zh-CN", { hour12: false }), type: label, desc: desc.slice(0, 50), url: res && res.ok ? res.url : "", no: (res && res.number) || 0 });
+   437→  store.set("fb_history", h.slice(-20));
+   438→  renderFbHistory();
+   439→
+   440→  if (res && res.ok) {
+   441→    box.innerHTML = '<div class="fb-msg ok">已直达 GitHub Issues ' + linkBtn(res.url, "#" + res.number + " 查看") + "，感谢反馈，它会成为下一版迭代依据</div>";
+   442→    $("#fb-desc").value = "";
+   443→    toast("反馈已同步到 GitHub Issues");
+   444→  } else {
+   445→    box.innerHTML = '<div class="fb-msg err">' + esc((res && res.error) || "未知错误") + "</div>";
+   446→  }
+   447→});
+   448→
+   449→/* ══════════ 应用内更新（多通道：直连 → 镜像1 → 镜像2；失败/停滞自动切换） ══════════ */
+   450→const GH_API = "https://api.github.com/repos/xiaobaiba999/Skip-Ad";
+   451→let ubTimer = null;
+   452→let latestRelease = null; // 最近一次检查结果（关于页与横幅共用）
+   453→
+   454→/* 下载通道状态（直连 + 镜像；failed/停滞 30s 自动切换下一个） */
+   455→let dl = { channels: [], idx: 0, fileName: "", prefix: "ub", lastBytes: -1, lastMoveAt: 0 };
+   456→
+   457→function cmpVer(a, b) {
+   458→  const pa = String(a).replace(/^v/, "").split("."), pb = String(b).replace(/^v/, "").split(".");
+   459→  for (let i = 0; i < 3; i++) {
+   460→    const d = (parseInt(pa[i], 10) || 0) - (parseInt(pb[i], 10) || 0);
+   461→    if (d) return d > 0 ? 1 : -1;
+   462→  }
+   463→  return 0;
+   464→}
+   465→
+   466→async function fetchLatest() {
+   467→  if (HAS_BRIDGE) {
+   468→    // 原生侧已带令牌 + 两重重试 + /releases 列表回退（v3.3.0）
+   469→    try { return JSON.parse(AndroidApp.netGetLatestRelease()); } catch (e) { return { ok: false, error: "解析失败" }; }
+   470→  }
+   471→  try {
+   472→    const r = await fetch(GH_API + "/releases/latest", { headers: { Accept: "application/vnd.github+json" } });
+   473→    if (r.status === 404) return { ok: true, hasRelease: false };
+   474→    if (r.ok) {
+   475→      const j = await r.json();
+   476→      const apk = (j.assets || []).filter(a => a && a.name && a.name.endsWith(".apk"))[0];
+   477→      return {
+   478→        ok: true, hasRelease: true, tag: j.tag_name, notes: j.body, url: j.html_url,
+   479→        apkUrl: apk ? apk.browser_download_url : "",
+   480→        apkMirrors: apk ? ["https://ghfast.top/" + apk.browser_download_url, "https://gh-proxy.com/" + apk.browser_download_url] : [],
+   481→        apkFileName: apk ? apk.name : "adshield.apk",
+   482→        apkMB: apk ? Math.round(apk.size / 1048576 * 100) / 100 : 0,
+   483→      };
+   484→    }
+   485→    return { ok: false, error: "GitHub 返回 " + r.status };
+   486→  } catch (e) { return { ok: false, error: "网络异常：" + (e.message || e) }; }
+   487→}
+   488→
+   489→function sizeText(mb) { return mb >= 1 ? mb + " MB" : Math.round(mb * 1024) + " KB"; }
+   490→
+   491→/* ── 统一页内下载流程（横幅与关于页共用；多通道自动切换） ── */
+   492→function startPageDownload(d, prefix) {
+   493→  const fileName = d.apkFileName || "adshield.apk";
+   494→  if (!d.apkUrl) { toast("该版本没有 APK 附件"); return; }
+   495→  if (!HAS_BRIDGE) { openLink(d.apkUrl); return; } // 浏览器预览：退化为直链
+   496→  dl = {
+   497→    channels: [d.apkUrl].concat(d.apkMirrors || []),
+   498→    idx: 0, fileName, prefix,
+   499→    lastBytes: -1, lastMoveAt: Date.now(),
+   500→  };
+   501→  beginChannel();
+   502→}
+   503→
+   504→function beginChannel() {
+   505→  const url = dl.channels[dl.idx];
+   506→  try {
+   507→    const r = JSON.parse(AndroidApp.startUpdateDownload(url, dl.fileName));
+   508→    if (r.ok) {
+   509→      const btn = $("#" + dl.prefix + "-btn");
+   510→      if (btn) { btn.textContent = "下载中…"; btn.disabled = true; }
+   511→      const wrap = $("#" + dl.prefix + "-progress-wrap");
+   512→      if (wrap) wrap.style.display = "";
+   513→      dl.lastBytes = -1;
+   514→      dl.lastMoveAt = Date.now();
+   515→      startProgressPoll(dl.prefix);
+   516→    } else toast(r.error || "启动下载失败");
+   517→  } catch (e) { toast("启动下载失败"); }
+   518→}
+   519→
+   520→/* 切换下一个下载通道；无通道可用时返回 false */
+   521→function switchChannel(reason) {
+   522→  if (dl.idx + 1 < dl.channels.length) {
+   523→    dl.idx++;
+   524→    toast(reason + "，已切换备用通道（" + dl.idx + "/" + (dl.channels.length - 1) + "）");
+   525→    beginChannel();
+   526→    return true;
+   527→  }
+   528→  return false;
+   529→}
+   530→
+   531→function startProgressPoll(prefix) {
+   532→  if (ubTimer) clearInterval(ubTimer);
+   533→  ubTimer = setInterval(() => {
+   534→    try {
+   535→      const d = JSON.parse(AndroidApp.updateProgress());
+   536→      const bar = $("#" + prefix + "-bar"), txt = $("#" + prefix + "-text");
+   537→      if (d.state === "running" || d.state === "paused") {
+   538→        bar.style.width = d.percent + "%";
+   539→        txt.textContent = d.percent + "% · " + (d.bytes / 1048576).toFixed(1) + " / " + (d.total / 1048576).toFixed(1) + " MB";
+   540→        // 停滞检测：30s 无新字节 → 判定该通道不可用，自动切换
+   541→        if (d.bytes !== dl.lastBytes) { dl.lastBytes = d.bytes; dl.lastMoveAt = Date.now(); }
+   542→        else if (Date.now() - dl.lastMoveAt > 30000) {
+   543→          if (switchChannel("下载长时间无进展")) return;
+   544→          dl.lastMoveAt = Date.now(); // 无通道可切：再等一轮
+   545→        }
+   546→      } else if (d.state === "done") {
+   547→        clearInterval(ubTimer); ubTimer = null;
+   548→        bar.style.width = "100%";
+   549→        txt.textContent = "下载完成 ✓ 点击安装即覆盖升级（学习数据保留）";
+   550→        const btn = $("#" + prefix + "-btn");
+   551→        btn.textContent = "立即安装";
+   552→        btn.disabled = false;
+   553→        btn.dataset.phase = "install";
+   554→      } else if (d.state === "failed") {
+   555→        clearInterval(ubTimer); ubTimer = null;
+   556→        if (switchChannel("直连下载失败")) return;
+   557→        txt.textContent = "下载失败（直连与备用通道均不可用），可稍后重试";
+   558→        const btn = $("#" + prefix + "-btn");
+   559→        btn.textContent = "重新下载";
+   560→        btn.disabled = false;
+   561→        btn.dataset.phase = "download";
+   562→      }
+   563→    } catch (e) { clearInterval(ubTimer); ubTimer = null; }
+   564→  }, 800);
+   565→}
+   566→
+   567→/* 横幅交互 */
+   568→$("#ub-toggle").addEventListener("click", () => {
+   569→  const det = $("#ub-detail");
+   570→  det.style.display = det.style.display === "none" ? "" : "none";
+   571→});
+   572→
+   573→$("#ub-action").addEventListener("click", () => {
+   574→  const act = $("#ub-action");
+   575→  const phase = act.dataset.phase;
+   576→  if (phase === "install") {
+   577→    if (HAS_BRIDGE) {
+   578→      try {
+   579→        const r = JSON.parse(AndroidApp.installUpdate());
+   580→        if (!r.ok) toast(r.error || "拉起安装失败");
+   581→      } catch (e) { toast("拉起安装失败"); }
+   582→    }
+   583→    return;
+   584→  }
+   585→  if (latestRelease) startPageDownload(latestRelease, "ub");
+   586→});
+   587→
+   588→/* ── 关于页：检查更新 → 直接页内下载（多通道，全程不出本页） ── */
+   589→$("#btn-check-update").addEventListener("click", async () => {
+   590→  const body = $("#update-body");
+   591→  const btn = $("#btn-check-update");
+   592→  const dlBtn = $("#page-dl-btn");
+   593→  const note = $("#page-dl-note");
+   594→  btn.disabled = true;
+   595→  dlBtn.style.display = "none";
+   596→  note.style.display = "none";
+   597→  body.innerHTML = '<div class="muted small">正在查询 GitHub Releases（令牌 + 重试 + 列表回退）…</div>';
+   598→  const d = await fetchLatest();
+   599→  btn.disabled = false;
+   600→  latestRelease = d.ok && d.hasRelease ? d : latestRelease;
+   601→  if (!d.ok) { body.innerHTML = '<div class="fb-msg err">查询失败：' + esc(d.error || "未知") + "</div>"; return; }
+   602→  if (!d.hasRelease) { body.innerHTML = '<div class="muted small">仓库尚未发布版本。</div>'; return; }
+   603→
+   604→  const latest = String(d.tag || "").replace(/^v/, "");
+   605→  const isNewer = cmpVer(latest, appVer()) > 0;
+   606→  body.innerHTML =
+   607→    '<div class="kv"><span>最新发布</span><b>' + esc(d.tag || latest) + (d.apkMB ? " · " + sizeText(d.apkMB) : "") + "</b></div>" +
+   608→    '<div class="kv"><span>当前版本</span><b>v' + esc(appVer()) + "</b></div>" +
+   609→    (isNewer
+   610→      ? '<div class="fb-msg ok">发现新版本：点下方按钮即可本页下载安装，全程不跳转。</div>'
+   611→      : '<div class="fb-msg ok">已是最新版本（也可随时重新下载）。</div>');
+   612→
+   613→  if (d.apkUrl) {
+   614→    dlBtn.textContent = isNewer
+   615→      ? "⬇ 本页直接下载 v" + latest + "（不跳转）"
+   616→      : "重新下载当前版本 APK（页内直下）";
+   617→    dlBtn.dataset.phase = "download";
+   618→    dlBtn.disabled = false;
+   619→    dlBtn.style.display = "";
+   620→    note.style.display = "";
+   621→    note.textContent = "下载经系统下载服务（省电）；直连失败或 30s 无进展将自动切换备用通道，全程不出本页。";
+   622→  }
+   623→});
+   624→
+   625→$("#page-dl-btn").addEventListener("click", () => {
+   626→  const btn = $("#page-dl-btn");
+   627→  if (btn.dataset.phase === "install") {
+   628→    if (HAS_BRIDGE) {
+   629→      try {
+   630→        const r = JSON.parse(AndroidApp.installUpdate());
+   631→        if (!r.ok) toast(r.error || "拉起安装失败");
+   632→      } catch (e) { toast("拉起安装失败"); }
+   633→    }
+   634→    return;
+   635→  }
+   636→  if (latestRelease) startPageDownload(latestRelease, "page");
+   637→});
+   638→
+   639→/* 启动静默检查更新（页面就绪后 600ms，不阻塞首屏） */
+   640→async function initUpdate() {
+   641→  const d = await fetchLatest();
+   642→  if (d && d.ok && d.hasRelease) {
+   643→    latestRelease = d;
+   644→    const latest = String(d.tag || "").replace(/^v/, "");
+   645→    if (cmpVer(latest, appVer()) > 0) showUpdateBanner(d);
+   646→  }
+   647→}
+   648→function showUpdateBanner(d) {
+   649→  const bn = $("#update-banner");
+   650→  $("#ub-tag").textContent = d.tag || "";
+   651→  $("#ub-size").textContent = d.apkMB ? "· " + sizeText(d.apkMB) : "";
+   652→  const act = $("#ub-action");
+   653→  act.textContent = d.apkUrl ? "本页直接下载（不跳转）" : "打开发布页";
+   654→  act.dataset.phase = "download";
+   655→  bn.style.display = "";
+   656→  $("#ub-detail").style.display = "none";
+   657→}
+   658→setTimeout(initUpdate, 600);
+   659→
+   660→/* ══════════ 关于 ══════════ */
+   661→function renderAbout() {
+   662→  let v = "浏览器预览", c = "-";
+   663→  if (HAS_BRIDGE) {
+   664→    try { v = "v" + AndroidApp.versionName(); c = AndroidApp.versionCode(); } catch (e) {}
+   665→  }
+   666→  $("#about-ver").textContent = v === "浏览器预览" ? "浏览器预览（引擎 v" + appVer() + "）" : v;
+   667→  $("#about-code").textContent = c;
+   668→  $("#ver-badge").textContent = v === "浏览器预览" ? "v" + appVer() : v;
+   669→  $("#changelog").innerHTML = CHANGELOG.map(x =>
+   670→    `<div class="cl-item"><span class="cl-ver">v${x.v}</span>${x.d}</div>`).join("");
+   671→}
+   672→
+   673→/* ══════════ Toast / 初始化 ══════════ */
+   674→let toastTimer = null;
+   675→function toast(msg) {
+   676→  let el = $("#__toast");
+   677→  if (!el) {
+   678→    el = document.createElement("div");
+   679→    el.id = "__toast";
+   680→    document.body.appendChild(el);
+   681→  }
+   682→  el.textContent = msg;
+   683→  el.style.opacity = "1";
+   684→  clearTimeout(toastTimer);
+   685→  toastTimer = setTimeout(() => { el.style.opacity = "0"; }, 1800);
+   686→}
+   687→
+   688→(function init() {
+   689→  renderToggles();
+   690→  renderAbout();
+   691→  refreshHome();
+   692→  renderReal();
+   693→  renderEnergy();
+   694→  renderFbHistory();
+   695→})();
+   696→

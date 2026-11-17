@@ -1,0 +1,702 @@
+    38→    38→/**
+    39→    39→ * 开屏广告智能跳过服务（无障碍服务实现 · v3.13.0 · 纯跳过引擎）
+    40→    40→ * ─────────────────────────────────────────────────────────────
+    41→    41→ * v3.13.0（真机反馈：接收验证码时顶部横幅被点掉 + 夜间待机功耗偏高）：
+    42→    42→ *  · 验证码横幅四重防护（不再点掉短信/验证码/来电横幅）：
+    43→    43→ *    ① 短信/彩信/来电类覆盖层包（mms/smsextra/messaging/incallui）事件
+    44→    44→ *       入口直接丢弃——绝不扫描绝不学习（决策核心 isSmsOverlayPkg）；
+    45→    45→ *    ② 树内出现「验证码/校验码/动态码/动态密码」文案的窗口绝不扫描
+    46→    46→ *       绝不点击（treeHasCodeBannerMarker，含应用内自绘提示条）；
+    47→    47→ *    ③ 手势真实触点派发前检查 SystemUI 顶部小窗（状态栏/heads-up 横幅）
+    48→    48→ *       是否覆盖目标坐标——被横幅覆盖即拒发手势（触点会被横幅截走），
+    49→    49→ *       降级 performAction 代点（不经过屏幕坐标，绝不碰横幅）；
+    50→    50→ *    ④ BACK 兜底同理：SystemUI 横幅在场时绝不派返回键（BACK 会先关横幅）。
+    51→    51→ *  · 待机功耗治理（夜间不再每 5 分钟唤醒）：
+    52→    52→ *    ① 息屏休眠门——息屏（!PowerManager.isInteractive）时事件只维护
+    53→    53→ *       前台包名追踪，不扫描/不点击/不学习（息屏没有可跳的广告，只有
+    54→    54→ *       来电/闹钟等敏感窗——此时出手=误点挂断/误关闹钟，纯浪费纯危险）；
+    55→    55→ *    ② 手势派发息屏熔断（gestureTap 首行检查，纵深防御）；
+    56→    56→ *    ③ 心跳自适应——亮屏 5 分钟精确（发现快，设备本就醒着）；息屏改
+    57→    57→ *       30~45 分钟窗口式非精确闹钟（setWindow，系统批量调度进 Doze
+    58→    58→ *       维护窗，绝不把设备从 Doze 中唤醒——v3.9.0 的 5 分钟
+    59→    59→ *       setExactAndAllowWhileIdle 一晚唤醒 96 次是待机耗电元凶）。
+    60→    60→ *  · issue#16 日志实锤两处整治：
+    61→    61→ *    ① securitycenter 应用详情页被学出位置 (91%,9%)——OEM 工具包
+    62→    62→ *       （miui/securitycenter/systemmanager 族）位置学习永久拒收 +
+    63→    63→ *       启动时清理已误学规则（决策核心 isOemUtilityPkg）；
+    64→    64→ *    ② 越界位置拒绝日志刷屏（(90%,103%)×6/30s）——同包 30s 去重。
+    65→    65→ *  · 误触观察口径修正（issue#16/#17：误触观察 48~60 条几乎全是正常秒跳
+    66→    66→ *    被误记——熟练用户等在跳过键上 500ms 内手点完全正常）：「快于人类
+    67→    67→ *    反应」启发式移除，仅保留全屏热区观察（真信号），同包 5s 去重。
+    68→    68→ *  · 界面：学习中心「分应用统计」卡整体移除（用户反馈看不懂还乱），
+    69→    69→ *    引擎日志与能耗面板保留；byApp 统计仍在后台照常累计（仅随日志上传）。
+    70→    70→ *
+    71→    71→ * v3.12.0（issue#14 日志实锤：链式拦截机制【整体移除】）：
+    72→    72→ *  · 事故链（v3.11.0 三重放行安全门仍拦不住）：NFC 碰一碰拉起支付链
+    73→    73→ *    （securitycenter→支付组件）与「分享到微信」被 1.5s 内连按 3 次返回键
+    74→    74→ *    弹回（日志 ⛓×3）。用户意图场景无法穷举——任何安全门都有漏网时刻。
+    75→    75→ *  · 结论：链式回弹是本项目早期自创的危险特性（同类头部应用并无此
+    76→    76→ *    功能），三轮事故（#12 闪退/#13 分享被拦/本次 NFC 支付被拦）证明
+    77→    77→ *    收益（拦少量真广告二跳）远小于代价（踢用户出正在进行的操作）。
+    78→    78→ *    职责回归纯跳过：只点「跳过/关闭」类控件，绝不对抗用户的任何跳转。
+    79→    79→ *  · 移除清单：reboundChainJump（跨应用弹回）/ reboundLanding（同包
+    80→    80→ *    落地页弹回）/ chainBounceVerdict 三重放行 / isChooserHint /
+    81→    81→ *    isAdTarget + AD_TARGET_HINTS 名单 / adFeatureUntil 广告特征追踪 /
+    82→    82→ *    用户意图追踪（lastUserActAt/chooserSeenAt）状态全部删除。
+    83→    83→ *  · intentresolver 保留在系统噪音过滤（分享面板绝不扫描，防误点）。
+    84→    84→ *  · issue#14 日志同时暴露 connectivity 连接检查窗循环误点——并入噪音
+    85→    85→ *    过滤（connectivity/captiveportal 家族）。
+    86→    86→ *
+    87→    87→ * v3.11.0（issue#13 实锤修复：用户主动分享被链式回弹连踢 3 次）：
+    88→    88→ *  · 事故链：用户在安全中心点「分享到微信」→ 引擎把 securitycenter→mm
+    89→    89→ *    当成「广告拉起微信」→ 返回键弹回 → 用户重试 3 次全被弹回。
+    90→    90→ *    参考同类头部应用的安全哲学：回弹绝不与用户意愿对抗——只拦
+    91→    91→ *    「无人在场时广告自己拉起」的跳转。三重放行安全门：
+    92→    92→ *    ① 用户 2.2s 内真实点击（引擎代点不计）→ 主动跳转，放行；
+    93→    93→ *    ② 系统分享选择器（Resolver/Chooser/intentresolver）8s 内出现过
+    94→    94→ *       → 用户亲手挑的目标，放行；
+    95→    95→ *    ③ 同「宿主→目标」12s 内已弹回过一次又立刻拉起 = 用户重试，放行。
+    96→    96→ *  · 同包落地页弹回同步加用户点击门（点商品/文章详情跳 WebView 不再误弹）；
+    97→    97→ *  · intentresolver 加入系统噪音过滤（分享面板全屏热区误观察归零）；
+    98→    98→ *  · 学习规则明细撤出 App UI（学习引擎照常工作，列表仅进诊断日志）。
+    99→    99→ *
+   100→   100→ * v3.10.0（规则直接内嵌、覆盖面大扩充、绝不乱点）：
+   101→   101→ *  · RuleEngine 五层规则：分应用表（28 款主流应用真实文案）/ 全局精确
+   102→   102→ *    文案（19 条，大小写归一）/ 倒计时形态（严格正则，营销话术数学上
+   103→   103→ *    无法混入）/ 短包含（≤8 字 + 诱导词 17 词黑名单否决）/ vid（skip 族
+   104→   104→ *    任意窗口 + close/exit/dismiss 族仅 SDK 广告窗/学习窗+屏幕边缘带）；
+   105→   105→ *  · Ctx 新增 pkg；服务启动日志带规则库统计。
+   106→   106→ *
+   107→   107→ * v3.9.0（issue#11/#12 真机日志实锤三条毒链整改，内嵌规则引擎主路径化）：
+   108→   108→ *  · 毒链①（issue#12 闪退元凶）根治：桌面（com.miui.home）被误判为开屏
+   109→   109→ *    广告窗 → 坐标兜底盲点固定坐标点中桌面图标 → 拉起微信/QQ/抖音 →
+   110→   110→ *    链式回弹把用户踢出应用「进去就被退出来」。对策三刀：
+   111→   111→ *    ① 桌面/Launcher 事件入口直接丢弃（isLauncherLike 黑名单——绝不
+   112→   112→ *       扫描/学习/回弹，桌面图标位置永不再被学成「跳过键」）；
+   113→   113→ *    ② 坐标级盲点兜底（L6）整体移除——每台手机屏幕大小不一样，固定
+   114→   114→ *       百分比坐标必然乱点；只点【规则命中的控件自身 bounds 中心】
+   115→   115→ *       （应用按实际屏幕渲染，天然适配任意分辨率）；
+   116→   116→ *    ③ 链式回弹加宿主校验：host 必须非桌面且真有广告窗资格。
+   117→   117→ *  · 主路径落地（RuleEngine 内嵌规则引擎，规则内嵌 APK 零云端）：
+   118→   118→ *    窗口/内容一变 → 按包名查全局规则（「跳过/跳过广告/Skip」精确+短包含
+   119→   119→ *    +vid skip）→ 命中即 0ms 手势点控件中心——「露头就秒跳」（Keep 开屏
+   120→   120→ *    同级速度）。决策核心退居复杂信号兜底（关闭键/角落键/SDK 窗/陀螺仪）。
+   121→   121→ *  · 角落键广告形态确认门：无字小控件须「热区/角标/SDK 窗/学习窗/树≤60」
+   122→   122→ *    五选一才出手——普通应用主页角落图标（设置齿轮）绝不误点。
+   123→   123→ *  · 弹窗内容突发检测默认关闭（issue#12 大量误报「疑似覆盖层弹窗」），
+   124→   124→ *    学习中心可手动开启。
+   125→   125→ *  · 速度全面提速（以 Keep 开屏为标杆）：扫描链前段加密（0/60/120/200/
+   126→   126→ *    300/450/650/900ms）、学习位置 100ms、关闭键 250ms、角落键 300ms、
+   127→   127→ *    点击冷却 1.2s→0.9s、内容变化节流 150→80ms。
+   128→   128→ *  · 保活强化：心跳自检闹钟 15 分钟→5 分钟（服务被杀发现更快，配合
+   129→   129→ *    WRITE_SECURE_SETTINGS 自愈重绑全自动恢复）。
+   130→   130→ *  · 保留：GitHub 引擎日志上传（issue 反馈通道）、学习中心（文本/位置/
+   131→   131→ *    指纹学习——用户使用习惯全保留）。
+   132→   132→ *
+   133→   133→ * v3.8.0（issue#10 二轮根因修复：canPerformGestures 缺失/手势零长度路径/
+   134→   134→ *  多候选轮换/假跳过直点/vid 跳过键/倒计时门控/WRITE_SECURE_SETTINGS 自愈）
+   135→   135→ * v3.7.0（issue#10 一轮根因修复：onUnbind 保留+心跳+学习位置前置+返回键复验）
+   136→   136→ * v3.6.0（根窗口安全门+毒指纹清理；v3.5.0 复验梯子+位置学习+保活三件套）
+   137→   137→ * ─────────────────────────────────────────────────────────────
+   138→   138→ * v3.7.0（四次真机反馈 issue#10：喜马拉雅「已点击跳过×4」广告不关，用户手点
+   139→   139→ * 同一按钮立刻生效；微博陀螺仪窗返回键直断无效果；清理后台服务失效）：
+   140→   140→ *  · 根因①（头号）：无障碍配置缺 canPerformGestures=true——dispatchGesture
+   141→   141→ *    「手势真实触点」从未真正触达屏幕，复验重试全部无效。已补配置。
+   142→   142→ *  · 根因②：手势路径单点零长度（只有 moveTo）——部分 ROM 不触发点击。
+   143→   143→ *    已改 lineTo 非零路径 + 40ms 起始延迟 + 边界钳制 + 取消诊断回调。
+   144→   144→ *  · 根因③：文本跳过键只点第一个候选，复验 4 次盲点同一坐标——广告图内
+   145→   145→ *    常嵌假「跳过」文本。已改多候选收集轮换（决策核心 skipCands）。
+   146→   146→ *  · 根因④：学习位置排在文本候选之后，教过也轮不到。已前置到 L1 之前；
+   147→   147→ *    且文本键手动点击【同时学位置】（用户手指点通过的位置最可靠）；
+   148→   148→ *    位置健全性校验拒学越界坐标（真机日志 (63%,102%) 越界白学）。
+   149→   149→ *  · 根因⑤（微博）：陀螺仪文案 120ms 抢先返回键、角落键 500ms 才轮到；
+   150→   150→ *    返回键被广告 Activity 拦截后扫描链熔断再无兑底。已改「点击优先、
+   151→   151→ *    返回键兑底」+ 返回键后 600ms 复验不熔断；角落/关闭键树上限 40→150。
+   152→   152→ *  · 根因⑥（保活）：服务解绑即销毁、无心跳。已改 onUnbind 保留 + 15 分钟
+   153→   153→ *    心跳自检闹钟 + 打开 App 自动拉活循环重试（此前仅一次）。
+   154→   154→ *  · 兼容：flagIncludeNotImportantViews（部分广告跳过键被标 not-important，
+   155→   155→ *    不加此标志无障碍树里根本看不到——微博角落键扫不到的帮凶）。
+   156→   156→ *
+   157→   157→ * v3.5.0（二次真机反馈驱动）：点击复验梯子 + 位置学习 + 保活三件套。
+   158→   158→ * v3.6.0（三次真机反馈：喜马拉雅二次进入被引擎连按两次返回键「模拟人
+   159→   159→ * 操作退出」到桌面，上传日志实锤两条毒链）：
+   160→   160→ *  · 毒链① 窗口指纹污染：v3.5.0 的 learnClass 在 L2 直断时把【当时窗口】
+   161→   161→ *    类名一律沉淀；且广告窗关闭后 SDK 资格 12s 不清，L2 在主页继续出手
+   162→   162→ *    → MainActivity/FrameLayout/Dialog 全被学成「广告窗指纹」，此后每次
+   163→   163→ *    进入该应用 500ms 内就在主页按返回键 → 喜马拉雅拦返回弹「再按一次
+   164→   164→ *    退出」→ 复验扫描再按 → 真退到桌面（用户被「模拟人操作退出」）。
+   165→   165→ *    对策：sdkAdWin 只认【当前窗口类名】是 SDK 广告窗（12s TTL 废除）；
+   166→   166→ *    learnClass 只沉淀真广告窗类；启动时清理历史毒指纹（只清 cls 规则）。
+   167→   167→ *  · 毒链② 根窗口返回键：应用入口窗（冷启动开屏/回前台首窗）按返回
+   168→   168→ *    = 退出应用。rootWindow 接线（前台入口窗追踪）：入口窗上 L3/L4.5/L5
+   169→   169→ *    返回键全禁（决策核心安全门 + 服务侧双保险），只走点击梯子，用尽
+   170→   170→ *    优雅收手（每窗 6 次点击预算）。
+   171→   171→ *  · 手势点击改点【原标签控件】坐标（v3.5.0 点可点祖先中心——祖先常是
+   172→   172→ *    全屏容器，「已点击跳过但广告纹丝不动」根因之一）。
+   173→   173→ *  · 保活新增：onTaskRemoved 即时提醒 + 自检闹钟 + 打开 App 自动拉活重绑。
+   174→   174→ *    一个角落候选点并强制 dispatchGesture 真实触点重试；同窗点击 ≥3 次
+   175→   175→ *    仍未关 → 返回键兜底（「点了没反应」的最终兜底）。
+   176→   176→ *  · 位置学习：手动点击图片跳过键（零文本）也能学——归一化坐标 + 窗口
+   177→   177→ *    类名指纹，次启同窗 500ms 直点（教一次就会）。
+   178→   178→ *  · 保活：前台常驻通知 + keepOn 持久化 + KeepAliveReceiver 断连提醒——
+   179→   179→ *    开启后除非手动关闭不再静默失效（更新/重启后一键恢复）。
+   180→   180→ *  · 架构：识别/决策逻辑全部在 AdDecisionCore（纯 Java，JVM 用例必绿）；
+   181→   181→ *    本类只负责：
+   182→   182→ *  · 事件调度（0ms 首扫 + 前密后疏重试链；点击后转入复验调度，不熔断）
+   183→   183→ *  · 决策执行：performAction(ACTION_CLICK) 失效自动降级 dispatchGesture 手势点击
+   184→   184→ *    （v3.4.0 关键：许多应用拦截 performAction，但拦不住真实触点；
+   185→   185→ *    v3.5.0 复验重试一律直接手势真实触点）
+   186→   186→ *  · 多窗口扫描：getRootInActiveWindow 之外遍历 getWindows()（弹窗/覆盖层）
+   187→   187→ *  · 坐标级点击兜底执行（L6，决策核心判定后执行）
+   188→   188→ *  · 学习 / 统计 / 能耗画像
+   189→   189→ *
+   190→   190→ * 真机反馈修复（2026-11：微博/喜马拉雅等主流应用仍拦截失败）：
+   191→   191→ *  根因：第一方图片开屏——窗口类名是应用自己的 Activity（不匹配 SDK 指纹）、
+   192→   192→ *  跳过按钮是纯图片（零文本零 desc）、倒计时烧在图里 → v3.3.0 零信号不出手。
+   193→   193→ *  对策：L4 角落无字小可点控件点击（图片跳过键正解）+ L6 坐标级点击兜底
+   194→   194→ *  （dispatchGesture 真实触点，点击标准跳过位 88%宽/7%高，防误点六重约束）。
+   195→   195→ *
+   196→   196→ * 合规边界（沿用）：只代点「跳过/关闭」类控件、返回键温和关闭广告窗，
+   197→   197→ * 不碰网络层、不终止任何进程与服务（「拦精灵」案司法边界）。
+   198→   198→ */
+   199→   199→public class AdSkipService extends AccessibilityService {
+   200→   200→
+   201→   201→    public static volatile AdSkipService instance;
+   202→   202→
+   203→   203→    private static final String PREFS = "adshield";
+   204→   204→    private static final String KEY_STATE = "state";
+   205→   205→    private static final String KEY_KEEPON = "keepOn";
+   206→   206→
+   207→   207→    private static final int NOTIF_KEEP = 1;   // 前台保活常驻通知
+   208→   208→    public static final int NOTIF_ALERT = 2;   // 服务断开提醒（KeepAliveReceiver 发，服务连上即撤）
+   209→   209→
+   210→   210→    private static final long WINDOW_MS = 12000;       // 开屏时间窗
+   211→   211→    private static final long COOLDOWN_MS = 900;       // 同一应用两次自动点击最小间隔（v3.9.0 1200→900：复验更快）
+   212→   212→    private static final long LEARN_WINDOW_MS = 30000; // 手动点击学习宽时间窗
+   213→   213→    private static final int MAX_RULES_PER_APP = 8;
+   214→   214→    private static final int MAX_LOG = 60;
+   215→   215→
+   216→   216→    /* 极速链（v3.9.0 前段加密：露头就秒跳——Keep 开屏「跳过」键 0ms 首扫即中，
+   217→   217→       60ms 内二连扫兜底渲染延迟；后段保持疏节奏覆盖晚出键） */
+   218→   218→    private static final long[] SCAN_AT =
+   219→   219→            {0, 60, 120, 200, 300, 450, 650, 900, 1300, 1900, 2700, 3800, 5200, 7000, 9500, 12000};
+   220→   220→    /* 返回键重试：每个窗口最多直断次数（个别广告拦截第一次返回键） */
+   221→   221→    private static final int BACK_RETRY_MAX = 2;
+   222→   222→    /* 弹窗窗期与冷却 */
+   223→   223→    private static final long POPUP_WINDOW_MS = 10000;
+   224→   224→    private static final long POPUP_COOLDOWN_MS = 2500;
+   225→   225→    private static final long POPUP_SCAN_THROTTLE_MS = 700;
+   226→   226→    private static final int BURST_COUNT = 3;
+   227→   227→    private static final long BURST_WIN_MS = 1500;
+   228→   228→    /* 多窗口扫描上限（能耗） */
+   229→   229→    private static final int MAX_WINDOWS_SCAN = 3;
+   230→   230→
+   231→   231→    /* 能耗治理：内存聚合 + 延迟落盘 */
+   232→   232→    private static final long FLUSH_DELAY_MS = 15000;
+   233→   233→    private boolean flushScheduled = false;
+   234→   234→
+   235→   235→    /* 能耗画像（开机累计，学习中心展示） */
+   236→   236→    public long energyEvents = 0;
+   237→   237→    public long energyScans = 0;
+   238→   238→    public long energyBacks = 0;
+   239→   239→    public long energyGestures = 0;
+   240→   240→    public long popupBlocks = 0;
+   241→   241→
+   242→   242→    private final Object lock = new Object();
+   243→   243→    private final Handler handler = new Handler(Looper.getMainLooper());
+   244→   244→    private final java.util.HashMap<String, Long> windowAt = new java.util.HashMap<>();
+   245→   245→    private final java.util.HashMap<String, Long> lastClickAt = new java.util.HashMap<>();
+   246→   246→    private final java.util.HashMap<String, Long> lastPopupAt = new java.util.HashMap<>();
+   247→   247→    private final java.util.HashMap<String, Integer> scanGen = new java.util.HashMap<>();
+   248→   248→    private final java.util.HashMap<String, String> winClass = new java.util.HashMap<>();
+   249→   249→    private final java.util.HashMap<String, Boolean> winClsLearned = new java.util.HashMap<>();
+   250→   250→    /* v3.6.0 根窗口安全门：应用入口窗（冷启动开屏/回前台首窗）类名——
+   251→   251→     * 入口窗上按返回键 = 退出应用，返回键决策全部禁用 */
+   252→   252→    private final java.util.HashMap<String, String> rootWinCls = new java.util.HashMap<>();
+   253→   253→    /* v3.6.0：前台包名追踪（判断应用是否【新进入前台】→ 记录入口窗） */
+   254→   254→    private volatile String lastFgPkg = null;
+   255→   255→    /* v3.6.0：本窗点击梯子已优雅收手（预算用尽后不再动作，新窗口重置） */
+   256→   256→    private final java.util.HashMap<String, Boolean> gaveUp = new java.util.HashMap<>();
+   257→   257→    private final java.util.HashMap<String, Integer> backTries = new java.util.HashMap<>();
+   258→   258→    private final java.util.HashMap<String, Long> popupUntil = new java.util.HashMap<>();
+   259→   259→    private final java.util.HashMap<String, Long> lastPopupScanAt = new java.util.HashMap<>();
+   260→   260→    /* v3.13.0 日志去重：位置学习拒绝/验证码横幅/heads-up 保护/热区误触 */
+   261→   261→    private final java.util.HashMap<String, Long> posRejectLogAt = new java.util.HashMap<>();
+   262→   262→    private final java.util.HashMap<String, Long> codeBannerLogAt = new java.util.HashMap<>();
+   263→   263→    private final java.util.HashMap<String, Long> headsUpLogAt = new java.util.HashMap<>();
+   264→   264→    private final java.util.HashMap<String, Long> misclickLogAt = new java.util.HashMap<>();
+   265→   265→    private final java.util.HashMap<String, long[]> burstWin = new java.util.HashMap<>();
+   266→   266→    /* v3.5.0：点击复验——本窗已点击次数（换候选/真实触点重试/返回键兜底的依据） */
+   267→   267→    private final java.util.HashMap<String, Integer> clickTries = new java.util.HashMap<>();
+   268→   268→    /* v3.8.0 倒计时门控（issue#10 二轮·喜马拉雅）：跳过文案带数字（「跳过 3」）
+   269→   269→     * 时穿山甲类 SDK 的跳过键尚未激活——提前点=白点还占 1.2s 冷却。锚点跟踪
+   270→   270→     * 文案数字变化，首击未关 → 门控到「锚点+剩余秒数-0.5s」再出手，出手即命中 */
+   271→   271→    private final java.util.HashMap<String, Integer> cdLastN = new java.util.HashMap<>();
+   272→   272→    private final java.util.HashMap<String, Long> cdAnchorAt = new java.util.HashMap<>();
+   273→   273→    private final java.util.HashMap<String, Long> cdWaitUntil = new java.util.HashMap<>();
+   274→   274→
+   275→   275→    private volatile String lastAutoClickPkg;
+   276→   276→    private volatile long lastAutoClickAt;
+   277→   277→
+   278→   278→    private int screenWidth;
+   279→   279→    private int screenHeight;
+   280→   280→
+   281→   281→    /** 状态快照（含缓存）：Bridge 读 state 走这里，UI 永远拿最新内存态 */
+   282→   282→    public static String snapshotState(Context ctx) {
+   283→   283→        AdSkipService s = instance;
+   284→   284→        if (s != null) {
+   285→   285→            synchronized (s.lock) {
+   286→   286→                try {
+   287→   287→                    return s.stateInMemory.toString();
+   288→   288→                } catch (Exception ignored) {
+   289→   289→                }
+   290→   290→            }
+   291→   291→        }
+   292→   292→        return ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_STATE, null);
+   293→   293→    }
+   294→   294→
+   295→   295→    @Override
+   296→   296→    protected void onServiceConnected() {
+   297→   297→        super.onServiceConnected();
+   298→   298→        instance = this;
+   299→   299→        screenWidth = getResources().getDisplayMetrics().widthPixels;
+   300→   300→        screenHeight = getResources().getDisplayMetrics().heightPixels;
+   301→   301→        // v3.5.0 保活：服务连上即记「用户要求保持开启」；仅用户在 App 内手动
+   302→   302→        // 关闭保活提醒（Bridge.setKeepOn(false)）才置 false
+   303→   303→        prefs().edit().putBoolean(KEY_KEEPON, true).apply();
+   304→   304→        startKeepAliveForeground();
+   305→   305→        cancelAlertNotification();
+   306→   306→        cancelHeartbeat(); // 服务活着，心跳自检不再需要
+   307→   307→        // v3.6.0：清理 v3.5.0 误学毒指纹（MainActivity/FrameLayout/Dialog 被
+   308→   308→        // 学成「广告窗指纹」——用户二次进入被连按返回键退出的根因）
+   309→   309→        int purged = purgePoisonFingerprints();
+   310→   310→        appendLog("服务已启动 · v3.13.0 验证码横幅四重防护 + 息屏休眠 + 夜间心跳降频（规则 "
+   311→   311→                + RuleEngine.stats() + ")"
+   312→   312→                + (purged > 0 ? "｜已清理 " + purged + " 条误学窗口指纹" : ""));
+   313→   313→        // v3.9.0：清理毒位置规则（issue#12 实锤：桌面 com.miui.home 学出位置
+   314→   314→        //(39%,18%)——桌面点击被误学成「跳过键」，下次启动直点桌面图标=乱点）
+   315→   315→        int purgedPos = purgeLauncherPosRules();
+   316→   316→        if (purgedPos > 0) appendLog("已清理 " + purgedPos + " 条桌面误学位置规则（issue#12 闪退整治）");
+   317→   317→        // v3.13.0：清理 OEM 工具包/短信包误学规则（issue#16 实锤：securitycenter
+   318→   318→        // 应用详情页被学出位置 (91%,9%)——下次进详情页 500ms 直点=在权限管理页乱点）
+   319→   319→        int purgedOem = purgeOemPosRules();
+   320→   320→        if (purgedOem > 0) appendLog("已清理 " + purgedOem + " 条系统工具/短信包误学规则（issue#16 整治，安全中心/短信里的手动操作绝不当「跳过键」）");
+   321→   321→    }
+   322→   322→
+   323→   323→    /* ───────── v3.7.0 保活：onUnbind 保留 + 心跳自检闹钟 ─────────
+   324→   324→     * 「开启后不手动关闭就一直保持开启」（issue#10：清理后台重进又要手动开）：
+   325→   325→     *  · onUnbind 返回 true：系统解绑（非用户主动关闭）时服务实例保留，
+   326→   326→     *    AMS 重绑无需重建——GKD 同款方案；
+   327→   327→     *  · 心跳闹钟（15 分钟 inexact）：进程被杀但非 force-stop 的 ROM 上仍会触发，
+   328→   328→     *    服务已死即发恢复提醒；服务连上即自动撤；
+   329→   329→     *  · force-stop 后闹钟会被系统清除（任何应用无法绕过）——唯一出路是
+   330→   330→     *    电池白名单（App 内醒目引导）+ 打开 App 自动拉活重绑（tryAutoRevive）。 */
+   331→   331→    @Override
+   332→   332→    public boolean onUnbind(Intent intent) {
+   333→   333→        // 系统解绑但非用户主动关闭：保留服务等待 AMS 重绑，并排自检 + 心跳
+   334→   334→        try {
+   335→   335→            if (prefs().getBoolean(KEY_KEEPON, false)) {
+   336→   336→                appendLog("🔌 服务被系统解绑（非手动关闭）→ 保留实例等待重绑，已排自检与心跳");
+   337→   337→                scheduleSelfCheckAlarm(3000);
+   338→   338→                scheduleHeartbeat();
+   339→   339→            }
+   340→   340→        } catch (Throwable ignored) {
+   341→   341→        }
+   342→   342→        return true; // 关键：true = 不销毁服务，下次 AMS 重绑直接复用
+   343→   343→    }
+   344→   344→
+   345→   345→    /** v3.9.0：心跳自检闹钟（亮屏 5 分钟：服务被杀后最多 5 分钟内发现并自愈/
+   346→   346→     *  提醒恢复——「清理后台重进要手动开」的发现延迟大幅缩短） */
+   347→   347→    public static final long HEARTBEAT_MS = 5 * 60 * 1000;
+   348→   348→
+   349→   349→    /** v3.13.0：息屏心跳间隔——30 分钟窗口式非精确闹钟（30~45 分钟内由系统
+   350→   350→     *  批量调度进 Doze 维护窗，绝不把设备从 Doze 中唤醒；v3.9.0 的 5 分钟
+   351→   351→     *  setExactAndAllowWhileIdle 一晚唤醒 96 次是待机耗电元凶） */
+   352→   352→    public static final long NIGHT_HEARTBEAT_MS = 30 * 60 * 1000;
+   353→   353→    public static final long NIGHT_HEARTBEAT_WINDOW_MS = 15 * 60 * 1000;
+   354→   354→
+   355→   355→    /** v3.8.0：排下一次心跳（静态：KeepAliveReceiver 收到自检后自续期共用——
+   356→   356→     *  心跳链永不中断）。亮屏：精确闹钟优先（Doze 中也能准点触发），未授予
+   357→   357→     *  精确闹钟权限（Android 12+）降级 setAndAllowWhileIdle；息屏且允许降频
+   358→   358→     *  （nightDeferrable，开机 2s 快查除外）：改窗口式非精确闹钟——系统批量
+   359→   359→     *  调度，不唤醒设备（v3.13.0 待机功耗治理） */
+   360→   360→    static void scheduleNextHeartbeat(Context ctx, long atMs) {
+   361→   361→        scheduleNextHeartbeat(ctx, atMs, false);
+   362→   362→    }
+   363→   363→
+   364→   364→    static void scheduleNextHeartbeat(Context ctx, long atMs, boolean nightDeferrable) {
+   365→   365→        try {
+   366→   366→            android.app.AlarmManager am = (android.app.AlarmManager) ctx.getSystemService(Context.ALARM_SERVICE);
+   367→   367→            Intent it = new Intent(ctx, KeepAliveReceiver.class);
+   368→   368→            it.setAction(KeepAliveReceiver.ACTION_SELF_CHECK);
+   369→   369→            android.app.PendingIntent pi = android.app.PendingIntent.getBroadcast(
+   370→   370→                    ctx, 8, it,
+   371→   371→                    android.app.PendingIntent.FLAG_UPDATE_CURRENT | android.app.PendingIntent.FLAG_IMMUTABLE);
+   372→   372→            if (nightDeferrable && !isScreenOn(ctx)) {
+   373→   373→                am.setWindow(android.app.AlarmManager.RTC,
+   374→   374→                        System.currentTimeMillis() + NIGHT_HEARTBEAT_MS, NIGHT_HEARTBEAT_WINDOW_MS, pi);
+   375→   375→            } else {
+   376→   376→                try {
+   377→   377→                    am.setExactAndAllowWhileIdle(android.app.AlarmManager.RTC, atMs, pi);
+   378→   378→                } catch (SecurityException se) {
+   379→   379→                    am.setAndAllowWhileIdle(android.app.AlarmManager.RTC, atMs, pi);
+   380→   380→                }
+   381→   381→            }
+   382→   382→        } catch (Throwable ignored) {
+   383→   383→        }
+   384→   384→    }
+   385→   385→
+   386→   386→    private void scheduleHeartbeat() {
+   387→   387→        scheduleNextHeartbeat(this, System.currentTimeMillis() + HEARTBEAT_MS, true);
+   388→   388→    }
+   389→   389→
+   390→   390→    private void cancelHeartbeat() {
+   391→   391→        try {
+   392→   392→            android.app.AlarmManager am = (android.app.AlarmManager) getSystemService(ALARM_SERVICE);
+   393→   393→            Intent it = new Intent(this, KeepAliveReceiver.class);
+   394→   394→            it.setAction(KeepAliveReceiver.ACTION_SELF_CHECK);
+   395→   395→            android.app.PendingIntent pi = android.app.PendingIntent.getBroadcast(
+   396→   396→                    this, 8, it,
+   397→   397→                    android.app.PendingIntent.FLAG_UPDATE_CURRENT | android.app.PendingIntent.FLAG_IMMUTABLE);
+   398→   398→            am.cancel(pi);
+   399→   399→        } catch (Throwable ignored) {
+   400→   400→        }
+   401→   401→    }
+   402→   402→
+   403→   403→    @Override
+   404→   404→    public void onTaskRemoved(Intent rootIntent) {
+   405→   405→        super.onTaskRemoved(rootIntent);
+   406→   406→        // v3.6.0：后台清理（滑掉最近任务）时，部分 ROM 会连无障碍服务一起杀。
+   407→   407→        // ① 若进程幸存：4s 后自检，服务真死了才发「待恢复」提醒（防误报）
+   408→   408→        // ② 自检闹钟（15s）：进程被杀但非 force-stop 的 ROM 上仍可触发提醒
+   409→   409→        // v3.7.0：追加 15 分钟心跳闹钟——进程被杀后持续自检，
+   410→   410→        //    服务一旦真死即提醒恢复（用户手动关闭 keepOn 时不排）
+   411→   411→        try {
+   412→   412→            if (!prefs().getBoolean(KEY_KEEPON, false)) return;
+   413→   413→            handler.postDelayed(() -> {
+   414→   414→                if (instance == null) KeepAliveReceiver.notifyAlert(AdSkipService.this);
+   415→   415→            }, 4000);
+   416→   416→            scheduleSelfCheckAlarm(15000);
+   417→   417→            scheduleHeartbeat();
+   418→   418→        } catch (Throwable ignored) {
+   419→   419→        }
+   420→   420→    }
+   421→   421→
+   422→   422→    /** v3.6.0：自检闹钟——清理后台后若服务已死（且非 force-stop 状态），发恢复提醒 */
+   423→   423→    private void scheduleSelfCheckAlarm(long delayMs) {
+   424→   424→        try {
+   425→   425→            android.app.AlarmManager am = (android.app.AlarmManager) getSystemService(ALARM_SERVICE);
+   426→   426→            Intent it = new Intent(this, KeepAliveReceiver.class);
+   427→   427→            it.setAction(KeepAliveReceiver.ACTION_SELF_CHECK);
+   428→   428→            android.app.PendingIntent pi = android.app.PendingIntent.getBroadcast(
+   429→   429→                    this, 7, it,
+   430→   430→                    android.app.PendingIntent.FLAG_UPDATE_CURRENT | android.app.PendingIntent.FLAG_IMMUTABLE);
+   431→   431→            am.set(android.app.AlarmManager.RTC, System.currentTimeMillis() + delayMs, pi);
+   432→   432→        } catch (Throwable ignored) {
+   433→   433→        }
+   434→   434→    }
+   435→   435→
+   436→   436→    /** v3.6.0：清理误学窗口指纹——只删 cls 规则中非广告窗类的（保留位置/文本规则） */
+   437→   437→    private int purgePoisonFingerprints() {
+   438→   438→        synchronized (lock) {
+   439→   439→            try {
+   440→   440→                JSONObject st = loadState();
+   441→   441→                JSONObject rules = st.optJSONObject("rules");
+   442→   442→                if (rules == null) return 0;
+   443→   443→                int purged = 0;
+   444→   444→                java.util.Iterator<String> it = rules.keys();
+   445→   445→                while (it.hasNext()) {
+   446→   446→                    String pkg = it.next();
+   447→   447→                    JSONArray list = rules.optJSONArray(pkg);
+   448→   448→                    if (list == null) continue;
+   449→   449→                    JSONArray kept = new JSONArray();
+   450→   450→                    for (int i = 0; i < list.length(); i++) {
+   451→   451→                        JSONObject r = list.optJSONObject(i);
+   452→   452→                        if (r == null) continue;
+   453→   453→                        String cls = r.optString("cls", "");
+   454→   454→                        boolean poison = cls.length() > 0
+   455→   455→                                && !r.optBoolean("pos", false)
+   456→   456→                                && !AdDecisionCore.isAdActivityClass(cls);
+   457→   457→                        if (poison) {
+   458→   458→                            purged++;
+   459→   459→                        } else {
+   460→   460→                            kept.put(r);
+   461→   461→                        }
+   462→   462→                    }
+   463→   463→                    if (kept.length() == 0) it.remove();
+   464→   464→                    else rules.put(pkg, kept);
+   465→   465→                }
+   466→   466→                if (purged > 0) saveState(st);
+   467→   467→                return purged;
+   468→   468→            } catch (Exception e) {
+   469→   469→                return 0;
+   470→   470→            }
+   471→   471→        }
+   472→   472→    }
+   473→   473→
+   474→   474→    /** v3.13.0：清理 OEM 系统工具包/短信包误学的规则（issue#16 实锤毒数据：
+   475→   475→     *  com.miui.securitycenter 应用详情页被学出位置 (91%,9%)@ApplicationsDetails
+   476→   476→     *  Activity——安全中心里的手动操作被当「跳过键」记忆，下次进详情页 500ms
+   477→   477→     *  直点=在权限管理页乱点）。OEM 工具包与短信类包规则【整体删除】。 */
+   478→   478→    private int purgeOemPosRules() {
+   479→   479→        synchronized (lock) {
+   480→   480→            try {
+   481→   481→                JSONObject st = loadState();
+   482→   482→                JSONObject rules = st.optJSONObject("rules");
+   483→   483→                if (rules == null) return 0;
+   484→   484→                int purged = 0;
+   485→   485→                java.util.Iterator<String> it = rules.keys();
+   486→   486→                while (it.hasNext()) {
+   487→   487→                    String pkg = it.next();
+   488→   488→                    if (AdDecisionCore.isOemUtilityPkg(pkg) || AdDecisionCore.isSmsOverlayPkg(pkg)) {
+   489→   489→                        JSONArray list = rules.optJSONArray(pkg);
+   490→   490→                        if (list != null) purged += list.length();
+   491→   491→                        it.remove();
+   492→   492→                    }
+   493→   493→                }
+   494→   494→                if (purged > 0) saveState(st);
+   495→   495→                return purged;
+   496→   496→            } catch (Exception e) {
+   497→   497→                return 0;
+   498→   498→            }
+   499→   499→        }
+   500→   500→    }
+   501→   501→
+   502→   502→    /** v3.9.0：清理桌面/系统误学的位置规则（issue#12 实锤毒数据：
+   503→   503→     *  com.miui.home 学出位置(39%,18%)@Launcher、com.autonavi.minimap 学出
+   504→   504→     *  (86%,8%)——桌面图标位置被当「跳过键」记忆，下次启动直点图标=乱点）。
+   505→   505→     *  桌面包规则整体删除；位置规则的窗口类含 Launcher/home 的一并删除。 */
+   506→   506→    private int purgeLauncherPosRules() {
+   507→   507→        synchronized (lock) {
+   508→   508→            try {
+   509→   509→                JSONObject st = loadState();
+   510→   510→                JSONObject rules = st.optJSONObject("rules");
+   511→   511→                if (rules == null) return 0;
+   512→   512→                int purged = 0;
+   513→   513→                java.util.Iterator<String> it = rules.keys();
+   514→   514→                while (it.hasNext()) {
+   515→   515→                    String pkg = it.next();
+   516→   516→                    // 桌面包：规则整体删除（绝不扫描绝不学习——黑名单双保险）
+   517→   517→                    if (AdDecisionCore.isLauncherLike(pkg)) {
+   518→   518→                        JSONArray list = rules.optJSONArray(pkg);
+   519→   519→                        if (list != null) purged += list.length();
+   520→   520→                        it.remove();
+   521→   521→                        continue;
+   522→   522→                    }
+   523→   523→                    // 位置规则的窗口类含 Launcher/home：删除该条
+   524→   524→                    JSONArray list = rules.optJSONArray(pkg);
+   525→   525→                    if (list == null) continue;
+   526→   526→                    JSONArray kept = new JSONArray();
+   527→   527→                    for (int i = 0; i < list.length(); i++) {
+   528→   528→                        JSONObject r = list.optJSONObject(i);
+   529→   529→                        if (r == null) continue;
+   530→   530→                        String cls = r.optString("cls", "").toLowerCase();
+   531→   531→                        if (r.optBoolean("pos", false)
+   532→   532→                                && (cls.contains("launcher") || cls.contains("home"))) {
+   533→   533→                            purged++;
+   534→   534→                        } else {
+   535→   535→                            kept.put(r);
+   536→   536→                        }
+   537→   537→                    }
+   538→   538→                    if (kept.length() == 0) it.remove();
+   539→   539→                    else rules.put(pkg, kept);
+   540→   540→                }
+   541→   541→                if (purged > 0) saveState(st);
+   542→   542→                return purged;
+   543→   543→            } catch (Exception e) {
+   544→   544→                return 0;
+   545→   545→            }
+   546→   546→        }
+   547→   547→    }
+   548→   548→
+   549→   549→    @Override
+   550→   550→    public void onDestroy() {
+   551→   551→        flushNow();
+   552→   552→        instance = null;
+   553→   553→        super.onDestroy();
+   554→   554→    }
+   555→   555→
+   556→   556→    @Override
+   557→   557→    public void onInterrupt() {
+   558→   558→    }
+   559→   559→
+   560→   560→    @Override
+   561→   561→    public void onAccessibilityEvent(AccessibilityEvent event) {
+   562→   562→        if (event == null) return;
+   563→   563→        CharSequence pkgCs = event.getPackageName();
+   564→   564→        if (pkgCs == null) return;
+   565→   565→        String pkg = pkgCs.toString();
+   566→   566→        // v3.9.0 桌面/Launcher 黑名单（issue#12 闪退元凶根治）：桌面包事件
+   567→   567→        // 直接丢弃——绝不扫描（桌面简单树被误判广告窗）、绝不学习（桌面图标
+   568→   568→        // 位置被学成「跳过键」后下次启动直点图标=乱点）、绝不回弹（「桌面→
+   569→   569→        // 微信」被当广告跳转踢出用户）。仅更新前台包名追踪。
+   570→   570→        if (AdDecisionCore.isLauncherLike(pkg)) {
+   571→   571→            lastFgPkg = pkg;
+   572→   572→            return;
+   573→   573→        }
+   574→   574→        if (pkg.equals(getPackageName())) return;
+   575→   575→
+   576→   576→        long now = System.currentTimeMillis();
+   577→   577→
+   578→   578→        if (isSystemNoise(pkg)) return;
+   579→   579→
+   580→   580→        // v3.13.0 息屏休眠门（夜间功耗治理 + 息屏绝不出手）：息屏 = 用户看不见
+   581→   581→        // 任何广告（没有可跳对象），此时唯一可能出现在前台的是来电/闹钟等敏感窗
+   582→   582→        // ——扫描/点击/学习全是浪费甚至危险（误点来电挂断/闹钟关闭）。仅廉价维护
+   583→   583→        // 前台包名追踪（亮屏后进入应用的入口窗判定仍正确），其余事件全部丢弃。
+   584→   584→        if (!isScreenOn(this)) {
+   585→   585→            if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+   586→   586→                lastFgPkg = pkg;
+   587→   587→            }
+   588→   588→            return;
+   589→   589→        }
+   590→   590→
+   591→   591→        // v3.13.0 验证码横幅防护①：短信/彩信/来电类覆盖层包（mms/smsextra/
+   592→   592→        // messaging/incallui）事件入口直接丢弃——绝不扫描（横幅上的小 × 绝不被
+   593→   593→        // 当「角落跳过键」点击）、绝不学习（手动点「复制验证码」绝不被学成跳过键）
+   594→   594→        if (AdDecisionCore.isSmsOverlayPkg(pkg)) return;
+   595→   595→
+   596→   596→        energyEvents++;
+   597→   597→
+   598→   598→        switch (event.getEventType()) {
+   599→   599→            case AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED: {
+   600→   600→                String cls = cs(event.getClassName());
+   601→   601→                // v3.6.0 根窗口追踪：新进入前台的应用，其首个窗口 = 入口窗
+   602→   602→                //（冷启动开屏 / 从桌面·其他应用回前台的首窗）——入口窗上
+   603→   603→                // 按返回键 = 退出应用，安全门据此禁一切返回键兜底
+   604→   604→                boolean entering = !pkg.equals(lastFgPkg);
+   605→   605→                lastFgPkg = pkg;
+   606→   606→                // v3.5.0 复验通过：上一窗点过东西且窗口已切走 → 广告已关
+   607→   607→                Integer prevTries = clickTries.get(pkg);
+   608→   608→                if (prevTries != null && prevTries > 0 && !cls.equals(winClassOf(pkg))) {
+   609→   609→                    appendLog("✓ 复验通过（" + shortPkg(pkg) + "）：广告窗已关闭"
+   610→   610→                            + (prevTries > 1 ? "（共 " + prevTries + " 次尝试，重试梯子兜底）" : ""));
+   611→   611→                    // v3.6.0 毒链① 根治：广告已关，学习窗快断资格同步作废
+   612→   612→                    //（防止后续窗口还拿着旧资格按返回键）
+   613→   613→                    winClsLearned.remove(pkg);
+   614→   614→                }
+   615→   615→                windowAt.put(pkg, now);
+   616→   616→                winClass.put(pkg, cls);
+   617→   617→                if (entering) rootWinCls.put(pkg, cls); // v3.6.0：记录入口窗
+   618→   618→                backTries.put(pkg, 0);
+   619→   619→                clickTries.put(pkg, 0); // v3.5.0：新窗重置复验计数
+   620→   620→                cdLastN.remove(pkg);   // v3.8.0：新窗重置倒计时锚点
+   621→   621→                cdAnchorAt.remove(pkg);
+   622→   622→                cdWaitUntil.remove(pkg);
+   623→   623→                gaveUp.put(pkg, Boolean.FALSE); // v3.6.0：新窗重置收手标记
+   624→   624→                winClsLearned.remove(pkg);
+   625→   625→                if (isDialogClass(cls) && !isOemUtilityPkg(pkg)) {
+   626→   626→                    popupUntil.put(pkg, now + POPUP_WINDOW_MS);
+   627→   627→                }
+   628→   628→                if (AdDecisionCore.isAdActivityClass(cls)) {
+   629→   629→                    appendLog("🎯 SDK 广告窗识别（" + shortPkg(pkg) + "）：" + cls
+   630→   630→                            + " → 700ms 内无真跳过键将温和直断");
+   631→   631→                } else if (learnedClassHit(pkg, cls)) {
+   632→   632→                    winClsLearned.put(pkg, Boolean.TRUE);
+   633→   633→                }
+   634→   634→                bumpScanChain(pkg);
+   635→   635→                break;
+   636→   636→            }
+   637→   637→            case AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED: {
+   638→   638→                if (now - winAt(pkg) < WINDOW_MS) {
+   639→   639→                    nudgeScan(pkg, now);
+   640→   640→                    break;
+   641→   641→                }
+   642→   642→                if (now < popupUntilGet(pkg)) {
+   643→   643→                    nudgePopupScan(pkg, now);
+   644→   644→                    break;
+   645→   645→                }
+   646→   646→                detectPopupBurst(pkg, now);
+   647→   647→                break;
+   648→   648→            }
+   649→   649→            case AccessibilityEvent.TYPE_VIEW_CLICKED: {
+   650→   650→                if (isOwnAutoClick(pkg, now)) return;
+   651→   651→                learnFromManualClick(pkg, event, now);
+   652→   652→                observeMisclick(pkg, event, now);
+   653→   653→                break;
+   654→   654→            }
+   655→   655→        }
+   656→   656→    }
+   657→   657→
+   658→   658→    /* ───────── 基础判断 ───────── */
+   659→   659→
+   660→   660→    private boolean isSystemNoise(String pkg) {
+   661→   661→        return pkg.startsWith("com.android.systemui")
+   662→   662→                || pkg.equals("android")
+   663→   663→                || pkg.contains("inputmethod")
+   664→   664→                || pkg.contains("packageinstaller")
+   665→   665→                || pkg.contains("intentresolver") // v3.11.0：分享选择器（分享面板绝不扫描，防误点）
+   666→   666→                // v3.12.0（issue#14 日志实锤）：connectivity 连接检查窗被循环
+   667→   667→                // 误点（2 分钟内「已点击跳过」×10）——系统连接诊断页绝非广告宿主
+   668→   668→                || pkg.contains("connectivity") || pkg.contains("captiveportal")
+   669→   669→                || pkg.equals("com.android.settings");
+   670→   670→    }
+   671→   671→
+   672→   672→    /** v3.6.0：厂商系统工具包（安全中心/系统管家类）——弹窗突发检测不适用
+   673→   673→     *（真机日志：securitycenter/keep 的系统弹窗被误开弹窗识别窗）。
+   674→   674→     *  v3.13.0：上移到决策核心 isOemUtilityPkg（JVM 可单测），本类三处共用 */
+   675→   675→    private boolean isOemUtilityPkg(String pkg) {
+   676→   676→        return AdDecisionCore.isOemUtilityPkg(pkg);
+   677→   677→    }
+   678→   678→
+   679→   679→    /** v3.13.0：息屏判定（查询失败按亮屏放行——绝不错杀正常跳过） */
+   680→   680→    static boolean isScreenOn(Context ctx) {
+   681→   681→        try {
+   682→   682→            android.os.PowerManager pm = (android.os.PowerManager) ctx.getSystemService(Context.POWER_SERVICE);
+   683→   683→            return pm == null || pm.isInteractive();
+   684→   684→        } catch (Throwable t) {
+   685→   685→            return true;
+   686→   686→        }
+   687→   687→    }
+   688→   688→
+   689→   689→    private static boolean isDialogClass(String cls) {
+   690→   690→        if (cls == null) return false;
+   691→   691→        String c = cls.toLowerCase();
+   692→   692→        return c.contains("dialog") || c.contains("popup");
+   693→   693→    }
+   694→   694→
+   695→   695→    private long winAt(String pkg) {
+   696→   696→        Long t = windowAt.get(pkg);
+   697→   697→        return t == null ? 0L : t;
+   698→   698→    }
+   699→   699→
+   700→   700→    private long popupUntilGet(String pkg) {
+   701→   701→        Long t = popupUntil.get(pkg);
+   702→   702→        return t == null ? 0L : t;
+   703→   703→    }
+   704→   704→
+   705→   705→    private boolean isOwnAutoClick(String pkg, long now) {
+   706→   706→        return pkg.equals(lastAutoClickPkg) && (now - lastAutoClickAt) < 900;
+   707→   707→    }
+   708→   708→
+   709→   709→    private String winClassOf(String pkg) {
+   710→   710→        String c = winClass.get(pkg);
+   711→   711→        return c == null ? "" : c;
+   712→   712→    }
+   713→   713→
+   714→   714→    /** v3.6.0：应用入口窗类名（无记录返回空串 = 非入口窗） */
+   715→   715→    private String rootWinClsOf(String pkg) {
+   716→   716→        String c = rootWinCls.get(pkg);
+   717→   717→        return c == null ? "" : c;
+   718→   718→    }
+   719→   719→
+   720→   720→    private int triesOf(String pkg) {
+   721→   721→        Integer n = backTries.get(pkg);
+   722→   722→        return n == null ? 0 : n.intValue();
+   723→   723→    }
+   724→   724→
+   725→   725→    /* ───────── AccessibilityNodeInfo → 决策核心适配 ───────── */
+   726→   726→
+   727→   727→    private static final class NodeAdapter implements NodeView {
+   728→   728→        final AccessibilityNodeInfo n;
+   729→   729→
+   730→   730→        NodeAdapter(AccessibilityNodeInfo n) {
+   731→   731→            this.n = n;
+   732→   732→        }
+   733→   733→
+   734→   734→        public String text() {
+   735→   735→            return n.getText() == null ? "" : n.getText().toString().trim();
+   736→   736→        }
+   737→   737→
+
+[showing lines 38-737 of 1913; use offset=738 with limit to continue reading]

@@ -1,0 +1,53 @@
+import { NextRequest, NextResponse } from "next/server";
+import { recordBlock, recordMiss } from "@/lib/learning";
+import type { AdType, BlockAction, ScenarioKind } from "@/lib/instant-engine";
+
+export const dynamic = "force-dynamic";
+
+const AD_TYPES = ["splash", "interstitial", "shake", "deeplink", "popup"];
+const ACTIONS = [
+  "instant_skip", "sensor_block", "intent_block", "guard_skip",
+  "preempt_block", "chain_block", "gyro_block", "popup_close",
+  "back_fallback", "dns_block", "miss",
+];
+const SCENARIOS = ["normal", "shake", "deeplink", "guard", "popup"];
+
+/**
+ * POST /api/block-events —— 演练场拦截埋点
+ * Body: { appKey, kind: "block" | "miss", action, latencyMs, confidence, scenario, adType, note? }
+ * · block：拦截成功 → 流水 + 规则命中累计；首次拦截自动沉淀预拦截指纹（学习规则）
+ * · miss：反馈通道兼容（手动跳过留痕）
+ */
+export async function POST(req: NextRequest) {
+  try {
+    const b = await req.json();
+    if (typeof b?.appKey !== "string" || !["block", "miss"].includes(b.kind)) {
+      return NextResponse.json({ error: "参数非法" }, { status: 400 });
+    }
+    const adType = AD_TYPES.includes(b.adType) ? (b.adType as AdType) : "splash";
+    const action = (b.kind === "miss" ? "miss" : ACTIONS.includes(b.action) ? b.action : "instant_skip") as BlockAction;
+    const scenario = SCENARIOS.includes(b.scenario) ? (b.scenario as ScenarioKind) : "normal";
+
+    const input = {
+      appKey: b.appKey,
+      kind: b.kind as "block" | "miss",
+      action,
+      latencyMs: Number(b.latencyMs) || 0,
+      confidence: Number(b.confidence) || 0,
+      scenario,
+      adType,
+      note: typeof b.note === "string" ? b.note : undefined,
+    };
+
+    const r: { event?: { id: number | string }; id?: number | string; learnedCreated?: boolean } =
+      b.kind === "miss" ? await recordMiss(input) : await recordBlock(input);
+    return NextResponse.json({
+      ok: true,
+      id: String(r.event?.id ?? r.id),
+      learnedCreated: r.learnedCreated ?? false,
+    });
+  } catch (e) {
+    console.error("[block-events POST]", e);
+    return NextResponse.json({ error: "写入失败" }, { status: 500 });
+  }
+}

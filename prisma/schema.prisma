@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -13,20 +7,68 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+// ── 秒跳引擎规则库 ─────────────────────────────────────────────
+// 预置规则来自市面方案调研（GKD 等同类方案的文本与 viewId 匹配、面积安全阀、
+// 摇一摇阈值标准、Deeplink 黑名单），学习规则由学习中心从使用习惯中沉淀。
+model Rule {
+  id          String    @id @default(cuid())
+  appName     String    @default("*") // * = 全局规则
+  appCategory String    @default("通用")
+  adType      String // splash | interstitial | shake | deeplink | any
+  matchType   String // text | viewId | timing | area | sensor | intent | guard-list | learned
+  pattern     String // 匹配特征描述（文本正则 / viewId / 名单）
+  action      String // instant_skip | sensor_block | intent_block | guard_skip
+  source      String    @default("preset") // preset | learned
+  confidence  Float     @default(0.9) // 0~1，随命中次数增长
+  hitCount    Int       @default(0)
+  enabled     Boolean   @default(true)
+  lastHitAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([source, enabled])
 }
 
-model Post {
+// ── 拦截流水（演练场与后续真机服务共用的埋点结构） ─────────────
+model BlockEvent {
+  id          String   @id @default(cuid())
+  ts          DateTime @default(now())
+  appName     String
+  appCategory String
+  adType      String // splash | interstitial | shake | deeplink
+  action      String // instant_skip | sensor_block | intent_block | guard_skip | miss
+  latencyMs   Int      @default(0) // 引擎耗时（miss = 用户手动跳过耗时）
+  confidence  Float    @default(0)
+  success     Boolean  @default(true)
+  scenario    String   @default("normal") // normal | shake | deeplink | guard
+  note        String? // 展示用备注（命中规则名等）
+
+  @@index([ts])
+  @@index([appName])
+}
+
+// ── 问题反馈（内置通道自动上报 GitHub Issues 的留痕） ──────────
+model FeedbackIssue {
+  id          String    @id @default(cuid())
+  type        String // missed | false_block | shake_leak | crash | suggestion | other
+  title       String
+  body        String
+  status      String    @default("submitted") // submitted | failed
+  issueUrl    String?
+  issueNumber Int?
+  createdAt   DateTime  @default(now())
+}
+
+// ── 学习数据同步 GitHub 的日志（夜间自动 / 手动触发） ───────────
+model SyncLog {
   id        String   @id @default(cuid())
-  title     String
-  content   String?
-  published Boolean  @default(false)
-  authorId  String
+  kind      String // nightly | manual
+  ok        Boolean
+  message   String
+  sha       String?
+  url       String?
+  ruleCount Int      @default(0)
+  blockSum  Int      @default(0)
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+
+  @@index([kind, createdAt])
 }
