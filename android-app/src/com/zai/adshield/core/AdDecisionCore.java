@@ -221,14 +221,21 @@ public final class AdDecisionCore {
     /* ═══ v3.14.0 跳过后反馈弹窗特征库（issue#21 + 真机截图：喜马拉雅
      * 「不喜欢/反馈投诉」底部面板）═══ 强特征 = 广告反馈面板独有文案
      *（信息流长按「不感兴趣」菜单没有这些词）；弱特征 = 面板常见但
-     * 别处也可能出现的词。判定：≥1 强特征 且 总特征 ≥2（双保险）。 */
+     * 别处也可能出现的词。判定：≥1 强特征 且 总特征 ≥2（双保险）。
+     * v4.3.0（issue#38 实锤：喜马拉雅跳过后弹「为什么关闭广告」选项弹窗、
+     * 引擎不识别继续点跳过键 → 循环弹出）：新增喜马拉雅变体强特征，
+     * 取消候选扩展「暂不反馈/下次再说」等中性收起键。 */
     public static final String[] FEEDBACK_SHEET_STRONG = {
             "我为什么会看到广告", "反馈投诉", "减少此类广告", "反馈关闭广告",
+            "为什么关闭广告", "为什么不想看", "请选择关闭原因", "选择关闭广告的原因",
     };
     public static final String[] FEEDBACK_SHEET_WEAK = {
             "不喜欢", "重复出现", "虚假广告", "内容不适", "其他问题",
+            "误触", "看过了", "广告太多", "内容低质", "干扰到我了",
     };
     public static final int FEEDBACK_SHEET_MIN_HITS = 2;
+    /** 反馈面板中性收起键（只收起，绝不替用户提交任何反馈选项） */
+    public static final String[] FEEDBACK_CANCEL_TEXTS = {"取消", "暂不反馈", "下次再说", "稍后再说", "关闭"};
     /** 服务侧门控：引擎自动跳过后多久内允许把反馈面板当「跳过后弹窗」处理 */
     public static final long FEEDBACK_AFTER_SKIP_MS = 12000;
 
@@ -488,14 +495,19 @@ public final class AdDecisionCore {
         return false;
     }
 
-    /** 角落控件判定：顶部 14% 高内、贴右缘(≥72%)或左缘(≤28%)、边长 24px~35% 宽、无任何文本 */
+    /** 角落控件判定：顶部 14% 高内 / v4.3.0 底部 18% 高内（部分应用跳过键
+     *  在右下角且位置随机——issue#38「按钮每次出现在不同地方」），
+     *  贴右缘(≥72%)或左缘(≤28%)、边长 24px~35% 宽、无任何文本 */
     static boolean isCornerControl(int[] b, Ctx ctx) {
         if (b == null || ctx.screenW <= 0 || ctx.screenH <= 0) return false;
         int w = b[2] - b[0];
         int h = b[3] - b[1];
         if (w < CORNER_MIN_PX || h < CORNER_MIN_PX) return false;
         if (w > ctx.screenW * 0.35 || h > ctx.screenH * 0.20) return false;
-        if (b[1] > ctx.screenH * CORNER_TOP_MAX) return false;
+        int cy = (b[1] + b[3]) / 2;
+        boolean topZone = b[1] <= ctx.screenH * CORNER_TOP_MAX;
+        boolean bottomZone = cy >= ctx.screenH * 0.82; // v4.3.0：底部角落（右下/左下）
+        if (!topZone && !bottomZone) return false;
         boolean rightEdge = b[2] >= ctx.screenW * CORNER_RIGHT_MIN;
         boolean leftEdge = b[0] <= ctx.screenW * CORNER_LEFT_MAX;
         return rightEdge || leftEdge;
@@ -835,6 +847,27 @@ public final class AdDecisionCore {
         return false;
     }
 
+    /** v4.3.0：全局组订阅规则（id='*' 无 Activity 限定）的诱导词否决——
+     *  目标文案含摇/晃/翻/领/福利/下载等诱导词一律不代点（与主引擎
+     *  短包含层同源红线：「摇一摇跳过广告领福利」类绝不中）。 */
+    public static boolean safeGlobalLabel(String text, String desc) {
+        return !hasInducementWord(text) && !hasInducementWord(desc);
+    }
+
+    /** 诱导词黑名单（主引擎 DANGEROUS_WORDS 同源，供订阅全局组门用） */
+    static boolean hasInducementWord(String s) {
+        if (s == null || s.length() == 0) return false;
+        for (String w : INDUCE_WORDS) {
+            if (s.contains(w)) return true;
+        }
+        return false;
+    }
+
+    public static final String[] INDUCE_WORDS = {
+            "摇", "晃", "翻", "转", "扭", "领", "福利", "详情", "下载", "开通",
+            "注册", "登录", "抽奖", "红包", "进入", "查看", "立即",
+    };
+
     /** v3.13.0：验证码横幅文案标记——树内任一节点命中即视为验证码/通知横幅，
      *  该窗口绝不扫描、绝不点击、绝不学习（银行/支付登录页同理放行，本就无广告可跳）。 */
     public static boolean isCodeBannerMarker(String s) {
@@ -848,8 +881,9 @@ public final class AdDecisionCore {
     /** 反馈面板识别结果 */
     public static final class FeedbackFind {
         public boolean isSheet;     // 是「跳过后反馈面板」（强特征 ≥1 且总特征 ≥2）
-        public NodeView cancelNode; // 文案精确为「取消」的控件（可空）
-        public int[] cancelBounds;  // 取消键边界（手势点击目标）
+        public NodeView cancelNode; // 中性收起键（取消/暂不反馈/下次再说…）
+        public int[] cancelBounds;  // 收起键边界（手势点击目标）
+        public String cancelLabel = ""; // v4.3.0：收起键文案（日志用）
     }
 
     /** 有界广度优先识别「跳过后反馈面板」：统计特征文案命中数（去重）+
@@ -877,11 +911,19 @@ public final class AdDecisionCore {
                 for (String m : FEEDBACK_SHEET_WEAK) {
                     if (label.contains(m)) { hits.add(m); break; }
                 }
-                if (out.cancelNode == null && "取消".equals(text) && n.visible()) {
-                    int[] b = n.bounds();
-                    if (b != null && b.length >= 4 && b[2] > b[0] && b[3] > b[1]) {
-                        out.cancelNode = n;
-                        out.cancelBounds = b;
+                if (out.cancelNode == null && n.visible()) {
+                    // v4.3.0：中性收起键候选（取消优先，其次暂不反馈/下次再说/
+                    //  稍后再说/关闭——只收起，绝不提交任何反馈选项）
+                    for (int ci = 0; ci < FEEDBACK_CANCEL_TEXTS.length; ci++) {
+                        if (FEEDBACK_CANCEL_TEXTS[ci].equals(text)) {
+                            int[] b = n.bounds();
+                            if (b != null && b.length >= 4 && b[2] > b[0] && b[3] > b[1]) {
+                                out.cancelNode = n;
+                                out.cancelBounds = b;
+                                out.cancelLabel = FEEDBACK_CANCEL_TEXTS[ci];
+                            }
+                            break;
+                        }
                     }
                 }
             }

@@ -8,28 +8,42 @@ import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 
 /**
- * GKD 选择器兼容引擎（v4.0.0 订阅融合 · https://gkd.li/guide/selector）
+ * GKD 选择器兼容引擎（v4.0.0 订阅融合 · v4.3.0 全量语法补齐 · https://gkd.li/guide/selector）
  * ─────────────────────────────────────────────────────────────────
  * 目标：直接吃下 GKD 社区订阅里的选择器规则，让整个 GKD 规则生态
  * 可被本应用导入使用；同时保持「绝不乱点」红线。
+ *
+ * v4.3.0 全量语法补齐（issue#38 实锤：订阅 828 条规则命中 0——GKD 默认
+ * 订阅的主力规则全部落在我们的语法盲区上，解析「成功」但永远不匹配）：
+ *  · 【globalGroups 主力规则语法】[text*="跳过"][text.length<10]
+ *    [visibleToUser=true][(text.length<10&&text*="跳过") || vid*="skip"]
+ *    ——attr.length 长度比较、visibleToUser 别名、括号布尔表达式
+ *    （(A&&B)||C 嵌套组合，旧解析器把括号块当条件直接扚 ParseException）；
+ *  · 【childCount 属性】[childCount=0]——默认订阅 372 处使用；
+ *  · 【数字关系符】@View <3 FrameLayout <2 FrameLayout < [vid="fl_third_ad"]
+ *    （CSDN 开屏规则）——旧解析器把「3」当标签名，规则静默死亡；
+ *    语义：>N 精确 N 层祖先 · >nN ≤N 层 · <N 第 N-1 个直接子节点 ·
+ *    <nN 任意直接子节点 · <<N/<<nN 子孙（DFS 序号近似为任意子孙，
+ *    保守放宽）· +N/-N 兄弟（序号近似为同向任意兄弟）。
  *
  * 支持语法子集（覆盖开屏/弹窗规则的 99% 写法）：
  *  · 属性选择器：TextView[id='x'][text*='跳过'][clickable=true]
  *    - 标签名：TextView / android.widget.TextView / *（GKD 语义：
  *      无点短名 ≡ name='TextView'||name$='.TextView'）
- *    - 属性：name/id/vid/text/desc/clickable/visible/editable/
- *      scrollable/index/depth/w/h
+ *    - 属性：name/id/vid/text/desc/clickable/visible/visibleToUser/
+ *      editable/scrollable/childCount/index/depth/w/h + attr.length
  *      · id 带冒号 → 全名精确匹配；不带冒号 → 末段匹配（兼容社区
  *        短 id 写法，跨版本更稳）
  *      · vid 永远是 viewId 末段（本应用扩展，写规则更短）
  *    - 操作符：= != ^= $= *= !^= !*= !$= ~= !~=（正则）> >= < <=
- *    - 布尔组合：[a='x'||b='y']、[a='x'&&b='y']、[!(a='x')]
+ *    - 布尔组合：[a='x'||b='y']、[a='x'&&b='y']、[!(a='x')]、
+ *      [(a&&b)||c] 任意嵌套括号（BExpr 递归下降解析）
  *  · 关系选择器（连接两个属性选择器，强制空格分隔）：
  *      A > B   A 是 B 的祖先      A < B    A 是 B 的直接子节点
  *      A << B  A 是 B 的子孙      A + B    A 是 B 的前置兄弟
  *      A - B   A 是 B 的后置兄弟
- *    （兄弟算子实现为「同父兄弟命中」——无 an+b 元组、不要求紧邻，
- *      保守放宽：兄弟上下文约束已足够强，开屏规则极少依赖精确序号）
+ *    （兄弟算子实现为「同父兄弟命中」——不要求紧邻，保守放宽：
+ *      兄弟上下文约束已足够强，开屏规则极少依赖精确序号）
  *  · 顶层多选择器：sel1 || sel2（短路，左优先）
  *  · @ 目标标记：@A > B → 目标是 A；缺省取最后一个属性选择器
  *
@@ -50,9 +64,10 @@ public final class GkdSelector {
 
     static final int V_STR = 0, V_INT = 1, V_BOOL = 2, V_NULL = 3;
 
-    /** 单个布尔表达式：attr op 字面量 */
+    /** 单个布尔表达式：attr op 字面量（v4.3.0 支持 attr.length 长度比较） */
     static final class Cond {
         String attr;
+        String lenAttr; // v4.3.0：attr.length 形式（text.length<10）——对基础属性字符串取长度比较
         String op;
         int vType = V_NULL;
         String sv;
@@ -61,6 +76,7 @@ public final class GkdSelector {
         Pattern rx; // ~= 预编译
 
         boolean test(Exe x, NodeView n) {
+            if (lenAttr != null) return testInt(lenOf(lenAttr, n)); // text.length<10
             String a = attr;
             if ("name".equals(a)) return testName(x, n);
             if ("id".equals(a)) return testId(n.viewId());
@@ -68,14 +84,27 @@ public final class GkdSelector {
             if ("text".equals(a)) return testStr(nz(n.text()));
             if ("desc".equals(a)) return testStr(nz(n.desc()));
             if ("clickable".equals(a)) return testBool(n.clickable());
-            if ("visible".equals(a)) return testBool(n.visible());
+            if ("visible".equals(a) || "visibleToUser".equals(a)) return testBool(n.visible()); // v4.3.0：GKD 原生属性名
             if ("editable".equals(a)) return testBool(n.editable());
             if ("scrollable".equals(a)) return testBool(n.scrollable());
+            if ("childCount".equals(a)) return testInt(n.childCount()); // v4.3.0：默认订阅 372 处使用
             if ("index".equals(a)) return testInt(x.indexOf(n));
             if ("depth".equals(a)) return testInt(x.depthOf(n));
             if ("w".equals(a)) return testInt(x.widthOf(n));
             if ("h".equals(a)) return testInt(x.heightOf(n));
             return false; // 未知属性：安全侧不匹配
+        }
+
+        /** v4.3.0：基础属性的字符串长度（text/desc/id/vid/name） */
+        static int lenOf(String attr, NodeView n) {
+            String s;
+            if ("text".equals(attr)) s = nz(n.text());
+            else if ("desc".equals(attr)) s = nz(n.desc());
+            else if ("id".equals(attr)) s = nz(n.viewId());
+            else if ("vid".equals(attr)) s = vidOf(n.viewId());
+            else if ("name".equals(attr)) s = nz(n.cls());
+            else s = "";
+            return s.length();
         }
 
         boolean testName(Exe x, NodeView n) {
@@ -143,30 +172,38 @@ public final class GkdSelector {
         }
     }
 
-    /** 属性选择器：@? tag? bracket*（括号间 AND、括号内 || 、组内 &&） */
+    /** v4.3.0 布尔表达式树：cond 叶子 / and / or / not——支持任意嵌套括号 */
+    static final class BExpr {
+        static final int T_COND = 0, T_AND = 1, T_OR = 2, T_NOT = 3;
+        int type;
+        Cond cond;
+        final List<BExpr> children = new ArrayList<BExpr>();
+
+        boolean eval(Exe x, NodeView n) {
+            if (type == T_COND) return cond != null && cond.test(x, n);
+            if (type == T_AND) {
+                for (int i = 0; i < children.size(); i++) if (!children.get(i).eval(x, n)) return false;
+                return true;
+            }
+            if (type == T_OR) {
+                for (int i = 0; i < children.size(); i++) if (children.get(i).eval(x, n)) return true;
+                return false;
+            }
+            return !children.isEmpty() && !children.get(0).eval(x, n);
+        }
+    }
+
+    /** 属性选择器：@? tag? bracket*（括号间 AND；括号内任意布尔表达式） */
     static final class AttrSel {
         String tag;                 // null = *
         boolean at;                 // @ 目标标记
-        // brackets[b] = 第 b 个 [] 的 (OR of AND)：括号间 AND（GKD：[a=1][b=1] ≡ [a=1&&b=1]）
-        List<List<List<Cond>>> brackets = new ArrayList<List<List<Cond>>>();
+        // brackets[b] = 第 b 个 [] 的布尔表达式：括号间 AND（GKD：[a=1][b=1] ≡ [a=1&&b=1]）
+        final List<BExpr> brackets = new ArrayList<BExpr>();
 
         boolean match(Exe x, NodeView n) {
             if (!matchTag(n)) return false;
             for (int b = 0; b < brackets.size(); b++) {
-                List<List<Cond>> ors = brackets.get(b);
-                boolean ok = false;
-                for (int o = 0; o < ors.size() && !ok; o++) {
-                    List<Cond> and = ors.get(o);
-                    boolean all = true;
-                    for (int j = 0; j < and.size(); j++) {
-                        if (!and.get(j).test(x, n)) {
-                            all = false;
-                            break;
-                        }
-                    }
-                    if (all) ok = true;
-                }
-                if (!ok) return false; // 任一 [] 不满足 → 整个属性选择器不匹配
+                if (!brackets.get(b).eval(x, n)) return false; // 任一 [] 不满足 → 整个属性选择器不匹配
             }
             return true;
         }
@@ -179,10 +216,22 @@ public final class GkdSelector {
         }
     }
 
+    /** v4.3.0 关系算子：op + 编号（GKD 数字关系符 <3 / >n2 / <<4 …）
+     *  num=0 未编号（任意层/任意兄弟）；num>0：> N 精确 N 层祖先、
+     *  < N 第 N-1 个直接子节点；n=true 为 n 前缀（≤N 保守放宽）。
+     *  <<N（DFS 序号）与 +N/-N（兄弟序号）近似为任意——规则上下文
+     *  约束已足够强，近似只会多给候选不会静默死亡（旧解析器把编号
+     *  当标签名，规则直接变死规则——issue#38 订阅零命中的元凶之一）。 */
+    static final class Rel {
+        char op;      // '>' '<' '≪'(<<) '+' '-'
+        int num;      // 0 = 未编号
+        boolean n;    // n 前缀（nN → ≤N 近似）
+    }
+
     /** 一条链：attrSels 与 rels 交替（rels[i] 连接 attrSels[i] 与 attrSels[i+1]） */
     static final class Chain {
-        List<AttrSel> sels = new ArrayList<AttrSel>();
-        List<Character> rels = new ArrayList<Character>(); // '>' '<' '≪'(<<) '+' '-'
+        final List<AttrSel> sels = new ArrayList<AttrSel>();
+        final List<Rel> rels = new ArrayList<Rel>();
 
         /** 从右往左验证：node 匹配最后一个属性选择器，再逐段向左走关系 */
         NodeView walk(Exe x, NodeView lastNode) {
@@ -191,14 +240,14 @@ public final class GkdSelector {
             NodeView target = sels.get(n - 1).at ? lastNode : null;
             NodeView cur = lastNode;
             for (int i = n - 2; i >= 0; i--) {
-                char rel = rels.get(i);
+                Rel rel = rels.get(i);
                 AttrSel left = sels.get(i);
                 NodeView next = null;
-                if (rel == '>') next = x.findAncestor(cur, left);
-                else if (rel == '<') next = x.findDirectChild(cur, left);
-                else if (rel == '\u226A') next = x.findDescendant(cur, left);
-                else if (rel == '+') next = x.findSibling(cur, left, -1);
-                else if (rel == '-') next = x.findSibling(cur, left, +1);
+                if (rel.op == '>') next = x.findAncestor(cur, left, rel);
+                else if (rel.op == '<') next = x.findDirectChild(cur, left, rel);
+                else if (rel.op == '\u226A') next = x.findDescendant(cur, left);
+                else if (rel.op == '+') next = x.findSibling(cur, left, -1);
+                else if (rel.op == '-') next = x.findSibling(cur, left, +1);
                 if (next == null) return null;
                 if (left.at) target = next;
                 cur = next;
@@ -222,17 +271,36 @@ public final class GkdSelector {
             return true;
         }
 
-        NodeView findAncestor(NodeView from, AttrSel sel) {
+        /** 祖先查找：未编号任意层；>N 精确 N 层；>nN ≤N 层（v4.3.0 数字关系符） */
+        NodeView findAncestor(NodeView from, AttrSel sel, Rel rel) {
+            if (rel.num > 0 && !rel.n) {
+                NodeView p = from;
+                for (int k = 0; k < rel.num; k++) {
+                    if (!dec()) return null;
+                    p = p.parent();
+                    if (p == null) return null;
+                }
+                return sel.match(this, p) ? p : null;
+            }
+            int max = (rel.n && rel.num > 0) ? rel.num : Integer.MAX_VALUE;
             NodeView p = from.parent();
-            while (p != null) {
+            int up = 0;
+            while (p != null && up < max) {
                 if (!dec()) return null;
                 if (sel.match(this, p)) return p;
                 p = p.parent();
+                up++;
             }
             return null;
         }
 
-        NodeView findDirectChild(NodeView of, AttrSel sel) {
+        /** 直接子节点查找：未编号任意；<N 第 N-1 个；<nN 任意（v4.3.0） */
+        NodeView findDirectChild(NodeView of, AttrSel sel, Rel rel) {
+            if (rel.num > 0 && !rel.n) {
+                if (!dec()) return null;
+                NodeView c = of.child(rel.num - 1);
+                return (c != null && sel.match(this, c)) ? c : null;
+            }
             int n = of.childCount();
             for (int i = 0; i < n; i++) {
                 if (!dec()) return null;
@@ -379,15 +447,48 @@ public final class GkdSelector {
                 continue;
             }
             if (ch == '>' || ch == '<' || ch == '+' || ch == '-') {
-                if (ch == '<' && i + 1 < n && s.charAt(i + 1) == '<') {
-                    c.rels.add('\u226A');
-                    i += 2;
-                } else {
-                    c.rels.add(ch);
+                // v4.3.0 数字关系符：<3 / >n2 / <<4 / +(1,3) ——编号+可选 n 前缀+可选元组
+                Rel rel = new Rel();
+                rel.op = ch;
+                i++;
+                if (ch == '<' && i < n && s.charAt(i) == '<') {
+                    rel.op = '\u226A';
                     i++;
+                }
+                if (i < n && s.charAt(i) == 'n' && i + 1 < n && Character.isDigit(s.charAt(i + 1))) {
+                    rel.n = true;
+                    i++;
+                }
+                int ds = i;
+                while (i < n && Character.isDigit(s.charAt(i))) i++;
+                if (i > ds) {
+                    try {
+                        rel.num = Integer.parseInt(s.substring(ds, i));
+                    } catch (NumberFormatException e) {
+                        rel.num = 0;
+                    }
+                }
+                // 元组形式 (a1,a2,…)：罕见，取首数字近似（未解析到数字则忽略）
+                if (i < n && s.charAt(i) == '(') {
+                    int end = findParenEnd(s, i);
+                    if (end < 0) throw new ParseException("unclosed rel tuple: " + s);
+                    if (rel.num == 0) {
+                        int d2 = i + 1;
+                        while (d2 < end && !Character.isDigit(s.charAt(d2))) d2++;
+                        int de = d2;
+                        while (de < end && Character.isDigit(s.charAt(de))) de++;
+                        if (de > d2) {
+                            try {
+                                rel.num = Integer.parseInt(s.substring(d2, de));
+                            } catch (NumberFormatException ignored) {
+                            }
+                        }
+                    }
+                    i = end + 1;
                 }
                 if (c.sels.isEmpty())
                     throw new ParseException("chain starts with rel: " + s);
+                c.rels.add(rel);
                 continue;
             }
             // 属性选择器
@@ -409,8 +510,8 @@ public final class GkdSelector {
                 int close = findBracketEnd(s, i);
                 if (close < 0) throw new ParseException("unclosed [: " + s);
                 String inner = s.substring(i + 1, close);
-                List<List<Cond>> bracket = parseConds(inner);
-                if (!bracket.isEmpty()) a.brackets.add(bracket);
+                BExpr be = parseBracketExpr(inner);
+                if (be != null) a.brackets.add(be);
                 i = close + 1;
             }
             if (tag.length() == 0 && a.brackets.isEmpty())
@@ -428,70 +529,143 @@ public final class GkdSelector {
         return c;
     }
 
-    /** [ ... ] 内部 → (OR of AND)：按 || 分组、组内按 && 拆分、支持 !(...) 取反 */
-    static List<List<Cond>> parseConds(String inner) {
-        List<List<Cond>> orParts = new ArrayList<List<Cond>>();
-        List<String> parts = splitTop(inner, "||");
-        for (int oi = 0; oi < parts.size(); oi++) {
-            String part = parts.get(oi).trim();
-            if (part.length() == 0) continue;
-            boolean neg = false;
-            if (part.startsWith("!(") && part.endsWith(")")) {
-                neg = true;
-                part = part.substring(2, part.length() - 1);
-            } else if (part.startsWith("!")) {
-                throw new ParseException("bad negation: [" + inner + "]");
+    /** v4.3.0：[] 内部 → 布尔表达式树（递归下降：or → and → unary）。
+     *  支持任意嵌套括号 (A&&B)||C、取反 !(A||B)——GKD 默认订阅全局
+     *  开屏规则的核心语法。 */
+    static BExpr parseBracketExpr(String inner) {
+        List<String> toks = tokenizeBool(inner);
+        if (toks.isEmpty()) return null;
+        int[] pos = {0};
+        BExpr e = parseOr(toks, pos);
+        if (pos[0] < toks.size()) throw new ParseException("bad bool expr: [" + inner + "]");
+        return e;
+    }
+
+    static BExpr parseOr(List<String> toks, int[] pos) {
+        BExpr left = parseAnd(toks, pos);
+        while (pos[0] < toks.size() && "||".equals(toks.get(pos[0]))) {
+            pos[0]++;
+            BExpr right = parseAnd(toks, pos);
+            if (left.type != BExpr.T_OR) {
+                BExpr o = new BExpr();
+                o.type = BExpr.T_OR;
+                o.children.add(left);
+                left = o;
             }
-            List<String> ands = splitTop(part, "&&");
-            List<Cond> group = new ArrayList<Cond>();
-            for (int ai = 0; ai < ands.size(); ai++) {
-                Cond cd = parseCond(ands.get(ai).trim());
-                if (cd != null) {
-                    if (neg) cd = negate(cd);
-                    group.add(cd);
-                }
-            }
-            if (!group.isEmpty()) orParts.add(group);
+            left.children.add(right);
         }
-        return orParts;
+        return left;
     }
 
-    /** 取反：交换操作符语义（值不变） */
-    static Cond negate(Cond c) {
-        Cond r = new Cond();
-        r.attr = c.attr;
-        r.vType = c.vType;
-        r.sv = c.sv;
-        r.iv = c.iv;
-        r.bv = c.bv;
-        r.rx = c.rx;
-        r.op = negOp(c.op);
-        return r;
+    static BExpr parseAnd(List<String> toks, int[] pos) {
+        BExpr left = parseUnary(toks, pos);
+        while (pos[0] < toks.size() && "&&".equals(toks.get(pos[0]))) {
+            pos[0]++;
+            BExpr right = parseUnary(toks, pos);
+            if (left.type != BExpr.T_AND) {
+                BExpr o = new BExpr();
+                o.type = BExpr.T_AND;
+                o.children.add(left);
+                left = o;
+            }
+            left.children.add(right);
+        }
+        return left;
     }
 
-    static String negOp(String op) {
-        if ("=".equals(op)) return "!=";
-        if ("!=".equals(op)) return "=";
-        if ("^=".equals(op)) return "!^=";
-        if ("$=".equals(op)) return "!$=";
-        if ("*=".equals(op)) return "!*=";
-        if ("~=".equals(op)) return "!~=";
-        if ("!^=".equals(op)) return "^=";
-        if ("!$=".equals(op)) return "$=";
-        if ("!*=".equals(op)) return "*=";
-        if ("!~=".equals(op)) return "~=";
-        if (">".equals(op)) return "<=";
-        if ("<".equals(op)) return ">=";
-        if (">=".equals(op)) return "<";
-        if ("<=".equals(op)) return ">";
-        return "!=";
+    static BExpr parseUnary(List<String> toks, int[] pos) {
+        while (pos[0] < toks.size() && toks.get(pos[0]).length() == 0) pos[0]++;
+        if (pos[0] >= toks.size()) throw new ParseException("bad bool expr: eof");
+        String t = toks.get(pos[0]);
+        if ("!".equals(t)) {
+            pos[0]++;
+            BExpr not = new BExpr();
+            not.type = BExpr.T_NOT;
+            not.children.add(parseUnary(toks, pos));
+            return not;
+        }
+        if ("(".equals(t)) {
+            pos[0]++;
+            BExpr e = parseOr(toks, pos);
+            if (pos[0] >= toks.size() || !")".equals(toks.get(pos[0])))
+                throw new ParseException("unbalanced parens");
+            pos[0]++;
+            return e;
+        }
+        if (")".equals(t) || "&&".equals(t) || "||".equals(t))
+            throw new ParseException("bad bool expr near: " + t);
+        pos[0]++;
+        Cond cd = parseCond(t);
+        BExpr leaf = new BExpr();
+        leaf.type = BExpr.T_COND;
+        leaf.cond = cd;
+        return leaf;
+    }
+
+    /** 布尔表达式分词：括号 / && / || / ! 为独立 token；其余（条件串）
+     *  整体保留（引号内的括号与操作符绝不切分） */
+    static List<String> tokenizeBool(String s) {
+        List<String> out = new ArrayList<String>();
+        StringBuilder cur = new StringBuilder();
+        char quote = 0;
+        int n = s.length();
+        for (int i = 0; i < n; i++) {
+            char c = s.charAt(i);
+            if (quote != 0) {
+                cur.append(c);
+                if (c == '\\' && i + 1 < n) {
+                    cur.append(s.charAt(++i));
+                } else if (c == quote) {
+                    quote = 0;
+                }
+                continue;
+            }
+            if (c == '\'' || c == '"' || c == '`') {
+                quote = c;
+                cur.append(c);
+                continue;
+            }
+            if (c == '(' || c == ')') {
+                flushTok(out, cur);
+                out.add(String.valueOf(c));
+                continue;
+            }
+            if (c == '!' && i + 1 < n && s.charAt(i + 1) == '(') {
+                flushTok(out, cur);
+                out.add("!");
+                out.add("(");
+                i++;
+                continue;
+            }
+            if (s.startsWith("&&", i)) {
+                flushTok(out, cur);
+                out.add("&&");
+                i++;
+                continue;
+            }
+            if (s.startsWith("||", i)) {
+                flushTok(out, cur);
+                out.add("||");
+                i++;
+                continue;
+            }
+            cur.append(c);
+        }
+        flushTok(out, cur);
+        return out;
+    }
+
+    static void flushTok(List<String> out, StringBuilder cur) {
+        String t = cur.toString().trim();
+        if (t.length() > 0) out.add(t);
+        cur.setLength(0);
     }
 
     static Cond parseCond(String s) {
         if (s.length() == 0) return null;
-        // 定位操作符（属性名 [a-zA-Z_][a-zA-Z0-9_]* 之后）
+        // 定位操作符（属性名 [a-zA-Z_][a-zA-Z0-9_.]* 之后；v4.3.0 属性名含 . 支持 text.length）
         int i = 0, n = s.length();
-        while (i < n && (Character.isLetterOrDigit(s.charAt(i)) || s.charAt(i) == '_')) i++;
+        while (i < n && (Character.isLetterOrDigit(s.charAt(i)) || s.charAt(i) == '_' || s.charAt(i) == '.')) i++;
         if (i == 0) throw new ParseException("bad attr: [" + s + "]");
         String attr = s.substring(0, i);
         String rest = s.substring(i);
@@ -516,6 +690,11 @@ public final class GkdSelector {
         Cond c = new Cond();
         c.attr = attr;
         c.op = op;
+        // v4.3.0：attr.length → 长度比较（text.length<10）
+        if (attr.length() > 7 && attr.endsWith(".length")) {
+            c.lenAttr = attr.substring(0, attr.length() - ".length".length());
+            attr = c.lenAttr; // 后续合法性校验用基础名
+        }
         if (val.equals("null")) {
             c.vType = V_NULL;
         } else if (val.equals("true") || val.equals("false")) {
@@ -527,10 +706,18 @@ public final class GkdSelector {
             c.vType = V_STR;
             c.sv = unescape(val.substring(1, val.length() - 1));
         } else {
-            try {
-                c.vType = V_INT;
-                c.iv = Long.parseLong(val);
-            } catch (NumberFormatException e) {
+            // v4.3.0：剥离单位后缀（10px / 5% ——GKD 允许，语义按数值比较）
+            int dn = 0;
+            while (dn < val.length() && Character.isDigit(val.charAt(dn))) dn++;
+            boolean numeric = dn > 0 && (dn == val.length() || !Character.isLetterOrDigit(val.charAt(dn)));
+            if (numeric) {
+                try {
+                    c.vType = V_INT;
+                    c.iv = Long.parseLong(val.substring(0, dn));
+                } catch (NumberFormatException e) {
+                    throw new ParseException("bad value: [" + s + "]");
+                }
+            } else {
                 throw new ParseException("bad value: [" + s + "]");
             }
         }

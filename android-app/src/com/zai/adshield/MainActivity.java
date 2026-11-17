@@ -411,6 +411,69 @@ public class MainActivity extends Activity {
             SubscriptionManager.setEnabled(a, on);
         }
 
+        /* ───── v4.3.0 应用白名单（白名单内应用零扫描零点击零学习） ───── */
+
+        /** 白名单状态：{list:[当前白名单], known:[{pkg,label} 近期处理过的应用]} */
+        @JavascriptInterface
+        public String whitelistJson() {
+            org.json.JSONObject o = new org.json.JSONObject();
+            try {
+                java.util.ArrayList<String> list = new java.util.ArrayList<>();
+                java.util.HashSet<String> wl = com.zai.adshield.AdSkipService.parseWhitelistCsv(
+                        com.zai.adshield.AdSkipService.whitelistCsvOf(a));
+                list.addAll(wl);
+                o.put("list", new org.json.JSONArray(list));
+                // 已知应用：白名单 ∪ 引擎战绩（byApp）——用户识别得到的应用列表
+                java.util.TreeMap<String, Integer> known = new java.util.TreeMap<>();
+                for (String p : wl) known.put(p, 1);
+                try {
+                    String snap = AdSkipService.snapshotState(a);
+                    org.json.JSONObject st = snap != null ? new org.json.JSONObject(snap) : null;
+                    org.json.JSONObject byApp = st != null && st.optJSONObject("stats") != null
+                            ? st.optJSONObject("stats").optJSONObject("byApp") : null;
+                    if (byApp != null) {
+                        java.util.Iterator<String> it = byApp.keys();
+                        while (it.hasNext()) known.put(it.next(), 1);
+                    }
+                } catch (Exception ignored) {
+                }
+                org.json.JSONArray arr = new org.json.JSONArray();
+                int n = 0;
+                for (String pkg : known.keySet()) {
+                    if (n++ >= 80) break; // 展示上限（防止超长列表）
+                    org.json.JSONObject e = new org.json.JSONObject();
+                    e.put("pkg", pkg);
+                    e.put("label", appLabelOf(pkg));
+                    arr.put(e);
+                }
+                o.put("known", arr);
+            } catch (Exception ignored) {
+            }
+            return o.toString();
+        }
+
+        @JavascriptInterface
+        public boolean whitelistAdd(String pkg) {
+            return AdSkipService.whitelistAdd(a, pkg);
+        }
+
+        @JavascriptInterface
+        public boolean whitelistRemove(String pkg) {
+            return AdSkipService.whitelistRemove(a, pkg);
+        }
+
+        /** 应用名（PackageManager 查询；失败回退包名末段） */
+        private String appLabelOf(String pkg) {
+            try {
+                android.content.pm.ApplicationInfo ai = a.getPackageManager().getApplicationInfo(pkg, 0);
+                CharSequence l = a.getPackageManager().getApplicationLabel(ai);
+                if (l != null && l.length() > 0) return l.toString();
+            } catch (Throwable ignored) {
+            }
+            int i = pkg.lastIndexOf('.');
+            return i >= 0 && pkg.length() - i - 1 > 1 ? pkg.substring(i + 1) : pkg;
+        }
+
         /** 回调名安全包装（仅允许合法 JS 标识符） */
         private static final class JSON {
             static String stringifyCb(String s) {

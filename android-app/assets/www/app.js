@@ -23,8 +23,8 @@ const store = {
 };
 
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "4.2.0"; }
-function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "40200"; }
+function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "4.3.0"; }
+function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "40300"; }
 
 /* ══════════ 吉祥物（v4.1.0 全新形象：白机器人小侠 + 绿披风跳跃） ══════════
  * 与启动器图标同源；state: on（跳跃浮动）/ off（灰度待命） */
@@ -37,6 +37,7 @@ $("#brand-logo").innerHTML = mascotImg(30, "on", true);
 
 /* ══════════ 版本记录 ══════════ */
 const CHANGELOG = [
+  { v: "4.3.0", d: "订阅主力规则真正接入：GKD globalGroups 全量解析（CSDN 等第三方 App 不再漏跳）+ 数字关系符/childCount/text.length 全语法；复验真正换候选（同坐标连点根治）；新增应用白名单（选中的应用零打扰）；喜马拉雅「为什么关闭广告」循环根治 + 跳过提速；未命中会记诊断日志；功耗再降（内容页早退 + 滚动风暴节流修复）。" },
   { v: "4.2.0", d: "用户操作让路（你点开的页面绝不自动关）；微信主界面零扫描（乱划根治）；订阅规则接入弹窗场景 + Activity 限定（导入了就真生效）；日志每 12 小时自动提交；引擎日志翻倍更具体；功耗大降。" },
   { v: "4.1.0", d: "应用内一键暂停/恢复防护（免看系统 10 秒警告）；修复微信拍摄被强退、灵动岛乱点、订阅导入 404；全新 Logo。" },
   { v: "4.0.0", d: "接入 GKD 订阅生态：粘贴链接即可导入 gkd.li 社区规则；内置规则库升级为「文案 + 控件 ID」双引擎；全新界面。" },
@@ -50,7 +51,7 @@ $$(".tabbtn").forEach(b => b.addEventListener("click", () => {
   $$(".page").forEach(p => p.classList.remove("active"));
   $("#page-" + b.dataset.page).classList.add("active");
   const pg = b.dataset.page;
-  if (pg === "home") refreshHome();
+  if (pg === "home") { refreshHome(); renderWhitelist(true); }
   if (pg === "sub") refreshSub();
   if (pg === "me") { renderLog(); }
 }));
@@ -194,6 +195,76 @@ $("#btn-battery").addEventListener("click", () => {
 
 bindToggle("toggle-popup", "popupShield", "弹窗屏蔽已开启", "弹窗屏蔽已关闭");
 bindToggle("toggle-learning", "learning", "习惯学习已开启", "习惯学习已关闭");
+
+/* ══════════ v4.3.0 应用白名单 ══════════ */
+let wlCache = null; // {list:Set, known:[{pkg,label}]}
+
+function loadWhitelist() {
+  if (!HAS_BRIDGE) {
+    wlCache = { list: new Set(), known: [] };
+    return wlCache;
+  }
+  try {
+    const d = JSON.parse(AndroidApp.whitelistJson());
+    wlCache = { list: new Set(d.list || []), known: d.known || [] };
+  } catch (e) {
+    wlCache = { list: new Set(), known: [] };
+  }
+  return wlCache;
+}
+
+function renderWhitelist(force) {
+  const box = $("#wl-list");
+  if (!box) return;
+  if (!wlCache || force) loadWhitelist();
+  const wl = wlCache;
+  $("#wl-count").textContent = String(wl.list.size);
+  // 白名单里的排前面，其余按字母
+  const known = (wl.known || []).slice().sort((a, b) => {
+    const wa = wl.list.has(a.pkg) ? 0 : 1, wb = wl.list.has(b.pkg) ? 0 : 1;
+    if (wa !== wb) return wa - wb;
+    return String(a.label).localeCompare(String(b.label), "zh");
+  });
+  if (!known.length) {
+    box.innerHTML = '<div class="empty">暂无记录——卫士处理过的应用会出现在这里</div>';
+    return;
+  }
+  box.innerHTML = known.map(x => {
+    const on = wl.list.has(x.pkg);
+    return '<div class="wl-row">'
+      + '<div class="wl-label"><span class="wl-name">' + esc(x.label) + '</span>'
+      + '<span class="wl-pkg">' + esc(x.pkg) + '</span></div>'
+      + '<label class="switch"><input type="checkbox" data-wl="' + esc(x.pkg) + '"'
+      + (on ? ' checked' : '') + '><span class="slider"></span></label>'
+      + '</div>';
+  }).join("");
+  box.querySelectorAll('input[data-wl]').forEach(t => {
+    t.addEventListener("change", () => {
+      const pkg = t.dataset.wl;
+      let ok = false;
+      try {
+        ok = t.checked ? AndroidApp.whitelistAdd(pkg) : AndroidApp.whitelistRemove(pkg);
+      } catch (e) {}
+      toast(t.checked ? "已加入白名单：卫士在该应用内完全让路" : "已移出白名单：恢复守护");
+      renderWhitelist(true);
+    });
+  });
+}
+
+$("#btn-wl-add").addEventListener("click", () => {
+  const inp = $("#wl-input");
+  const pkg = inp.value.trim();
+  if (!pkg) { toast("请输入应用包名"); return; }
+  if (!HAS_BRIDGE) { toast("仅 APK 内可用"); return; }
+  let ok = false;
+  try { ok = AndroidApp.whitelistAdd(pkg); } catch (e) {}
+  if (ok) { inp.value = ""; toast("已加入白名单：" + pkg); renderWhitelist(true); }
+  else toast("添加失败：包名格式不正确或已存在");
+});
+
+$("#wl-input").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") $("#btn-wl-add").click();
+});
 
 
 /* ══════════ 订阅页 ══════════ */
@@ -576,6 +647,7 @@ function toast(msg) {
 /* ══════════ 启动 ══════════ */
 (async function init() {
   refreshHome();
+  renderWhitelist(true);
   // 通知权限（Android 13+，保活提醒需要）
   // 更新检查（静默）
   try {

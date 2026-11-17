@@ -340,3 +340,32 @@ textarea { resize: none; }
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-5px); }
 }
+
+/* ───────── v4.3.0 应用白名单 ───────── */
+.wl-list {
+  margin-top: 10px;
+  max-height: 264px;
+  overflow-y: auto;
+  border-top: 1px solid var(--line);
+  -webkit-overflow-scrolling: touch;
+}
+.wl-list::-webkit-scrollbar { width: 4px; }
+.wl-list::-webkit-scrollbar-thumb { background: #d5e5da; border-radius: 4px; }
+.wl-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 2px;
+  border-bottom: 1px solid var(--line);
+}
+.wl-row:last-child { border-bottom: none; }
+.wl-label { display: flex; flex-direction: column; min-width: 0; }
+.wl-name { font-size: 14px; font-weight: 600; color: var(--ink); }
+.wl-pkg {
+  font-size: 11px; color: var(--sub);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 60vw;
+}
+.wl-add-row { display: flex; gap: 8px; margin-top: 12px; }
+.wl-add-row .fb-input { flex: 1; min-width: 0; }

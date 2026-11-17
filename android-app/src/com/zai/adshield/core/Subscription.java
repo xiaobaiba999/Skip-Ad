@@ -4,14 +4,31 @@ import com.zai.adshield.core.AdDecisionCore.Ctx;
 import com.zai.adshield.core.AdDecisionCore.NodeView;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 
 /**
- * GKD 订阅模型与解析（v4.0.0 订阅融合 · v4.2.0 全门控重构）
+ * GKD 订阅模型与解析（v4.0.0 订阅融合 · v4.2.0 全门控 · v4.3.0 globalGroups 主力规则接入）
  * ─────────────────────────────────────────────────────────────────────
  * 订阅 = GKD 生态规则的最小载体：apps[] → groups[] → rules[] →
  * matches（选择器）。本地内置订阅与远程导入订阅格式完全一致
  * （JSON5），加载时全部预编译为 GkdSelector——匹配热路径零解析。
+ *
+ * v4.3.0（issue#38 实锤：远程订阅 327 款/828 条命中 0——GKD 默认订阅的
+ * 【主力开屏规则全部住在 globalGroups】里（对所有应用生效的全局组，
+ * 如「开屏广告」组 [text*="跳过"][text.length<10]），而旧解析器只读
+ * apps 数组——主力规则被整体丢弃，CSDN 等第三方 App 全部漏跳的元凶）：
+ *  · globalGroups 全量解析——每组编译为 id='*' 的全局 App，其 apps
+ *    数组是【包名排除表】（enable:false 的应用不适用该全局组——
+ *    它们有自己的专属规则）；组级 enable:false 整组跳过；
+ *  · 组级字段落地：enable（组停用，如 CSDN 的「更新弹窗」组）/
+ *    matchTime（进入窗口 N ms 内才激活，主力组 10000ms）/
+ *    actionMaximum（组级默认次数）/ actionCd（同规则出手间隔）；
+ *    规则级字段优先于组级；
+ *  · preKeys 链式规则（依赖前序规则命中才激活）不支持——加载即跳过；
+ *  · rules 字符串快捷式（rules:'[id=…]'）支持；
+ *  · 安全红线：全局组（id='*'）无 activityIds 限定的规则，目标节点
+ *    文案仍过主引擎诱导词否决（「摇一摇领福利」类绝不代点）。
  *
  * v4.2.0（issue#31-37 日志实锤：远程订阅的微信规则在主界面反复命中
  * 连点 = 「进入微信左右乱划」元凶；订阅导入后弹窗场景永不命中）：
@@ -46,6 +63,11 @@ public final class Subscription {
         public String[] excludeActivityIds = EMPTY_STRS;
         public int actionMaximum;      // 同窗最多出手次数（0 = 不限，走全局预算）
         public long actionInterval;    // 同规则两次出手最小间隔 ms（0 = 不限）
+        public long matchTime;         // v4.3.0：进入窗口 N ms 内才激活（0 = 不限）
+        /** v4.3.0：结构规则——目标选择器含关系算子（@View <3 FL < [vid="ad"]
+         *  类链式定位）。结构锚定 = 规则作者精确绑定了容器层级，比裸文案
+         *  匹配强得多——零文本图片跳过键（无 skip 形态文案）凭此过安全门。 */
+        public boolean structural;
     }
 
     static final String[] EMPTY_STRS = new String[0];
@@ -54,6 +76,8 @@ public final class Subscription {
         public String id;              // 包名（'*' = 全局规则）
         public String name;
         public List<Rule> rules = new ArrayList<Rule>();
+        /** v4.3.0：全局组的包名排除表（globalGroups.apps 里 enable:false 的应用） */
+        public HashSet<String> excludePkgs;
     }
 
     public final String name;
@@ -83,42 +107,95 @@ public final class Subscription {
     }
 
     /** v4.2.0：带默认限流参数解析（内置订阅 0/0=依赖全局预算与冷却；
-     *  远程订阅按 GKD 语义默认 1 次/窗 + 1000ms 间隔） */
+     *  远程订阅按 GKD 语义默认 1 次/窗 + 1000ms 间隔）。
+     *  v4.3.0：globalGroups 主力规则全量接入（见类注释）。 */
     public static Subscription parse(String json5Text, int defActionMaximum, long defActionInterval) {
         Object root = Json5.parse(json5Text);
         Map0 m = new Map0(Json5.asMap(root));
         String name = m.str("name", "未命名订阅");
         int version = (int) m.num("version", 0);
         Subscription sub = new Subscription(name, version);
-        List<Object> apps = Json5.asList(m.raw.get("apps"));
-        if (apps == null) return sub;
-        for (int i = 0; i < apps.size(); i++) {
-            Map0 am = new Map0(Json5.asMap(apps.get(i)));
-            String appId = am.str("id", null);
-            if (appId == null || appId.length() == 0) continue;
-            App app = new App();
-            app.id = appId;
-            app.name = am.str("name", appId);
-            List<Object> groups = Json5.asList(am.raw.get("groups"));
-            if (groups == null) continue;
-            for (int g = 0; g < groups.size(); g++) {
-                Map0 gm = new Map0(Json5.asMap(groups.get(g)));
-                String gname = gm.str("name", "规则组");
-                Object rulesObj = gm.raw.get("rules");
-                List<Object> rules = normalizeRules(rulesObj);
-                if (rules == null) continue;
-                for (int r = 0; r < rules.size(); r++) {
-                    Rule compiled = compileRule(Json5.asMap(rules.get(r)),
-                            gname + "-" + (r + 1), defActionMaximum, defActionInterval);
-                    if (compiled != null) app.rules.add(compiled);
-                }
+
+        /* ═══ v4.3.0 globalGroups：GKD 默认订阅的主力规则住处 ═══
+         * 每组 = 对所有应用生效的全局规则（id='*'），组内 apps 数组是
+         * 包名排除表（enable:false——这些应用有自己的专属规则）。
+         * 典型：「开屏广告」组 [text*="跳过"][text.length<10] 对全部
+         * 第三方 App 生效——旧解析器只读 apps 数组，主力规则被整体丢弃。 */
+        List<Object> globalGroups = Json5.asList(m.raw.get("globalGroups"));
+        if (globalGroups != null) {
+            for (int gi = 0; gi < globalGroups.size(); gi++) {
+                Map0 gm = new Map0(Json5.asMap(globalGroups.get(gi)));
+                // v4.3.0：组级停用（GKD 语义 enable:false）
+                if (gm.raw.get("enable") != null && !gm.bool("enable", true)) continue;
+                App g = new App();
+                g.id = "*";
+                g.name = gm.str("name", "全局规则");
+                g.excludePkgs = parseGlobalExcludes(gm.raw.get("apps"));
+                long gMatchTime = (long) gm.num("matchTime", 0);
+                int gMax = (int) gm.num("actionMaximum", defActionMaximum);
+                long gInterval = (long) gm.num("actionCd", defActionInterval);
+                appendGroupRules(gm, g, gMax, gInterval, gMatchTime);
+                if (!g.rules.isEmpty()) sub.apps.add(g);
             }
-            if (!app.rules.isEmpty()) sub.apps.add(app);
+        }
+
+        /* ═══ apps：每应用专属规则（v4.2.0 语义 + v4.3.0 组级字段）═══ */
+        List<Object> apps = Json5.asList(m.raw.get("apps"));
+        if (apps != null) {
+            for (int i = 0; i < apps.size(); i++) {
+                Map0 am = new Map0(Json5.asMap(apps.get(i)));
+                String appId = am.str("id", null);
+                if (appId == null || appId.length() == 0) continue;
+                App app = new App();
+                app.id = appId;
+                app.name = am.str("name", appId);
+                List<Object> groups = Json5.asList(am.raw.get("groups"));
+                if (groups != null) {
+                    for (int g = 0; g < groups.size(); g++) {
+                        Map0 gm = new Map0(Json5.asMap(groups.get(g)));
+                        // v4.3.0：组级停用（CSDN「更新弹窗」等默认 enable:false）
+                        if (gm.raw.get("enable") != null && !gm.bool("enable", true)) continue;
+                        long gMatchTime = (long) gm.num("matchTime", 0);
+                        int gMax = (int) gm.num("actionMaximum", defActionMaximum);
+                        long gInterval = (long) gm.num("actionCd", defActionInterval);
+                        appendGroupRules(gm, app, gMax, gInterval, gMatchTime);
+                    }
+                }
+                if (!app.rules.isEmpty()) sub.apps.add(app);
+            }
         }
         return sub;
     }
 
-    /** GKD 的 rules 可为单对象或数组（还有 string 快捷式——跳过） */
+    /** v4.3.0：globalGroups.apps 排除表——enable:false 的包名集合
+     *  （这些应用有专属规则，全局组不适用；GKD 语义：未列出 = 默认适用） */
+    static HashSet<String> parseGlobalExcludes(Object appsObj) {
+        HashSet<String> out = new HashSet<String>();
+        List<Object> list = Json5.asList(appsObj);
+        if (list == null) return out;
+        for (int i = 0; i < list.size(); i++) {
+            Map0 am = new Map0(Json5.asMap(list.get(i)));
+            String id = am.str("id", null);
+            if (id == null || id.length() == 0) continue;
+            if (!am.bool("enable", true)) out.add(id);
+        }
+        return out;
+    }
+
+    /** v4.3.0：一组 rules → 编译进 App（组级默认 + 规则级覆盖；preKeys 跳过） */
+    static void appendGroupRules(Map0 gm, App app, int defMax, long defInterval, long defMatchTime) {
+        String gname = gm.str("name", "规则组");
+        List<Object> rules = normalizeRules(gm.raw.get("rules"));
+        if (rules == null) return;
+        for (int r = 0; r < rules.size(); r++) {
+            Rule compiled = compileRule(Json5.asMap(rules.get(r)),
+                    gname + "-" + (r + 1), defMax, defInterval, defMatchTime);
+            if (compiled != null) app.rules.add(compiled);
+        }
+    }
+
+    /** GKD 的 rules 可为单对象、数组或字符串快捷式（rules:'[id=…]'——
+     *  字符串即选择器，v4.3.0 支持） */
     static List<Object> normalizeRules(Object rulesObj) {
         if (rulesObj instanceof List) {
             @SuppressWarnings("unchecked")
@@ -130,15 +207,26 @@ public final class Subscription {
             l.add(rulesObj);
             return l;
         }
+        if (rulesObj instanceof String) {
+            // 字符串快捷式：rules:'[id=…][text=…]' ≡ rules:[{matches:'…'}]
+            java.util.LinkedHashMap<String, Object> m = new java.util.LinkedHashMap<String, Object>();
+            m.put("matches", rulesObj);
+            List<Object> l = new ArrayList<Object>();
+            l.add(m);
+            return l;
+        }
         return null;
     }
 
     /** 单条规则编译：matches/anyMatches → 目标选择器；back 动作丢弃；
-     *  v4.2.0：activityIds/excludeActivityIds/actionMaximum/actionInterval 全解析 */
+     *  v4.2.0：activityIds/excludeActivityIds/actionMaximum/actionInterval 全解析；
+     *  v4.3.0：preKeys 链式规则跳过 + matchTime + actionCd */
     static Rule compileRule(java.util.Map<String, Object> rm, String ruleName,
-                            int defActionMaximum, long defActionInterval) {
+                            int defActionMaximum, long defActionInterval, long defMatchTime) {
         if (rm == null) return null;
         Map0 m = new Map0(rm);
+        // v4.3.0：链式规则（依赖前序规则命中才激活）不支持——跳过，绝不误触发
+        if (m.raw.get("preKeys") != null) return null;
         String action = m.str("action", "click");
         if ("back".equals(action)) return null; // 红线：订阅规则绝不触发返回键
         Rule r = new Rule();
@@ -147,11 +235,22 @@ public final class Subscription {
         r.activityIds = m.strList("activityIds");
         r.excludeActivityIds = m.strList("excludeActivityIds");
         r.actionMaximum = (int) m.num("actionMaximum", defActionMaximum);
-        r.actionInterval = (long) m.num("actionInterval", defActionInterval);
+        r.actionInterval = (long) m.num("actionInterval", m.num("actionCd", defActionInterval));
+        r.matchTime = (long) m.num("matchTime", defMatchTime);
         addSelectors(r.targets, m.raw.get("matches"));
         addSelectors(r.targets, m.raw.get("anyMatches"));
         addSelectors(r.excludes, m.raw.get("excludeMatches"));
         if (r.targets.isEmpty()) return null;
+        // v4.3.0：结构规则标记（任一目标选择器含关系算子链）
+        for (int i = 0; i < r.targets.size() && !r.structural; i++) {
+            GkdSelector sel = r.targets.get(i);
+            for (int k = 0; k < sel.chains.size(); k++) {
+                if (sel.chains.get(k).sels.size() > 1) {
+                    r.structural = true;
+                    break;
+                }
+            }
+        }
         return r;
     }
 
@@ -192,6 +291,12 @@ public final class Subscription {
         double num(String k, double d) {
             Object v = raw.get(k);
             return v instanceof Double ? ((Double) v).doubleValue() : d;
+        }
+
+        /** v4.3.0：布尔字段（组级 enable 等） */
+        boolean bool(String k, boolean d) {
+            Object v = raw.get(k);
+            return v instanceof Boolean ? ((Boolean) v).booleanValue() : d;
         }
 
         /** v4.2.0：字符串或字符串数组 → String[]（GKD 的 activityIds 两种写法都合法） */
@@ -237,15 +342,20 @@ public final class Subscription {
     public RuleEngine.Hit match(String pkg, NodeView root, Ctx ctx, int budget,
                                 Runtime rt, String keyPrefix) {
         if (root == null) return null;
-        // ① 规则预过滤：包名 + Activity 限定（零树遍历的最大的功耗优化）
+        // ① 规则预过滤：包名 + 全局组排除表 + Activity 限定 + matchTime 窗口
+        //   （零树遍历的最大的功耗优化）
         List<Cand> cands = new ArrayList<Cand>(8);
         for (int i = 0; i < apps.size(); i++) {
             App app = apps.get(i);
             boolean global = "*".equals(app.id);
             if (!global && !pkg.equals(app.id)) continue; // GKD 语义：包名精确匹配
+            // v4.3.0：全局组的排除表（enable:false 的应用有自己的专属规则）
+            if (global && app.excludePkgs != null && app.excludePkgs.contains(pkg)) continue;
             for (int j = 0; j < app.rules.size(); j++) {
                 Rule rule = app.rules.get(j);
                 if (!activityAllowed(rule, ctx.activityId)) continue;
+                // v4.3.0：matchTime 窗口（GKD 语义：进入窗口 N ms 内才激活）
+                if (rule.matchTime > 0 && ctx.elapsedMs > rule.matchTime) continue;
                 cands.add(new Cand(app, rule));
             }
         }
@@ -263,9 +373,15 @@ public final class Subscription {
             NodeView t = walkRule(c.rule, node, x);
             if (t == null) continue;
             if (!safeTarget(t, ctx)) continue;
-            // 无 activityIds 限定的任意界面规则：目标必须是跳过/关闭形态
-            if (c.rule.activityIds.length == 0
+            // 无 activityIds 限定的任意界面规则：目标必须是跳过/关闭形态；
+            // v4.3.0 例外：结构规则（关系算子链精确锁定容器层级）——零文本
+            // 图片跳过键（CSDN @View <3 FL < [vid="fl_third_ad"]）凭结构锚定过门
+            if (c.rule.activityIds.length == 0 && !c.rule.structural
                     && !AdDecisionCore.looksSkipLike(t.text(), t.desc(), t.viewId())) continue;
+            // v4.3.0 安全红线：全局组（id='*'）无 Activity 限定的规则，目标
+            // 文案仍过主引擎诱导词否决——「摇一摇领福利·翻倍领取」类绝不代点
+            if ("*".equals(c.app.id) && c.rule.activityIds.length == 0
+                    && !AdDecisionCore.safeGlobalLabel(t.text(), t.desc())) continue;
             if (excluded(c.rule, root, x)) continue;
             // 运行时限流：同窗次数 / 同规则间隔（GKD actionMaximum/actionInterval）
             if (rt != null) {
@@ -362,6 +478,9 @@ public final class Subscription {
                     "[id=\"com.sina.weibo:id/iv_skip\"]", "[vid*=\"skip\"][visible=true]")
             + app("com.ximalaya.ting.android", "喜马拉雅",
                     "[vid*=\"skip\"][visible=true]", "[vid=\"main_ad_skip\"]")
+            + app("net.csdn.csdnplus", "CSDN",
+                    "[vid*=\"skip\"][visible=true]",
+                    "@View <3 FrameLayout <2 FrameLayout < FrameLayout < [vid=\"fl_third_ad\"]")
             + app("tv.danmaku.bili", "哔哩哔哩",
                     "[vid*=\"skip\"][visible=true]")
             + app("com.gotokeep.keep", "Keep",

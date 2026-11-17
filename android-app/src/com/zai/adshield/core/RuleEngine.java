@@ -123,6 +123,81 @@ public final class RuleEngine {
         return visit(root, 0, budget, ctx, null);
     }
 
+    /** v4.3.0 多候选收集：一次 DFS 收集最多 max 个命中（复验真正换候选）。
+     *  此前 match() 每次扫描都返回【同一个首个命中】——复验重试点同一个
+     *  坐标（issue#38 实锤：喜马拉雅同坐标连点 6 次广告不关，「换第 N 个
+     *  候选」日志是假的）。收集后按置信度排序：精确/分应用/vid 优先，
+     *  同级短文案优先（「跳过」精确键 > 「跳过广告」图内文本，与决策核心
+     *  skipCands 排序同源）。 */
+    public static java.util.ArrayList<Hit> matchAll(NodeView root, Ctx ctx, int max) {
+        java.util.ArrayList<Hit> out = new java.util.ArrayList<Hit>();
+        if (root == null || max <= 0) return out;
+        int[] budget = {ctx.budgetNodes};
+        collect(root, 0, budget, ctx, out, max);
+        try {
+            java.util.Collections.sort(out, (a, b) -> {
+                int d = tierFull(b.appId) - tierFull(a.appId);
+                if (d != 0) return d;
+                int la = a.label == null ? 0 : a.label.length();
+                int lb = b.label == null ? 0 : b.label.length();
+                return la - lb; // 同置信度：短文案优先（更精确的真键）
+            });
+        } catch (Throwable ignored) {
+        }
+        return out;
+    }
+
+    /** 全置信度排序：精确/分应用/vid（定信）> 倒计时形态 > 短包含 */
+    static int tierFull(String appId) {
+        if ("global_exact".equals(appId) || "app_exact".equals(appId)
+                || "global_vid".equals(appId) || "sdk_close_vid".equals(appId)) return 3;
+        if ("global_pattern".equals(appId)) return 2;
+        return 1; // global_contains
+    }
+
+    private static void collect(NodeView node, int depth, int[] budget, Ctx ctx,
+                                java.util.ArrayList<Hit> out, int max) {
+        if (node == null || depth > 32 || budget[0] <= 0 || out.size() >= max) return;
+        budget[0]--;
+        try {
+            String text = nz(node.text());
+            String desc = nz(node.desc());
+            String label = text.length() > 0 ? text : desc;
+            boolean vis = node.visible();
+            int[] b = node.bounds();
+            double area = areaRatio(b, ctx);
+
+            if (vis && b != null && label.length() > 0 && area <= AdDecisionCore.SKIP_AREA_MAX) {
+                Hit h = matchText(label, b, node, ctx);
+                if (h != null) addCand(out, h, max);
+            } else if (vis && b != null && label.length() == 0 && node.childCount() == 0
+                    && area <= AdDecisionCore.SKIP_AREA_MAX) {
+                Hit h = matchVid(node, b, ctx);
+                if (h != null) addCand(out, h, max);
+            }
+            int n = node.childCount();
+            for (int i = 0; i < n && out.size() < max; i++) {
+                collect(node.child(i), depth + 1, budget, ctx, out, max);
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** 去重后追加（同一坐标/同一标签不重复收——换了也是白点） */
+    private static void addCand(java.util.ArrayList<Hit> out, Hit h, int max) {
+        if (out.size() >= max) return;
+        for (int i = 0; i < out.size(); i++) {
+            Hit o = out.get(i);
+            if (o.label.equals(h.label) && sameBounds(o.tapBounds, h.tapBounds)) return;
+        }
+        out.add(h);
+    }
+
+    static boolean sameBounds(int[] a, int[] b) {
+        if (a == null || b == null || a.length < 4 || b.length < 4) return a == b;
+        return a[0] == b[0] && a[1] == b[1] && a[2] == b[2] && a[3] == b[3];
+    }
+
     private static Hit visit(NodeView node, int depth, int[] budget, Ctx ctx, Hit best) {
         if (node == null || depth > 32 || budget[0] <= 0) return best;
         budget[0]--;

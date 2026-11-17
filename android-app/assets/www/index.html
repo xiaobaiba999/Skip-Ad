@@ -87,6 +87,22 @@
           <label class="switch"><input type="checkbox" id="toggle-learning" checked><span class="slider"></span></label>
         </div>
       </div>
+
+      <!-- v4.3.0 应用白名单 -->
+      <div class="card" id="wl-card">
+        <div class="row-between">
+          <div>
+            <div class="card-title">应用白名单</div>
+            <div class="sub-note" style="margin-top:4px">白名单内应用不扫描、不点击、不打扰</div>
+          </div>
+          <span class="chip" id="wl-count">0</span>
+        </div>
+        <div class="wl-list" id="wl-list"><div class="empty">加载中…</div></div>
+        <div class="wl-add-row">
+          <input type="text" id="wl-input" class="fb-input" placeholder="输入应用包名，如 net.csdn.csdnplus">
+          <button class="btn btn-primary" id="btn-wl-add">添加</button>
+        </div>
+      </div>
     </section>
 
     <!-- ───────── 订阅 ───────── -->

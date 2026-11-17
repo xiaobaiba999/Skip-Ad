@@ -227,6 +227,13 @@ public class AdSkipService extends AccessibilityService {
     private static final String KEY_MASTER = "masterOn";
     static volatile boolean masterOn = true;
 
+    /* ═══ v4.3.0 应用白名单（用户圈定绝不打扰的应用）═══
+     * 白名单内应用与桌面黑名单同级：事件入口直接丢弃——零扫描、
+     * 零点击、零学习、零突发检测（该应用内卫士完全「不存在」）。
+     * 静态 HashSet 快照：服务/页面双端读写，add/remove 原子换快照。 */
+    private static final String KEY_WHITELIST = "whitelistCsv";
+    static volatile java.util.HashSet<String> whitelistSet = new java.util.HashSet<>();
+
     private static final int NOTIF_KEEP = 1;   // 前台保活常驻通知
     public static final int NOTIF_ALERT = 2;   // 服务断开提醒（KeepAliveReceiver 发，服务连上即撤）
 
@@ -255,10 +262,10 @@ public class AdSkipService extends AccessibilityService {
     /* v4.2.0：每 12 小时自动提交引擎日志（除用户手动上传外） */
     public static final long AUTO_LOG_MS = 12 * 60 * 60 * 1000L;
 
-    /* 极速链（v3.9.0 前段加密：露头就秒跳——Keep 开屏「跳过」键 0ms 首扫即中，
-       60ms 内二连扫兜底渲染延迟；后段保持疏节奏覆盖晚出键） */
+    /* 极速链（v4.3.0 功耗收紧：16 档 → 13 档——前 4s 的内容变化补扫已覆盖
+       密集相位，固定档只留骨架；露头就秒跳不变（0/80/200ms 三连快扫） */
     private static final long[] SCAN_AT =
-            {0, 60, 120, 200, 300, 450, 650, 900, 1300, 1900, 2700, 3800, 5200, 7000, 9500, 12000};
+            {0, 80, 200, 400, 700, 1100, 1700, 2500, 3600, 5000, 7000, 9500, 12000};
     /* 返回键重试：每个窗口最多直断次数（个别广告拦截第一次返回键） */
     private static final int BACK_RETRY_MAX = 2;
     /* 弹窗窗期与冷却 */
@@ -319,6 +326,18 @@ public class AdSkipService extends AccessibilityService {
     private final java.util.HashMap<String, Integer> cdLastN = new java.util.HashMap<>();
     private final java.util.HashMap<String, Long> cdAnchorAt = new java.util.HashMap<>();
     private final java.util.HashMap<String, Long> cdWaitUntil = new java.util.HashMap<>();
+    /* v4.3.0：假倒计时日志去重（数字 1.6s 不变 = 装饰性数字，不再门控） */
+    private final java.util.HashMap<String, Long> cdFakeLogAt = new java.util.HashMap<>();
+    /* v4.3.0 功耗三件套：内容页早退（本窗剩余固定扫描全取消）/ 补扫真节流 /
+     * 小窗探测缓存（灵岛事件不再每次 getWindows 重 IPC） */
+    private final java.util.HashMap<String, Long> chainKilledAt = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Long> nudgeAt = new java.util.HashMap<>();
+    private final java.util.HashMap<String, long[]> overlayCache = new java.util.HashMap<>();
+    /* v4.3.0：扫描未命中诊断日志（每窗一条——用户提交日志能看到为什么
+     * 不跳，开发侧据此补规则；issue#38「无法跳过且日志没记录」根治） */
+    private final java.util.HashMap<String, Long> missLogAt = new java.util.HashMap<>();
+    /* v4.3.0：白名单生效提示日志去重 */
+    private final java.util.HashMap<String, Long> wlLogAt = new java.util.HashMap<>();
 
     private volatile String lastAutoClickPkg;
     private volatile long lastAutoClickAt;
@@ -358,7 +377,7 @@ public class AdSkipService extends AccessibilityService {
                     String state = snapshotState(ctx);
                     org.json.JSONObject st = state != null
                             ? new org.json.JSONObject(state) : new org.json.JSONObject();
-                    String ver = "4.2.0";
+                    String ver = "4.3.0";
                     try {
                         ver = ctx.getPackageManager().getPackageInfo(ctx.getPackageName(), 0).versionName;
                     } catch (Throwable ignored) {
@@ -521,6 +540,79 @@ public class AdSkipService extends AccessibilityService {
         return ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_MASTER, true);
     }
 
+    /* ───────── v4.3.0 应用白名单管理（页面 Bridge / 服务门共用，静态） ───────── */
+
+    /** 白名单快照重载（服务连接时 / 增删后调用） */
+    public static void reloadWhitelist(Context ctx) {
+        try {
+            java.util.HashSet<String> s = parseWhitelistCsv(
+                    ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_WHITELIST, ""));
+            whitelistSet = s;
+        } catch (Throwable t) {
+            whitelistSet = new java.util.HashSet<>();
+        }
+    }
+
+    static java.util.HashSet<String> parseWhitelistCsv(String csv) {
+        java.util.HashSet<String> s = new java.util.HashSet<>();
+        if (csv != null) {
+            for (String p : csv.split(",")) {
+                p = p.trim();
+                if (p.length() > 0) s.add(p);
+            }
+        }
+        return s;
+    }
+
+    /** 白名单内应用：事件入口直接丢弃（与桌面黑名单同级——零扫描零学习零突发） */
+    public static boolean isWhitelisted(String pkg) {
+        return pkg != null && whitelistSet.contains(pkg);
+    }
+
+    public static boolean whitelistAdd(Context ctx, String pkg) {
+        if (pkg == null) return false;
+        pkg = pkg.trim();
+        if (pkg.length() < 3 || pkg.contains(",") || pkg.contains(" ")) return false;
+        SharedPreferences sp = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        java.util.HashSet<String> s = parseWhitelistCsv(sp.getString(KEY_WHITELIST, ""));
+        boolean added = s.add(pkg);
+        sp.edit().putString(KEY_WHITELIST, joinCsv(s)).apply();
+        whitelistSet = s;
+        AdSkipService sv = instance;
+        if (sv != null && added) {
+            sv.appendLog("🤍 已加入白名单（" + sv.shortPkg(pkg) + " " + pkg + "）：该应用零扫描零点击，卫士完全让路");
+        }
+        return added;
+    }
+
+    public static boolean whitelistRemove(Context ctx, String pkg) {
+        if (pkg == null) return false;
+        SharedPreferences sp = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        java.util.HashSet<String> s = parseWhitelistCsv(sp.getString(KEY_WHITELIST, ""));
+        boolean removed = s.remove(pkg.trim());
+        sp.edit().putString(KEY_WHITELIST, joinCsv(s)).apply();
+        whitelistSet = s;
+        AdSkipService sv = instance;
+        if (sv != null && removed) {
+            sv.appendLog("✅ 已移出白名单（" + sv.shortPkg(pkg) + "）：恢复守护");
+        }
+        return removed;
+    }
+
+    /** 白名单列表（csv——页面展示用） */
+    public static String whitelistCsvOf(Context ctx) {
+        return ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_WHITELIST, "");
+    }
+
+    static String joinCsv(java.util.HashSet<String> s) {
+        StringBuilder b = new StringBuilder();
+        for (String p : s) {
+            if (b.length() > 0) b.append(',');
+            b.append(p);
+        }
+        return b.toString();
+    }
+
     @Override
     protected void onServiceConnected() {
         super.onServiceConnected();
@@ -549,6 +641,13 @@ public class AdSkipService extends AccessibilityService {
         if (purgedOem > 0) appendLog("已清理 " + purgedOem + " 条系统工具/短信包误学规则（issue#16 整治，安全中心/短信里的手动操作绝不当「跳过键」）");
         // v4.1.0：App 内主开关状态载入（暂停后重启服务/手机仍保持暂停）
         masterOn = prefs().getBoolean(KEY_MASTER, true);
+        // v4.3.0：应用白名单快照载入
+        reloadWhitelist(this);
+        int wlN = whitelistSet.size();
+        appendLog("服务已启动 · v4.3.0 订阅主力规则接入（规则 "
+                + RuleEngine.stats() + "）"
+                + (purged > 0 ? "｜已清理 " + purged + " 条误学窗口指纹" : "")
+                + (wlN > 0 ? "｜白名单 " + wlN + " 个应用零打扰" : ""));
         // v4.0.0 GKD 订阅融合：内置订阅 + 远程订阅（用户导入的 GKD 社区规则）
         SubscriptionManager.ensureLoaded(this);
         Subscription bi = SubscriptionManager.builtinSub;
@@ -612,10 +711,13 @@ public class AdSkipService extends AccessibilityService {
                 am.setWindow(android.app.AlarmManager.RTC,
                         System.currentTimeMillis() + NIGHT_HEARTBEAT_MS, NIGHT_HEARTBEAT_WINDOW_MS, pi);
             } else {
+                // v4.3.0 功耗：亮屏心跳改窗口式（5~8min 系统批量调度，不再精确
+                // 闹钟独占唤醒——发现延迟最多 +3min，服务被杀发现仍足够快；
+                // 亮屏时设备本就醒着，窗口式不影响时效体感）
                 try {
-                    am.setExactAndAllowWhileIdle(android.app.AlarmManager.RTC, atMs, pi);
-                } catch (SecurityException se) {
-                    am.setAndAllowWhileIdle(android.app.AlarmManager.RTC, atMs, pi);
+                    am.setWindow(android.app.AlarmManager.RTC, atMs, 3 * 60 * 1000L, pi);
+                } catch (Throwable t) {
+                    am.set(android.app.AlarmManager.RTC, atMs, pi);
                 }
             }
         } catch (Throwable ignored) {
@@ -812,6 +914,14 @@ public class AdSkipService extends AccessibilityService {
         }
         if (pkg.equals(getPackageName())) return;
 
+        /* ═══ v4.3.0 应用白名单：用户圈定的应用零扫描零点击零学习零突发
+         * （与桌面黑名单同级；仅维持前台包名追踪，白名单应用间切换
+         *  不误判「新进入」）═══ */
+        if (whitelistSet.contains(pkg)) {
+            lastFgPkg = pkg;
+            return;
+        }
+
         long now = System.currentTimeMillis();
 
         /* ═══ v4.1.0 App 内主开关（暂停）：只廉价维持窗口/前台追踪，
@@ -911,6 +1021,8 @@ public class AdSkipService extends AccessibilityService {
                 cdWaitUntil.remove(pkg);
                 gaveUp.put(pkg, Boolean.FALSE); // v3.6.0：新窗重置收手标记
                 winClsLearned.remove(pkg);
+                chainKilledAt.remove(pkg); // v4.3.0：新窗重置内容页早退
+                nudgeAt.remove(pkg);      // v4.3.0：新窗重置补扫节流
                 if (isDialogClass(cls) && !isOemUtilityPkg(pkg)) {
                     popupUntil.put(pkg, now + POPUP_WINDOW_MS);
                 }
@@ -1000,9 +1112,23 @@ public class AdSkipService extends AccessibilityService {
     /** v4.1.0：pkg 是否只存在「小窗」形态的窗口（灵动岛/悬浮窗：面积 <45%
      *  屏或高度 <55% 屏）。灵岛小窗控件被当「角落跳过键」= 乱点元凶——
      *  小窗一律不走开屏阶梯。查不到窗口按 false（Activity 启动竞速期
-     *  保守放行，绝不错杀真开屏）。 */
+     *  保守放行，绝不错杀真开屏）。
+     *  v4.3.0 功耗：结果缓存 500ms（灵岛动画的高频窗口事件不再每次
+     *  getWindows 重 IPC——仅窗口形态查询，500ms 内状态不会翻转）。 */
     private boolean isSmallOverlayWindow(String pkg) {
         if (screenWidth <= 0 || screenHeight <= 0) return false;
+        long now = System.currentTimeMillis();
+        long[] cached = overlayCache.get(pkg);
+        if (cached != null && now - cached[0] < 500) {
+            return cached[1] == 1;
+        }
+        boolean r = isSmallOverlayWindowUncached(pkg);
+        overlayCache.put(pkg, new long[]{now, r ? 1L : 0L});
+        if (overlayCache.size() > 48) overlayCache.clear(); // 防膨胀
+        return r;
+    }
+
+    private boolean isSmallOverlayWindowUncached(String pkg) {
         try {
             List<AccessibilityWindowInfo> wins = getWindows();
             if (wins == null) return false;
@@ -1179,6 +1305,9 @@ public class AdSkipService extends AccessibilityService {
             handler.postDelayed(() -> {
                 Integer cur = scanGen.get(pkg);
                 if (cur == null || cur.intValue() != gen) return;
+                // v4.3.0 功耗：内容页早退后本窗固定扫描档全取消
+                Long killed = chainKilledAt.get(pkg);
+                if (killed != null && killed.longValue() == winStart) return;
                 tryScan(pkg, winStart, at);
             }, at);
         }
@@ -1191,13 +1320,16 @@ public class AdSkipService extends AccessibilityService {
             return;
         }
         final long winStart = winAt(pkg);
-        /* v4.2.0 功耗收紧：前 4s 保持 50ms 高频补扫（露头就秒跳不变）；
-         * 4s 后内容变化不再补扫——定点扫描链（5.2/7/9.5/12s）已覆盖晚出
-         * 键，聊天列表滚动/信息流刷新的高频内容变化不再触发整树扫描
-         * （v4.1.0 前 4s 后仍以 300ms 节流补扫 = 微信主界面 CPU 黑洞）。 */
+        /* v4.3.0 功耗【关键修复】：此前「前 4s 50ms 高频补扫」的节流比较的是
+         * 【窗口起点】而非【上次补扫】——信息流/聊天列表滚动时每个内容变化
+         * 事件都直接排一次整树扫描（10~30 次/秒 × 4 秒 = 功耗黑洞元凶）。
+         * 改为真节流：同一包两次补扫最少间隔 120ms（露头就秒跳不变——
+         * 跳过键出现即点，120ms 只挡滚动风暴）。 */
         long elapsed = now - winStart;
         if (elapsed < 4000) {
-            if (elapsed < 50) return;          // 前 4s：50ms 高频补扫（露头就秒跳不变）
+            Long last = nudgeAt.get(pkg);
+            if (last != null && now - last < 120) return;
+            nudgeAt.put(pkg, now);
         } else if (now < popupUntilGet(pkg)) {
             Long last = popupNudgeAt.get(pkg); // 弹窗窗期：300ms 节流补扫
             if (last != null && now - last < 300) return;
@@ -1205,6 +1337,9 @@ public class AdSkipService extends AccessibilityService {
         } else {
             return;                            // 弹窗窗期外：内容变化零补扫
         }
+        // v4.3.0：内容页早退后补扫同步让路（真出现跳过键会由 walk 复活链）
+        Long killed = chainKilledAt.get(pkg);
+        if (killed != null && killed.longValue() == winStart) return;
         final int g = gen.intValue();
         handler.post(() -> {
             Integer cur = scanGen.get(pkg);
@@ -1254,6 +1389,8 @@ public class AdSkipService extends AccessibilityService {
         if (instance == null) return;
         // v4.1.0：主开关暂停 / 相机窗 —— 扫描链里排着的任务一律作废
         if (!masterOn) return;
+        // v4.3.0：白名单应用里排着的扫描任务一律作废（纵深防御）
+        if (whitelistSet.contains(pkg)) return;
         if (AdDecisionCore.isCameraPkg(pkg) || AdDecisionCore.isCameraClass(winClassOf(pkg))) return;
         // v4.2.0 聊天主界面门：微信 LauncherUI（主界面）没有任何跳过键——
         // 绝不扫描（订阅规则/角落键/热区全让路），聊天列表高频内容变化
@@ -1267,6 +1404,11 @@ public class AdSkipService extends AccessibilityService {
         boolean splashLive = learningEnabled() && elapsed <= WINDOW_MS && pkg.equals(lastFgPkg);
         boolean popupLive = popupShieldEnabled() && now < popupUntilGet(pkg) && popupCooldownOK(pkg, now);
         if (!splashLive && !popupLive) return;
+        // v4.3.0 功耗：内容页早退后本窗固定扫描链已取消（nudge 补扫同步让路；
+        // 内容变化里的晚出跳过键若真出现，walk 会重新发现候选并复活扫描）
+        Long killed = chainKilledAt.get(pkg);
+        boolean chainDead = killed != null && killed.longValue() == winStart;
+        if (chainDead && atMs >= 0) return;
 
         try {
             /* 多窗口扫描：活动窗口优先，其次 getWindows() 同包窗口（弹窗/覆盖层） */
@@ -1279,6 +1421,8 @@ public class AdSkipService extends AccessibilityService {
             int[] tapHint = learnedPos(pkg);
             Integer triesBox = clickTries.get(pkg);
             int clickAttempts = triesBox == null ? 0 : triesBox.intValue();
+            boolean acted = false;           // v4.3.0：本轮是否出手/等待（未命中日志用）
+            ScanFind lastFind = null;        // v4.3.0：最后一个根的扫描画像（同上）
 
             /* ═══ v3.14.0 跳过后反馈弹窗（issue#21 实锤：喜马拉雅跳过后 10 次
              * 有 8 次弹「不喜欢/反馈投诉」底部面板）——反馈面板在场 = 广告
@@ -1317,36 +1461,42 @@ public class AdSkipService extends AccessibilityService {
                 ctx.clickAttempts = clickAttempts;
                 ctx.tapHintX = tapHint[0];
                 ctx.tapHintY = tapHint[1];
-                ctx.budgetNodes = splashLive ? 600 : 280; // 开屏窗预算扩容（重树）
+                // v4.3.0 功耗分层：早档（≤400ms，广告窗刚渲染树小）340 预算
+                // 提速；晚档 600（晚出键的深树覆盖）；补扫/弹窗 280~500
+                ctx.budgetNodes = splashLive
+                        ? (atMs >= 0 && atMs <= 400 ? 340 : 600)
+                        : (atMs == -2 ? 280 : 500);
 
                 /* ═══ v3.9.0 主路径：内嵌规则引擎 0ms 出手 ═══
                  * 规则只认控件属性（text/desc/vid），点击的是控件自身 bounds 中心
                  * ——应用按实际屏幕渲染，适配任意分辨率，绝无固定坐标盲点。
                  * Keep 开屏「跳过」文本键：窗口事件 0ms 首扫即中即点=露头秒跳。
                  * v3.10.0：五层规则（分应用表/全局精确/倒计时形态/短包含+诱导否决/
-                 * vid skip 族+SDK 窗 close 族） */
+                 * vid skip 族+SDK 窗 close 族）
+                 * v4.3.0 多候选轮换：matchAll 一次收集全部命中，按 clickAttempts
+                 * 轮换出手——此前每次重扫都返回同一个首个命中，复验点同一坐标
+                 * ×6（issue#38 喜马拉雅实锤「换第 N 个候选」日志是假的）。
+                 * 订阅命中按需追加（文本候选用尽才轮到订阅 vid 候选——
+                 * SubscriptionManager 的限流记账只在真正出手时消耗）。 */
                 if (splashLive || popupLive) {
-                    Hit hit = splashLive ? RuleEngine.match(new NodeAdapter(roots[ri]), ctx) : null;
-                    /* ═══ v4.2.0 GKD 订阅规则接力（弹窗路径同步接驳）═══
-                     * 开屏路径：主引擎文案五层优先，订阅规则（内置 vid +
-                     * 用户导入的 GKD 社区订阅）接力；弹窗路径：决策核心
-                     * 关闭键信号先出手，订阅规则接力（社区更新弹窗/青少年
-                     * 模式等规则真正生效——v4.1.0 前「导入了却零命中」的
-                     * 主因之一就是弹窗场景从不咨询订阅）。
-                     * 全部安全闸与主引擎同源：activityIds 限定 + 可见 +
-                     * 面积≤35%屏 + skip 形态门（无限定规则）+ 同窗次数/
-                     * 间隔限流；back 类规则在订阅加载时已丢弃。 */
-                    if (hit == null) {
+                    java.util.ArrayList<Hit> hits = splashLive
+                            ? RuleEngine.matchAll(new NodeAdapter(roots[ri]), ctx, 4)
+                            : new java.util.ArrayList<Hit>();
+                    boolean needSub = hits.isEmpty() || clickAttempts >= hits.size();
+                    if (needSub) {
                         try {
-                            hit = SubscriptionManager.match(pkg, new NodeAdapter(roots[ri]), ctx);
+                            Hit sh = SubscriptionManager.match(pkg, new NodeAdapter(roots[ri]), ctx);
+                            if (sh != null) hits.add(sh);
                         } catch (Throwable ignored) {
                         }
                     }
-                    if (hit != null) {
+                    if (!hits.isEmpty()) {
                         /* v4.2.0：订阅规则的 label 是规则名（gkd:微信/组-1），
                          * 绝不能走倒计时解析（issue#34-37 日志实锤：规则名尾号
                          * "-1" 被误读成「跳过键 1s 后激活」白等 0.5s+）。倒计时
                          * 门控只对主引擎文案规则的【真实按钮文案】生效。 */
+                        int idx = Math.min(clickAttempts, hits.size() - 1);
+                        Hit hit = hits.get(idx);
                         int cdHit = "sub_gkd".equals(hit.appId) ? 0 : AdDecisionCore.parseCountdown(hit.label);
                         if (!countdownWait(pkg, cdHit, clickAttempts, now)) {
                             Decision rd = new Decision();
@@ -1355,6 +1505,9 @@ public class AdSkipService extends AccessibilityService {
                             rd.bounds = hit.tapBounds;
                             rd.reason = "rule_" + hit.appId;
                             if (execute(pkg, rd, null, ctx, clickCoolOK, now)) return; // 命中即熔断
+                            acted = true; // 冷却/让路暂未出手，但场景已确认
+                        } else {
+                            acted = true; // 倒计时等待中
                         }
                         // 规则已命中（或倒计时等待中）——本窗就是标准跳过场景，
                         // 不再走决策核心兜底（避免角落键/热区在正常窗乱点）
@@ -1364,16 +1517,136 @@ public class AdSkipService extends AccessibilityService {
 
                 /* ═══ 兜底路径：决策核心（复杂信号）═══ */
                 ScanFind f = AdDecisionCore.walk(new NodeAdapter(roots[ri]), ctx);
+                lastFind = f;
                 /* v3.8.0 倒计时门控（issue#10 二轮·喜马拉雅）：穿山甲类 SDK 倒计时
                  * 结束前跳过键不响应——「已点击×4 不跳转」真凶之一（提前点全白点）。
                  * v3.9.0 抽取为 countdownWait()（规则路径/兜底路径共用） */
-                if (countdownWait(pkg, f.countdownN, clickAttempts, now)) continue;
+                if (countdownWait(pkg, f.countdownN, clickAttempts, now)) {
+                    acted = true;
+                    continue;
+                }
                 Decision d = AdDecisionCore.decide(f, ctx);
-                if (d.action.equals(AdDecisionCore.A_NONE)) continue;
-                if (execute(pkg, d, f, ctx, clickCoolOK, now)) return; // 命中即熔断
+                if (!d.action.equals(AdDecisionCore.A_NONE)) {
+                    if (execute(pkg, d, f, ctx, clickCoolOK, now)) return; // 命中即熔断
+                    acted = true;
+                } else if (splashLive && !acted && elapsed >= 400 && chainCanQuit(f)) {
+                    /* ═══ v4.3.0 功耗：内容页早退 ═══
+                     * 可滚动/有输入框/长文本且零跳过候选 = 正常内容页（信息流/
+                     * 聊天/文章）——本窗剩余固定扫描档全部取消（省 10+ 次整树
+                     * 遍历/次启动；补扫同步让路，真出现跳过键会由候选复活）。 */
+                    chainKilledAt.put(pkg, winStart);
+                }
             }
+
+            /* ═══ v4.3.0 扫描未命中诊断日志（每窗一条）═══
+             * issue#38「许多第三方 App 无法跳过，日志也没记录」根治：开屏窗
+             * 扫完零命中零出手时，记一条带窗口类名/树规模/可点控件样本的诊断
+             * 日志——用户上传日志即可定位缺哪种规则（此前静默失败无从查起）。 */
+            if (!acted && splashLive) logScanMiss(pkg, roots, lastFind, now, winStart, false);
+            else if (!acted && popupLive) logScanMiss(pkg, roots, lastFind, now, winStart, true);
         } catch (Exception ignored) {
         }
+    }
+
+    /** v4.3.0：内容页早退判定（零候选 + 内容页特征三选一） */
+    private static boolean chainCanQuit(ScanFind f) {
+        boolean noCand = f.skipCands.isEmpty() && f.fakeCands.isEmpty()
+                && f.corners.isEmpty() && !f.foundClose;
+        if (!noCand) return false;
+        return f.scrollPresent || f.editPresent || f.longText || f.nodeCount > 260;
+    }
+
+    /* ───────── v4.3.0 扫描未命中诊断日志 ─────────
+     * 每窗一条（pkg|winStart 去重）：树规模 + 窗口类名 + 可点小控件样本
+     * （text/desc/vid + 归一化坐标），用户上传日志后开发侧据此补规则。 */
+    private void logScanMiss(String pkg, AccessibilityNodeInfo[] roots, ScanFind f,
+                             long now, long winStart, boolean popup) {
+        try {
+            String key = pkg + "|" + winStart;
+            Long last = missLogAt.get(key);
+            if (last != null) return;
+            missLogAt.put(key, now);
+            if (missLogAt.size() > 64) missLogAt.clear(); // 防膨胀
+            // 弹窗路径且无画像（未走到 walk）：不记（弹窗识别本就门控严格）
+            if (popup && f == null) return;
+            // 内容页特征太强（可滚动+输入框）且零候选：不记（不是广告场景，
+            // 每个正常应用启动都记一条 = 刷屏）
+            if (f != null && (f.scrollPresent || f.editPresent) && f.nodeCount > 150) return;
+            StringBuilder sb = new StringBuilder(160);
+            sb.append(popup ? "❓ 弹窗未命中（" : "❓ 开屏未命中（").append(shortPkg(pkg)).append("）");
+            sb.append(f != null ? "树 " + f.nodeCount + " 节点" : "树 ?");
+            String cls = winClassOf(pkg);
+            if (cls.length() > 0) sb.append(" · 窗口 ").append(shortCls(cls));
+            String samples = collectNodeSamples(roots.length > 0 ? roots[0] : null);
+            if (samples.length() > 0) sb.append(" · 候选样本：").append(samples);
+            sb.append(" ——上传日志可帮我们补规则");
+            appendLog(sb.toString());
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** 收集树内可点小控件样本（≤4 条：label@(x%,y%)，供补规则用） */
+    private String collectNodeSamples(AccessibilityNodeInfo root) {
+        if (root == null || screenWidth <= 0 || screenHeight <= 0) return "";
+        StringBuilder sb = new StringBuilder(96);
+        int[] budget = {120};
+        collectSamples(new NodeAdapter(root), budget, sb);
+        return sb.toString();
+    }
+
+    private void collectSamples(NodeView node, int[] budget, StringBuilder out) {
+        if (node == null || budget[0] <= 0 || countSep(out) >= 4) return;
+        budget[0]--;
+        try {
+            int[] b = node.bounds();
+            if (b != null && b.length >= 4 && b[2] > b[0]) {
+                double area = ((double) (b[2] - b[0]) * (b[3] - b[1])) / ((double) screenWidth * screenHeight);
+                String text = nz(node.text());
+                String desc = nz(node.desc());
+                String vid = vidTail(node.viewId());
+                String label = text.length() > 0 ? text : (desc.length() > 0 ? desc : vid);
+                boolean small = area <= 0.12 && (b[2] - b[0]) <= screenWidth * 0.6;
+                if (label.length() > 0 && small && node.visible() && node.clickable()) {
+                    if (out.length() > 0) out.append(" / ");
+                    out.append(clip(label, 12)).append("@(")
+                            .append(Math.round((b[0] + b[2]) / 2.0 / screenWidth * 100)).append("%,")
+                            .append(Math.round((b[1] + b[3]) / 2.0 / screenHeight * 100)).append("%)");
+                }
+            }
+            int n = node.childCount();
+            for (int i = 0; i < n && countSep(out) < 4; i++) {
+                collectSamples(node.child(i), budget, out);
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static int countSep(StringBuilder sb) {
+        int c = 0;
+        for (int i = 0; i < sb.length(); i++) if (sb.charAt(i) == '/') c++;
+        return c + 1;
+    }
+
+    private static String clip(String s, int max) {
+        if (s == null) return "";
+        s = s.trim();
+        return s.length() <= max ? s : s.substring(0, max) + "…";
+    }
+
+    private static String vidTail(String vid) {
+        if (vid == null || vid.length() == 0) return "";
+        int i = vid.lastIndexOf('/');
+        return i >= 0 ? "vid:" + vid.substring(i + 1) : "vid:" + vid;
+    }
+
+    private static String nz(String s) {
+        return s == null ? "" : s.trim();
+    }
+
+    private static String shortCls(String cls) {
+        if (cls == null) return "";
+        int i = cls.lastIndexOf('.');
+        return i >= 0 && cls.length() - i - 1 > 1 ? cls.substring(i + 1) : cls;
     }
 
     /* ───────── v3.14.0 跳过后反馈弹窗自动收起 ─────────
@@ -1395,7 +1668,7 @@ public class AdSkipService extends AccessibilityService {
             if (lastLog == null || now - lastLog > 8000) {
                 feedbackLogAt.put(pkg, now);
                 appendLog("✓ 广告已关闭（" + shortPkg(pkg) + "）：跳过后弹出「不喜欢/反馈」面板 → 已停用重试"
-                        + (ff.cancelBounds != null ? "，代点「取消」收起（绝不替你提交任何反馈）" : "（未找到取消键，交给你手动收起）"));
+                        + (ff.cancelBounds != null ? "，代点「" + ff.cancelLabel + "」收起（绝不替你提交任何反馈）" : "（未找到取消键，交给你手动收起）"));
             }
             // ② 代点「取消」（同包 2.5s 冷却防抖；手势真实触点首选，
             //    派发失败降级无障碍代点）
@@ -1432,7 +1705,11 @@ public class AdSkipService extends AccessibilityService {
     /* ───────── v3.9.0 倒计时门控（自 tryScan 抽取，规则/兜底两路共用）─────────
      * 穿山甲类 SDK 倒计时结束前跳过键不响应（提前点=白点还占冷却）。
      * 文案数字变化→重新锚定；首击未关→等到「锚点+剩余秒数-0.5s」再出手；
-     * 倒计时走完（文案无数字）→立即恢复出手。返回 true=继续等待。 */
+     * 倒计时走完（文案无数字）→立即恢复出手。返回 true=继续等待。
+     * v4.3.0 假倒计时识别（issue#38 喜马拉雅「跳过速度过慢」）：真倒计时
+     * 每秒跳数字（锚点随数字重置）；装饰性数字（烧在图里的假倒计时）永不
+     * 变化——首击未关且数字 1.6s 未变 = 假倒计时，不再门控，按普通冷却
+     * 节奏换候选重试（同坐标不再白等 5 秒）。 */
     private boolean countdownWait(String pkg, int cdN, int clickAttempts, long now) {
         if (cdN > 0) {
             Integer lastN = cdLastN.get(pkg);
@@ -1442,8 +1719,17 @@ public class AdSkipService extends AccessibilityService {
             }
             if (clickAttempts >= 1) {
                 Long anchor = cdAnchorAt.get(pkg);
-                long until = (anchor == null ? now : anchor.longValue())
-                        + cdN * 1000L - AdDecisionCore.COUNTDOWN_EXTRA_MS;
+                long anchorAt = anchor == null ? now : anchor.longValue();
+                // v4.3.0：假倒计时——数字 1.6s 未变（真倒计时每秒跳一次）
+                if (now - anchorAt > 1600) {
+                    Long lastFake = cdFakeLogAt.get(pkg);
+                    if (lastFake == null || now - lastFake > 15000) {
+                        cdFakeLogAt.put(pkg, now);
+                        appendLog("⏱ 倒计时疑似装饰数字（" + shortPkg(pkg) + "）：数字 1.6s 未变化 → 不再等待，换候选按普通节奏重试");
+                    }
+                    return false;
+                }
+                long until = anchorAt + cdN * 1000L - AdDecisionCore.COUNTDOWN_EXTRA_MS;
                 if (now < until) {
                     if (cdWaitUntil.put(pkg, until) == null) {
                         appendLog("⏳ 倒计时门控（" + shortPkg(pkg) + "）：跳过键 "
