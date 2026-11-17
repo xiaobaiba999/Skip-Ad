@@ -328,6 +328,85 @@ public class MainActivity extends Activity {
             return out.toString();
         }
 
+        /* ───── v4.0.0 GKD 订阅管理（订阅页） ───── */
+
+        /** 订阅状态（内置 + 远程统计） */
+        @JavascriptInterface
+        public String subState() {
+            return SubscriptionManager.stateJson(a);
+        }
+
+        /** 设置/清空远程订阅 URL（立即拉取；后台线程执行） */
+        @JavascriptInterface
+        public void subSetUrl(final String url, final String cb) {
+            new Thread(() -> {
+                try {
+                    final String r = SubscriptionManager.setUrl(a, url);
+                    a.runOnUiThread(() -> {
+                        try {
+                            if (a.webView != null) {
+                                a.webView.evaluateJavascript(
+                                        "window.__subCb && window.__subCb(" + JSON.stringifyCb(cb) + "," + r + ")", null);
+                            }
+                        } catch (Throwable ignored) {
+                        }
+                    });
+                } catch (final Throwable t) {
+                    a.runOnUiThread(() -> {
+                        try {
+                            if (a.webView != null) {
+                                a.webView.evaluateJavascript(
+                                        "window.__subCb && window.__subCb(" + JSON.stringifyCb(cb) + ",{ok:false,error:'内部错误'})", null);
+                            }
+                        } catch (Throwable ignored) {
+                        }
+                    });
+                }
+            }, "sub-set-url").start();
+        }
+
+        /** 立即更新远程订阅（后台线程） */
+        @JavascriptInterface
+        public void subUpdateNow(final String cb) {
+            new Thread(() -> {
+                try {
+                    final String r = SubscriptionManager.updateNow(a);
+                    a.runOnUiThread(() -> {
+                        try {
+                            if (a.webView != null) {
+                                a.webView.evaluateJavascript(
+                                        "window.__subCb && window.__subCb(" + JSON.stringifyCb(cb) + "," + r + ")", null);
+                            }
+                        } catch (Throwable ignored) {
+                        }
+                    });
+                } catch (final Throwable t) {
+                    a.runOnUiThread(() -> {
+                        try {
+                            if (a.webView != null) {
+                                a.webView.evaluateJavascript(
+                                        "window.__subCb && window.__subCb(" + JSON.stringifyCb(cb) + ",{ok:false,error:'内部错误'})", null);
+                            }
+                        } catch (Throwable ignored) {
+                        }
+                    });
+                }
+            }, "sub-update-now").start();
+        }
+
+        @JavascriptInterface
+        public void subSetEnabled(boolean on) {
+            SubscriptionManager.setEnabled(a, on);
+        }
+
+        /** 回调名安全包装（仅允许合法 JS 标识符） */
+        private static final class JSON {
+            static String stringifyCb(String s) {
+                if (s == null || !s.matches("[A-Za-z_$][A-Za-z0-9_$]*")) return "null";
+                return "\"" + s + "\"";
+            }
+        }
+
         /* ───── 问题反馈 / 引擎日志上传（内置令牌，无任何用户配置） ───── */
 
         /** 创建反馈 Issue（引擎日志上传共用此通道）；令牌内置混淆存储（Net.builtInToken） */

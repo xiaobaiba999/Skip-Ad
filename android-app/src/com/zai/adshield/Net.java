@@ -64,6 +64,14 @@ public final class Net {
         return new String(android.util.Base64.decode(s, android.util.Base64.DEFAULT), StandardCharsets.UTF_8);
     }
 
+    /** v4.0.0 订阅拉取：GET 任意 URL 原文（GKD 订阅 JSON5），2xx 返回 body，否则抛异常 */
+    public static String httpGetRaw(String url) throws Exception {
+        String[] r = http("GET", url, null, null);
+        int code = Integer.parseInt(r[0]);
+        if (code < 200 || code >= 300) throw new IllegalStateException("HTTP " + code);
+        return r[1];
+    }
+
     /* ───────── 底层 HTTP ───────── */
 
     /** 返回 [statusCode, body]；任何异常向上抛出由调用方兜底 */

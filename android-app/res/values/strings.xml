@@ -2,5 +2,5 @@
 <resources>
     <string name="app_name">开屏卫士</string>
     <string name="service_name">开屏卫士·自动跳过服务</string>
-    <string name="service_desc">监测应用开屏广告并自动替你点击「跳过」按钮；会从你的手动点击中学习每个应用的跳过方式。仅代点跳过、不屏蔽广告本身；学习数据仅存本机，联网仅用于问题反馈与检查更新。</string>
+    <string name="service_desc">监测应用开屏广告并自动替你点击「跳过」按钮；内置规则库 + 可导入 GKD 社区订阅规则，会从你的手动点击中学习。仅代点跳过、不屏蔽广告本身；数据仅存本机，联网仅用于订阅更新、问题反馈与检查更新。</string>
 </resources>

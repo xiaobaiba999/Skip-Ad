@@ -28,6 +28,7 @@ import com.zai.adshield.core.AdDecisionCore.NodeView;
 import com.zai.adshield.core.AdDecisionCore.ScanFind;
 import com.zai.adshield.core.RuleEngine;
 import com.zai.adshield.core.RuleEngine.Hit;
+import com.zai.adshield.core.Subscription;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -330,8 +331,8 @@ public class AdSkipService extends AccessibilityService {
         // v3.6.0：清理 v3.5.0 误学毒指纹（MainActivity/FrameLayout/Dialog 被
         // 学成「广告窗指纹」——用户二次进入被连按返回键退出的根因）
         int purged = purgePoisonFingerprints();
-        appendLog("服务已启动 · v3.14.0 跳过后反馈弹窗自动收起 + 手势中断快速重试 + ADB 自愈移除（规则 "
-                + RuleEngine.stats() + ")"
+        appendLog("服务已启动 · v4.0.0 GKD 订阅融合（规则 "
+                + RuleEngine.stats() + "）"
                 + (purged > 0 ? "｜已清理 " + purged + " 条误学窗口指纹" : ""));
         // v3.9.0：清理毒位置规则（issue#12 实锤：桌面 com.miui.home 学出位置
         //(39%,18%)——桌面点击被误学成「跳过键」，下次启动直点桌面图标=乱点）
@@ -341,6 +342,14 @@ public class AdSkipService extends AccessibilityService {
         // 应用详情页被学出位置 (91%,9%)——下次进详情页 500ms 直点=在权限管理页乱点）
         int purgedOem = purgeOemPosRules();
         if (purgedOem > 0) appendLog("已清理 " + purgedOem + " 条系统工具/短信包误学规则（issue#16 整治，安全中心/短信里的手动操作绝不当「跳过键」）");
+        // v4.0.0 GKD 订阅融合：内置订阅 + 远程订阅（用户导入的 GKD 社区规则）
+        SubscriptionManager.ensureLoaded(this);
+        Subscription bi = SubscriptionManager.builtinSub;
+        appendLog("🧩 订阅引擎就绪（v4.0.0）：内置订阅 "
+                + (bi == null ? 0 : bi.apps.size()) + " 款应用/"
+                + (bi == null ? 0 : bi.ruleCount()) + " 条 GKD 规则"
+                + (SubscriptionManager.remoteSub != null
+                ? "｜远程订阅已加载（" + SubscriptionManager.remoteSub.name + "）" : ""));
     }
 
     /* ───────── v3.7.0 保活：onUnbind 保留 + 心跳自检闹钟 ─────────
@@ -955,6 +964,16 @@ public class AdSkipService extends AccessibilityService {
                  * vid skip 族+SDK 窗 close 族） */
                 if (splashLive) {
                     Hit hit = RuleEngine.match(new NodeAdapter(roots[ri]), ctx);
+                    /* ═══ v4.0.0 GKD 订阅规则接力：主引擎文案五层未命中时，
+                     * 由订阅规则（内置 vid 规则 + 用户导入的 GKD 社区订阅）
+                     * 继续找目标控件——安全闸（可见+面积≤35%屏）与主引擎
+                     * 同源；back 类规则在订阅加载时已丢弃（链式拦截红线） ═══ */
+                    if (hit == null) {
+                        try {
+                            hit = SubscriptionManager.match(pkg, new NodeAdapter(roots[ri]), ctx);
+                        } catch (Throwable ignored) {
+                        }
+                    }
                     if (hit != null) {
                         int cdHit = AdDecisionCore.parseCountdown(hit.label);
                         if (!countdownWait(pkg, cdHit, clickAttempts, now)) {
@@ -1324,6 +1343,7 @@ public class AdSkipService extends AccessibilityService {
         if (r.equals("rule_global_contains")) return "内嵌规则·文案包含命中";
         if (r.equals("rule_global_vid")) return "内嵌规则·vid 跳过键（零文本图片键）";
         if (r.equals("rule_sdk_close_vid")) return "内嵌规则·SDK 窗图片关闭键";
+        if (r.equals("rule_sub_gkd")) return "GKD 订阅规则命中（选择器定位控件）";
         if (r.equals("skip_text")) return "文本跳过键";
         if (r.equals("fake_skip_tap")) return "假跳过手势直点（标签坐标）";
         if (r.equals("sdk_window")) return "SDK 广告窗指纹";

@@ -32,17 +32,15 @@ export default function Home() {
       <header className="sticky top-0 z-30 border-b border-zinc-200 bg-white/85 backdrop-blur">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3 px-4 py-2.5 lg:px-6">
           <div className="flex items-center gap-2.5">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-md shadow-emerald-500/30">
-              <Logo size={26} />
-            </span>
+            <Logo size={38} />
             <div>
               <h1 className="flex items-center gap-2 text-[15px] font-bold leading-tight text-zinc-900">
-                Skip-Ad · 秒跳引擎
+                开屏卫士 · Skip-Ad
                 <span className="rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 ring-1 ring-emerald-200">
                   v{APP_VERSION}
                 </span>
               </h1>
-              <p className="text-[11px] text-zinc-500">内置五层规则引擎 · 0ms 露头秒跳 · 学习中心 · 保活</p>
+              <p className="text-[11px] text-zinc-500">GKD 订阅融合 · 双引擎规则 · 露头秒跳 · 开启一次持续守护</p>
             </div>
           </div>
 

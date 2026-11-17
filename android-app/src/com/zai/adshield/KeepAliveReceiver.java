@@ -49,6 +49,15 @@ public class KeepAliveReceiver extends BroadcastReceiver {
             // v3.13.0：nightDeferrable=true——息屏时改 30~45 分钟窗口式非精确
             // 闹钟（绝不把设备从 Doze 中唤醒，待机功耗治理）；亮屏仍 5 分钟精确
             AdSkipService.scheduleNextHeartbeat(ctx, System.currentTimeMillis() + AdSkipService.HEARTBEAT_MS, true);
+            // v4.0.0：心跳顺带触发订阅 24h 静默更新（无订阅/未到期秒回，零开销）
+            Thread subThread = new Thread(() -> {
+                try {
+                    SubscriptionManager.maybeSilentUpdate(ctx);
+                } catch (Throwable ignored) {
+                }
+            }, "sub-update");
+            subThread.setDaemon(true);
+            subThread.start();
             if (AdSkipService.instance != null) return; // 服务活着，无需动作
             notifyAlert(ctx); // v3.14.0：ADB 自愈已移除，直接高优提醒一步恢复
             return;

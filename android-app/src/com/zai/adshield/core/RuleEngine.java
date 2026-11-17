@@ -49,6 +49,8 @@ public final class RuleEngine {
         public NodeView clickNode;// 可点祖先（performAction 兜底目标；null = 仅手势）
         public int[] tapBounds;   // 手势点击目标（【标签控件自身】bounds——适配任意分辨率）
         public boolean gestureOnly; // 仅手势（无可点祖先或祖先面积超限——performAction 会点开广告）
+        public boolean clickNodeAction; // v4.0.0 订阅规则：clickNode 动作（点控件本身而非坐标）
+        public String src;        // v4.0.0 订阅规则来源（订阅/应用名，日志用）
     }
 
     /* ── 第0层：分应用规则表（主流应用真实跳过文案；包名前缀 + 精确等值） ──
