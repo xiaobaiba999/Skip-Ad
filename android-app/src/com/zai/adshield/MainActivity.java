@@ -706,7 +706,7 @@ public class MainActivity extends Activity {
                 String u = url.trim();
                 if (!u.startsWith("https://") && !u.startsWith("http://")) return;
                 String low = u.toLowerCase();
-                if (!low.contains("github.com") && !low.contains("xiaobaiga999")) return;
+                if (!low.contains("github.com") && !low.contains("xiaobaiba999")) return;
                 Intent it = new Intent(Intent.ACTION_VIEW, Uri.parse(u));
                 it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 a.startActivity(it);
