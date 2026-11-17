@@ -865,6 +865,67 @@ public class DecisionCoreTest {
      * NFC 支付链与主动分享被 v3.11.0 三重放行安全门仍拦截，证明用户意图
      * 场景无法穷举，任何安全门都有漏网时刻；回弹 API 全部删除）。 */
 
+    /* ── v3.13.0：真机事故「接收验证码时顶部横幅被点掉」三重防护纯逻辑 ──
+     *  ① isSmsOverlayPkg：短信/彩信/来电类覆盖层包事件服务侧直接丢弃；
+     *  ② isCodeBannerMarker / treeHasCodeBannerMarker：树内验证码文案窗口
+     *     绝不扫描绝不点击；
+     *  ③ isOemUtilityPkg：OEM 工具包（安全中心）位置学习拒收（issue#16
+     *     实锤：securitycenter 详情页被学出位置 (91%,9%)）。 */
+    static void v3130_bannerGuards() {
+        System.out.println("  ── 短信/来电类覆盖层包识别（isSmsOverlayPkg）──");
+        check("S1 MIUI 短信 com.android.mms 拦", AdDecisionCore.isSmsOverlayPkg("com.android.mms"));
+        check("S2 小米短信增强 com.miui.smsextra 拦", AdDecisionCore.isSmsOverlayPkg("com.miui.smsextra"));
+        check("S3 Google Messages 拦", AdDecisionCore.isSmsOverlayPkg("com.google.android.apps.messaging"));
+        check("S4 Samsung Messaging 拦", AdDecisionCore.isSmsOverlayPkg("com.samsung.android.messaging"));
+        check("S5 来电界面 incallui 拦（点错=挂断）", AdDecisionCore.isSmsOverlayPkg("com.android.incallui"));
+        check("S6 彩信子包 com.android.mms.slide 拦", AdDecisionCore.isSmsOverlayPkg("com.android.mms.slide"));
+        check("S7 喜马拉雅不拦（正常广告宿主）", !AdDecisionCore.isSmsOverlayPkg("com.ximalaya.ting.android"));
+        check("S8 微信不拦", !AdDecisionCore.isSmsOverlayPkg("com.tencent.mm"));
+        check("S9 抖音不拦", !AdDecisionCore.isSmsOverlayPkg("com.ss.android.ugc.aweme"));
+        check("S10 null 不拦", !AdDecisionCore.isSmsOverlayPkg(null));
+
+        System.out.println("  ── 验证码文案标记（isCodeBannerMarker）──");
+        check("C1 「验证码」标记", AdDecisionCore.isCodeBannerMarker("【淘宝】验证码 8847，切勿泄露"));
+        check("C2 「校验码」标记", AdDecisionCore.isCodeBannerMarker("请输入校验码"));
+        check("C3 「动态码」标记", AdDecisionCore.isCodeBannerMarker("动态码 20 分钟内有效"));
+        check("C4 「动态密码」标记", AdDecisionCore.isCodeBannerMarker("您的动态密码"));
+        check("C5 「跳过广告」非标记", !AdDecisionCore.isCodeBannerMarker("跳过广告"));
+        check("C6 空串非标记", !AdDecisionCore.isCodeBannerMarker(""));
+        check("C7 null 非标记", !AdDecisionCore.isCodeBannerMarker(null));
+
+        System.out.println("  ── 树内验证码横幅探测（treeHasCodeBannerMarker）──");
+        FakeNode bannerRoot = FakeNode.root("android.widget.FrameLayout");
+        FakeNode banner = FakeNode.node("android.widget.TextView", 40, 60, 1040, 200).txt("【淘宝】验证码 8847");
+        FakeNode copyBtn = FakeNode.node("android.widget.Button", 860, 60, 1040, 200).describe("复制验证码").click();
+        bannerRoot.add(banner).add(copyBtn);
+        check("T1 横幅树命中（验证码文案）", AdDecisionCore.treeHasCodeBannerMarker(bannerRoot, 60));
+        check("T2 desc 命中（复制验证码按钮）", AdDecisionCore.treeHasCodeBannerMarker(
+                FakeNode.root("x").add(FakeNode.node("android.widget.Button", 0, 0, 100, 100).describe("复制验证码")), 60));
+        FakeNode adRoot = FakeNode.root("com.app.SplashActivity");
+        adRoot.add(FakeNode.node("android.widget.TextView", 880, 100, 1040, 170).txt("跳过 3").click());
+        check("T3 正常广告树不命中", !AdDecisionCore.treeHasCodeBannerMarker(adRoot, 60));
+        check("T4 null 树不命中", !AdDecisionCore.treeHasCodeBannerMarker(null, 60));
+        check("T5 预算 0 不命中", !AdDecisionCore.treeHasCodeBannerMarker(bannerRoot, 0));
+        check("T6 负预算不命中", !AdDecisionCore.treeHasCodeBannerMarker(bannerRoot, -1));
+        FakeNode deep = FakeNode.root("r");
+        FakeNode l1 = FakeNode.node("a", 0, 0, 1080, 2400);
+        FakeNode l2 = FakeNode.node("b", 0, 0, 1080, 400);
+        FakeNode l3 = FakeNode.node("c", 40, 60, 900, 200).txt("校验码已发送");
+        deep.add(l1);
+        l1.add(l2);
+        l2.add(l3);
+        check("T7 深层文案命中（BFS 跨层）", AdDecisionCore.treeHasCodeBannerMarker(deep, 60));
+
+        System.out.println("  ── OEM 工具包识别（isOemUtilityPkg · issue#16 位置学习拒收）──");
+        check("O1 miui.securitycenter 是工具包", AdDecisionCore.isOemUtilityPkg("com.miui.securitycenter"));
+        check("O2 huawei.systemmanager 是工具包", AdDecisionCore.isOemUtilityPkg("com.huawei.systemmanager"));
+        check("O3 coloros.safecenter 是工具包", AdDecisionCore.isOemUtilityPkg("com.coloros.safecenter"));
+        check("O4 permissionmanager 是工具包", AdDecisionCore.isOemUtilityPkg("com.google.android.permissionmanager"));
+        check("O5 微信不是工具包", !AdDecisionCore.isOemUtilityPkg("com.tencent.mm"));
+        check("O6 喜马拉雅不是工具包", !AdDecisionCore.isOemUtilityPkg("com.ximalaya.ting.android"));
+        check("O7 null 不是工具包", !AdDecisionCore.isOemUtilityPkg(null));
+    }
+
     static void check(String name, boolean ok) {
         check(name, ok, "");
     }
@@ -946,6 +1007,9 @@ public class DecisionCoreTest {
         v380_parseCountdown();
         v380_cornersBeforeSdkBack();
         v380_candidateOrdering();
+
+        System.out.println("── v3.13.0：验证码横幅/短信包/OEM 工具包三重防护 + 息屏安全门 ──");
+        v3130_bannerGuards();
 
         System.out.println("\n═══ 结果：" + pass + " PASS / " + fail + " FAIL ═══");
         if (fail > 0) {

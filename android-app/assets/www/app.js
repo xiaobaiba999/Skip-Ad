@@ -1,4 +1,4 @@
-/* 开屏卫士 v3.12.0 · 离线逻辑（首页 / 学习中心 / 关于 · 应用内页内直更 + 多通道下载） */
+/* 开屏卫士 v3.13.0 · 离线逻辑（首页 / 学习中心 / 关于 · 应用内页内直更 + 多通道下载） */
 "use strict";
 
 /* ══════════ 环境与存储 ══════════ */
@@ -22,14 +22,13 @@ const store = {
   }
 };
 
-/* ══════════ 静态数据（v3.12.0 · 精简重构：每版一句话） ══════════ */
+/* ══════════ 静态数据（v3.13.0 · 精简重构：每版一句话） ══════════ */
 
 /* 最近三个版本 */
 const CHANGELOG = [
+  { v: "3.13.0", d: "验证码横幅四重防护（真机实锤：接收验证码时顶部横幅被引擎点掉）——短信/来电类覆盖层包事件直接丢弃；树内验证码文案窗口绝不扫描；触点被横幅覆盖时拒发手势改走无障碍代点；横幅在场绝不派返回键。待机功耗治理：息屏体眠门（息屏绝不扫描/点击/学习，来电闹钟窗零误点）+ 夜间心跳改 30~45 分钟非精确闹钟（不再每 5 分钟唤醒设备，一晚 96 次唤醒是耗电元凶）。安全中心详情页被学出位置(91%,9%)整治：OEM 工具包位置学习永久拒收+启动清理；越界拒绝日志去重；误触观察口径修正（熟练用户 500ms 手点不再是「误触」）；分应用统计卡移除（看不懂还乱）。" },
   { v: "3.12.0", d: "链式拦截机制整体移除（issue#14 实锤）：v3.11.0 的三重放行安全门仍拦下了 NFC 碰一碰支付链与「分享到微信」（1.5s 内连按 3 次返回键弹回）——用户意图场景无法穷举，任何安全门都有漏网时刻。引擎职责回归纯跳过：只点「跳过/关闭」，绝不对抗你的任何跳转；同包落地页弹回一并移除（点商品/文章详情跳内置页不再被误弹回）；connectivity 连接检查窗循环误点归零；界面撤下「跳转回弹」开关与统计。" },
   { v: "3.11.0", d: "链式回弹用户意图安全门（issue#13 实锤修复）：你 2.2s 内刚点过（分享/登录按钮）、系统分享选择器刚出现过、同一目标刚弹回又立刻拉起（你的重试）——三重任一命中即放行，绝不与你对抗；点商品/文章详情跳内置页不再被误弹回；分享面板噪音归零；学习规则明细撤出界面（学习引擎照常工作，界面更清爽）。" },
-  { v: "3.10.0", d: "内置规则库大扩充 + 界面精简重构：五层全局规则（19 条精确文案大小写归一 / 倒计时形态严格正则——营销话术数学上无法混入 / 短包含 8 字上限 + 17 诱导词否决 / vid skip 族 + SDK 窗 close 族边缘带）+ 28 款主流应用分应用规则表；桌面黑名单与广告窗指纹扩充；UI 去除大段说明文字，页签精简为三页。" },
-  { v: "3.9.0", d: "QQ/微信/抖音「进去就被退出来」根因修复（桌面误判→盲点坐标→回弹踢出，三刀根治）；内嵌规则引擎主路径化，事件驱动 0ms 露头秒跳；扫描链前段加密与点击冷却提速。" },
 ];
 
 /* 内置规则库概览（首页防护能力卡） */
@@ -230,24 +229,15 @@ function bindToggle(id, key, onMsg, offMsg) {
 bindToggle("toggle-learning", "learning", "智能学习已开启", "智能学习已暂停（引擎保持通用规则）");
 bindToggle("toggle-popup", "popupShield", "弹窗广告屏蔽已开启（默认关闭防误判，可随时关）", "弹窗广告屏蔽已关闭（默认状态：只跳开屏，绝不乱点弹窗）");
 
-/* ══════════ 学习中心（v3.11.0：学习规则明细撤出界面——引擎照常学习，
-   界面只留分应用统计与引擎日志；明细仅随日志上传进 GitHub 诊断） ══════════ */
+/* ══════════ 学习中心（v3.13.0：分应用统计卡整体移除——用户反馈看不懂还乱；
+   引擎照常学习+统计，明细仅随日志上传进 GitHub 诊断；界面只留引擎日志与能耗） ══════════ */
 function renderReal() {
   const st = getRealState();
 
   if (!HAS_BRIDGE) {
-    $("#byapp-list").innerHTML = `<div class="log-box" style="margin-top:8px"><div class="empty">浏览器预览模式<br>安装 APK 后这里展示真实统计与日志</div></div>`;
-    $("#real-log").innerHTML = "";
+    $("#real-log").innerHTML = `<div class="log-box" style="margin-top:8px"><div class="empty">浏览器预览模式<br>安装 APK 后这里展示真实引擎日志</div></div>`;
     return;
   }
-
-  const byApp = (st.stats && st.stats.byApp) || {};
-  const apps = Object.keys(byApp);
-  $("#byapp-list").innerHTML = apps.length ? apps.map(p => `
-    <div class="rule-item">
-      <div class="rule-pkg">${p}</div>
-      <div class="rule-stat"><b>${byApp[p].auto || 0}</b><span>秒跳 · 直断 ${byApp[p].back || 0} · 弹窗 ${byApp[p].popup || 0}</span></div>
-    </div>`).join("") : '<div class="log-box" style="margin-top:8px"><div class="empty">暂无统计</div></div>';
 
   const log = st.log || [];
   $("#real-log").innerHTML = log.slice(-20).reverse().map(l => {
@@ -303,7 +293,7 @@ $("#btn-upload-log").addEventListener("click", () => {
     "## 环境信息（自动附加）",
     "- 设备：" + (dev.brand || "?") + " " + (dev.model || "?") + " · " + (dev.os || "?") + "（SDK " + (dev.sdk || "?") + "）",
     "- 版本：v" + appVer() + "（code " + appCode() + "）· 服务：" + (running ? "运行中" : "未运行") + " · 电池白名单：" + (bat ? "已加入" : "未加入"),
-    "- 战绩：秒跳 " + (s.auto || 0) + " · 直断 " + (s.back || 0) + " · 弹窗 " + (s.popup || 0) + " · 手动样本 " + (s.manual || 0) + " · 误触观察 " + (s.misclick || 0),
+    "- 战绩：秒跳 " + (s.auto || 0) + " · 直断 " + (s.back || 0) + " · 弹窗 " + (s.popup || 0) + " · 手动样本 " + (s.manual || 0) + " · 热区误触 " + (s.misclick || 0) + "（v3.13.0 口径：仅计全屏热区）",
     "- 学习规则：" + ruleCount + " 条（" + pkgCount + " 个应用）",
     "",
     "## 学习规则明细",
@@ -366,8 +356,8 @@ const FB_TYPES = { missed: "漏拦截：开屏广告没被秒跳", gyro_leak: "�
 function esc(s) {
   return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
-function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "3.12.0"; }
-function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "31200"; }
+function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "3.13.0"; }
+function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "31300"; }
 
 function openLink(url) {
   if (HAS_BRIDGE) { try { AndroidApp.openUrl(url); return; } catch (e) {} }

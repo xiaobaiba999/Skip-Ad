@@ -50,7 +50,9 @@ public class KeepAliveReceiver extends BroadcastReceiver {
 
         if (selfCheck) {
             // v3.8.0：先续期心跳（无论服务死活，心跳链永不中断），再自检
-            AdSkipService.scheduleNextHeartbeat(ctx, System.currentTimeMillis() + AdSkipService.HEARTBEAT_MS);
+            // v3.13.0：nightDeferrable=true——息屏时改 30~45 分钟窗口式非精确
+            // 闹钟（绝不把设备从 Doze 中唤醒，待机功耗治理）；亮屏仍 5 分钟精确
+            AdSkipService.scheduleNextHeartbeat(ctx, System.currentTimeMillis() + AdSkipService.HEARTBEAT_MS, true);
             if (AdSkipService.instance != null) return; // 服务活着，无需动作
             healOrNotify(ctx);
             return;

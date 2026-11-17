@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
+import { APP_VERSION } from "@/lib/version";
 import {
   BrainCircuit, Clock, RefreshCw, CloudUpload, CheckCircle2, XCircle, Github,
   Smartphone, ShieldCheck, Zap, Timer, TrendingUp, ExternalLink, Sparkles, ScrollText,
@@ -94,13 +95,10 @@ export function LearningCenter() {
       ? learnedRules.map((r) => `- ${r.appName}（${r.appCategory}）：${r.pattern} · 命中 ${r.hitCount} 次 · 置信度 ${Math.round(r.confidence * 100)}%${r.enabled ? "" : " · 已停用"}`).join("\n")
       : "- （无学习规则）";
     const context = [
-      `### 版本：v3.6.0（秒跳引擎·根窗口安全门+毒指纹清理）· 上传时间：${new Date().toLocaleString("zh-CN", { hour12: false })}`,
+      `### 版本：v${APP_VERSION}（验证码横幅四重防护 + 息屏休眠 + 夜间心跳降频）· 上传时间：${new Date().toLocaleString("zh-CN", { hour12: false })}`,
       "",
       "### 拦截战绩（累计）",
-      `- 拦截 ${profile.totals.blocks} 次 · 漏拦截 ${profile.totals.misses} 次 · 成功率 ${Math.round(profile.totals.successRate * 100)}% · 平均耗时 ${profile.totals.avgLatencyMs}ms · 守护拦截 ${profile.totals.guardBlocks} 次`,
-      "",
-      "### 分应用统计",
-      ...(profile.perApp.length ? profile.perApp.map((a) => `- ${a.appName}（${a.category}）：${a.count} 次 · 平均 ${a.avgMs}ms`) : ["- （无）"]),
+      `- 拦截 ${profile.totals.blocks} 次 · 漏拦截 ${profile.totals.misses} 次 · 成功率 ${Math.round(profile.totals.successRate * 100)}% · 平均耗时 ${profile.totals.avgLatencyMs}ms · 守护拦截 ${profile.totals.guardBlocks} 次 · 已覆盖 ${profile.perApp.length} 款应用`,
       "",
       "### 学习规则（" + learnedRules.length + " 条）",
       ruleLines,
@@ -140,7 +138,6 @@ export function LearningCenter() {
 
   const { profile, learnedRules, sync } = data;
   const maxHour = Math.max(...profile.hours, 1);
-  const maxApp = Math.max(...profile.perApp.map((a) => a.count), 1);
 
   return (
     <div className="flex flex-col gap-5">
@@ -173,22 +170,11 @@ export function LearningCenter() {
           <p className="mt-1 text-[11px] text-zinc-400">根据你的应用使用、场景与时段动态沉淀，驱动秒跳策略个性化</p>
 
           <div className="mt-4">
-            <div className="text-[11px] font-bold text-zinc-500">常用应用 TOP</div>
-            {profile.perApp.length === 0 ? (
-              <p className="mt-2 rounded-lg bg-zinc-50 px-3 py-4 text-center text-[11px] text-zinc-400">先去演练场点几个应用试试</p>
-            ) : (
-              <ul className="mt-2 space-y-2">
-                {profile.perApp.map((a) => (
-                  <li key={a.appName} className="flex items-center gap-2.5">
-                    <span className="w-16 shrink-0 truncate text-[11px] font-bold text-zinc-700">{a.appName}</span>
-                    <div className="h-4 flex-1 overflow-hidden rounded-full bg-zinc-100">
-                      <div className="h-full rounded-full bg-gradient-to-r from-fuchsia-500 to-violet-500" style={{ width: `${(a.count / maxApp) * 100}%` }} />
-                    </div>
-                    <span className="w-16 shrink-0 text-right text-[10px] tabular-nums text-zinc-400">{a.count} 次 · {a.avgMs}ms</span>
-                  </li>
-                ))}
-              </ul>
-            )}
+            {/* v3.13.0：分应用统计明细整体移除（用户反馈看不懂还乱）——仅留一行极简汇总 */}
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold text-zinc-500">应用覆盖</span>
+              <span className="text-[11px] tabular-nums text-zinc-400">{profile.perApp.length ? `${profile.perApp.length} 款应用 · 共拦截 ${profile.perApp.reduce((s, a) => s + a.count, 0)} 次` : "先去演练场点几个应用试试"}</span>
+            </div>
           </div>
 
           <div className="mt-5">

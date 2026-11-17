@@ -3,8 +3,20 @@ package com.zai.adshield.core;
 import java.util.ArrayList;
 
 /**
- * 秒跳决策核心（v3.12.0 · 纯 Java · 零 Android 依赖 · JVM 可单测）
+ * 秒跳决策核心（v3.13.0 · 纯 Java · 零 Android 依赖 · JVM 可单测）
  * ─────────────────────────────────────────────────────────────
+ * v3.13.0（真机反馈：接收验证码时顶部横幅被引擎点掉 + 夜间待机功耗高）：
+ *  · 验证码横幅三重保护（纯逻辑部分）：
+ *    isSmsOverlayPkg——短信/彩信/来电类覆盖层包（com.android.mms /
+ *    com.miui.smsextra / messaging 族 / incallui），服务侧事件直接丢弃；
+ *    isCodeBannerMarker + treeHasCodeBannerMarker——树内出现
+ *    「验证码/校验码/动态码/动态密码」文案的窗口绝不扫描绝不点击
+ *    （含应用内自绘的「填入验证码」提示条）；
+ *    isOemUtilityPkg 从服务侧上移（issue#16 实锤：securitycenter 应用
+ *    详情页被学出位置 (91%,9%)——安全中心里学到的「跳过键」= 下次
+ *    进权限管理页 500ms 乱点，位置学习从此拒收 OEM 工具包）。
+ *  · 待机功耗治理（纯逻辑部分）：本轮决策零变化——挂起/降频全部在
+ *    服务侧（息屏事件门控 + 心跳自适应），决策核心保持可单测。
  * v3.12.0（issue#14 日志实锤：NFC 支付链与主动分享被 v3.11.0 安全门
  *  仍拦截）：链式拦截机制【整体移除】——chainBounceVerdict 三重放行 /
  *  isChooserHint / isAdTarget + AD_TARGET_HINTS 名单全部删除。
@@ -732,6 +744,59 @@ public final class AdDecisionCore {
         if (p.endsWith(".home") || p.equals("home")) return true;
         if (p.contains("lawnchair") || p.contains("trebuchet")) return true; // 第三方桌面
         return p.equals("com.miui.home") || p.equals("com.google.android.apps.nexuslauncher");
+    }
+
+    /** v3.13.0：短信/彩信/来电类覆盖层包识别（真机实锤：接收验证码时顶部
+     *  横幅被引擎点掉）。这些包的事件在服务侧直接丢弃——绝不扫描（验证码
+     *  横幅的小 ×/可点区域绝不被当「角落跳过键」点击）、绝不学习（手动点
+     *  「复制验证码」绝不被学成跳过键位置）。
+     *  覆盖：MIUI 短信（com.android.mms）/ 小米短信增强（com.miui.smsextra）/
+     *  Google Messages / Samsung Messaging / 来电界面（incallui——点错=挂断电话）。 */
+    public static boolean isSmsOverlayPkg(String pkg) {
+        if (pkg == null) return false;
+        String p = pkg.toLowerCase();
+        return p.contains(".mms") || p.contains("smsextra")
+                || p.contains("messaging") || p.contains("incallui");
+    }
+
+    /** v3.13.0：验证码横幅文案标记——树内任一节点命中即视为验证码/通知横幅，
+     *  该窗口绝不扫描、绝不点击、绝不学习（银行/支付登录页同理放行，本就无广告可跳）。 */
+    public static boolean isCodeBannerMarker(String s) {
+        if (s == null) return false;
+        return s.contains("验证码") || s.contains("校验码")
+                || s.contains("动态码") || s.contains("动态密码");
+    }
+
+    /** v3.13.0：有界广度优先找验证码横幅标记（预算内任一节点 text/desc 命中即真）。
+     *  预算外节点不展开——横幅窗树极浅，预算 40~60 足够且零性能顾虑。 */
+    public static boolean treeHasCodeBannerMarker(NodeView root, int budget) {
+        if (root == null || budget <= 0) return false;
+        java.util.ArrayDeque<NodeView> q = new java.util.ArrayDeque<>();
+        q.add(root);
+        int seen = 0;
+        while (!q.isEmpty() && seen < budget) {
+            NodeView n = q.poll();
+            if (n == null) continue;
+            seen++;
+            if (isCodeBannerMarker(nz(n.text())) || isCodeBannerMarker(nz(n.desc()))) return true;
+            for (int i = 0; i < n.childCount(); i++) {
+                NodeView c = n.child(i);
+                if (c != null) q.add(c);
+            }
+        }
+        return false;
+    }
+
+    /** v3.13.0：厂商系统工具包（安全中心/系统管家类）——从服务侧私有方法
+     *  上移到决策核心（弹窗突发豁免 + 位置学习拒收三处共用，JVM 可单测）。
+     *  真机日志（issue#16）实锤：com.miui.securitycenter 的应用详情页被学出
+     *  位置(91%,9%)@ApplicationsDetailsActivity——安全中心里的手动操作绝不能
+     *  被当「跳过键」学习（下次进详情页 500ms 直点 = 在权限管理页乱点）。 */
+    public static boolean isOemUtilityPkg(String pkg) {
+        if (pkg == null) return false;
+        String p = pkg.toLowerCase();
+        return p.contains("miui") || p.contains("securitycenter") || p.contains("systemmanager")
+                || p.contains("safecenter") || p.contains("permissionmanager") || p.contains("finddevice");
     }
 
     public static boolean isGuardPkg(String pkg) {

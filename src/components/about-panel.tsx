@@ -301,7 +301,8 @@ export function AboutPanel() {
           <Tag className="h-5 w-5 text-violet-600" /> 最近三个版本
         </h2>
         <ol className="mt-4 space-y-4">
-          {VERSION_HISTORY.map((v, i) => (
+          {/* v3.13.0：slice(0,3) 双保险——数组即使多塞条目也绝不破坏「只留三版本」红线 */}
+          {VERSION_HISTORY.slice(0, 3).map((v, i) => (
             <li key={v.version} className={cn("rounded-xl border p-4", i === 0 ? "border-violet-200 bg-violet-50/50" : "border-zinc-100 bg-zinc-50/60")}>
               <div className="flex flex-wrap items-center gap-2">
                 <span className={cn("rounded-lg px-2 py-0.5 text-xs font-black", i === 0 ? "bg-violet-600 text-white" : "bg-zinc-200 text-zinc-600")}>

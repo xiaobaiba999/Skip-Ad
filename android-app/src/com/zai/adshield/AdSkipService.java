@@ -36,8 +36,38 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 开屏广告智能跳过服务（无障碍服务实现 · v3.12.0 · 纯跳过引擎）
+ * 开屏广告智能跳过服务（无障碍服务实现 · v3.13.0 · 纯跳过引擎）
  * ─────────────────────────────────────────────────────────────
+ * v3.13.0（真机反馈：接收验证码时顶部横幅被点掉 + 夜间待机功耗偏高）：
+ *  · 验证码横幅四重防护（不再点掉短信/验证码/来电横幅）：
+ *    ① 短信/彩信/来电类覆盖层包（mms/smsextra/messaging/incallui）事件
+ *       入口直接丢弃——绝不扫描绝不学习（决策核心 isSmsOverlayPkg）；
+ *    ② 树内出现「验证码/校验码/动态码/动态密码」文案的窗口绝不扫描
+ *       绝不点击（treeHasCodeBannerMarker，含应用内自绘提示条）；
+ *    ③ 手势真实触点派发前检查 SystemUI 顶部小窗（状态栏/heads-up 横幅）
+ *       是否覆盖目标坐标——被横幅覆盖即拒发手势（触点会被横幅截走），
+ *       降级 performAction 代点（不经过屏幕坐标，绝不碰横幅）；
+ *    ④ BACK 兜底同理：SystemUI 横幅在场时绝不派返回键（BACK 会先关横幅）。
+ *  · 待机功耗治理（夜间不再每 5 分钟唤醒）：
+ *    ① 息屏休眠门——息屏（!PowerManager.isInteractive）时事件只维护
+ *       前台包名追踪，不扫描/不点击/不学习（息屏没有可跳的广告，只有
+ *       来电/闹钟等敏感窗——此时出手=误点挂断/误关闹钟，纯浪费纯危险）；
+ *    ② 手势派发息屏熔断（gestureTap 首行检查，纵深防御）；
+ *    ③ 心跳自适应——亮屏 5 分钟精确（发现快，设备本就醒着）；息屏改
+ *       30~45 分钟窗口式非精确闹钟（setWindow，系统批量调度进 Doze
+ *       维护窗，绝不把设备从 Doze 中唤醒——v3.9.0 的 5 分钟
+ *       setExactAndAllowWhileIdle 一晚唤醒 96 次是待机耗电元凶）。
+ *  · issue#16 日志实锤两处整治：
+ *    ① securitycenter 应用详情页被学出位置 (91%,9%)——OEM 工具包
+ *       （miui/securitycenter/systemmanager 族）位置学习永久拒收 +
+ *       启动时清理已误学规则（决策核心 isOemUtilityPkg）；
+ *    ② 越界位置拒绝日志刷屏（(90%,103%)×6/30s）——同包 30s 去重。
+ *  · 误触观察口径修正（issue#16/#17：误触观察 48~60 条几乎全是正常秒跳
+ *    被误记——熟练用户等在跳过键上 500ms 内手点完全正常）：「快于人类
+ *    反应」启发式移除，仅保留全屏热区观察（真信号），同包 5s 去重。
+ *  · 界面：学习中心「分应用统计」卡整体移除（用户反馈看不懂还乱），
+ *    引擎日志与能耗面板保留；byApp 统计仍在后台照常累计（仅随日志上传）。
+ *
  * v3.12.0（issue#14 日志实锤：链式拦截机制【整体移除】）：
  *  · 事故链（v3.11.0 三重放行安全门仍拦不住）：NFC 碰一碰拉起支付链
  *    （securitycenter→支付组件）与「分享到微信」被 1.5s 内连按 3 次返回键
@@ -227,6 +257,11 @@ public class AdSkipService extends AccessibilityService {
     private final java.util.HashMap<String, Integer> backTries = new java.util.HashMap<>();
     private final java.util.HashMap<String, Long> popupUntil = new java.util.HashMap<>();
     private final java.util.HashMap<String, Long> lastPopupScanAt = new java.util.HashMap<>();
+    /* v3.13.0 日志去重：位置学习拒绝/验证码横幅/heads-up 保护/热区误触 */
+    private final java.util.HashMap<String, Long> posRejectLogAt = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Long> codeBannerLogAt = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Long> headsUpLogAt = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Long> misclickLogAt = new java.util.HashMap<>();
     private final java.util.HashMap<String, long[]> burstWin = new java.util.HashMap<>();
     /* v3.5.0：点击复验——本窗已点击次数（换候选/真实触点重试/返回键兜底的依据） */
     private final java.util.HashMap<String, Integer> clickTries = new java.util.HashMap<>();
@@ -272,13 +307,17 @@ public class AdSkipService extends AccessibilityService {
         // v3.6.0：清理 v3.5.0 误学毒指纹（MainActivity/FrameLayout/Dialog 被
         // 学成「广告窗指纹」——用户二次进入被连按返回键退出的根因）
         int purged = purgePoisonFingerprints();
-        appendLog("服务已启动 · v3.12.0 纯跳过引擎：链式拦截整体移除（分享/NFC 支付等任何跳转绝不再被弹回）+ 学习明细精简（"
+        appendLog("服务已启动 · v3.13.0 验证码横幅四重防护 + 息屏休眠 + 夜间心跳降频（规则 "
                 + RuleEngine.stats() + ")"
                 + (purged > 0 ? "｜已清理 " + purged + " 条误学窗口指纹" : ""));
         // v3.9.0：清理毒位置规则（issue#12 实锤：桌面 com.miui.home 学出位置
         //(39%,18%)——桌面点击被误学成「跳过键」，下次启动直点桌面图标=乱点）
         int purgedPos = purgeLauncherPosRules();
         if (purgedPos > 0) appendLog("已清理 " + purgedPos + " 条桌面误学位置规则（issue#12 闪退整治）");
+        // v3.13.0：清理 OEM 工具包/短信包误学规则（issue#16 实锤：securitycenter
+        // 应用详情页被学出位置 (91%,9%)——下次进详情页 500ms 直点=在权限管理页乱点）
+        int purgedOem = purgeOemPosRules();
+        if (purgedOem > 0) appendLog("已清理 " + purgedOem + " 条系统工具/短信包误学规则（issue#16 整治，安全中心/短信里的手动操作绝不当「跳过键」）");
     }
 
     /* ───────── v3.7.0 保活：onUnbind 保留 + 心跳自检闹钟 ─────────
@@ -303,15 +342,26 @@ public class AdSkipService extends AccessibilityService {
         return true; // 关键：true = 不销毁服务，下次 AMS 重绑直接复用
     }
 
-    /** v3.9.0：心跳自检闹钟（15→5 分钟：服务被杀后最多 5 分钟内发现并自愈/
+    /** v3.9.0：心跳自检闹钟（亮屏 5 分钟：服务被杀后最多 5 分钟内发现并自愈/
      *  提醒恢复——「清理后台重进要手动开」的发现延迟大幅缩短） */
     public static final long HEARTBEAT_MS = 5 * 60 * 1000;
 
+    /** v3.13.0：息屏心跳间隔——30 分钟窗口式非精确闹钟（30~45 分钟内由系统
+     *  批量调度进 Doze 维护窗，绝不把设备从 Doze 中唤醒；v3.9.0 的 5 分钟
+     *  setExactAndAllowWhileIdle 一晚唤醒 96 次是待机耗电元凶） */
+    public static final long NIGHT_HEARTBEAT_MS = 30 * 60 * 1000;
+    public static final long NIGHT_HEARTBEAT_WINDOW_MS = 15 * 60 * 1000;
+
     /** v3.8.0：排下一次心跳（静态：KeepAliveReceiver 收到自检后自续期共用——
-     *  心跳链永不中断）。精确闹钟优先（Doze 中也能准点触发），未授予精确闹钟
-     *  权限（Android 12+）降级 setAndAllowWhileIdle——仍远优于 setInexactRepeating
-     *  （可被系统无限推迟，v3.7.0 心跳常不触发的根因） */
+     *  心跳链永不中断）。亮屏：精确闹钟优先（Doze 中也能准点触发），未授予
+     *  精确闹钟权限（Android 12+）降级 setAndAllowWhileIdle；息屏且允许降频
+     *  （nightDeferrable，开机 2s 快查除外）：改窗口式非精确闹钟——系统批量
+     *  调度，不唤醒设备（v3.13.0 待机功耗治理） */
     static void scheduleNextHeartbeat(Context ctx, long atMs) {
+        scheduleNextHeartbeat(ctx, atMs, false);
+    }
+
+    static void scheduleNextHeartbeat(Context ctx, long atMs, boolean nightDeferrable) {
         try {
             android.app.AlarmManager am = (android.app.AlarmManager) ctx.getSystemService(Context.ALARM_SERVICE);
             Intent it = new Intent(ctx, KeepAliveReceiver.class);
@@ -319,17 +369,22 @@ public class AdSkipService extends AccessibilityService {
             android.app.PendingIntent pi = android.app.PendingIntent.getBroadcast(
                     ctx, 8, it,
                     android.app.PendingIntent.FLAG_UPDATE_CURRENT | android.app.PendingIntent.FLAG_IMMUTABLE);
-            try {
-                am.setExactAndAllowWhileIdle(android.app.AlarmManager.RTC, atMs, pi);
-            } catch (SecurityException se) {
-                am.setAndAllowWhileIdle(android.app.AlarmManager.RTC, atMs, pi);
+            if (nightDeferrable && !isScreenOn(ctx)) {
+                am.setWindow(android.app.AlarmManager.RTC,
+                        System.currentTimeMillis() + NIGHT_HEARTBEAT_MS, NIGHT_HEARTBEAT_WINDOW_MS, pi);
+            } else {
+                try {
+                    am.setExactAndAllowWhileIdle(android.app.AlarmManager.RTC, atMs, pi);
+                } catch (SecurityException se) {
+                    am.setAndAllowWhileIdle(android.app.AlarmManager.RTC, atMs, pi);
+                }
             }
         } catch (Throwable ignored) {
         }
     }
 
     private void scheduleHeartbeat() {
-        scheduleNextHeartbeat(this, System.currentTimeMillis() + HEARTBEAT_MS);
+        scheduleNextHeartbeat(this, System.currentTimeMillis() + HEARTBEAT_MS, true);
     }
 
     private void cancelHeartbeat() {
@@ -407,6 +462,34 @@ public class AdSkipService extends AccessibilityService {
                     }
                     if (kept.length() == 0) it.remove();
                     else rules.put(pkg, kept);
+                }
+                if (purged > 0) saveState(st);
+                return purged;
+            } catch (Exception e) {
+                return 0;
+            }
+        }
+    }
+
+    /** v3.13.0：清理 OEM 系统工具包/短信包误学的规则（issue#16 实锤毒数据：
+     *  com.miui.securitycenter 应用详情页被学出位置 (91%,9%)@ApplicationsDetails
+     *  Activity——安全中心里的手动操作被当「跳过键」记忆，下次进详情页 500ms
+     *  直点=在权限管理页乱点）。OEM 工具包与短信类包规则【整体删除】。 */
+    private int purgeOemPosRules() {
+        synchronized (lock) {
+            try {
+                JSONObject st = loadState();
+                JSONObject rules = st.optJSONObject("rules");
+                if (rules == null) return 0;
+                int purged = 0;
+                java.util.Iterator<String> it = rules.keys();
+                while (it.hasNext()) {
+                    String pkg = it.next();
+                    if (AdDecisionCore.isOemUtilityPkg(pkg) || AdDecisionCore.isSmsOverlayPkg(pkg)) {
+                        JSONArray list = rules.optJSONArray(pkg);
+                        if (list != null) purged += list.length();
+                        it.remove();
+                    }
                 }
                 if (purged > 0) saveState(st);
                 return purged;
@@ -494,6 +577,22 @@ public class AdSkipService extends AccessibilityService {
 
         if (isSystemNoise(pkg)) return;
 
+        // v3.13.0 息屏休眠门（夜间功耗治理 + 息屏绝不出手）：息屏 = 用户看不见
+        // 任何广告（没有可跳对象），此时唯一可能出现在前台的是来电/闹钟等敏感窗
+        // ——扫描/点击/学习全是浪费甚至危险（误点来电挂断/闹钟关闭）。仅廉价维护
+        // 前台包名追踪（亮屏后进入应用的入口窗判定仍正确），其余事件全部丢弃。
+        if (!isScreenOn(this)) {
+            if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+                lastFgPkg = pkg;
+            }
+            return;
+        }
+
+        // v3.13.0 验证码横幅防护①：短信/彩信/来电类覆盖层包（mms/smsextra/
+        // messaging/incallui）事件入口直接丢弃——绝不扫描（横幅上的小 × 绝不被
+        // 当「角落跳过键」点击）、绝不学习（手动点「复制验证码」绝不被学成跳过键）
+        if (AdDecisionCore.isSmsOverlayPkg(pkg)) return;
+
         energyEvents++;
 
         switch (event.getEventType()) {
@@ -571,11 +670,20 @@ public class AdSkipService extends AccessibilityService {
     }
 
     /** v3.6.0：厂商系统工具包（安全中心/系统管家类）——弹窗突发检测不适用
-     *（真机日志：securitycenter/keep 的系统弹窗被误开弹窗识别窗） */
+     *（真机日志：securitycenter/keep 的系统弹窗被误开弹窗识别窗）。
+     *  v3.13.0：上移到决策核心 isOemUtilityPkg（JVM 可单测），本类三处共用 */
     private boolean isOemUtilityPkg(String pkg) {
-        String p = pkg.toLowerCase();
-        return p.contains("miui") || p.contains("securitycenter") || p.contains("systemmanager")
-                || p.contains("safecenter") || p.contains("permissionmanager") || p.contains("finddevice");
+        return AdDecisionCore.isOemUtilityPkg(pkg);
+    }
+
+    /** v3.13.0：息屏判定（查询失败按亮屏放行——绝不错杀正常跳过） */
+    static boolean isScreenOn(Context ctx) {
+        try {
+            android.os.PowerManager pm = (android.os.PowerManager) ctx.getSystemService(Context.POWER_SERVICE);
+            return pm == null || pm.isInteractive();
+        } catch (Throwable t) {
+            return true;
+        }
     }
 
     private static boolean isDialogClass(String cls) {
@@ -779,6 +887,14 @@ public class AdSkipService extends AccessibilityService {
             int clickAttempts = triesBox == null ? 0 : triesBox.intValue();
 
             for (int ri = 0; ri < roots.length; ri++) {
+                // v3.13.0 验证码横幅防护②：树内任一节点带「验证码/校验码/
+                // 动态码/动态密码」文案（SystemUI 横幅窗/应用内自绘提示条/
+                // 银行登录页）——本窗口绝不扫描、绝不点击、绝不学习。
+                // 预算 60：横幅窗树极浅，零性能顾虑
+                if (AdDecisionCore.treeHasCodeBannerMarker(new NodeAdapter(roots[ri]), 60)) {
+                    codeBannerGuardLog(pkg, now);
+                    continue;
+                }
                 energyScans++;
                 Ctx ctx = new Ctx();
                 ctx.screenW = screenWidth;
@@ -918,6 +1034,12 @@ public class AdSkipService extends AccessibilityService {
             return false;
         }
         if (d.action.equals(AdDecisionCore.A_BACK)) {
+            // v3.13.0 验证码横幅防护④：SystemUI 顶部横幅（heads-up）在场时
+            // 绝不派返回键——BACK 会先关掉横幅（验证码/短信/来电被误关）
+            if (headsUpBanner(null) != null) {
+                headsUpGuardLog(pkg, System.currentTimeMillis());
+                return false;
+            }
             // v3.6.0 根窗口安全门（双保险，决策核心已先拦一道）：
             // 入口窗上按返回键 = 退出应用（喜马拉雅「再按一次退出到桌面」事故）
             if (ctx.rootWindow && !ctx.sdkAdWin) {
@@ -1076,9 +1198,20 @@ public class AdSkipService extends AccessibilityService {
      *   ⑥ 触点时长 60→110ms——更接近真人触点（80-150ms），防 SDK 触点时长校验 */
     private boolean gestureTap(int x, int y) {
         try {
+            // v3.13.0 息屏熔断（纵深防御）：息屏时绝无可见广告，真实触点只会
+            // 落在来电/闹钟等敏感窗上（误点=挂断电话/关闭闹钟）
+            if (!isScreenOn(this)) return false;
             if (x <= 0 || y <= 0) return false;
             if (screenWidth > 0 && x >= screenWidth) x = screenWidth - 2; // 边界钳制
             if (screenHeight > 0 && y >= screenHeight) y = screenHeight - 2;
+            // v3.13.0 验证码横幅防护③：触点被 SystemUI 顶部小窗（状态栏/
+            // heads-up 横幅）覆盖时拒发手势——真实触点会被横幅截走（点掉
+            // 验证码横幅的事故路径）。拒发后 clickNode 自动降级 performAction
+            // 代点（走无障碍通道不经屏幕坐标，绝不碰横幅），学习位置点择机重试
+            if (pointUnderHeadsUp(x, y)) {
+                headsUpGuardLog(lastGesturePkg, System.currentTimeMillis());
+                return false;
+            }
             Path p = new Path();
             p.moveTo(x, y);
             p.lineTo(x + 1, y); // 非零长度路径：单点路径部分 ROM 不触发点击
@@ -1294,8 +1427,11 @@ public class AdSkipService extends AccessibilityService {
             double area = (double) r.width() * r.height();
             double screen = (double) screenWidth * screenHeight;
             boolean huge = (area / screen > 0.35) && (r.width() > screenWidth * 0.55);
-            boolean tooFast = (now - winAt(pkg)) < 700;
-            if (!huge && !tooFast) return;
+            // v3.13.0：「快于人类反应」启发式【移除】——真机日志（issue#16/#17）
+            // 实锤误触观察 48~60 条几乎全是正常秒跳被误记：熟练用户等在跳过键
+            // 上，窗口一切换 500ms 内手点完全正常（这正是本应用的目标体验）。
+            // 仅保留全屏热区观察（真信号：点在全屏热区被跳走=真实误触体验）
+            if (!huge) return;
             synchronized (lock) {
                 JSONObject st = loadState();
                 JSONObject stats = st.optJSONObject("stats");
@@ -1303,9 +1439,11 @@ public class AdSkipService extends AccessibilityService {
                 stats.put("misclick", stats.optInt("misclick", 0) + 1);
                 saveState(st);
             }
-            appendLog("⚠️ 疑似误触（" + shortPkg(pkg) + "）："
-                    + (huge ? "全屏热区控件，轻微触碰即跳转" : "窗口切换后 " + (now - winAt(pkg)) + "ms 内点击，快于人类反应")
-                    + " → 已记入观察统计");
+            // v3.13.0：日志同包 5s 去重（统计每条都计，仅防刷屏）
+            Long lastM = misclickLogAt.get(pkg);
+            if (lastM != null && now - lastM < 5000) return;
+            misclickLogAt.put(pkg, now);
+            appendLog("⚠️ 热区误触观察（" + shortPkg(pkg) + "）：全屏热区控件，轻微触碰即跳转 → 已记入统计");
         } catch (Exception ignored) {
         }
     }
@@ -1341,6 +1479,10 @@ public class AdSkipService extends AccessibilityService {
      */
     private void learnPositionFromManualClick(String pkg, AccessibilityNodeInfo src, long now) {
         if (src == null || screenWidth <= 0 || screenHeight <= 0) return;
+        // v3.13.0（issue#16 实锤）：OEM 系统工具包（安全中心/系统管家）与短信
+        // 类包的手动操作绝不当「跳过键」学习——securitycenter 应用详情页被学出
+        // (91%,9%)，下次进详情页 500ms 直点=在权限管理页乱点
+        if (AdDecisionCore.isOemUtilityPkg(pkg) || AdDecisionCore.isSmsOverlayPkg(pkg)) return;
         if (now - winAt(pkg) > 6000) return; // v3.9.0：仅窗口切换后 6s 内（开屏期收紧，防误学主页面控件）
         try {
             Rect r = new Rect();
@@ -1356,8 +1498,14 @@ public class AdSkipService extends AccessibilityService {
             // v3.7.0：位置健全性校验（真机日志：微信学出 (63%,102%) 越界位置，
             // 点击事件源节点 bounds 中心在屏幕外——点了也是死区，直接拒学）
             if (!AdDecisionCore.saneNormPos(x, y)) {
-                appendLog("🚫 位置学习已拒绝（" + shortPkg(pkg) + "）：坐标 ("
-                        + Math.round(x * 100) + "%," + Math.round(y * 100) + "%) 越界/贴边，点了也是死区");
+                // v3.13.0：拒绝日志去重（issue#16：同窗越界坐标 (90%,103%) 30 秒
+                // 刷屏 6 条——手势导航条误触会反复触发，同包 30s 只记一条）
+                Long lastRj = posRejectLogAt.get(pkg);
+                if (lastRj == null || now - lastRj > 30000) {
+                    posRejectLogAt.put(pkg, now);
+                    appendLog("🚫 位置学习已拒绝（" + shortPkg(pkg) + "）：坐标 ("
+                            + Math.round(x * 100) + "%," + Math.round(y * 100) + "%) 越界/贴边，点了也是死区");
+                }
                 return;
             }
             final String cls = winClassOf(pkg);
@@ -1473,6 +1621,60 @@ public class AdSkipService extends AccessibilityService {
     private int triesOfClick(String pkg) {
         Integer n = clickTries.get(pkg);
         return n == null ? 0 : n.intValue();
+    }
+
+    /* ───────── v3.13.0 验证码横幅保护：SystemUI 顶部小窗探测与守卫日志 ─────────
+     * heads-up 横幅（验证码/短信/来电顶部弹窗）由 SystemUI 渲染成独立小窗
+     * 覆盖在应用上层——无障碍代点（performAction）直达目标控件不受影响，但
+     * 手势真实触点（dispatchGesture）按屏幕坐标派发，落在横幅范围内会被
+     * 横幅截走=点掉横幅（真机事故：接收验证码时横幅被点掉）。返回键同理
+     * （BACK 先关横幅）。判据：SystemUI/android 包窗口 + 位于屏幕上部
+     *（top < 30% 屏高）+ 非全屏（高度 < 35% 屏高）——覆盖状态栏与横幅本体。 */
+
+    /** 探测 SystemUI 顶部小窗；point 非空时仅返回覆盖该点的窗口，否则返回任一 */
+    private Rect headsUpBanner(int[] point) {
+        if (screenHeight <= 0) return null;
+        try {
+            List<AccessibilityWindowInfo> wins = getWindows();
+            if (wins == null) return null;
+            for (AccessibilityWindowInfo w : wins) {
+                if (w == null) continue;
+                AccessibilityNodeInfo wr = w.getRoot();
+                if (wr == null) continue;
+                CharSequence wp = wr.getPackageName();
+                if (wp == null || !("com.android.systemui".contentEquals(wp) || "android".contentEquals(wp))) continue;
+                Rect r = new Rect();
+                w.getBoundsInScreen(r);
+                if (r.isEmpty() || r.top >= screenHeight * 0.30 || r.height() >= screenHeight * 0.35) continue;
+                if (point != null && !(point[0] >= r.left && point[0] <= r.right
+                        && point[1] >= r.top && point[1] <= r.bottom)) continue;
+                return r;
+            }
+        } catch (Throwable ignored) {
+        }
+        return null;
+    }
+
+    private boolean pointUnderHeadsUp(int x, int y) {
+        return headsUpBanner(new int[]{x, y}) != null;
+    }
+
+    /** 验证码横幅保护日志（同包 10s 去重） */
+    private void codeBannerGuardLog(String pkg, long now) {
+        Long last = codeBannerLogAt.get(pkg);
+        if (last != null && now - last < 10000) return;
+        codeBannerLogAt.put(pkg, now);
+        appendLog("🛡 验证码横幅保护（" + shortPkg(pkg) + "）：检测到验证码/校验码文案 → 本窗口绝不扫描绝不点击");
+    }
+
+    /** heads-up 保护日志（同包 10s 去重；pkg 可能为空） */
+    private void headsUpGuardLog(String pkg, long now) {
+        String key = pkg == null ? "" : pkg;
+        Long last = headsUpLogAt.get(key);
+        if (last != null && now - last < 10000) return;
+        headsUpLogAt.put(key, now);
+        appendLog("🛡 顶部横幅保护（" + (key.length() == 0 ? "系统" : shortPkg(pkg))
+                + "）：触点/返回键被验证码·短信横幅覆盖 → 已让路（绝不点掉横幅）");
     }
 
     /* ───────── v3.5.0 保活：前台常驻通知（系统不杀）+ 断连提醒撤销 ───────── */
