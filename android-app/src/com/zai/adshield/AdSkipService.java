@@ -238,7 +238,9 @@ public class AdSkipService extends AccessibilityService {
     public static final int NOTIF_ALERT = 2;   // 服务断开提醒（KeepAliveReceiver 发，服务连上即撤）
 
     private static final long WINDOW_MS = 12000;       // 开屏时间窗
-    private static final long COOLDOWN_MS = 900;       // 同一应用两次自动点击最小间隔（v3.9.0 1200→900：复验更快）
+    /* v4.4.0 复验提速：点击冷却 900→600ms（快于人类「发现未关→再点」反应链；
+     * 安全不破：复验仍需重新扫到跳过候选才出手，广告关了候选自然消失） */
+    private static final long COOLDOWN_MS = 600;
     private static final long LEARN_WINDOW_MS = 30000; // 手动点击学习宽时间窗
     private static final int MAX_RULES_PER_APP = 8;
     private static final int MAX_LOG = 120; // v4.2.0：60→120（日志更具体：手动/自动上传携带更多上下文）
@@ -336,11 +338,27 @@ public class AdSkipService extends AccessibilityService {
     /* v4.3.0：扫描未命中诊断日志（每窗一条——用户提交日志能看到为什么
      * 不跳，开发侧据此补规则；issue#38「无法跳过且日志没记录」根治） */
     private final java.util.HashMap<String, Long> missLogAt = new java.util.HashMap<>();
+    /* v4.4.0 早退后救回通道：被杀链窗口的内容事件补扫节流（晚到跳过键仍能
+     * 救回，滚动风暴被 900ms 节流挡住——issue#39-41 实锤 H5 开屏广告按钮
+     * 1~2s 才渲染，早退杀链后 nudge 全让路 = 「有时候触发不了」元凶） */
+    private final java.util.HashMap<String, Long> rescueAt = new java.util.HashMap<>();
     /* v4.3.0：白名单生效提示日志去重 */
     private final java.util.HashMap<String, Long> wlLogAt = new java.util.HashMap<>();
 
     private volatile String lastAutoClickPkg;
     private volatile long lastAutoClickAt;
+
+    /* ═══ v4.4.0 服务真实绑定状态（「恢复防护跳系统页 10 秒」修复地基）═══
+     * onUnbind 保留实例后 instance 仍非 null——但此时服务已解绑收不到任何
+     * 事件（僵尸态）。UI/心跳此前把它当「守护中」→ 用户看到假状态，最终
+     * 只能去系统设置重开（MIUI 强制看 10 秒）。bound 标记真实绑定态：
+     * onServiceConnected=true / onUnbind=false / onDestroy=false。 */
+    public static volatile boolean bound = false;
+
+    /** 服务真实存活（已绑定、能收事件）——UI 展示/心跳自检/拉活判定唯一口径 */
+    public static boolean isAlive() {
+        return instance != null && bound;
+    }
 
     private int screenWidth;
     private int screenHeight;
@@ -617,8 +635,13 @@ public class AdSkipService extends AccessibilityService {
     protected void onServiceConnected() {
         super.onServiceConnected();
         instance = this;
+        bound = true; // v4.4.0：真实绑定态
         screenWidth = getResources().getDisplayMetrics().widthPixels;
         screenHeight = getResources().getDisplayMetrics().heightPixels;
+        // v4.4.0 息屏缓存：SCREEN_ON/OFF 广播维护 volatile 标记，替代热路径上
+        // 每事件一次的 PowerManager.isInteractive binder IPC（issue#40 能耗画像
+        // 实锤 4602 事件 = 4602 次 IPC；广播零开销，屏幕翻转秒级同步）
+        registerScreenReceiver();
         // v3.5.0 保活：服务连上即记「用户要求保持开启」；仅用户在 App 内手动
         // 关闭保活提醒（Bridge.setKeepOn(false)）才置 false
         prefs().edit().putBoolean(KEY_KEEPON, true).apply();
@@ -628,9 +651,7 @@ public class AdSkipService extends AccessibilityService {
         // v3.6.0：清理 v3.5.0 误学毒指纹（MainActivity/FrameLayout/Dialog 被
         // 学成「广告窗指纹」——用户二次进入被连按返回键退出的根因）
         int purged = purgePoisonFingerprints();
-        appendLog("服务已启动 · v4.1.0 稳定优化（规则 "
-                + RuleEngine.stats() + "）"
-                + (purged > 0 ? "｜已清理 " + purged + " 条误学窗口指纹" : ""));
+        // v4.4.0：合并为下方一条完整启动日志（此前两条重复刷屏）
         // v3.9.0：清理毒位置规则（issue#12 实锤：桌面 com.miui.home 学出位置
         //(39%,18%)——桌面点击被误学成「跳过键」，下次启动直点桌面图标=乱点）
         int purgedPos = purgeLauncherPosRules();
@@ -644,7 +665,7 @@ public class AdSkipService extends AccessibilityService {
         // v4.3.0：应用白名单快照载入
         reloadWhitelist(this);
         int wlN = whitelistSet.size();
-        appendLog("服务已启动 · v4.3.0 订阅主力规则接入（规则 "
+        appendLog("服务已启动 · v4.4.0 露头就秒·门控到期即点（规则 "
                 + RuleEngine.stats() + "）"
                 + (purged > 0 ? "｜已清理 " + purged + " 条误学窗口指纹" : "")
                 + (wlN > 0 ? "｜白名单 " + wlN + " 个应用零打扰" : ""));
@@ -668,6 +689,7 @@ public class AdSkipService extends AccessibilityService {
      *    电池白名单（App 内醒目引导）+ 打开 App 自动拉活重绑（tryAutoRevive）。 */
     @Override
     public boolean onUnbind(Intent intent) {
+        bound = false; // v4.4.0：解绑即僵尸态（实例保留但收不到事件）
         // 系统解绑但非用户主动关闭：保留服务等待 AMS 重绑，并排自检 + 心跳
         try {
             if (prefs().getBoolean(KEY_KEEPON, false)) {
@@ -889,9 +911,56 @@ public class AdSkipService extends AccessibilityService {
 
     @Override
     public void onDestroy() {
+        bound = false; // v4.4.0：销毁即非存活
+        try {
+            if (screenRx != null) unregisterReceiver(screenRx);
+        } catch (Throwable ignored) {
+        }
         flushNow();
         instance = null;
         super.onDestroy();
+    }
+
+    /* ───────── v4.4.0 息屏缓存（功耗：热路径零 IPC）─────────
+     * 静态内部类（规避 d8 8.2 匿名类 NPE bug，同 TapGestureCallback） */
+    private static final class ScreenStateRx extends android.content.BroadcastReceiver {
+        @Override
+        public void onReceive(Context c, Intent i) {
+            AdSkipService s = instance;
+            if (s != null) s.screenInteractive = Intent.ACTION_SCREEN_ON.equals(i.getAction());
+        }
+    }
+
+    private android.content.BroadcastReceiver screenRx;
+    volatile boolean screenInteractive = true;
+    /* 广播注册成功后热路径才用缓存（失败回退逐次查询，功能绝不缩水） */
+    private volatile boolean screenRxOk = false;
+
+    private void registerScreenReceiver() {
+        try {
+            screenInteractive = isScreenOn(this); // 初值：一次 IPC 换后续零 IPC
+            screenRx = new ScreenStateRx();
+            android.content.IntentFilter f = new android.content.IntentFilter();
+            f.addAction(Intent.ACTION_SCREEN_ON);
+            f.addAction(Intent.ACTION_SCREEN_OFF);
+            try {
+                if (Build.VERSION.SDK_INT >= 33) {
+                    registerReceiver(screenRx, f, Context.RECEIVER_NOT_EXPORTED);
+                } else {
+                    registerReceiver(screenRx, f);
+                }
+                screenRxOk = true;
+            } catch (Throwable t) { // 部分 ROM 严格校验：无标志回退
+                try {
+                    registerReceiver(screenRx, f);
+                    screenRxOk = true;
+                } catch (Throwable t2) {
+                    screenRxOk = false; // 极少数 ROM：回退逐次查询
+                }
+            }
+        } catch (Throwable ignored) {
+            screenRxOk = false;
+        }
     }
 
     @Override
@@ -904,30 +973,44 @@ public class AdSkipService extends AccessibilityService {
         CharSequence pkgCs = event.getPackageName();
         if (pkgCs == null) return;
         String pkg = pkgCs.toString();
+        if (pkg.equals(getPackageName())) return;
+        int et = event.getEventType();
+        long now = System.currentTimeMillis();
+
+        /* ═══ v4.4.0 热路径前置过滤（功耗主力，issue#40 事件 4602/开机）═══
+         * 非前台包的内容变化事件是事件洪流主体（后台应用动画/刷新/灵岛动画），
+         * 且无弹窗识别窗在期 → 一步丢弃（此前要过完整过滤器链+switch 才短路）。
+         * 对比 lastFgPkg 是纯内存字符串比较，零 IPC 零哈希写。 */
+        if (et == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+                && !pkg.equals(lastFgPkg)
+                && now >= popupUntilGet(pkg)) {
+            return;
+        }
+
         // v3.9.0 桌面/Launcher 黑名单（issue#12 闪退元凶根治）：桌面包事件
         // 直接丢弃——绝不扫描（桌面简单树被误判广告窗）、绝不学习（桌面图标
         // 位置被学成「跳过键」后下次启动直点图标=乱点）、绝不回弹（「桌面→
-        // 微信」被当广告跳转踢出用户）。仅更新前台包名追踪。
+        // 微信」被当广告跳转踢出用户）。
+        // v4.4.0：仅 WINDOW_STATE_CHANGED 才更新前台追踪（桌面壁纸/图标动画
+        // 的内容事件曾把 lastFgPkg 污染成桌面 → 真前台应用的内容事件被前置
+        // 过滤误伤 → 「触发不了」帮凶）。
         if (AdDecisionCore.isLauncherLike(pkg)) {
-            lastFgPkg = pkg;
+            if (et == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) lastFgPkg = pkg;
             return;
         }
-        if (pkg.equals(getPackageName())) return;
 
         /* ═══ v4.3.0 应用白名单：用户圈定的应用零扫描零点击零学习零突发
          * （与桌面黑名单同级；仅维持前台包名追踪，白名单应用间切换
          *  不误判「新进入」）═══ */
         if (whitelistSet.contains(pkg)) {
-            lastFgPkg = pkg;
+            if (et == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) lastFgPkg = pkg;
             return;
         }
-
-        long now = System.currentTimeMillis();
 
         /* ═══ v4.1.0 App 内主开关（暂停）：只廉价维持窗口/前台追踪，
          * 绝不扫描、绝不点击、绝不学习、绝不突发检测 ═══ */
         if (!masterOn) {
-            if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            if (et == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
                 String mc = cs(event.getClassName());
                 if (!isDialogClass(mc)) { // Dialog/悬浮窗不改变前台应用
                     boolean entering = !pkg.equals(lastFgPkg);
@@ -950,8 +1033,11 @@ public class AdSkipService extends AccessibilityService {
         // 任何广告（没有可跳对象），此时唯一可能出现在前台的是来电/闹钟等敏感窗
         // ——扫描/点击/学习全是浪费甚至危险（误点来电挂断/闹钟关闭）。仅廉价维护
         // 前台包名追踪（亮屏后进入应用的入口窗判定仍正确），其余事件全部丢弃。
-        if (!isScreenOn(this)) {
-            if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+        // v4.4.0 功耗：改用 SCREEN_ON/OFF 广播维护的缓存标记（零 IPC；
+        // 此前每事件一次 PowerManager.isInteractive binder 调用）
+        boolean screenOn = screenRxOk ? screenInteractive : isScreenOn(this);
+        if (!screenOn) {
+            if (et == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
                 lastFgPkg = pkg;
             }
             return;
@@ -964,7 +1050,7 @@ public class AdSkipService extends AccessibilityService {
 
         energyEvents++;
 
-        switch (event.getEventType()) {
+        switch (et) {
             case AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED: {
                 String cls = cs(event.getClassName());
                 /* ═══ v4.1.0 前台门（灵动岛/悬浮窗根治，issue#30）═══
@@ -1023,6 +1109,7 @@ public class AdSkipService extends AccessibilityService {
                 winClsLearned.remove(pkg);
                 chainKilledAt.remove(pkg); // v4.3.0：新窗重置内容页早退
                 nudgeAt.remove(pkg);      // v4.3.0：新窗重置补扫节流
+                rescueAt.remove(pkg);     // v4.4.0：新窗重置救回节流（旧窗时间戳不得拖慢新窗首救）
                 if (isDialogClass(cls) && !isOemUtilityPkg(pkg)) {
                     popupUntil.put(pkg, now + POPUP_WINDOW_MS);
                 }
@@ -1320,26 +1407,36 @@ public class AdSkipService extends AccessibilityService {
             return;
         }
         final long winStart = winAt(pkg);
-        /* v4.3.0 功耗【关键修复】：此前「前 4s 50ms 高频补扫」的节流比较的是
-         * 【窗口起点】而非【上次补扫】——信息流/聊天列表滚动时每个内容变化
-         * 事件都直接排一次整树扫描（10~30 次/秒 × 4 秒 = 功耗黑洞元凶）。
-         * 改为真节流：同一包两次补扫最少间隔 120ms（露头就秒跳不变——
-         * 跳过键出现即点，120ms 只挡滚动风暴）。 */
-        long elapsed = now - winStart;
-        if (elapsed < 4000) {
-            Long last = nudgeAt.get(pkg);
-            if (last != null && now - last < 120) return;
-            nudgeAt.put(pkg, now);
-        } else if (now < popupUntilGet(pkg)) {
-            Long last = popupNudgeAt.get(pkg); // 弹窗窗期：300ms 节流补扫
-            if (last != null && now - last < 300) return;
-            popupNudgeAt.put(pkg, now);
-        } else {
-            return;                            // 弹窗窗期外：内容变化零补扫
-        }
-        // v4.3.0：内容页早退后补扫同步让路（真出现跳过键会由 walk 复活链）
+        /* v4.4.0 早退救回通道（issue#39-41 实锤「有时候触发不了」元凶）：
+         * H5/WebView 开屏广告容器可滚动，首扫（400ms）时按钮还没渲染 →
+         * 内容页早退杀链 → 按钮真正出现（1~2s）时 nudge 全让路 = 永远点不到。
+         * 对策：被杀链窗口的内容事件以 900ms 节流降频放行（滚动风暴被节流
+         * 挡住，晚到跳过键仍能救回；12s 窗口期外本就不扫）。 */
         Long killed = chainKilledAt.get(pkg);
-        if (killed != null && killed.longValue() == winStart) return;
+        boolean chainDead = killed != null && killed.longValue() == winStart;
+        if (chainDead) {
+            Long lastRescue = rescueAt.get(pkg);
+            if (lastRescue != null && now - lastRescue < 900) return;
+            rescueAt.put(pkg, now);
+        } else {
+            /* v4.3.0 功耗【关键修复】：此前「前 4s 50ms 高频补扫」的节流比较的是
+             * 【窗口起点】而非【上次补扫】——信息流/聊天列表滚动时每个内容变化
+             * 事件都直接排一次整树扫描（10~30 次/秒 × 4 秒 = 功耗黑洞元凶）。
+             * 改为真节流：同一包两次补扫最少间隔 120ms（露头就秒跳不变——
+             * 跳过键出现即点，120ms 只挡滚动风暴）。 */
+            long elapsed = now - winStart;
+            if (elapsed < 4000) {
+                Long last = nudgeAt.get(pkg);
+                if (last != null && now - last < 120) return;
+                nudgeAt.put(pkg, now);
+            } else if (now < popupUntilGet(pkg)) {
+                Long last = popupNudgeAt.get(pkg); // 弹窗窗期：300ms 节流补扫
+                if (last != null && now - last < 300) return;
+                popupNudgeAt.put(pkg, now);
+            } else {
+                return;                            // 弹窗窗期外：内容变化零补扫
+            }
+        }
         final int g = gen.intValue();
         handler.post(() -> {
             Integer cur = scanGen.get(pkg);
@@ -1461,10 +1558,14 @@ public class AdSkipService extends AccessibilityService {
                 ctx.clickAttempts = clickAttempts;
                 ctx.tapHintX = tapHint[0];
                 ctx.tapHintY = tapHint[1];
-                // v4.3.0 功耗分层：早档（≤400ms，广告窗刚渲染树小）340 预算
-                // 提速；晚档 600（晚出键的深树覆盖）；补扫/弹窗 280~500
+                // v4.3.0 功耗分层 / v4.4.0 修正：早档【固定档 0~400ms】（广告窗
+                // 刚渲染树小）340 提速；中档 600（晚出键的深树覆盖）；晚档
+                // （固定档 ≥3.6s，真广告早该出手，深树几乎必是内容页）360。
+                // ⚠ atMs=-1（nudge 补扫/门控开闸针/快速复验针）必须保持 600：
+                // H5 开屏树深 500+，救回通道 340 预算够不到晚到按钮 =
+                // 「有时候触发不了」复发（v4.4.0 首版误伤，此为修正）。
                 ctx.budgetNodes = splashLive
-                        ? (atMs >= 0 && atMs <= 400 ? 340 : 600)
+                        ? (atMs >= 0 && atMs <= 400 ? 340 : (atMs >= 3600 ? 360 : 600))
                         : (atMs == -2 ? 280 : 500);
 
                 /* ═══ v3.9.0 主路径：内嵌规则引擎 0ms 出手 ═══
@@ -1529,11 +1630,17 @@ public class AdSkipService extends AccessibilityService {
                 if (!d.action.equals(AdDecisionCore.A_NONE)) {
                     if (execute(pkg, d, f, ctx, clickCoolOK, now)) return; // 命中即熔断
                     acted = true;
-                } else if (splashLive && !acted && elapsed >= 400 && chainCanQuit(f)) {
-                    /* ═══ v4.3.0 功耗：内容页早退 ═══
+                } else if (splashLive && !acted && elapsed >= 2000 && chainCanQuit(pkg, f)) {
+                    /* ═══ v4.3.0 功耗：内容页早退（v4.4.0 收紧）═══
                      * 可滚动/有输入框/长文本且零跳过候选 = 正常内容页（信息流/
                      * 聊天/文章）——本窗剩余固定扫描档全部取消（省 10+ 次整树
-                     * 遍历/次启动；补扫同步让路，真出现跳过键会由候选复活）。 */
+                     * 遍历/次启动）。
+                     * v4.4.0 双重收紧（issue#39-41 实锤 H5 开屏被误杀 =
+                     * 「有时候触发不了」元凶）：
+                     *  · 400ms → 2000ms 才允许杀（真开屏广告按钮最晚 1~2s
+                     *    出现——H5 渲染慢，过早杀链 = 主动放弃跳过）；
+                     *  · 广告窗/学习窗/Dialog 窗绝不杀（窗口本身就是广告）；
+                     *  · 杀链后内容事件由 900ms 救回通道降频放行（nudgeScan）。 */
                     chainKilledAt.put(pkg, winStart);
                 }
             }
@@ -1548,8 +1655,14 @@ public class AdSkipService extends AccessibilityService {
         }
     }
 
-    /** v4.3.0：内容页早退判定（零候选 + 内容页特征三选一） */
-    private static boolean chainCanQuit(ScanFind f) {
+    /** v4.4.0：内容页早退判定（零候选 + 内容页特征三选一）。
+     *  v4.4.0：广告窗/学习窗/Dialog 窗绝不早退——窗口本身就是广告，
+     *  按钮只是还没渲染（H5 开屏 1~2s），杀链 = 主动放弃跳过。 */
+    private boolean chainCanQuit(String pkg, ScanFind f) {
+        String cls = winClassOf(pkg);
+        if (AdDecisionCore.isAdActivityClass(cls) || isDialogClass(cls)) return false;
+        Boolean learned = winClsLearned.get(pkg);
+        if (learned != null && learned.booleanValue()) return false;
         boolean noCand = f.skipCands.isEmpty() && f.fakeCands.isEmpty()
                 && f.corners.isEmpty() && !f.foundClose;
         if (!noCand) return false;
@@ -1709,7 +1822,11 @@ public class AdSkipService extends AccessibilityService {
      * v4.3.0 假倒计时识别（issue#38 喜马拉雅「跳过速度过慢」）：真倒计时
      * 每秒跳数字（锚点随数字重置）；装饰性数字（烧在图里的假倒计时）永不
      * 变化——首击未关且数字 1.6s 未变 = 假倒计时，不再门控，按普通冷却
-     * 节奏换候选重试（同坐标不再白等 5 秒）。 */
+     * 节奏换候选重试（同坐标不再白等 5 秒）。
+     * v4.4.0 门控到期即点（issue#39 实锤：门控说「4086ms 后出手」，实际
+     * 5.5s 后才点到——门控开闸后要等下一固定档扫描/内容事件才出手，扫描链
+     * 空档 3.6s→5s 是喜马拉雅/keep 慢干人工的头号元凶）：设门控时同步排
+     * 一针【开闸 +40ms】的精确补扫（代际护栏防窗口已切），开闸瞬间即点。 */
     private boolean countdownWait(String pkg, int cdN, int clickAttempts, long now) {
         if (cdN > 0) {
             Integer lastN = cdLastN.get(pkg);
@@ -1731,10 +1848,18 @@ public class AdSkipService extends AccessibilityService {
                 }
                 long until = anchorAt + cdN * 1000L - AdDecisionCore.COUNTDOWN_EXTRA_MS;
                 if (now < until) {
-                    if (cdWaitUntil.put(pkg, until) == null) {
+                    Long prevGate = cdWaitUntil.put(pkg, until);
+                    if (prevGate == null) {
                         appendLog("⏳ 倒计时门控（" + shortPkg(pkg) + "）：跳过键 "
                                 + cdN + "s 后才激活（提前点=白点）→ "
                                 + (until - now) + "ms 后出手即命中");
+                    }
+                    /* v4.4.0 到期即点：开闸瞬间精确补扫（此前要等下一固定档
+                     * /内容事件，最慢 5s+ = 慢干人工元凶）。
+                     * 数字每秒跳一次 → until 随锚点重算 → 每次变化都重排一针
+                     * （旧针的 until 比对自动作废，零冲突零漏扫）。 */
+                    if (prevGate == null || prevGate.longValue() != until) {
+                        scheduleGateOpenScan(pkg, until);
                     }
                     return true;
                 }
@@ -1747,6 +1872,38 @@ public class AdSkipService extends AccessibilityService {
             appendLog("⏳ 倒计时结束（" + shortPkg(pkg) + "）：跳过键已激活 → 出手");
         }
         return false;
+    }
+
+    /** v4.4.0：门控开闸 +40ms 精确补扫（代际护栏：窗口已切/门控已变则作废） */
+    private void scheduleGateOpenScan(final String pkg, final long until) {
+        long now = System.currentTimeMillis();
+        long delay = Math.max(30L, until - now + 40L);
+        Integer g = scanGen.get(pkg);
+        final int gen = g == null ? 0 : g.intValue();
+        handler.postDelayed(() -> {
+            AdSkipService sv = instance;
+            if (sv == null) return;
+            Integer cur = scanGen.get(pkg);
+            if (cur == null || cur.intValue() != gen) return; // 窗口已切
+            Long w = cdWaitUntil.get(pkg);
+            if (w == null || w.longValue() != until) return;  // 门控已变/已清
+            sv.tryScan(pkg, sv.winAt(pkg), -1);
+        }, delay);
+    }
+
+    /** v4.4.0 快速复验：点击后 450ms / 900ms 两针精确补扫（代际护栏）。
+     *  此前复验只能等固定档扫描/内容事件（最慢 1.2s+）——「点了没反应」
+     *  场景下人手已经补上第二刀，引擎还在等档。 */
+    private void scheduleVerifyScan(final String pkg, long delayMs) {
+        Integer g = scanGen.get(pkg);
+        final int gen = g == null ? 0 : g.intValue();
+        handler.postDelayed(() -> {
+            AdSkipService sv = instance;
+            if (sv == null) return;
+            Integer cur = scanGen.get(pkg);
+            if (cur == null || cur.intValue() != gen) return;
+            sv.tryScan(pkg, sv.winAt(pkg), -1);
+        }, delayMs);
     }
 
     /** 收集同包可扫描窗口根节点（活动窗口优先，最多 3 个） */
@@ -1849,6 +2006,11 @@ public class AdSkipService extends AccessibilityService {
                 lastAutoClickAt = now;
                 clickTries.put(pkg, attempts + 1);
                 skipAt.put(pkg, now); // v3.14.0：记录引擎出手时刻（跳过后反馈弹窗门控用）
+                /* v4.4.0 快速复验：点击后 450ms / 900ms 两针精确补扫——
+                 * 「点了没反应」场景下人手 300~500ms 就补第二刀，引擎此前
+                 * 要等 1.2s+ 的固定档（慢于人工实锤）；冷却同步 900→600ms */
+                scheduleVerifyScan(pkg, 450);
+                scheduleVerifyScan(pkg, 900);
                 if (d.action.equals(AdDecisionCore.A_CLOSE) && f != null) {
                     popupBlocks++;
                     lastPopupAt.put(pkg, now);
@@ -1859,7 +2021,7 @@ public class AdSkipService extends AccessibilityService {
                 } else {
                     if (attempts == 0) {
                         appendLog("⚡ 已点击跳过（" + shortPkg(pkg) + "）：" + reasonZh(d.reason)
-                                + "（" + (lastGesture ? "手势真实触点" : "无障碍代点兜底") + "）→ 1.2s 后复验，未关将换候选重试");
+                                + "（" + (lastGesture ? "手势真实触点" : "无障碍代点兜底") + "）→ 450ms 快速复验，未关将换候选重试");
                     } else {
                         appendLog("🔁 复验未关闭 → 第 " + (attempts + 1) + " 次出手（" + shortPkg(pkg) + "）："
                                 + reasonZh(d.reason) + "（手势真实触点·换第 " + (attempts + 1) + " 个候选，不再盲点同一坐标）");
@@ -1882,6 +2044,7 @@ public class AdSkipService extends AccessibilityService {
                 clickTries.put(pkg, triesOfClick(pkg) + 1);
                 skipAt.put(pkg, now); // v3.14.0：记录引擎出手时刻（学习位置直点也是跳过出手）
                 energyGestures++;
+                scheduleVerifyScan(pkg, 450); // v4.4.0 快速复验（学习位置直点同理）
                 if (isLearned) {
                     appendLog("🎯 学习位置点击（" + shortPkg(pkg) + "）：你手动教过的位置指纹 ("
                             + d.x + "," + d.y + ")（手势真实触点·相对你的屏幕渲染）→ 0.9s 后复验");

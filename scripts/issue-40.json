@@ -1,0 +1,82 @@
+{
+  "url": "https://api.github.com/repos/xiaobaiba999/Skip-Ad/issues/40",
+  "repository_url": "https://api.github.com/repos/xiaobaiba999/Skip-Ad",
+  "labels_url": "https://api.github.com/repos/xiaobaiba999/Skip-Ad/issues/40/labels{/name}",
+  "comments_url": "https://api.github.com/repos/xiaobaiba999/Skip-Ad/issues/40/comments",
+  "events_url": "https://api.github.com/repos/xiaobaiba999/Skip-Ad/issues/40/events",
+  "html_url": "https://github.com/xiaobaiba999/Skip-Ad/issues/40",
+  "id": 6439856051,
+  "node_id": "I_kwDOVvOD9s8AAAABf9hnsw",
+  "number": 40,
+  "title": "[引擎日志][v4.3.0] Xiaomi 2410DPN6CC（手动上传）",
+  "user": {
+    "login": "xiaobaiba999",
+    "id": 101786261,
+    "node_id": "U_kgDOBhEilQ",
+    "avatar_url": "https://avatars.githubusercontent.com/u/101786261?v=4",
+    "gravatar_id": "",
+    "url": "https://api.github.com/users/xiaobaiba999",
+    "html_url": "https://github.com/xiaobaiba999",
+    "followers_url": "https://api.github.com/users/xiaobaiba999/followers",
+    "following_url": "https://api.github.com/users/xiaobaiba999/following{/other_user}",
+    "gists_url": "https://api.github.com/users/xiaobaiba999/gists{/gist_id}",
+    "starred_url": "https://api.github.com/users/xiaobaiba999/starred{/owner}{/repo}",
+    "subscriptions_url": "https://api.github.com/users/xiaobaiba999/subscriptions",
+    "organizations_url": "https://api.github.com/users/xiaobaiba999/orgs",
+    "repos_url": "https://api.github.com/users/xiaobaiba999/repos",
+    "events_url": "https://api.github.com/users/xiaobaiba999/events{/privacy}",
+    "received_events_url": "https://api.github.com/users/xiaobaiba999/received_events",
+    "type": "User",
+    "user_view_type": "public",
+    "site_admin": false
+  },
+  "labels": [
+
+  ],
+  "state": "open",
+  "locked": false,
+  "assignees": [
+
+  ],
+  "milestone": null,
+  "comments": 0,
+  "created_at": "2026-11-17T07:42:53Z",
+  "updated_at": "2026-11-17T07:42:53Z",
+  "closed_at": null,
+  "assignee": null,
+  "author_association": "OWNER",
+  "issue_field_values": [
+
+  ],
+  "type": null,
+  "active_lock_reason": null,
+  "sub_issues_summary": {
+    "total": 0,
+    "completed": 0,
+    "percent_completed": 0
+  },
+  "issue_dependencies_summary": {
+    "blocked_by": 0,
+    "total_blocked_by": 0,
+    "blocking": 0,
+    "total_blocking": 0
+  },
+  "body": "## 设备\n- Xiaomi 2410DPN6CC · Android 17\n\n## 状态\n- 版本：v4.3.0 · 环境：Android APK · 手动上传\n- 真实引擎：秒跳 453 · 弹窗关闭 2 · 返回键 67 · 反馈面板收起 3 · 手动样本 60 · 学习规则 20 条（11 个应用）\n- 应用战绩 Top5：android(216/0/11) · mm(38/0/7) · uuremote(25/0/0) · keep(23/0/0) · www(16/0/2)\n- 订阅：内置 22 款/22 条（命中 0） · 远程「默认订阅-已停止维护」86 款/118 条（命中 12）\n- 能耗画像（本次开机）：事件 4602 · 扫描 868 · 手势估算 1638.3µWh\n- 引擎日志（最近 16 条）：\n  - [15:41:55] 📍 位置已学习（jizhang）：图片跳过键零文本，已记住位置 (60%,9%) → 下次启动同窗 500ms 直点\n  - [15:41:56] 📍 位置已学习（jizhang）：图片跳过键零文本，已记住位置 (17%,18%) → 下次启动同窗 500ms 直点\n  - [15:42:10] 🪟 检测到内容突发（jizhang）：疑似覆盖层弹窗 → 开启弹窗识别窗\n  - [15:42:13] 📍 位置已学习（jizhang）：图片跳过键零文本，已记住位置 (60%,9%) → 下次启动同窗 500ms 直点\n  - [15:42:14] 📍 位置已学习（jizhang）：图片跳过键零文本，已记住位置 (17%,18%) → 下次启动同窗 500ms 直点\n  - [15:42:16] 📍 位置已学习（jizhang）：图片跳过键零文本，已记住位置 (63%,87%) → 下次启动同窗 500ms 直点\n  - [15:42:16] 🚫 位置学习已拒绝（jizhang）：坐标 (38%,102%) 越界/贴边，点了也是死区\n  - [15:42:17] ❓ 开屏未命中（jizhang）树 24 节点 · 窗口 Dialog · 候选样本：取消@(8%,77%) / 确定@(92%,77%) / 2025@(28%,85%) / 2026@(28%,92%) ——上传日志可帮我们补规则\n  - [15:42:27] ❓ 开屏未命中（androidqqmail）树 12 节点 · 窗口 LauncherActivity ——上传日志可帮我们补规则\n  - [15:42:27] ❓ 开屏未命中（androidqqmail）树 12 节点 · 窗口 FrameLayout ——上传日志可帮我们补规则\n  - [15:42:38] ❓ 开屏未命中（android）树 8 节点 · 窗口 FrameLayout ——上传日志可帮我们补规则\n  - [15:42:40] ⚡ 已点击跳过（android）：内嵌规则·分应用文案命中（手势真实触点）→ 1.2s 后复验，未关将换候选重试\n  - [15:42:40] 🔁 复验未关闭 → 第 2 次出手（android）：内嵌规则·分应用文案命中（手势真实触点·换第 2 个候选，不再盲点同一坐标）\n  - [15:42:46] ❓ 开屏未命中（android）树 8 节点 · 窗口 FrameLayout ——上传日志可帮我们补规则\n  - [15:42:48] ⚡ 已点击跳过（android）：内嵌规则·分应用文案命中（手势真实触点）→ 1.2s 后复验，未关将换候选重试\n  - [15:42:48] 🔁 复验未关闭 → 第 2 次出手（android）：内嵌规则·分应用文案命中（手势真实触点·换第 2 个候选，不再盲点同一坐标）",
+  "closed_by": null,
+  "reactions": {
+    "url": "https://api.github.com/repos/xiaobaiba999/Skip-Ad/issues/40/reactions",
+    "total_count": 0,
+    "+1": 0,
+    "-1": 0,
+    "laugh": 0,
+    "hooray": 0,
+    "confused": 0,
+    "heart": 0,
+    "rocket": 0,
+    "eyes": 0
+  },
+  "timeline_url": "https://api.github.com/repos/xiaobaiba999/Skip-Ad/issues/40/timeline",
+  "performed_via_github_app": null,
+  "state_reason": null,
+  "pinned_comment": null
+}

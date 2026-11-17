@@ -23,8 +23,8 @@ const store = {
 };
 
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "4.3.0"; }
-function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "40300"; }
+function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "4.4.0"; }
+function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "40400"; }
 
 /* ══════════ 吉祥物（v4.1.0 全新形象：白机器人小侠 + 绿披风跳跃） ══════════
  * 与启动器图标同源；state: on（跳跃浮动）/ off（灰度待命） */
@@ -37,11 +37,11 @@ $("#brand-logo").innerHTML = mascotImg(30, "on", true);
 
 /* ══════════ 版本记录 ══════════ */
 const CHANGELOG = [
+  { v: "4.4.0", d: "露头就秒大提速：倒计时门控开闸瞬间即点（喜马拉雅/keep 实测快 4~5 秒）；点击后 450ms 快速复验（快于人手补刀）；H5 开屏按钮晚到也能救回（早退误杀根治）；恢复防护深度拉活 6 秒（绝不去系统设置看 10 秒强制警告）；功耗再降（事件热路径零 IPC + 晚档扫描预算收紧）。" },
   { v: "4.3.0", d: "订阅主力规则真正接入：GKD globalGroups 全量解析（CSDN 等第三方 App 不再漏跳）+ 数字关系符/childCount/text.length 全语法；复验真正换候选（同坐标连点根治）；新增应用白名单（选中的应用零打扰）；喜马拉雅「为什么关闭广告」循环根治 + 跳过提速；未命中会记诊断日志；功耗再降（内容页早退 + 滚动风暴节流修复）。" },
   { v: "4.2.0", d: "用户操作让路（你点开的页面绝不自动关）；微信主界面零扫描（乱划根治）；订阅规则接入弹窗场景 + Activity 限定（导入了就真生效）；日志每 12 小时自动提交；引擎日志翻倍更具体；功耗大降。" },
   { v: "4.1.0", d: "应用内一键暂停/恢复防护（免看系统 10 秒警告）；修复微信拍摄被强退、灵动岛乱点、订阅导入 404；全新 Logo。" },
   { v: "4.0.0", d: "接入 GKD 订阅生态：粘贴链接即可导入 gkd.li 社区规则；内置规则库升级为「文案 + 控件 ID」双引擎；全新界面。" },
-  { v: "3.14.0", d: "跳过后弹出的反馈面板自动收起；秒跳提速；开启服务一步直达。" },
 ];
 
 /* ══════════ 路由 ══════════ */
@@ -141,7 +141,8 @@ function renderHero(running, enabledInSettings, masterOn) {
   }
 }
 
-/* v4.1.0 App 内主开关：暂停/恢复均不碰系统设置（免 10 秒警告） */
+/* v4.1.0 App 内主开关：暂停/恢复均不碰系统设置（免 10 秒警告）
+ * v4.4.0：恢复后核实服务真活着（防「暂停期间服务被杀」→ 假恢复） */
 $("#btn-pause").addEventListener("click", () => {
   if (!HAS_BRIDGE) return;
   try { AndroidApp.setMasterOn(false); toast("已暂停 · 恢复时一键即回"); } catch (e) {}
@@ -150,9 +151,53 @@ $("#btn-pause").addEventListener("click", () => {
 
 $("#btn-resume").addEventListener("click", () => {
   if (!HAS_BRIDGE) return;
-  try { AndroidApp.setMasterOn(true); toast("防护已恢复"); } catch (e) {}
-  setTimeout(refreshHome, 150);
+  try { AndroidApp.setMasterOn(true); } catch (e) {}
+  setTimeout(() => {
+    // v4.4.0：恢复后核实服务真在运行（暂停期间被系统杀掉 = 假恢复）
+    let alive = true;
+    try { alive = !!AndroidApp.isServiceRunning(); } catch (e) {}
+    if (!alive) { toast("服务已掉线，正在深度拉活…"); doRevive(); return; }
+    toast("防护已恢复");
+    refreshHome();
+  }, 200);
 });
+
+/* v4.4.0 深度拉活（后台 6s + 系统绑定踢一脚；成功后暂停自动解除）
+ * 绝不自动跳系统设置——10 秒强制警告只剩「开关真被关」时才需要 */
+let reviving = false;
+function doRevive() {
+  if (!HAS_BRIDGE || reviving) return;
+  reviving = true;
+  toast("正在恢复…（最长 6 秒，不用去系统设置）");
+  try {
+    AndroidApp.tryAutoReviveDeep("__reviveCb");
+  } catch (e) {
+    // 旧版同步兑底（理论上不会走到）
+    try {
+      const r = JSON.parse(AndroidApp.tryAutoRevive());
+      window.__reviveCb && window.__reviveCb(null, r);
+      return;
+    } catch (e2) {}
+    reviving = false;
+    toast("恢复失败，请重试");
+  }
+}
+window.__reviveCb = (name, r) => {
+  reviving = false;
+  try {
+    if (r.ok) {
+      toast(r.resumed ? "已恢复守护（暂停已自动解除）" : "已恢复守护");
+    } else if (r.reason === "need_toggle") {
+      // 系统绑定较慢：引导重试，绝不自动跳系统设置看 10 秒警告
+      toast("系统绑定较慢：锁屏再亮屏后点「一键恢复」重试");
+    } else if (r.reason === "disabled") {
+      toast("服务开关已被系统关闭：需到系统设置重新开启一次");
+    } else {
+      toast("恢复失败，请重试");
+    }
+  } catch (e) {}
+  setTimeout(refreshHome, 400);
+};
 
 $("#btn-enable").addEventListener("click", () => {
   if (HAS_BRIDGE) {
@@ -161,21 +206,8 @@ $("#btn-enable").addEventListener("click", () => {
   toast("请在系统设置中开启无障碍服务");
 });
 
-$("#btn-revive").addEventListener("click", async () => {
-  if (!HAS_BRIDGE) return;
-  toast("正在恢复…");
-  try {
-    const r = JSON.parse(AndroidApp.tryAutoRevive());
-    if (r.ok) toast("已恢复守护");
-    else if (r.reason === "need_toggle") {
-      toast("请到系统开关打开一次");
-      AndroidApp.openA11yDetail();
-    } else if (r.reason === "disabled") {
-      toast("服务已被关闭，请重新开启");
-      AndroidApp.openA11yDetail();
-    } else toast("恢复失败，请到系统设置操作");
-  } catch (e) { toast("恢复失败"); }
-  setTimeout(refreshHome, 800);
+$("#btn-revive").addEventListener("click", () => {
+  doRevive();
 });
 
 function refreshBattery(running) {
@@ -648,6 +680,16 @@ function toast(msg) {
 (async function init() {
   refreshHome();
   renderWhitelist(true);
+  // v4.4.0 零触摸自愈：打开 App 即发现服务掉线（设置仍登记）→ 自动深度拉活，
+  // 用户连「一键恢复」都不用点（点按钮跳系统设置看 10 秒警告的历史遗留痛点
+  // 从入口上消灭）。每次页面加载最多自动尝试一次，不循环打扰。
+  setTimeout(() => {
+    try {
+      if (!AndroidApp.isServiceRunning() && AndroidApp.a11yEnabledInSettings()) {
+        doRevive();
+      }
+    } catch (e) {}
+  }, 600);
   // 通知权限（Android 13+，保活提醒需要）
   // 更新检查（静默）
   try {

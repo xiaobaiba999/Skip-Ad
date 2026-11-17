@@ -63,11 +63,11 @@ public class KeepAliveReceiver extends BroadcastReceiver {
                 AdSkipService.maybeAutoUploadLog(ctx);
             } catch (Throwable ignored) {
             }
-            if (AdSkipService.instance != null) return; // 服务活着，无需动作
+            if (AdSkipService.isAlive()) return; // v4.4.0：真实绑定态（僵尸实例不算活）
             notifyAlert(ctx); // v3.14.0：ADB 自愈已移除，直接高优提醒一步恢复
             return;
         }
-        if (AdSkipService.instance != null) return;
+        if (AdSkipService.isAlive()) return;
 
         if (replaced) {
             // 覆盖安装：系统必然已关闭无障碍服务（Android 安全设计）
@@ -80,7 +80,7 @@ public class KeepAliveReceiver extends BroadcastReceiver {
         final PendingResult result = goAsync();
         new Handler(Looper.getMainLooper()).postDelayed(() -> {
             try {
-                if (AdSkipService.instance == null) {
+                if (!AdSkipService.isAlive()) {
                     // v3.8.1：不在此处直接自愈——postDelayed 回调时 onReceive 已返回，
                     // 再调 goAsync() 拿不到广播窗口（自愈轮询线程失去系统保护）；
                     // 改排 2s 后自检闹钟，在全新广播窗口走标准自检/自愈路径

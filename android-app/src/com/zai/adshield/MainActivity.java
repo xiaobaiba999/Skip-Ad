@@ -144,7 +144,7 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public boolean isServiceRunning() {
-            return AdSkipService.instance != null;
+            return AdSkipService.isAlive(); // v4.4.0：真实绑定态（僵尸实例不再假报「守护中」）
         }
 
         /* ───── v4.1.0 App 内主开关（暂停/恢复，免系统 10 秒警告） ───── */
@@ -301,21 +301,24 @@ public class MainActivity extends Activity {
             }
         }
 
-        /** 自动拉活（v3.14.0 简化：ADB 自愈已移除）：
-         *  · 服务已运行 → ok；
-         *  · 设置仍登记且服务死 → 进程已随 App 打开拉起，AMS 通常自动重绑，
-         *    观察 ≤1.5s；仍未重绑 → need_toggle 由页面引导一步直达服务开关；
+        /** 自动拉活（v4.4.0 深度拉活版）：
+         *  · 服务已运行 → ok（若处于暂停自动解除——用户点「恢复」的意图）
+         *  · 设置仍登记且服务死 → 后台线程深挖最长 6s（v3.14.0 只等 1.5s，
+         *    MIUI/HyperOS 重绑慢的 ROM 不够→被误判 need_toggle→跳系统设置
+         *    看 10 秒强制警告，「恢复防护很麻烦」的元凶）；每 500ms 用
+         *    AccessibilityManager 查询踢一次系统（促使 AMS 重绑）；
          *  · 未登记 → disabled 由页面引导开启。
          *  （无障碍服务受 BIND_ACCESSIBILITY_SERVICE 保护，任何应用都不能
-         *   start/bind 它——v3.6.0 的 startService 拉活实为 SecurityException；
-         *   v3.8.0 的 WRITE_SECURE_SETTINGS 自愈需 adb 授权太麻烦，v3.14.0 移除）
-         *  返回 JSON：{ok, running?, revived?, enabledInSettings?, reason?} */
+         *   start/bind 它；设置页 10 秒强制等待仅剩「开关真被关」时才需要）
+         *  返回 JSON：{ok, running?, revived?, resumed?, enabledInSettings?, reason?} */
         @JavascriptInterface
         public String tryAutoRevive() {
             org.json.JSONObject out = new org.json.JSONObject();
             try {
-                if (AdSkipService.instance != null) {
-                    out.put("ok", true).put("running", true);
+                if (AdSkipService.isAlive()) {
+                    boolean wasPaused = !AdSkipService.masterState(a);
+                    if (wasPaused) AdSkipService.setMaster(a, true); // 恢复即全开
+                    out.put("ok", true).put("running", true).put("resumed", wasPaused);
                     return out.toString();
                 }
                 boolean enabled = a11yEnabledInSettings();
@@ -324,13 +327,21 @@ public class MainActivity extends Activity {
                     out.put("ok", false).put("reason", "disabled");
                     return out.toString();
                 }
-                // 设置仍登记：进程已拉起，AMS 通常自动重绑——观察 1.5s（不再空转 10s）
-                for (int i = 0; i < 6 && AdSkipService.instance == null; i++) {
-                    Thread.sleep(250);
+                // 设置仍登记：进程已拉起，AMS 自动重绑——深度观察 6s
+                //（每 500ms 踢一次 AccessibilityManager，重绑慢的 ROM 也能等到）
+                long deadline = System.currentTimeMillis() + 6000;
+                while (System.currentTimeMillis() < deadline && !AdSkipService.isAlive()) {
+                    kickA11yManager();
+                    Thread.sleep(500);
                 }
-                boolean revived = AdSkipService.instance != null;
-                out.put("ok", revived).put("revived", revived);
-                if (!revived) out.put("reason", "need_toggle"); // 页面引导一步直达服务开关
+                boolean revived = AdSkipService.isAlive();
+                if (revived) {
+                    boolean wasPaused = !AdSkipService.masterState(a);
+                    if (wasPaused) AdSkipService.setMaster(a, true); // 拉活成功 → 暂停自动解除
+                    out.put("ok", true).put("revived", true).put("resumed", wasPaused);
+                } else {
+                    out.put("ok", false).put("reason", "need_toggle"); // 页面提示重试/手动，绝不自动跳系统设置
+                }
             } catch (Throwable t) {
                 try {
                     out.put("ok", false).put("reason", "error");
@@ -338,6 +349,40 @@ public class MainActivity extends Activity {
                 }
             }
             return out.toString();
+        }
+
+        /** v4.4.0：异步深度拉活（后台线程 6s 深挖，不阻塞 JS Bridge 线程；
+         *  结果经 window.__reviveCb(name, json) 回调） */
+        @JavascriptInterface
+        public void tryAutoReviveDeep(final String cb) {
+            new Thread(() -> {
+                final String r = tryAutoRevive();
+                a.runOnUiThread(() -> {
+                    try {
+                        if (a.webView != null) {
+                            a.webView.evaluateJavascript(
+                                    "window.__reviveCb && window.__reviveCb("
+                                            + JSON.stringifyCb(cb) + "," + r + ")", null);
+                        }
+                    } catch (Throwable ignored) {
+                    }
+                });
+            }, "revive-deep").start();
+        }
+
+        /** v4.4.0：查询已启用无障碍服务列表——促使 AMS 校对绑定状态
+         *  （进程存活但服务未绑的窗口期，这次查询常触发系统重绑） */
+        private void kickA11yManager() {
+            try {
+                android.view.accessibility.AccessibilityManager am =
+                        (android.view.accessibility.AccessibilityManager)
+                                a.getSystemService(Context.ACCESSIBILITY_SERVICE);
+                if (am != null) {
+                    am.getEnabledAccessibilityServiceList(
+                            android.accessibilityservice.AccessibilityServiceInfo.FEEDBACK_ALL_MASK);
+                }
+            } catch (Throwable ignored) {
+            }
         }
 
         /* ───── v4.0.0 GKD 订阅管理（订阅页） ───── */
