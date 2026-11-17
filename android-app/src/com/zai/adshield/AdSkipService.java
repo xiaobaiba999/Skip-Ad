@@ -38,8 +38,20 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 开屏广告智能跳过服务（无障碍服务实现 · v3.14.0 · 纯跳过引擎）
+ * 开屏广告智能跳过服务（无障碍服务实现 · v5.1.0 · 纯跳过引擎）
  * ─────────────────────────────────────────────────────────────
+ * v5.1.0（issue#46/47 v5.0.0 日志实锤：非主流 App 噪声扫描刷屏 + 首页
+ * 落定期重复扫描）：
+ *  · 零候选退避：同窗连续 3 次零候选（微树 ≤6 节点 2 次）且过 2.6s
+ *    （微树 1.2s）→ 本窗剩余固定扫描档取消——校园/工具类 App 校徽启动
+ *    页（school.app 9 秒 7 条未命中）与商店首页不再被反复整树扫描；
+ *    nudge 救回通道不受影响（晚到真跳过键照点不误）；广告窗/学习窗/
+ *    Dialog 窗绝不退避（按钮可能 1~2s 晚到）；角落候选须过 L4 广告形态
+ *    门才算「有候选」（校徽页扫码键是角落形态但 L4 拒点）；
+ *  · 跳过后静默期：复验通过 2.2s 内不记「开屏未命中」（waimaiii 实锤：
+ *    广告关闭同一秒又对 79 节点首页整树扫描并记未命中 = 纯噪声日志）；
+ *  · 未命中日志微树过滤：≤5 节点加载占位窗（「树 4 节点 FrameLayout」
+ *    连环刷屏）不再记录。
  * v3.14.0（issue#21 日志 + 真机截图实锤：喜马拉雅跳过开屏后 10 次有 8 次
  * 弹出「不喜欢/反馈投诉」底部面板，用户每次都要手动收起）：
  *  · 跳过后反馈弹窗自动收起：引擎 12s 内自动跳过过的包里出现反馈面板
@@ -341,6 +353,15 @@ public class AdSkipService extends AccessibilityService {
     /* v4.3.0：扫描未命中诊断日志（每窗一条——用户提交日志能看到为什么
      * 不跳，开发侧据此补规则；issue#38「无法跳过且日志没记录」根治） */
     private final java.util.HashMap<String, Long> missLogAt = new java.util.HashMap<>();
+    /* v5.1.0 零候选退避（issue#46/47 实锤）：同窗连续零候选扫描计数
+     * （key=pkg|winStart）——满 3 次（微树 2 次）即取消本窗剩余固定档，
+     * nudge 救回通道保住晚到跳过键。校园/工具类 App 校徽启动页与商店
+     * 首页不再被反复整树扫描（功耗+风险面双降）。 */
+    private final java.util.HashMap<String, Integer> zeroCandScans = new java.util.HashMap<>();
+    /* v5.1.0 跳过成功静默期：广告关闭时间戳（复验通过时落账）——2.2s 内
+     * 不记「开屏未命中」（首页内容落定期的扫描是噪声，waimaiii 实锤：
+     * 复验通过同一秒又对 79 节点首页整树扫描并记了一条未命中）。 */
+    private final java.util.HashMap<String, Long> adClosedAt = new java.util.HashMap<>();
     /* v4.4.0 早退后救回通道：被杀链窗口的内容事件补扫节流（晚到跳过键仍能
      * 救回，滚动风暴被 900ms 节流挡住——issue#39-41 实锤 H5 开屏广告按钮
      * 1~2s 才渲染，早退杀链后 nudge 全让路 = 「有时候触发不了」元凶） */
@@ -1147,6 +1168,10 @@ public class AdSkipService extends AccessibilityService {
                     // v3.6.0 毒链① 根治：广告已关，学习窗快断资格同步作废
                     //（防止后续窗口还拿着旧资格按返回键）
                     winClsLearned.remove(pkg);
+                    // v5.1.0 静默期落账：首页内容落定期（2.2s）不再记
+                    // 「开屏未命中」——同一秒对 79 节点首页整树扫描是纯噪声
+                    if (adClosedAt.size() > 64) adClosedAt.clear();
+                    adClosedAt.put(pkg, now);
                 }
                 windowAt.put(pkg, now);
                 winClass.put(pkg, cls);
@@ -1624,6 +1649,7 @@ public class AdSkipService extends AccessibilityService {
             int clickAttempts = triesBox == null ? 0 : triesBox.intValue();
             boolean acted = false;           // v4.3.0：本轮是否出手/等待（未命中日志用）
             ScanFind lastFind = null;        // v4.3.0：最后一个根的扫描画像（同上）
+            Ctx lastCtx = null;              // v5.1.0：最后一个根的决策上下文（零候选退避用）
 
             /* ═══ v3.14.0 跳过后反馈弹窗（issue#21 实锤：喜马拉雅跳过后 10 次
              * 有 8 次弹「不喜欢/反馈投诉」底部面板）——反馈面板在场 = 广告
@@ -1740,6 +1766,7 @@ public class AdSkipService extends AccessibilityService {
                 /* ═══ 兜底路径：决策核心（复杂信号）═══ */
                 ScanFind f = AdDecisionCore.walk(new NodeAdapter(roots[ri]), ctx);
                 lastFind = f;
+                lastCtx = ctx;
                 /* v3.8.0 倒计时门控（issue#10 二轮·喜马拉雅）：穿山甲类 SDK 倒计时
                  * 结束前跳过键不响应——「已点击×4 不跳转」真凶之一（提前点全白点）。
                  * v3.9.0 抽取为 countdownWait()（规则路径/兜底路径共用） */
@@ -1763,6 +1790,40 @@ public class AdSkipService extends AccessibilityService {
                      *  · 广告窗/学习窗/Dialog 窗绝不杀（窗口本身就是广告）；
                      *  · 杀链后内容事件由 900ms 救回通道降频放行（nudgeScan）。 */
                     chainKilledAt.put(pkg, winStart);
+                }
+            }
+
+            /* ═══ v5.1.0 零候选退避（issue#46/47 实锤）═══
+             * 校园/工具类 App 校徽启动页（school.app 9 秒 7 条未命中）与
+             * 商店首页零候选后仍被固定档反复整树扫描——纯功耗 + 无谓风险面。
+             * 同窗连续 3 次零候选（微树 2 次）且过 2.6s（微树 1.2s）→ 本窗
+             * 剩余固定档取消；nudge 救回通道不受影响——晚到真跳过键出现
+             * 即触发内容事件，照点不误（与 v4.3.0 内容页早退同语义）。
+             * 豁免：广告窗/学习窗/Dialog 窗（窗口本身就是广告，按钮可能
+             * 晚到 1~2s——绝不退避，H5 开屏教训 v4.4.0 不重蹈）。 */
+            if (!acted && splashLive && lastFind != null && lastCtx != null) {
+                // v5.1.0 零候选判定：角落候选须过 L4 广告形态门才算数（school.app
+                // 实锤：校徽页 fl_scan 扫码键是角落形态但整窗无广告信号，
+                // L4 拒点——它不该让退避失灵）
+                boolean zeroCand = !AdDecisionCore.hasActionableCand(lastFind, lastCtx);
+                String zKey = pkg + "|" + winStart;
+                if (zeroCand) {
+                    String zCls = winClassOf(pkg);
+                    boolean exempt = AdDecisionCore.isAdActivityClass(zCls)
+                            || isDialogClass(zCls)
+                            || (winClsLearned.get(pkg) != null && winClsLearned.get(pkg).booleanValue());
+                    if (!exempt) {
+                        if (zeroCandScans.size() > 96) zeroCandScans.clear(); // 防膨胀
+                        Integer zBox = zeroCandScans.get(zKey);
+                        int zCount = (zBox == null ? 1 : zBox.intValue() + 1);
+                        zeroCandScans.put(zKey, zCount);
+                        if (AdDecisionCore.zeroCandBackoff(zCount, now - winStart, lastFind.nodeCount)) {
+                            chainKilledAt.put(pkg, winStart);
+                            zeroCandScans.remove(zKey);
+                        }
+                    }
+                } else {
+                    zeroCandScans.remove(zKey); // 出现候选即重置（救回通道复活计数）
                 }
             }
 
@@ -1792,10 +1853,19 @@ public class AdSkipService extends AccessibilityService {
 
     /* ───────── v4.3.0 扫描未命中诊断日志 ─────────
      * 每窗一条（pkg|winStart 去重）：树规模 + 窗口类名 + 可点小控件样本
-     * （text/desc/vid + 归一化坐标），用户上传日志后开发侧据此补规则。 */
+     * （text/desc/vid + 归一化坐标），用户上传日志后开发侧据此补规则。
+     * v5.1.0 双降噪：① 跳过后静默期（复验通过 2.2s 内）不记——首页内容
+     * 落定期的扫描是噪声（waimaiii 实锤：复验通过同一秒记了一条 79 节点
+     * 未命中）；② 微树（≤5 节点）不记——加载占位窗（school.app 实锤：
+     * 「树 4 节点 · FrameLayout」连环刷屏），无任何诊断价值。 */
     private void logScanMiss(String pkg, AccessibilityNodeInfo[] roots, ScanFind f,
                              long now, long winStart, boolean popup) {
         try {
+            // v5.1.0 静默期：广告刚关，首页内容还在落定——不记噪声
+            Long closedAt = adClosedAt.get(pkg);
+            if (AdDecisionCore.postSkipQuiet(closedAt == null ? 0 : closedAt.longValue(), now)) return;
+            // v5.1.0 微树过滤：加载占位窗（≤5 节点）无诊断价值
+            if (f != null && f.nodeCount <= 5) return;
             String key = pkg + "|" + winStart;
             Long last = missLogAt.get(key);
             if (last != null) return;

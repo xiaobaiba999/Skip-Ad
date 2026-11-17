@@ -3,8 +3,24 @@ package com.zai.adshield.core;
 import java.util.ArrayList;
 
 /**
- * 秒跳决策核心（v3.14.0 · 纯 Java · 零 Android 依赖 · JVM 可单测）
+ * 秒跳决策核心（v5.1.0 · 纯 Java · 零 Android 依赖 · JVM 可单测）
  * ─────────────────────────────────────────────────────────────
+ * v5.1.0（issue#46/47 v5.0.0 日志实锤：非主流 App 开屏跳不动 + 噪声扫描刷屏）：
+ *  · SDK 广告窗指纹扩展：AdsActivity（第三方自建开屏窗最高频命名——旧指纹
+ *    只认 "adactivity" 整段，"adsactivity" 漏网）/ DspActivity（美团系开屏
+ *    DSP 独立窗）/ DynamicDialog（美团动态广告弹窗）——漏网 = 整窗无指纹：
+ *    零 vid-close 点击、零返回键兜底，只能干看广告走完；
+ *  · 弹窗安全门：dialogForm 窗（DynamicDialog 类）SDK 直断须再过宽松广告
+ *    形态树（无滚动/无输入框）——运营/表单弹窗绝不返回键；
+ *  · 零候选退避 zeroCandBackoff：校园/工具类 App 校徽启动页（school.app
+ *    9 秒 7 条未命中）与商店首页零候选后继续整树扫描 = 纯功耗 + 无谓风险面。
+ *    同窗连续 3 次零候选且过 2.6s（微树 2 次/1.2s）→ 剩余固定档取消，
+ *    nudge 救回通道保住晚到真跳过键；
+ *  · 跳过后静默期 postSkipQuiet：复验通过同一秒又扫 79 节点首页（waimaiii
+ *    实锤）——2.2s 内不记未命中日志（第二帧广告是独立窗口事件不受影响）；
+ *  · 安全增补：诱导词 +抢购/秒杀/礼包/优惠/补贴/立减/低价/充值（「跳过领
+ *    礼包」类诱饵绝不代点）；支付页零扫描标记 +支付密码/付款码/收银台/
+ *    刷脸支付（与验证码横幅同一防线，点错=误触支付流程）。
  * v3.14.0（issue#21 日志 + 真机截图实锤：喜马拉雅跳过开屏后 10 次有 8 次
  * 弹出「不喜欢/反馈投诉」底部面板，用户每次都要手动收起；且引擎误判
  * 「广告未关」连续换候选重试 ×2~4 次）：
@@ -756,7 +772,11 @@ public final class AdDecisionCore {
             //    v3.6.0 学习指纹快断加双保险（真机事故：毒指纹把主页学成广告窗
             //    → 入口窗快断=按返回键退出应用）：① 仅非根窗口或 SDK 窗可快断；
             //    ② 须为广告形态树（信息流等可滚动页面绝不快断）
-            boolean sdkCut = ctx.sdkAdWin && ctx.elapsedMs >= CLS_BREAK_MS;
+            //    v5.1.0 弹窗安全门：DynamicDialog 类对话框窗（f.dialogForm）
+            //    须再过宽松广告形态树（无滚动/无输入框）——带滚动条的运营
+            //    弹窗/表单弹窗绝不返回键，只允许真正的图片广告弹窗直断。
+            boolean sdkCut = ctx.sdkAdWin && ctx.elapsedMs >= CLS_BREAK_MS
+                    && (!f.dialogForm || isAdLikeLoose(f));
             boolean learnedCut = ctx.learnedCls && ctx.elapsedMs >= CLS_LEARNED_BREAK_MS
                     && (!ctx.rootWindow || ctx.sdkAdWin) && isAdLike(f);
             if (sdkCut || learnedCut) {
@@ -832,6 +852,50 @@ public final class AdDecisionCore {
         return f.nodeCount <= CORNER_TREE_MAX_NODES;
     }
 
+    /* ───────── v5.1.0 非主流 App 开屏噪声退避（issue#46/47 实锤） ─────────
+     * 日志实锤：校园/工具类 App（school.app 9 秒内 7 条「开屏未命中」——
+     * 纯校徽启动页无广告可跳）与商店首页（market 145 节点零候选）被反复
+     * 整树扫描：纯功耗浪费 + 无谓风险面（多一次扫描就多一次误判机会）。
+     * 零候选退避：同窗连续 N 次零候选扫描 + 窗口已过 M ms → 本窗剩余
+     * 固定扫描档取消；内容事件救回通道（nudge）不受影响——晚到的真
+     * 跳过键出现即触发内容事件，照点不误。服务侧调用，纯逻辑 JVM 可单测。 */
+    public static final int ZERO_CAND_SCANS_KILL = 3;   // 常规窗：连续零候选扫描次数门槛
+    public static final long ZERO_CAND_KILL_MS = 2600;  // 且窗口已过 2.6s（真广告按钮最晚 1~2s 渲染）
+    public static final int TINY_TREE_NODES = 6;        // 微树（加载占位窗：FrameLayout 4 节点类）
+    public static final int TINY_TREE_SCANS_KILL = 2;   // 微树 2 次即退（占位窗本就秒级消失）
+    public static final long TINY_TREE_KILL_MS = 1200;  // 微树退避最早时机
+    public static final long POST_SKIP_QUIET_MS = 2200; // 跳过成功后静默期（首页内容落定）
+
+    /** 零候选退避判定：是否取消本窗剩余固定扫描档（nudge 救回通道不受影响）。
+     *  供服务侧在每个根扫描后调用；广告窗/学习窗/Dialog 窗由服务侧先行豁免
+     *  （窗口本身就是广告，按钮可能晚到——绝不退避）。微树（≤6 节点）是
+     *  加载占位窗，退得更快（school.app 实锤 4 节点 FrameLayout 连环窗）。 */
+    public static boolean zeroCandBackoff(int zeroCandScans, long elapsedMs, int nodeCount) {
+        if (nodeCount > 0 && nodeCount <= TINY_TREE_NODES) {
+            return zeroCandScans >= TINY_TREE_SCANS_KILL && elapsedMs >= TINY_TREE_KILL_MS;
+        }
+        return zeroCandScans >= ZERO_CAND_SCANS_KILL && elapsedMs >= ZERO_CAND_KILL_MS;
+    }
+
+    /** 跳过成功后静默期：广告刚关掉，首页内容还在落定（waimaiii 实锤：复验
+     *  通过同一秒又对 79 节点首页整树扫描）——静默期内不记未命中日志。
+     *  第二帧广告（DspActivity 链）是独立窗口事件，不受本静默期影响。 */
+    public static boolean postSkipQuiet(long adClosedAt, long now) {
+        return adClosedAt > 0 && now - adClosedAt < POST_SKIP_QUIET_MS;
+    }
+
+    /** v5.1.0：扫描画像是否存在「可出手候选」（零候选退避判定用）。
+     *  角落候选须过 L4 广告形态确认门才算数——school.app 实锤：校徽页
+     *  fl_scan 扫码键是角落形态（无文本小控件）但整窗无广告信号（135
+     *  节点/无角标/无热区/非 SDK 窗），L4 拒点它——若角落形态单独就算
+     *  「有候选」，退避永远不触发 = 校徽页继续被扫到天荒地老。 */
+    public static boolean hasActionableCand(ScanFind f, Ctx ctx) {
+        if (!f.skipCands.isEmpty() || !f.fakeCands.isEmpty() || f.foundClose || f.foundSkip) return true;
+        if (f.corners.isEmpty()) return false;
+        return f.hotZone || f.adBadge || ctx.sdkAdWin || ctx.learnedCls
+                || f.nodeCount <= CORNER_CONFIRM_NODES;
+    }
+
     private static Decision click(NodeView node, int[] bounds, String reason) {
         Decision d = new Decision();
         d.action = A_CLICK_BOUNDS;
@@ -861,7 +925,14 @@ public final class AdDecisionCore {
         String[] seg = c.split("[.$]");
         for (String s : seg) {
             if (s.length() < 3) continue;
-            if (s.equals("adactivity") || s.equals("advertactivity")) return true;
+            /* v5.1.0（issue#46/47 实锤）：AdsActivity——第三方 App 自建开屏
+             * 广告窗的最高频命名（www 等），旧指纹只认 "adactivity" 整段，
+             * "adsactivity" 漏网 = 整窗无指纹（零 vid-close 点击/零返回兜底） */
+            if (s.equals("adactivity") || s.equals("advertactivity") || s.equals("adsactivity")) return true;
+            /* v5.1.0：DspActivity——美团系开屏 DSP 广告独立窗（返回=回主界面，
+             * 安全）；DynamicDialog——美团动态广告弹窗（配合订阅关闭键规则，
+             * 返回兜底由 decide() 的 dialogForm 安全门再管一道） */
+            if (s.contains("dsp") || s.contains("dynamicdialog")) return true;
             if (s.contains("openadsdk") || s.contains("adsdk") || s.contains("kwad")
                     || s.contains("gdtadv") || s.contains("admob") || s.contains("sigmob")
                     || s.contains("adcolony") || s.contains("applovin") || s.contains("vungle")
@@ -954,8 +1025,9 @@ public final class AdDecisionCore {
         return !hasInducementWord(text) && !hasInducementWord(desc);
     }
 
-    /** 诱导词黑名单（主引擎 DANGEROUS_WORDS 同源，供订阅全局组门用） */
-    static boolean hasInducementWord(String s) {
+    /** 诱导词黑名单（主引擎 DANGEROUS_WORDS 同源，供订阅全局组门用；
+     *  v5.1.0 起 public——测试与诊断日志共用） */
+    public static boolean hasInducementWord(String s) {
         if (s == null || s.length() == 0) return false;
         for (String w : INDUCE_WORDS) {
             if (s.contains(w)) return true;
@@ -966,14 +1038,23 @@ public final class AdDecisionCore {
     public static final String[] INDUCE_WORDS = {
             "摇", "晃", "翻", "转", "扭", "领", "福利", "详情", "下载", "开通",
             "注册", "登录", "抽奖", "红包", "进入", "查看", "立即",
+            // v5.1.0（安全性增补）：营销 CTA 高频词——真跳过键文案数学上
+            // 不含这些词（「跳过」「跳过 3」「3s后可跳过」），加进来只会
+            // 更严不会误伤；「跳过领礼包」「跳过抢购」类诱饵标签绝不代点
+            "抢购", "秒杀", "礼包", "优惠", "补贴", "立减", "低价", "充值",
     };
 
     /** v3.13.0：验证码横幅文案标记——树内任一节点命中即视为验证码/通知横幅，
-     *  该窗口绝不扫描、绝不点击、绝不学习（银行/支付登录页同理放行，本就无广告可跳）。 */
+     *  该窗口绝不扫描、绝不点击、绝不学习（银行/支付登录页同理放行，本就无广告可跳）。
+     *  v5.1.0（安全性增补）：支付/资金页标记——支付密码/付款码/收银台/刷脸支付
+     *  文案出现 = 用户正在支付（银行 App 收银台、电商支付页、转账界面），此类
+     *  窗口绝不该有任何自动点击（点错=误触支付流程）。与验证码横幅同一防线。 */
     public static boolean isCodeBannerMarker(String s) {
         if (s == null) return false;
         return s.contains("验证码") || s.contains("校验码")
-                || s.contains("动态码") || s.contains("动态密码");
+                || s.contains("动态码") || s.contains("动态密码")
+                || s.contains("支付密码") || s.contains("付款码")
+                || s.contains("收银台") || s.contains("刷脸支付");
     }
 
     /* ───────── v3.14.0 跳过后反馈弹窗识别 ───────── */

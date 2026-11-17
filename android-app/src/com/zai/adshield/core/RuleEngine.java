@@ -111,12 +111,15 @@ public final class RuleEngine {
     static final String P_COUNTDOWN_TAIL = "^跳[过過](广告|廣告)?\\s*\\d{1,2}\\s*[s秒]?$";
     static final String P_COUNTDOWN_HEAD = "^\\d{1,2}\\s*[s秒]?\\s*后後?\\s*可?\\s*跳[过過](广告|廣告)?$";
 
-    /* ── 第3层：短包含（≤8 字）+ 诱导词黑名单一票否决 ── */
+    /* ── 第3层：短包含（≤8 字）+ 诱导词黑名单一票否决 ──
+       v5.1.0 增补（与 AdDecisionCore.INDUCE_WORDS 同源）：抢购/秒杀/礼包/
+       优惠/补贴/立减/低价/充值——真跳过键文案数学上不含这些词，只紧不松 */
     static final String[] TEXT_SHORT = { "跳过", "跳過", "skip" };
     static final int CONTAINS_MAX_LEN = 8;
     static final String[] DANGEROUS_WORDS = {
             "摇", "晃", "翻", "转", "扭", "领", "福利", "详情", "下载", "开通",
             "注册", "登录", "抽奖", "红包", "进入", "查看", "立即",
+            "抢购", "秒杀", "礼包", "优惠", "补贴", "立减", "低价", "充值",
     };
 
     /* ── 第4层：vid 关键段 ──
