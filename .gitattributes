@@ -1,0 +1,14 @@
+# Linguist 语言构成净化（v5.6.0）：
+# 产品语言 = Java（引擎）+ JavaScript（WebView 壳 UI）+ TypeScript（规则台/CI 脚本）
+# 其余为数据、测试报告、构建产物、下载产物——标记 vendored/generated，不计入语言栏
+tests/** -diff linguist-vendored
+docs/test-reports/** -diff linguist-generated
+android-app/build-tests/** -diff linguist-generated
+android-app/dist/** -diff linguist-generated
+download/** -diff linguist-generated
+data/** -diff linguist-generated
+agent-ctx/** -diff linguist-generated
+tool-results/** -diff linguist-generated
+upload/** -diff linguist-generated
+mini-services/** -diff linguist-vendored
+examples/** -diff linguist-vendored

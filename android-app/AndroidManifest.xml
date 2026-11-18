@@ -15,6 +15,12 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- v3.5.0 保活：电池优化白名单（防厂商省电策略杀服务） -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- v5.6.0 零打扰持久模式（可选·一次 ADB 授权）：
+         signature|preinstalled|development 级权限——商店安装拿不到，
+         仅用户执行 adb shell pm grant ... WRITE_SECURE_SETTINGS 后生效；
+         生效后无障碍登记被吊销时应用可把自己写回登记（免系统设置·免 10 秒警告）。
+         未授权设备此权限零行为（checkSelfPermission 恒 denied）。 -->
+    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />
 
     <!-- queries：用于在学习中心展示应用名称（可启动应用可见性） -->
     <queries>

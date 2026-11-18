@@ -23,8 +23,8 @@ const store = {
 };
 
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "5.5.0"; }
-function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "50500"; }
+function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "5.6.0"; }
+function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "50600"; }
 
 /* ══════════ 吉祥物（v4.1.0 全新形象：白机器人小侠 + 绿披风跳跃） ══════════
  * 与启动器图标同源；state: on（跳跃浮动）/ off（灰度待命） */
@@ -40,12 +40,12 @@ $("#brand-logo").innerHTML = mascotImg(30, "on", true);
  * GitHub Releases，本页不再堆叠多版本记录——只保留当前版本的
  * 版本号 / 核心要点 / 发布时间三项信息。 */
 const CURRENT_RELEASE = {
-  date: "2026-11-20",
+  date: "2026-11-18",
   highlights: [
-    "UI 交互专项：版本记录极简化（仅展示当前版本，历史归档 GitHub Releases）；日志上传强反馈（弹窗 + 顶部横幅 + 系统通知三重确认）；10 秒警告红线（系统设置跳转前强制二次判定，登记仍在一律应用内自愈）",
-    "日志内容四类齐备：应用版本 / 设备信息 / 拦截日志 / 异常堆栈，全链路正则脱敏（手机号 / 身份证 / 邮箱 / IP），敏感信息本地脱敏后再上传",
-    "崩溃采集闭环：进程崩溃堆栈本地留存（读后即删），随日志上传自动附带，异常不再靠猜",
-    "继承 v5.4.0 全部能力：多源规则统一调度、统一规则 DSL、学习规则质量治理、五类新广告场景、敏感场景零扫描扩容、分级动态功耗、折叠屏/平板/分屏自适应",
+    "命中激进化：SDK 指纹 +8 档（UnionSplash/插屏/Advertising 等）、倒计时提前 0.2s 开火、同窗预算 6→8、点击冷却 500ms、内置规则库 102→114 款 + 全局 vid 兜底两档——好多广告没命中的根子一刀切断",
+    "订阅市场：旧默认订阅已停止维护全面下架，换 gkd-subscription 话题活跃维护源一键导入（含本仓库官方订阅·subscription-template 构建）；topics 列表与自建订阅指引页内直达",
+    "10 秒警告终局：前台 3s 看门狗自动深挖拉活（退后台再进零操作）；新增可选「零打扰持久模式」——一次 ADB 授权 WRITE_SECURE_SETTINGS，登记被吊销自动写回重绑（零系统设置 · 零 10 秒警告）",
+    "5 品牌 × 10 机型矩阵自测 50 机型六维全绿（开屏命中 / 屏蔽速度 / bug 防线 / 功耗 / 精准度 / 算法优化），总断言 1036 项零回归",
   ],
 };
 
@@ -148,6 +148,7 @@ function refreshHome() {
   }
   renderHero(running, enabledInSettings, masterOn);
   refreshBattery(running);
+  try { refreshSecureHeal(); } catch (e) {}
 }
 
 function renderHero(running, enabledInSettings, masterOn) {
@@ -309,6 +310,73 @@ $("#btn-enable").addEventListener("click", () => {
 
 $("#btn-revive").addEventListener("click", () => {
   doRevive();
+});
+
+/* ═══ v5.6.0 自动拉活看门狗（issue 终局：退后台再进绝不该看到「未开启」）═══
+ * 旧版：服务死了但登记仍在时，页面只显示「服务待恢复」等用户点按钮——
+ * 部分用户以为要重新开启（甚至去系统设置）。现在前台期间每 3s 自查：
+ * 登记仍在 + 服务未跑 + 未在恢复中 → 自动静默深挖拉活（15s 自适应），
+ * 恢复成功 UI 自动切「守护中」。全程无需用户任何操作。 */
+let lastAutoReviveKick = 0;
+setInterval(() => {
+  if (!HAS_BRIDGE || reviving) return;
+  try {
+    const running = !!AndroidApp.isServiceRunning();
+    if (running) return;
+    const enabled = !!AndroidApp.a11yEnabledInSettings();
+    if (!enabled) return; // 真吊销：交给持久模式自愈或开启引导
+    const now = Date.now();
+    if (now - lastAutoReviveKick < 3000) return;
+    lastAutoReviveKick = now;
+    doRevive(); // 静默深挖（toast 只在完成/失败时出现）
+  } catch (e) {}
+}, 3000);
+
+/* ═══ v5.6.0 持久守护卡片（零打扰持久模式状态展示）═══ */
+let shCmd = "";
+function refreshSecureHeal() {
+  const card = $("#sh-card");
+  if (!card || !HAS_BRIDGE) return;
+  let st = null;
+  try { st = JSON.parse(AndroidApp.secureHealStatus() || "{}"); } catch (e) {}
+  if (!st) return;
+  card.style.display = "";
+  const chip = $("#sh-chip");
+  if (st.granted) {
+    chip.className = "chip chip-green";
+    chip.textContent = "已授权";
+    $("#sh-desc").textContent = "持久模式生效：无障碍被吊销将自动写回登记重绑（零系统设置 · 零 10 秒警告）";
+    $("#sh-how").style.display = "none";
+  } else {
+    chip.className = "chip";
+    chip.textContent = "未授权";
+    $("#sh-desc").textContent = "一次 ADB 授权后：升级/清理后台吊销无障碍时自动写回登记重绑，不再进系统设置、不看 10 秒警告";
+    const how = $("#sh-how");
+    how.style.display = "";
+    shCmd = st.cmd || "";
+    how.textContent = "电脑连接手机执行一次：" + shCmd + "（仅需一次，永久生效；商店安装的应用拿不到此权限）";
+  }
+}
+$("#btn-sh-copy").addEventListener("click", () => {
+  if (!shCmd) return;
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(shCmd);
+      toast("授权命令已复制，电脑连接手机执行一次即可");
+      return;
+    }
+  } catch (e) {}
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = shCmd;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    document.body.removeChild(ta);
+    toast("授权命令已复制，电脑连接手机执行一次即可");
+  } catch (e) {
+    toast("复制失败，请长按卡片手动复制命令");
+  }
 });
 
 function refreshBattery(running) {
@@ -478,7 +546,10 @@ $("#wl-input").addEventListener("keydown", (e) => {
 
 
 /* ══════════ 订阅页 ══════════ */
-const SUB_EXAMPLE = "https://registry.npmmirror.com/@gkd-kit/subscription/latest/files/dist/gkd.json5";
+/* v5.6.0：旧默认源 @gkd-kit/subscription（已归档停更）下架；
+ * 快速填入换成 Lin-arm 社区事实标准订阅（jsdelivr CDN 国内可达）；
+ * 订阅市场卡片一键导入活跃维护源（subRecommend 注册表）。 */
+const SUB_EXAMPLE = "https://cdn.jsdelivr.net/gh/Lin-arm/GKD_subscription@main/dist/gkd.json5";
 let subCbSeq = 0;
 
 function subCall(method, ...args) {
@@ -505,6 +576,7 @@ function refreshSub() {
     $("#sub-builtin-rules").textContent = "21 条";
     return;
   }
+  renderSubMarket();
   let sub = null;
   try { sub = JSON.parse(AndroidApp.subState()); } catch (e) {}
   if (!sub) return;
@@ -549,8 +621,73 @@ $("#btn-sub-import").addEventListener("click", async () => {
 
 $("#btn-sub-example").addEventListener("click", () => {
   $("#sub-url").value = SUB_EXAMPLE;
-  toast("已填入 GKD 官方订阅链接");
+  toast("已填入 Lin-arm 社区订阅（日更维护）");
 });
+
+/* ═══ v5.6.0 订阅市场（活跃维护源一键导入）═══ */
+let subMarketData = [];
+function renderSubMarket() {
+  const box = $("#sub-market");
+  if (!box) return;
+  let list = subMarketData;
+  if (HAS_BRIDGE && !list.length) {
+    try { list = subMarketData = JSON.parse(AndroidApp.subRecommend() || "[]"); } catch (e) {}
+  }
+  if (!list || !list.length) {
+    box.innerHTML = '<div class="sub-note">订阅市场不可用（请更新到最新版）</div>';
+    return;
+  }
+  box.innerHTML = list.map(s =>
+    '<div class="market-item">'
+    + '<div class="market-info">'
+    + '<div class="market-name">' + esc(s.name) + ' <span class="market-badge">' + esc(s.badge) + '</span></div>'
+    + '<div class="market-desc">' + esc(s.desc) + ' · by ' + esc(s.owner) + '</div>'
+    + '</div>'
+    + '<div class="market-acts">'
+    + '<button class="btn btn-primary btn-sm" data-sub-import="' + s.idx + '">导入</button>'
+    + '<button class="btn btn-ghost btn-sm" data-sub-repo="' + s.idx + '">仓库</button>'
+    + '</div></div>').join("");
+  box.querySelectorAll("[data-sub-import]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const s = list[+btn.dataset.subImport];
+      if (!s) return;
+      const box2 = $("#sub-result");
+      box2.className = "fb-result"; box2.textContent = "正在拉取「" + s.name + "」（失败自动换镜像）…";
+      $("#sub-url").value = s.url;
+      const r = await subCall("subSetUrl", s.url);
+      if (r.ok) {
+        box2.className = "fb-result ok";
+        box2.textContent = "已导入「" + (r.name || s.name) + "」：" + (r.apps || 0) + " 款应用 · " + (r.rules || 0) + " 条规则";
+      } else {
+        box2.className = "fb-result err"; box2.textContent = r.error || "导入失败";
+      }
+      refreshSub();
+    });
+  });
+  box.querySelectorAll("[data-sub-repo]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const s = list[+btn.dataset.subRepo];
+      if (!s || !HAS_BRIDGE) return;
+      try { AndroidApp.openUrl(s.repo); } catch (e) {}
+    });
+  });
+}
+
+/* v5.6.0 市场底部链接：话题列表 + subscription-template 构建指引 */
+(function bindSubLinks() {
+  const t = $("#link-sub-topics");
+  if (t) t.addEventListener("click", (ev) => {
+    ev.preventDefault();
+    if (HAS_BRIDGE) { try { AndroidApp.openUrl("https://github.com/topics/gkd-subscription"); } catch (e) {} }
+    else window.open("https://github.com/topics/gkd-subscription", "_blank");
+  });
+  const m = $("#link-sub-template");
+  if (m) m.addEventListener("click", (ev) => {
+    ev.preventDefault();
+    if (HAS_BRIDGE) { try { AndroidApp.openUrl("https://github.com/gkd-kit/subscription-template"); } catch (e) {} }
+    else window.open("https://github.com/gkd-kit/subscription-template", "_blank");
+  });
+})();
 
 $("#btn-sub-clear").addEventListener("click", async () => {
   $("#sub-url").value = "";

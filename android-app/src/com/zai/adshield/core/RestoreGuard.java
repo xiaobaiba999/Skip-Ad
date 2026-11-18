@@ -329,4 +329,50 @@ public final class RestoreGuard {
                 + "点按本通知 → 打开开屏卫士 → 自动深度拉活（最长 15 秒），全程不去系统设置。\n"
                 + "若常被解绑：" + familyLabel + " 建议完成 App 首页「保活体检」。";
     }
+
+    /* ══════════════ 8. v5.6.0 零打扰持久模式（免系统设置自愈）══════════════
+     * 用户实锤（本轮三度反馈）：部分用户「退后台再进/装最新版回来开守护」
+     * 每次都被要求进系统设置重开 + 强看 10 秒警告。登记被 ROM 吊销后，
+     * 公开 API 无法恢复是事实——但 WRITE_SECURE_SETTINGS（adb 一次性授权）
+     * 允许应用直接改 Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES：
+     * 把自己写回登记 = 系统自动重绑 = 零系统设置 · 零 10 秒警告。
+     * 安全边界：
+     *  · 权限是 signature|preinstalled|development 级——商店 App 拿不到，
+     *    仅用户在 PC/无线 ADB 执行一次 pm grant 才生效（明示授权）；
+     *  · 只把【自己的组件】并回登记串，绝不增删他人登记（幂等去重，
+     *    保留原顺序，失败原样返回 null 交回保守通知流）；
+     *  · 未授权设备零行为变化——通知流/体检卡照旧。纯函数，JVM 可测。 */
+
+    /** 把本服务组件并回 ENABLED_ACCESSIBILITY_SERVICES 登记串（幂等 · 去重 · 保序）。
+     *  @return 合并后的新登记串；组件已在串中（无需写）返回原串；入参非法返回 null */
+    public static String mergeRegistrationCsv(String currentCsv, String ourFlat) {
+        if (ourFlat == null || ourFlat.length() == 0) return null;
+        if (currentCsv == null || currentCsv.trim().length() == 0) return ourFlat; // 空表 → 唯一登记
+        java.util.StringTokenizer st = new java.util.StringTokenizer(currentCsv, ":");
+        StringBuilder keep = new StringBuilder();
+        boolean already = false;
+        while (st.hasMoreTokens()) {
+            String tok = st.nextToken().trim();
+            if (tok.length() == 0) continue;            // 丢弃空段（顺手清理）
+            if (tok.equals(ourFlat)) { already = true; } // 去重标记
+            if (keep.length() > 0) keep.append(':');
+            keep.append(tok);
+        }
+        if (already) return keep.length() == 0 ? ourFlat : keep.toString(); // 已在 → 原样（幂等）
+        if (keep.length() > 0) keep.append(':');
+        keep.append(ourFlat);
+        return keep.toString();
+    }
+
+    /** 持久模式引导文案：一次 ADB 授权命令（页面展示/复制用，纯常量） */
+    public static String secureGrantCmd(String pkg) {
+        return "adb shell pm grant " + (pkg == null || pkg.length() == 0 ? "<pkg>" : pkg)
+                + " android.permission.WRITE_SECURE_SETTINGS";
+    }
+
+    /** 持久模式说明（零打扰闭环：授权后吊销也能静默回登记） */
+    public static String secureModeDesc() {
+        return "授权后：升级/清理后台把无障碍登记吊销时，卫士将直接把自己写回系统登记并自动重绑——"
+                + "不再进系统设置、不看 10 秒警告。权限仅经你本人 ADB 一次授权生效，商店安装的应用拿不到该权限。";
+    }
 }

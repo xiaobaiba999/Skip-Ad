@@ -72,6 +72,21 @@
         <div id="ka-list" style="margin-top:10px"></div>
       </div>
 
+      <!-- v5.6.0 零打扰持久模式（可选·一次 ADB 授权：免系统设置/免 10 秒警告自愈） -->
+      <div class="card" id="sh-card" style="display:none">
+        <div class="row-between">
+          <div>
+            <div class="card-title">持久守护 · 零系统设置</div>
+            <div class="sub-note" style="margin-top:4px" id="sh-desc">升级/清理后台吊销无障碍时自动写回登记重绑</div>
+          </div>
+          <span class="chip" id="sh-chip">未授权</span>
+        </div>
+        <div class="sub-note" id="sh-how" style="display:none;margin-top:6px"></div>
+        <div class="btn-row" style="margin-top:8px">
+          <button class="btn btn-ghost btn-sm" id="btn-sh-copy">复制授权命令</button>
+        </div>
+      </div>
+
       <!-- 战绩 -->
       <div class="card stats-card">
         <div class="stat">
@@ -130,6 +145,21 @@
         <div class="sub-note">文案五层规则 + 控件 ID 规则，随安装包内置，无需联网</div>
       </div>
 
+      <!-- v5.6.0 订阅市场：活跃维护的第三方订阅（替换停更默认源） -->
+      <div class="card">
+        <div class="row-between">
+          <div class="card-title">订阅市场 · 活跃维护</div>
+          <span class="chip chip-green">2026-11</span>
+        </div>
+        <div class="sub-note">旧默认订阅已停止维护——以下按 gkd-subscription 话题近期更新/星数精选，一键导入</div>
+        <div id="sub-market" class="market-list"></div>
+        <div class="sub-note" style="margin-top:8px">
+          更多订阅：
+          <a href="#" id="link-sub-topics">github.com/topics/gkd-subscription</a> ·
+          <a href="#" id="link-sub-template">用 subscription-template 构建自己的订阅</a>
+        </div>
+      </div>
+
       <div class="card">
         <div class="row-between">
           <div class="card-title">GKD 订阅</div>
@@ -139,7 +169,7 @@
         <input type="url" id="sub-url" class="fb-input" placeholder="https://…/gkd.json5">
         <div class="btn-row">
           <button class="btn btn-primary" id="btn-sub-import">导入</button>
-          <button class="btn btn-ghost" id="btn-sub-example">官方订阅</button>
+          <button class="btn btn-ghost" id="btn-sub-example">推荐订阅</button>
           <button class="btn btn-ghost" id="btn-sub-clear">移除</button>
         </div>
         <div class="sub-status" id="sub-status" style="display:none">

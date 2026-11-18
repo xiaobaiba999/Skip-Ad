@@ -195,13 +195,21 @@ public final class AdDecisionCore {
 
     /* ── v3.8.0 参数（issue#10 二轮·GKD 方法论对齐） ── */
     public static final double FAKE_TAP_AREA_MAX = 0.12; // v3.8.0：假跳过手势候选：标签自身面积上限（大标签=CTA 诱饵不点）
-    public static final long COUNTDOWN_EXTRA_MS = 500;   // v3.8.0：倒计时门控缓冲（标签渲染有延迟，留 0.5s）
+    /* v5.6.0 激进化（用户实锤：好多广告没有命中——可以大胆激进）：
+     * 倒计时缓冲 500→300ms（穿山甲系倒计时将尽即出手，快点 0.2s）；
+     * 出手后缓冲收窄 = 同窗可更快进入复验换候选。安全边界不变：
+     * 倒计时未到仍不点（点了白点占冷却），只是「将尽」判定提前。 */
+    public static final long COUNTDOWN_EXTRA_MS = 300;   // v5.6.0：500→300（激进：倒计时将尽提前 0.2s 开火）
     public static final int COUNTDOWN_MAX_S = 15;        // v3.8.0：可识别的倒计时秒数上限
 
     /* ── v3.5.0 复验与候选参数 ── */
     public static final int MAX_CORNERS = 4;              // 角落候选上限（逐个换着点）
     public static final int CLICK_VERIFY_MAX = 3;         // 同窗点击次数达到即升级返回键（仅应用内窗，v3.6.0）
-    public static final int MAX_CLICKS_PER_WIN = 6;       // 同窗点击总预算（用尽优雅收手，服务侧执行）
+    /* v5.6.0 激进化：同窗点击总预算 6→8（用户实锤：第一方自绘广告
+     * 复验链长——候选轮换+坐标重试同窗常超 6 次即「优雅收手」，
+     * 收得太早 = 广告完胜。+2 预算仅在开屏窗期内生效于服务侧计数，
+     * 安全闸（面积/形状/守护名单）不变。 */
+    public static final int MAX_CLICKS_PER_WIN = 8;       // v5.6.0：6→8（激进：复验链多两次换候选机会）
     public static final double CLOSE_TOP_MAX = 0.35;      // 开屏×关闭键须在顶部 35% 内
     public static final int LONG_TEXT_LEN = 40;           // 长文本（正常内容页特征）
 
@@ -225,8 +233,14 @@ public final class AdDecisionCore {
        （设置齿轮/客服入口）节点树大且无广告信号，绝不误点（不乱点红线） */
     public static final int CORNER_CONFIRM_NODES = 60;
 
-    /* ── 文案特征库（与 2026-11 市场调研同步） ── */
-    public static final String[] SKIP_TEXTS = {"跳过", "关闭广告"};
+    /* ── 文案特征库（与 2026-11 市场调研同步）──
+     * v5.6.0 激进化扩充（用户实锤：好多广告没有命中）：
+     *  · SKIP_TEXTS 增「跳过广告/跳过此广告/立即跳过/Skip Ad」——matchesSkip
+     *    的 contains(跳过/skip) 已覆盖大广度，此处扩充作用于 CLOSE 族
+     *    兼容路径与订阅 vid 限定路径（第一方自绘窗常把「跳过广告」整词
+     *    当独立标签，旧库只收「跳过/关闭广告」两项，walk 分类不进真候选）；
+     *  · GYRO/CLOSE/CTA/BADGE 不变——误报防线（不乱点红线）不放松。 */
+    public static final String[] SKIP_TEXTS = {"跳过", "关闭广告", "跳过广告", "跳过此广告", "立即跳过", "跳过领取", "Skip Ad"};
     public static final String[] GYRO_HINTS = {"翻转", "摇一摇", "摇晃", "晃动", "摇动", "扭一扭", "转动手机", "倾斜手机", "拿起手机"};
     public static final String[] CLOSE_TEXTS = {"×", "x", "X", "✕", "✖", "╳", "关闭", "close", "不感兴趣", "我知道了", "知道了", "关闭广告", "跳过", "忽略", "暂不"};
     public static final String[] BADGE_TEXTS = {"广告", "推广", "赞助", "广告推广", "sponsored", "promoted", "sponsor"};
@@ -970,6 +984,20 @@ public final class AdDecisionCore {
                     || s.contains("splashad") || s.contains("adsplash") || s.contains("landingpage")
                     || s.contains("adpage") || s.contains("adlanding")
                     || s.contains("xiaomi.ad") || s.contains("zeus")) return true;
+            /* v5.6.0 激进化指纹扩充（用户实锤：好多广告没有命中——整窗
+             * 无指纹 = 零 vid-close 点击 + 零返回键兜底，只能干看广告走完）：
+             *  · unionsplash：穿山甲 UnionSplashActivity（SDK 开屏独立窗
+             *    最高频漏网命名；绝不把普通 splashactivity 认成广告窗——
+             *    App 自建开屏容器按返回=退出应用，红线不碰）；
+             *  · interstitial / insertscreen / insertadscreen：插屏广告窗
+             *    （AdMob InterstitialActivity / 国内 SDK InsertScreenActivity）；
+             *  · advertising / advertad：广告窗高频命名及变体；
+             *  · promoad / bonusad：促销/激励弹层窗（游戏 SDK 常见）。
+             *    以上全是 SDK 侧命名约定，非 App 业务窗命名——误报面可控。 */
+            if (s.contains("unionsplash") || s.contains("interstitial")
+                    || s.contains("insertscreen") || s.contains("insertadscreen")
+                    || s.contains("advertising") || s.contains("advertad")
+                    || s.contains("promoad") || s.contains("bonusad")) return true;
         }
         return false;
     }

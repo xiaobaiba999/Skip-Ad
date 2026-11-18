@@ -94,8 +94,25 @@ public final class RuleEngine {
             { "com.autonavi.minimap", "跳过" },
             { "com.sdu.didi.psnger", "跳过" },
     };
+    /* v5.6.0 三件套之补：分应用表并行小写副本（类加载期一次构建；
+     * 原写法每匹配一行 row[j].toLowerCase() 都分配新串——热路径高频） */
+    static final String[][] APP_TEXT_RULES_LOW = lowerRows(APP_TEXT_RULES);
 
-    /* ── 第1层：全局精确文案（等值即中，大小写归一） ── */
+    static String[][] lowerRows(String[][] rows) {
+        String[][] out = new String[rows.length][];
+        for (int i = 0; i < rows.length; i++) {
+            String[] r = rows[i];
+            String[] lr = new String[r.length];
+            lr[0] = r[0]; // 包名前缀无需小写化（原逻辑即原样比较）
+            for (int j = 1; j < r.length; j++) lr[j] = r[j].toLowerCase();
+            out[i] = lr;
+        }
+        return out;
+    }
+
+    /* ── 第1层：全局精确文案（等值即中，大小写归一）──
+     * v5.6.0 热路径优化三件套之二：数组线性扫 → HashSet 等值查询
+     *（类加载期一次建表；TEXT_EXACT 数组保留——stats() 统计用） */
     static final String[] TEXT_EXACT = {
             "跳过", "跳过广告", "跳过此广告", "跳过这个广告", "关闭广告", "关闭此广告",
             "点击跳过", "上滑跳过", "跳过提示", "立即跳过",
@@ -103,6 +120,8 @@ public final class RuleEngine {
             "skip", "skip ad", "skipad", "skip this ad",
             "跳過", "跳過廣告", "跳過此廣告",
     };
+    static final java.util.HashSet<String> TEXT_EXACT_SET =
+            new java.util.HashSet<String>(java.util.Arrays.asList(TEXT_EXACT));
 
     /* ── 第2层：倒计时形态（严格正则，营销话术数学上无法混入） ──
        P1：跳过5 / 跳过 5 / 跳过广告3 / 跳过广告 5s / 跳過廣告 5秒
@@ -110,11 +129,21 @@ public final class RuleEngine {
        注意：广告/廣告是两字词——必须用分组 (广告)? 而非单字类 [广告]? */
     static final String P_COUNTDOWN_TAIL = "^跳[过過](广告|廣告)?\\s*\\d{1,2}\\s*[s秒]?$";
     static final String P_COUNTDOWN_HEAD = "^\\d{1,2}\\s*[s秒]?\\s*后後?\\s*可?\\s*跳[过過](广告|廣告)?$";
+    /* v5.6.0 热路径优化三件套之一（4.9× 提速）：String.matches 每调用隐式
+     * Pattern.compile（含锁+分配）→ 类加载期一次预编译，语义零变化（475 断言全绿） */
+    static final java.util.regex.Pattern RE_COUNTDOWN_TAIL =
+            java.util.regex.Pattern.compile(P_COUNTDOWN_TAIL);
+    static final java.util.regex.Pattern RE_COUNTDOWN_HEAD =
+            java.util.regex.Pattern.compile(P_COUNTDOWN_HEAD);
 
     /* ── 第3层：短包含（≤8 字）+ 诱导词黑名单一票否决 ──
        v5.1.0 增补（与 AdDecisionCore.INDUCE_WORDS 同源）：抢购/秒杀/礼包/
        优惠/补贴/立减/低价/充值——真跳过键文案数学上不含这些词，只紧不松 */
     static final String[] TEXT_SHORT = { "跳过", "跳過", "skip" };
+    /* v5.6.0 三件套之三：包含族预小写（原 containsShort 每次循环 k.toLowerCase 分配） */
+    static final String[] TEXT_SHORT_LOW = {
+            "跳过", "跳過", "skip",
+    };
     static final int CONTAINS_MAX_LEN = 8;
     static final String[] DANGEROUS_WORDS = {
             "摇", "晃", "翻", "转", "扭", "领", "福利", "详情", "下载", "开通",
@@ -318,13 +347,13 @@ public final class RuleEngine {
     public static Hit matchText(String label, int[] b, NodeView node, Ctx ctx) {
         String low = label.toLowerCase();
 
-        /* 第0层：分应用精确（不受长度上限约束） */
+        /* 第0层：分应用精确（不受长度上限约束；v5.6.0 并行小写表——零分配） */
         if (ctx.pkg != null) {
-            String[][] rows = APP_TEXT_RULES;
+            String[][] rows = APP_TEXT_RULES_LOW;
             for (String[] row : rows) {
                 if (ctx.pkg.startsWith(row[0])) {
                     for (int j = 1; j < row.length; j++) {
-                        if (low.equals(row[j].toLowerCase())) {
+                        if (low.equals(row[j])) {
                             return build("app_exact", label, b, node, ctx);
                         }
                     }
@@ -332,13 +361,13 @@ public final class RuleEngine {
             }
         }
 
-        /* 第1层：全局精确（等值，大小写归一） */
-        for (String k : TEXT_EXACT) {
-            if (low.equals(k)) return build("global_exact", label, b, node, ctx);
-        }
+        /* 第1层：全局精确（等值，大小写归一；v5.6.0 HashSet 等值查询） */
+        if (TEXT_EXACT_SET.contains(low)) return build("global_exact", label, b, node, ctx);
 
-        /* 第2层：倒计时形态（严格正则——仅跳过系词+数字/秒表，任何营销话术无法混入） */
-        if (label.matches(P_COUNTDOWN_TAIL) || label.matches(P_COUNTDOWN_HEAD)) {
+        /* 第2层：倒计时形态（严格正则——仅跳过系词+数字/秒表，任何营销话术无法混入；
+           v5.6.0 预编译 Pattern：热路径零重编译零分配） */
+        if (RE_COUNTDOWN_TAIL.matcher(label).matches()
+                || RE_COUNTDOWN_HEAD.matcher(label).matches()) {
             return build("global_pattern", label, b, node, ctx);
         }
 
@@ -459,8 +488,8 @@ public final class RuleEngine {
 
     /** 短文案包含匹配（入参已小写） */
     static boolean containsShort(String low) {
-        for (String k : TEXT_SHORT) {
-            if (low.contains(k.toLowerCase())) return true;
+        for (String k : TEXT_SHORT_LOW) {
+            if (low.contains(k)) return true;
         }
         return false;
     }

@@ -32,6 +32,11 @@ import com.zai.adshield.core.RestoreGuard;
  *    多数 ROM（如 Xiaomi 15 的 HyperOS 2）登记保留、进程起来即重绑。
  * v3.14.0：ADB 自愈（WRITE_SECURE_SETTINGS）整体移除（用户反馈：要电脑
  *  执行太麻烦）——统一走高优「待恢复」通知两态引导。
+ * v5.6.0：零打扰持久模式回归（可选·明示授权）——用户三度反馈「每次
+ *  退后台再进/装新版回来开守护都被要求进系统设置 + 强看 10 秒警告」。
+ *  仅当用户 ADB 一次性授权 WRITE_SECURE_SETTINGS 后，SmartRevive 在
+ *  登记吊销分支先把自己写回登记（幂等保序）再踢链重绑：零系统设置 ·
+ *  零 10 秒警告；未授权设备行为与 v5.2.0 完全一致（保守两态通知）。
  * v3.13.0：夜间心跳 30~45 分钟窗口式非精确闹钟（息屏绝不唤醒设备）。
  * v3.9.0：心跳自检间隔 5 分钟（AdSkipService.HEARTBEAT_MS）。
  * v3.8.0：心跳自续期；startService 拉活已移除——无障碍服务受
@@ -133,7 +138,18 @@ public class KeepAliveReceiver extends BroadcastReceiver {
                     return;
                 }
                 boolean registered = AdSkipService.registrationPresent(ctx);
-                if (!registered) {                      // 登记被吊销：去设置是唯一出路
+                if (!registered) {
+                    /* v5.6.0 零打扰持久模式：登记被吊销先尝试免设置自愈
+                     * （仅用户 ADB 授权过 WRITE_SECURE_SETTINGS 的设备生效）。
+                     * 写回成功 → 当作登记仍在继续踢链重绑（零系统设置 · 零
+                     * 10 秒警告）；未授权/失败 → 保守两态通知照旧。 */
+                    if (AdSkipService.canSecureSelfHeal(ctx)
+                            && AdSkipService.secureSelfHeal(ctx)) {
+                        step++;
+                        kickA11y(ctx);
+                        h.postDelayed(this, 2500);
+                        return;
+                    }
                     notifyAlert(ctx, false);
                     finish();
                     return;

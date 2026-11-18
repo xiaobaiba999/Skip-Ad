@@ -393,3 +393,44 @@ textarea { resize: none; }
 .ka-desc { font-size: 11.5px; color: #7A8F84; margin-top: 2px; line-height: 1.45; }
 .ka-chip-ok { background: rgba(16, 185, 129, 0.12); color: #0B7A5C; }
 .ka-chip-warn { background: rgba(245, 158, 11, 0.14); color: #B45309; }
+
+/* ══════════ v5.6.0 订阅市场（活跃维护源一键导入） ══════════ */
+.market-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+}
+.market-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(16, 185, 129, 0.05);
+  border: 1px solid rgba(16, 185, 129, 0.12);
+}
+.market-info { flex: 1; min-width: 0; }
+.market-name { font-size: 13.5px; font-weight: 600; color: #1A2E24; }
+.market-badge {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 600;
+  background: rgba(16, 185, 129, 0.12);
+  color: #0B7A5C;
+  vertical-align: 1px;
+}
+.market-desc {
+  font-size: 11.5px;
+  color: #7A8F84;
+  margin-top: 2px;
+  line-height: 1.45;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.market-acts { display: flex; gap: 6px; flex: 0 0 auto; }
+.market-list a { color: #0B7A5C; text-decoration: underline; }

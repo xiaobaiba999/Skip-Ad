@@ -466,8 +466,18 @@ public class MainActivity extends Activity {
                 boolean enabled = AdSkipService.registrationPresent(a);
                 out.put("enabledInSettings", enabled);
                 if (!enabled) {
-                    out.put("ok", false).put("reason", "disabled");
-                    return out.toString();
+                    /* v5.6.0 零打扰持久模式：登记被吊销先尝试免设置自愈（仅
+                     * ADB 授权过 WRITE_SECURE_SETTINGS 的设备生效）。写回成功
+                     * → 继续走 15s 深挖重绑（页面提示「持久模式自愈中」）；
+                     * 未授权/失败 → 回退保守 disabled 引导（照旧）。 */
+                    if (AdSkipService.canSecureSelfHeal(a)
+                            && AdSkipService.secureSelfHeal(a)) {
+                        enabled = true;
+                        out.put("selfHealed", true);
+                    } else {
+                        out.put("ok", false).put("reason", "disabled");
+                        return out.toString();
+                    }
                 }
                 // 设置仍登记：进程已拉起，AMS 自动重绑——自适应深挖 15s
                 long started = System.currentTimeMillis();
@@ -547,6 +557,12 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public String subState() {
             return SubscriptionManager.stateJson(a);
+        }
+
+        /** v5.6.0 订阅市场：活跃维护订阅列表（内置注册表，零网络） */
+        @JavascriptInterface
+        public String subRecommend() {
+            return SubscriptionManager.recommendJson();
         }
 
         /** 设置/清空远程订阅 URL（立即拉取；后台线程执行） */
@@ -722,7 +738,12 @@ public class MainActivity extends Activity {
                     if (wait > 0) Thread.sleep(Math.min(wait, 500));
                     if (AdSkipService.isAlive()) break;
                     if (!AdSkipService.registrationPresent(ctx)) {
-                        return "{\"ok\":false,\"reason\":\"disabled\"}";
+                        /* v5.6.0：吊销先免设置自愈（持久模式授权设备）；
+                         * 未授权 → 交回 onResume 后续通知流引导 */
+                        if (!(AdSkipService.canSecureSelfHeal(ctx)
+                                && AdSkipService.secureSelfHeal(ctx))) {
+                            return "{\"ok\":false,\"reason\":\"disabled\"}";
+                        }
                     }
                     kickA11yManagerOf(ctx);
                 }
@@ -871,6 +892,20 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public void autoRestoreHandled() {
             a.autoRestoreHandled();
+        }
+
+        /* ═══ v5.6.0 零打扰持久模式（免设置自愈）状态桥 ═══
+         * 返回 {granted, cmd, desc}——页面「持久守护」卡片渲染用。 */
+        @JavascriptInterface
+        public String secureHealStatus() {
+            org.json.JSONObject o = new org.json.JSONObject();
+            try {
+                o.put("granted", AdSkipService.canSecureSelfHeal(a));
+                o.put("cmd", com.zai.adshield.core.RestoreGuard.secureGrantCmd(a.getPackageName()));
+                o.put("desc", com.zai.adshield.core.RestoreGuard.secureModeDesc());
+            } catch (Exception ignored) {
+            }
+            return o.toString();
         }
 
         /** 查询 GitHub 最新 Release（公共仓库匿名可读） */

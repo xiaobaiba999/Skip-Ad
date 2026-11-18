@@ -254,8 +254,11 @@ public class AdSkipService extends AccessibilityService {
 
     private static final long WINDOW_MS = 12000;       // 开屏时间窗
     /* v4.4.0 复验提速：点击冷却 900→600ms（快于人类「发现未关→再点」反应链；
-     * 安全不破：复验仍需重新扫到跳过候选才出手，广告关了候选自然消失） */
-    private static final long COOLDOWN_MS = 600;
+     * 安全不破：复验仍需重新扫到跳过候选才出手，广告关了候选自然消失）
+     * v5.6.0 激进化：600→500ms（用户实锤：好多广告没有命中——第一方自绘
+     * 广告复验换候选节奏被冷却拖慢，快 0.1s = 广告可见时间短 0.1s。
+     * 复验安全闸（重新扫到候选才出手）不变，仅缩短重试间隔） */
+    private static final long COOLDOWN_MS = 500;
     private static final long LEARN_WINDOW_MS = 30000; // 手动点击学习宽时间窗
     private static final int MAX_RULES_PER_APP = 8;
     private static final int MAX_LOG = 120; // v4.2.0：60→120（日志更具体：手动/自动上传携带更多上下文）
@@ -285,9 +288,10 @@ public class AdSkipService extends AccessibilityService {
             {0, 80, 200, 400, 700, 1100, 1700, 2500, 3600, 5000, 7000, 9500, 12000};
     /* 返回键重试：每个窗口最多直断次数（个别广告拦截第一次返回键） */
     private static final int BACK_RETRY_MAX = 2;
-    /* 弹窗窗期与冷却 */
+    /* 弹窗窗期与冷却（v5.6.0：弹窗冷却 2500→2000ms——弹窗广告复验更快；
+     * POPUP_SCAN_THROTTLE 700ms 节流不变，功耗红线不破） */
     private static final long POPUP_WINDOW_MS = 10000;
-    private static final long POPUP_COOLDOWN_MS = 2500;
+    private static final long POPUP_COOLDOWN_MS = 2000;
     private static final long POPUP_SCAN_THROTTLE_MS = 700;
     private static final int BURST_COUNT = 3;
     private static final long BURST_WIN_MS = 1500;
@@ -458,6 +462,63 @@ public class AdSkipService extends AccessibilityService {
 
     public static boolean isAlive() {
         return instance != null && bound;
+    }
+
+    /* ═══ v5.6.0 零打扰持久模式（免系统设置自愈 · issue#56 终局）═══
+     * 用户三度反馈：部分用户退后台再进/覆盖安装后开守护，每次都被要求
+     * 进系统设置重开 + 强看 10 秒警告——登记被 ROM 吊销后公开 API 无法
+     * 恢复是事实，但 WRITE_SECURE_SETTINGS（用户 ADB 一次授权）允许
+     * 直接改 ENABLED_ACCESSIBILITY_SERVICES 把自己写回登记 → 系统自动
+     * 重绑 → 零系统设置 · 零 10 秒警告。
+     * 安全边界：权限 signature|development 级（商店 App 拿不到）；只并回
+     * 自己的组件（RestoreGuard.mergeRegistrationCsv 幂等去重保序）；未
+     * 授权设备恒 false（通知流/体检卡照旧）。 */
+    public static boolean canSecureSelfHeal(Context ctx) {
+        try {
+            return ctx.checkPermission("android.permission.WRITE_SECURE_SETTINGS",
+                    android.os.Process.myPid(), android.os.Process.myUid())
+                    == android.content.pm.PackageManager.PERMISSION_GRANTED;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** 免设置自愈：把自己并回无障碍登记（幂等）并置总开关，踢 AMS 触发重绑。
+     *  @return true=已写回登记（调用方继续走重绑轮询）；false=未授权/写失败
+     *  （调用方回退保守通知流——绝不该在未授权时静默吞掉恢复引导）。 */
+    public static boolean secureSelfHeal(Context ctx) {
+        try {
+            if (!canSecureSelfHeal(ctx)) return false;
+            android.content.ComponentName cn = new android.content.ComponentName(ctx, AdSkipService.class);
+            String flat = cn.flattenToString();
+            String current = Settings.Secure.getString(
+                    ctx.getContentResolver(), Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
+            String merged = RestoreGuard.mergeRegistrationCsv(current, flat);
+            if (merged == null) return false;                       // 入参异常 → 保守回退
+            if (merged.equals(current)) {                           // 已在登记（幂等）：无需写
+                return RestoreGuard.registrationState(current, flat, cn.flattenToShortString())
+                        == RestoreGuard.REG_REGISTERED;
+            }
+            Settings.Secure.putString(ctx.getContentResolver(),
+                    Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES, merged);
+            // 总开关：少数 ROM 吊销时会把 ACCESSIBILITY_ENABLED 置 0，必须一并扶正
+            try {
+                String on = Settings.Secure.getString(
+                        ctx.getContentResolver(), Settings.Secure.ACCESSIBILITY_ENABLED);
+                if (!"1".equals(on)) {
+                    Settings.Secure.putString(ctx.getContentResolver(),
+                            Settings.Secure.ACCESSIBILITY_ENABLED, "1");
+                }
+            } catch (Throwable ignored) {
+            }
+            AdSkipService s = instance;
+            if (s != null) {
+                s.appendLog("🛡️ 持久模式自愈：无障碍登记已写回（免系统设置/免 10 秒警告），等待系统重绑…");
+            }
+            return true;
+        } catch (Throwable t) {
+            return false;
+        }
     }
 
     private int screenWidth;

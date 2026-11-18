@@ -507,7 +507,7 @@ public final class Subscription {
             "{\n"
             + "  id: 20260510,\n"
             + "  name: '内置规则库',\n"
-            + "  version: 6,\n"
+            + "  version: 7,\n"
             + "  apps: [\n"
             + app("com.zhihu.android", "知乎",
                     "[id=\"com.zhihu.android:id/btn_skip\"]", "[vid=\"btn_skip\"][visible=true]")
@@ -781,9 +781,38 @@ public final class Subscription {
                     new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"}, null, 1200)
             + appSplash("com.mt.mtxx.mtxx", "美图秀秀", null,
                     new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"}, null, 1200)
+            /* ═══ v5.6.0 激进化扩充（用户实锤：好多广告没有命中）═══
+             * 102 → 114 款：补齐汽车/天气/运营商/资讯类高频开屏；
+             * 全局通用规则新增 vid*="skip" 与 vid*="countdown" 两档
+             *（第一方自绘窗的 vid 命名变体跟不上的直接兑底）。 */
+            + appSplash("com.duowan.kiwi", "虎牙直播", null,
+                    new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"}, null, 1200)
+            + appSplash("com.cubic.autohome", "汽车之家", null,
+                    new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"}, null, 1200)
+            + appSplash("com.ss.android.auto.automobile", "懂车帝", null,
+                    new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"}, null, 1200)
+            + appSplash("com.snda.wifilocating", "WiFi万能钥匙", null,
+                    new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"}, null, 1200)
+            + appSplash("com.moji.mjweather", "墨迹天气", null,
+                    new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"}, null, 1200)
+            + appSplash("com.mfw.roadbook", "马蜂窝", null,
+                    new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"}, null, 1200)
+            + appSplash("cn.TuHu.android", "途虎养车", null,
+                    new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"}, null, 1200)
+            + appSplash("com.greenpoint.android.mc10086.activity", "中国移动", null,
+                    new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"}, null, 1200)
+            + appSplash("com.sinovatech.unicom.ui.welcome.WelcomeActivity", "中国联通", null,
+                    new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"}, null, 1200)
+            + appSplash("com.ct.client", "中国电信", null,
+                    new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"}, null, 1200)
+            + appSplash("com.dp.android.elong", "艺龙旅行", null,
+                    new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"}, null, 1200)
+            + appSplash("com.netease.newsreader.activity", "网易新闻", null,
+                    new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"}, null, 1200)
             // 全局：穿山甲/优量汇等 SDK 跳过键的通用 vid 形态
             + app("*", "全局通用",
-                    "[vid$=\"_skip\"][clickable=true]", "[vid^=\"skip_\"]", "[vid=\"tt_splash_skip_btn\"]")
+                    "[vid$=\"_skip\"][clickable=true]", "[vid^=\"skip_\"]", "[vid=\"tt_splash_skip_btn\"]",
+                    "[vid*=\"skip\" && clickable=true]", "[vid*=\"countdown\" && clickable=true]")
             + "  ],\n"
             + "}\n";
 

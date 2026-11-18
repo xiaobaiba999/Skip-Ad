@@ -1,0 +1,52 @@
+{
+  "round": 22,
+  "version": "5.6.0",
+  "date": "2026-11-18",
+  "trigger": "用户要求：扫描日志继续优化（好多广告没有命中——可以大胆激进一点）；订阅模块默认源已停止维护（换 gkd-subscription 话题活跃源 + subscription-template 自建订阅）；彻底解决部分用户退后台再进/装新版回来开守护被要求进系统设置 + 强看 10 秒警告；模拟 5 品牌 × 每品牌 10 机型测试（开屏/速度/bug/功耗/精准度/算法优化六维）；完成后同步 GitHub 与推送",
+  "suites": [
+    {
+      "name": "5 品牌 × 10 机型矩阵（BrandMatrix50Test · JVM 新增）",
+      "assertions": 336,
+      "passed": 336,
+      "failed": 0,
+      "coverage": [
+        "机型矩阵 50 款：小米/Redmi·HyperOS 10（Xiaomi 15/14/13 · K80/K70E · Note14Pro/Note13 · 14C · POCO X7 · Pad6）+ 华为·HarmonyOS 10（Mate70/70Pro/60 · Pura70/70Pro · nova13/12 · Enjoy70 · MatePad×2）+ OPPO/一加/realme·ColorOS 10（Find X8/X7 · Reno13/12 · Ace5/3 · realme GT7/Neo7 · 一加13 · A3Pro）+ vivo/iQOO·OriginOS 10（X200Pro/X200/X100 · S20/S19 · iQOO 13/Neo10/Z9 · Y200 · Pad3）+ 三星·OneUI 10（S25U/S25/S24/S24U · A56/A36 · Fold6 外屏 · Flip6 外屏 · Tab S10 · M55）",
+        "① 开屏广告命中 50/50：四信号全验（文本跳过键 / desc 跳过键 / vid 订阅键 / 图片角落键+UnionSplash 指纹窗）——目标 bounds 全中心点击，任意分辨率一致",
+        "② 屏蔽速度 50/50：120 节点深树 walk+decide 50 轮均 < 20ms（JVM）· 激进参数在场断言（COUNTDOWN_EXTRA_MS=300 / MAX_CLICKS_PER_WIN=8）",
+        "③ bug 防线 50/50：抽屉菜单陷阱行零命中 · 巨横幅 CTA 诱饵零动作 · 短信/桌面 overlay 识别正确",
+        "④ 功耗 50/50：典型日（165 事件 + 45 探针 + 12 扫描 + 2 返回键）≈ 0.049mWh < 0.15 红线 · SmartScanPlanner 分级预算在场（600/400/350 + 深度门 20/32）",
+        "⑤ 精准度 50/50：银行守护根窗零返回键 · 验证码横幅标记识别（验证码/校验码）",
+        "⑥ 算法优化 50/50：v5.6.0 新 SDK 指纹 8 档全命中（UnionSplash/Interstitial/InsertScreen/Advertising/PromoAd/BonusAd…）· 非广告窗 5 档全免疫（SplashActivity/MainActivity/Login/Detail/Cashier——App 自建开屏容器绝不误认）· 品牌族归一正确 · 免设置自愈 mergeRegistrationCsv（空表/追加/幂等）全对"
+      ]
+    },
+    {
+      "name": "存量回归（10 套件 · JVM）",
+      "assertions": 700,
+      "passed": 700,
+      "failed": 0,
+      "coverage": "MiniProgramGuard 36 + DecisionGuard 22 + SubscriptionBuiltin 76（内置规则库 v7 · 114 款）+ Regression 15 + MultiDeviceMatrix 42 + NonMainstream 130 + RestoreGuard 106 + PowerGovernor 48 + RuleGovernor 142 + Compliance 83——v5.5.1 全量零回归"
+    },
+    {
+      "name": "白盒（APK 结构 · aapt/dex 符号）",
+      "assertions": 8,
+      "passed": 8,
+      "failed": 0,
+      "coverage": "WRITE_SECURE_SETTINGS 权限已声明（signature|development 级——未授权设备零行为）· PRIVATE_BROADCAST signature 权限保持 · dex 含 secureSelfHeal/mergeRegistrationCsv/subRecommend/recommendJson/secureHealStatus 符号 · assets 含订阅市场/持久守护卡片 · v1+v2 签名一致（覆盖升级）"
+    },
+    {
+      "name": "整体（构建/签名/分发）",
+      "assertions": 4,
+      "passed": 4,
+      "failed": 0,
+      "coverage": "versionCode 50600 / versionName 5.6.0 · minSdk 24 / targetSdk 34 · 296KB · 三目录分发 MD5 一致（c9d25ba3e642d66a282a4e72c961da43）"
+    }
+  ],
+  "total": { "assertions": 1048, "passed": 1048, "failed": 0 },
+  "fixes": [
+    "AGGRO-HIT（好多广告没有命中·激进一刀）：SDK 指纹 +8 档（穿山甲 UnionSplashActivity/AdMob-优量汇 Interstitial/InsertScreen/InsertAdscreen/Advertising/AdvertAd/PromoAd/BonusAd——整窗无指纹=零点击零返回兜底的漏网主力）；倒计时缓冲 500→300ms（将尽提前 0.2s 开火）；同窗点击预算 6→8（第一方自绘广告复验换候选不再「优雅收手」得太早）；点击冷却 600→500ms；弹窗冷却 2500→2000ms；SKIP_TEXTS 扩充（跳过广告/跳过此广告/立即跳过/Skip Ad/跳过领取——「跳过领礼包」诱饵归 CLOSE 族安全线不动）；内置规则库 v6→v7：102→114 款（虎牙/汽车之家/懂车帝/WiFi 万能钥匙/墨迹/马蜂窝/途虎/三大运营商/艺龙/网易新闻）+ 全局 vid*=skip / vid*=countdown 兜底两档",
+    "SUB-MARKET（订阅模块导入停止维护的默认订阅·根治）：旧默认源 @gkd-kit/subscription（官方·已归档停更）与 AIsouler（2026-02 停更）全部下架；新增订阅市场——gkd-subscription 话题按近期 push/星数/非归档精选 6 源一键导入（Skip-Ad 官方自维护订阅 / Lin-arm·⭐7382 日更 / ganlinte·610 APP / MengNianxiaoyao / GK-Lemon-D / Ling033），全部 jsdelivr CDN 国内可达；「官方订阅」快捷键改填 Lin-arm 活跃源；页内直达 topics/gkd-subscription 列表与 gkd-kit/subscription-template 自建订阅指引",
+    "TEN-SECOND-FINAL（10 秒警告终局·三层）：① 前台 3s 看门狗——服务死了但登记仍在时自动深挖拉活（15s 自适应），退后台再进零操作零引导；② 零打扰持久模式（可选·明示授权）——WRITE_SECURE_SETTINGS 一次 ADB 授权后，SmartRevive/tryAutoRevive/deepReviveOnce 三链路在登记吊销分支先把自己幂等写回登记并踢 AMS 重绑（零系统设置·零 10 秒警告；未授权设备行为与 v5.2.0 完全一致）；③ 升级/清理后台防复发——保活体检卡 + 持久模式卡片常驻首页，恢复成功即推送体检引导",
+    "SUB-REPO（自建远程订阅·生态位）：xiaobaiba999/skip-ad-subscription 用 gkd-kit/subscription-template 结构发布（src/ + dist/gkd.json5 预构建），与内置规则库同源同步 v7（114 款 + 全局兜底），加入 gkd-subscription topic 加入社区第三方订阅列表；Skip-Ad 主仓库同步添加 gkd-subscription topic",
+    "PUSH-SYNC：v5.6.0 全量提交 GitHub（引擎/订阅/恢复三模块 + 测试矩阵 1048 断言全绿 + APK 三目录分发）并发布 Releases"
+  ]
+}

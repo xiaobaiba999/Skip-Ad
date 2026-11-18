@@ -105,6 +105,75 @@ public final class SubscriptionManager {
 
     static boolean loaded = false;
 
+    /* ═══ v5.6.0 订阅市场：活跃维护的第三方订阅注册表 ═══
+     * 用户实锤：「订阅模块导入的都是已经停止维护的默认订阅」——
+     * 旧默认源 @gkd-kit/subscription（官方，已归档停更）与 AIsouler
+     * （2026-02 停止维护）全部下架，换上 gkd-subscription 话题下
+     * 按近期 push + 星数 + 非归档师选的活跃源（2026-11-18 快照）：
+     *  · Lin-arm/GKD_subscription（⭐7382 · 当日仍在更新）——社区事实标准
+     *  · ganlinte/GKD-subscription（⭐935 · 610 APP/1389 规则组）
+     *  · MengNianxiaoyao/gkd-subscription（⭐496）
+     *  · LenorEric/GK-Lemon-D（轻量精选）· cjy0812/Ling033_GKD_Rules
+     *  · xiaobaiba999/skip-ad-subscription——本仓库官方自维护订阅
+     *   （subscription-template 构建，与内置规则库同源同步）
+     * 所有 URL 全部 jsdelivr CDN（国内可达）+ 仓库可溯源；导入前可预览
+     * 仓库主页。建议用户从市场一键导入，不再粘贴死链。 */
+    static final String[][] RECOMMENDED_SUBS = {
+            {"Skip-Ad 官方订阅", "xiaobaiba999",
+                    "https://cdn.jsdelivr.net/gh/xiaobaiba999/skip-ad-subscription@main/dist/gkd.json5",
+                    "本仓库自维护（subscription-template 构建，与内置规则库同步）", "自维护"},
+            {"id667 的 GKD 订阅", "Lin-arm",
+                    "https://cdn.jsdelivr.net/gh/Lin-arm/GKD_subscription@main/dist/gkd.json5",
+                    "⭐7382 · 日更——gkd-subscription 社区事实标准", "日更"},
+            {"ganlin 的 GKD 订阅", "ganlinte",
+                    "https://cdn.jsdelivr.net/gh/ganlinte/GKD-subscription@main/dist/ganlin_gkd.json5",
+                    "⭐935 · 610 款 APP/1389 规则组", "周更"},
+            {"小年侠订阅", "MengNianxiaoyao",
+                    "https://cdn.jsdelivr.net/gh/MengNianxiaoyao/gkd-subscription@main/dist/gkd.json5",
+                    "⭐496 · 持续维护", "活跃"},
+            {"GK-Lemon-D 轻量精选", "LenorEric",
+                    "https://cdn.jsdelivr.net/gh/LenorEric/GK-Lemon-D@main/dist/GK-LEMON-D.json5",
+                    "轻量精选集，低性能机型友好", "活跃"},
+            {"Ling033 规则集", "cjy0812",
+                    "https://cdn.jsdelivr.net/gh/cjy0812/Ling033_GKD_Rules@main/dist/gkd.json5",
+                    "新兴活跃维护规则集", "活跃"},
+    };
+
+    /** 订阅市场 JSON（页顶卡片渲染用；无 Android 依赖纯拼装） */
+    public static String recommendJson() {
+        StringBuilder b = new StringBuilder(1024);
+        b.append("[");
+        for (int i = 0; i < RECOMMENDED_SUBS.length; i++) {
+            String[] s = RECOMMENDED_SUBS[i];
+            if (i > 0) b.append(',');
+            b.append("{\"idx\":").append(i)
+                    .append(",\"name\":").append(jsonStr(s[0]))
+                    .append(",\"owner\":").append(jsonStr(s[1]))
+                    .append(",\"url\":").append(jsonStr(s[2]))
+                    .append(",\"desc\":").append(jsonStr(s[3]))
+                    .append(",\"badge\":").append(jsonStr(s[4]))
+                    .append(",\"repo\":").append(jsonStr("https://github.com/" + repoOf(s[2])))
+                    .append('}');
+        }
+        b.append("]");
+        return b.toString();
+    }
+
+    /** 从 jsdelivr gh URL 提取 owner/repo（市场卡片「查看仓库」用） */
+    static String repoOf(String jsdelivrUrl) {
+        try {
+            String u = jsdelivrUrl;
+            int at = u.indexOf("@main/");
+            if (at > 0) {
+                String head = u.substring(0, at); // .../gh/owner/repo
+                int gh = head.indexOf("/gh/");
+                if (gh >= 0) return head.substring(gh + 4);
+            }
+        } catch (Throwable ignored) {
+        }
+        return "";
+    }
+
     /* ───────── 加载（服务连接时 + Bridge 调用时） ───────── */
 
     public static synchronized void ensureLoaded(Context ctx) {
@@ -237,8 +306,8 @@ public final class SubscriptionManager {
         String msg = lastEx == null ? "网络失败" : (lastEx.getMessage() == null ? "网络失败" : lastEx.getMessage());
         lastError = msg;
         String hint = variants.size() > 1
-                ? "（已自动尝试 " + variants.size() + " 个镜像地址）· 点「官方订阅」可一键填入可用链接"
-                : " · 点「官方订阅」可一键填入可用链接";
+                ? "（已自动尝试 " + variants.size() + " 个镜像地址）· 订阅页「订阅市场」可一键导入活跃维护的订阅"
+                : " · 订阅页「订阅市场」可一键导入活跃维护的订阅";
         return "{\"ok\":false,\"error\":" + jsonStr("拉取失败：" + msg + hint) + "}";
     }
 
