@@ -27,6 +27,7 @@ import com.zai.adshield.core.AdDecisionCore.Decision;
 import com.zai.adshield.core.AdDecisionCore.NodeView;
 import com.zai.adshield.core.AdDecisionCore.ScanFind;
 import com.zai.adshield.core.MiniProgramGuard;
+import com.zai.adshield.core.PowerGovernor;
 import com.zai.adshield.core.RestoreGuard;
 import com.zai.adshield.core.RuleEngine;
 import com.zai.adshield.core.RuleEngine.Hit;
@@ -304,6 +305,50 @@ public class AdSkipService extends AccessibilityService {
     public long energyGestures = 0;
     public long popupBlocks = 0;
 
+    /* ═══ v5.3.0 功耗治理（PowerGovernor 三零治理 · 李跳跳式）═══
+     * 真机日志 #57/#58（v5.2.0）实锤：事件 4604/扫描 2396 每开机——
+     * ①宿主主窗误扫（豆包 MainActivity 115 节点/微信 ExdeviceRankInfoUI
+     * 110 节点每次启动都被 13 档梯子整树扫描）②聊天流式内容反复触发
+     * 突发误报（豆包 5 分钟 7 次开 10s 弹窗识别窗）③零文本手动点击无
+     * 验证直接学位置（同秒学了 (17%,82%) 与 (41%,82%) 两处聊天按钮）。
+     * 三零治理：CLEAN 档案窗零扫描零调度零日志，探针哨兵（系统原生
+     * findAccessibilityNodeInfosByText）前置替班；突发预算制；位置学习
+     * 事后验证（真跳过键点击必关窗，聊天点击必不关窗）。 */
+    public long energyProbes = 0;       // 原生探针执行次数（成本≈扫描的 1/14）
+    public long energyProfileSkips = 0; // 档案省电跳过的整窗扫描次数
+    public long energyBursts = 0;       // 开启的突发识别窗次数
+    public int posLearnVerified = 0;    // 位置学习验证通过
+    public int posLearnDropped = 0;     // 位置学习验证丢弃（聊天点击等）
+    /** 宿主窗档案：pkg|cls → 连续零候选次数（≥3 判 CLEAN；持久化） */
+    private final java.util.HashMap<String, Integer> winStreak = new java.util.HashMap<>();
+    /** 宿主窗档案：pkg|cls → 上次全量扫描时刻（72h 复查闸） */
+    private final java.util.HashMap<String, Long> winLastFull = new java.util.HashMap<>();
+    /** 突发预算：pkg → {10min 窗口起点, 已开识别窗数} */
+    private final java.util.HashMap<String, long[]> burstBudget = new java.util.HashMap<>();
+    /** 突发阈值升级等级：pkg → level（空手突发后 3→6→12→24 事件） */
+    private final java.util.HashMap<String, Integer> burstEsc = new java.util.HashMap<>();
+    /** 突发开窗时的弹窗战果基线：pkg → popupBlocks（判空手升级用） */
+    private final java.util.HashMap<String, Long> burstBasePopup = new java.util.HashMap<>();
+    /** 探针哨兵补扫节流：pkg → 上次哨兵时刻（CLEAN 窗 250ms 节流） */
+    private final java.util.HashMap<String, Long> probeNudgeAt = new java.util.HashMap<>();
+    /** 档案省电日志去重：pkg → 上次记日志时刻（60s 一条，防刷屏） */
+    private final java.util.HashMap<String, Long> profileLogAt = new java.util.HashMap<>();
+
+    /** v5.3.0 位置学习挂起验证：零文本手动点击先挂起，1.5s 内窗类切换/
+     * 树体缩水 ≥40% 才提交（真跳过键点击必关窗；聊天点击必不关窗） */
+    private static final class PendingPos {
+        double x, y;      // 归一化坐标
+        String cls;       // 点击时窗口类名
+        long at;          // 点击时刻
+        int nodes;        // 点击时树规模
+        boolean adLike;   // 点击时窗树具备广告窗特征（简单树/无滚动/无输入）
+    }
+    private final java.util.HashMap<String, PendingPos> pendingPos = new java.util.HashMap<>();
+    /** v5.3.0 挂起验证节流：pkg → 上次树体缩水检查时刻 */
+    private final java.util.HashMap<String, Long> posVerifyNudgeAt = new java.util.HashMap<>();
+    /** v5.3.0 丢弃日志去重：pkg → 上次拦截日志时刻 */
+    private final java.util.HashMap<String, Long> posDropLogAt = new java.util.HashMap<>();
+
     private final Object lock = new Object();
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final java.util.HashMap<String, Long> windowAt = new java.util.HashMap<>();
@@ -539,9 +584,10 @@ public class AdSkipService extends AccessibilityService {
                 if (ctx != null) {
                 String subJson = SubscriptionManager.stateJson(ctx);
                 org.json.JSONObject sub = new org.json.JSONObject(subJson);
+                int bh = sub.optInt("builtinHits", 0);
                 b.append("- 订阅：内置 ").append(sub.optInt("builtinApps", 0)).append(" 款/")
-                        .append(sub.optInt("builtinRules", 0)).append(" 条（命中 ")
-                        .append(sub.optInt("builtinHits", 0)).append("）");
+                        .append(sub.optInt("builtinRules", 0)).append(" 条（出手 ").append(bh)
+                        .append(bh == 0 ? " · 文案引擎优先出手，订阅只补 vid 盲区" : "）");
                 if (sub.optBoolean("remoteOk", false)) {
                     b.append(" · 远程「").append(sub.optString("remoteName", "")).append("」")
                             .append(sub.optInt("remoteApps", 0)).append(" 款/")
@@ -552,13 +598,21 @@ public class AdSkipService extends AccessibilityService {
                 }
             } catch (Throwable ignored) {
             }
-            // 能耗画像
+            // 能耗画像（v5.3.0 新增探针/省电档案维度：探针成本≈扫描的 1/14）
             AdSkipService sv = instance;
             if (sv != null) {
                 b.append("- 能耗画像（本次开机）：事件 ").append(sv.energyEvents)
+                        .append(" · 探针 ").append(sv.energyProbes)
                         .append(" · 扫描 ").append(sv.energyScans)
+                        .append("（省电档案跳过 ").append(sv.energyProfileSkips).append(" 窗）")
                         .append(" · 手势 ").append(sv.energyGestures)
-                        .append(" · 返回键 ").append(sv.energyBacks).append("\n");
+                        .append(" · 返回键 ").append(sv.energyBacks)
+                        .append(" · 估算 ").append(String.format(java.util.Locale.US, "%.1f",
+                                PowerGovernor.microWh(sv.energyEvents, sv.energyProbes, sv.energyScans, sv.energyBacks)))
+                        .append("µWh\n");
+                b.append("- 位置学习：验证通过 ").append(sv.posLearnVerified)
+                        .append(" · 拦截误学 ").append(sv.posLearnDropped)
+                        .append("（v5.3.0：点击后 1.5s 窗口未关 = 普通点击，不当跳过键学习）\n");
             }
             // 引擎日志 16 条（带时间戳）
             org.json.JSONArray log = st.optJSONArray("log");
@@ -762,6 +816,8 @@ public class AdSkipService extends AccessibilityService {
                 + (bi == null ? 0 : bi.ruleCount()) + " 条 GKD 规则"
                 + (SubscriptionManager.remoteSub != null
                 ? "｜远程订阅已加载（" + SubscriptionManager.remoteSub.name + "）" : ""));
+        // v5.3.0 宿主窗档案加载（重启后省电态不清零——CLEAN 窗继续零扫描）
+        profileLoad();
     }
 
     /* ───────── v3.7.0 保活：onUnbind 保留 + 心跳自检闹钟 ─────────
@@ -1294,13 +1350,18 @@ public class AdSkipService extends AccessibilityService {
                 } else if (learnedClassHit(pkg, cls)) {
                     winClsLearned.put(pkg, Boolean.TRUE);
                 }
+                /* ═══ v5.3.0 位置学习验证钩子①：窗类切换 = 跳过键关窗铁证
+                 *（零文本点击挂起中：广告窗退出/Dialog 消散 → 提交学习）═══ */
+                posVerifyOnWindowChange(pkg, cls, now);
                 bumpScanChain(pkg);
                 /* ═══ v4.5.0 露头就秒·内联首扫 ═══
                  * 0ms 档从「postDelayed 排队等下一轮消息循环」改为窗口事件
                  * 现场同步出手（省一跳 handler 约 5~16ms，真·露头就秒）。
                  * 链上 0ms 档随后仍会扫（幂等：点击冷却/复验门自然挡住重复
-                 * 出手），窗口已切则代际护栏自动作废，零副作用。 */
-                tryScan(pkg, winAt(pkg), 0);
+                 * 出手），窗口已切则代际护栏自动作废，零副作用。
+                 * v5.3.0：CLEAN 档案窗跳过内联首扫——bumpScanChain 已排探针
+                 * 哨兵，此处再全量扫就把省电档案的意义扫没了。 */
+                if (!profileSuppressScan(pkg, cls)) tryScan(pkg, winAt(pkg), 0);
                 break;
             }
             case AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED: {
@@ -1311,6 +1372,9 @@ public class AdSkipService extends AccessibilityService {
                     if (now < popupUntilGet(pkg)) nudgePopupScan(pkg, now);
                     break;
                 }
+                /* ═══ v5.3.0 位置学习验证钩子②：树体缩水（同窗广告容器
+                 * 卸载/Dialog 消散）——零文本点击挂起中，缩水 ≥40% 即提交 ═══ */
+                posVerifyOnContentChange(pkg, now);
                 if (now - winAt(pkg) < WINDOW_MS) {
                     nudgeScan(pkg, now);
                     break;
@@ -1568,6 +1632,41 @@ public class AdSkipService extends AccessibilityService {
         //（零调度零唤醒；离开容器回主界面重新进入开屏窗即恢复）
         if (MiniProgramGuard.isMiniProgramWindow(pkg, winClassOf(pkg))) return;
         final long winStart = winAt(pkg);
+        /* ═══ v5.3.0 宿主窗档案（李跳跳式三零治理 · #57/#58 功耗根治）═══
+         * 连续 3 次零候选的 (pkg|cls) 判 CLEAN：
+         *  · 无订阅覆盖 → 纯探针哨兵（0ms 一次系统原生 findAccessibilityNode
+         *    文本搜索，命中即档案复活转全量路径），零 DFS 零调度零日志；
+         *  · 订阅覆盖（vid 规则探针够不到）→ 低频档 {0, 700}；
+         *  · Dialog/SDK 广告窗/学习指纹/学习位置/72h 复查期到 → 全量梯子。 */
+        final String pCls = winClassOf(pkg);
+        if (profileSuppressScan(pkg, pCls)) {
+            Integer g0 = scanGen.get(pkg);
+            final int gen0 = g0 == null ? 1 : g0 + 1;
+            scanGen.put(pkg, gen0);
+            energyProfileSkips++;
+            boolean subCovered = SubscriptionManager.coversPkg(pkg);
+            long[] ladder = PowerGovernor.ladderFor(true, subCovered);
+            if (ladder.length == 0) {
+                Long lastLog = profileLogAt.get(pkg);
+                long nowMs = System.currentTimeMillis();
+                if (lastLog == null || nowMs - lastLog > 60000) {
+                    profileLogAt.put(pkg, nowMs);
+                    appendLog("🔋 省电档案生效（" + shortPkg(pkg) + " · " + shortCls(pCls)
+                            + "）：连续 " + PowerGovernor.CLEAN_STREAK_MIN + " 次零候选，本窗只跑探针哨兵（零扫描零日志）");
+                }
+                handler.post(() -> probeSentinel(pkg, winStart, gen0));
+                return;
+            }
+            for (int i = 0; i < ladder.length; i++) {
+                final long at = ladder[i];
+                handler.postDelayed(() -> {
+                    Integer cur = scanGen.get(pkg);
+                    if (cur == null || cur.intValue() != gen0) return;
+                    tryScan(pkg, winStart, at);
+                }, at);
+            }
+            return;
+        }
         Integer g = scanGen.get(pkg);
         final int gen = g == null ? 1 : g + 1;
         scanGen.put(pkg, gen);
@@ -1581,6 +1680,162 @@ public class AdSkipService extends AccessibilityService {
                 if (killed != null && killed.longValue() == winStart) return;
                 tryScan(pkg, winStart, at);
             }, at);
+        }
+    }
+
+    /** v5.3.0 探针哨兵：CLEAN 档案窗口的零 DFS 检查（李跳跳核心路径）。
+     *  findAccessibilityNodeInfosByText 是系统侧 C++ 子树搜索（成本≈事件
+     *  处理的 1/4、DFS 扫描的 1/14）；命中即档案复活并转入正常出手路径
+     *  （tryScan 0ms 档全量：规则/复验/执行全保留）；不中 → 零成本放行。
+     *  gen < 0 表示跳过代际护栏（节流补扫路径，探针幂等零副作用）。 */
+    private void probeSentinel(final String pkg, final long winStart, final int gen) {
+        if (instance == null || !masterOn) return;
+        if (pkg == null || !pkg.equals(lastFgPkg)) return;
+        if (gen >= 0) {
+            Integer cur = scanGen.get(pkg);
+            if (cur == null || cur.intValue() != gen) return;
+        }
+        try {
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root == null) return;
+            energyProbes++;
+            Ctx ctx = new Ctx();
+            ctx.screenW = screenWidth;
+            ctx.screenH = screenHeight;
+            ctx.pkg = pkg;
+            ctx.activityId = winClassOf(pkg);
+            ctx.elapsedMs = Math.max(0, System.currentTimeMillis() - winStart);
+            ctx.splashLive = ctx.elapsedMs <= WINDOW_MS;
+            ctx.guard = AdDecisionCore.isGuardPkg(pkg);
+            Hit h = nativeTextProbe(root, ctx);
+            if (h != null) {
+                profileReset(pkg, winClassOf(pkg));
+                appendLog("⚡ 探针哨兵命中（" + shortPkg(pkg) + "）：CLEAN 档案窗出现真「跳过」→ 档案复活，全量出手");
+                tryScan(pkg, winStart, 0); // 复用全量路径（含规则/订阅/复验/执行）
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** v5.3.0 探针哨兵节流版（CLEAN 窗内容事件补扫专用：250ms 节流） */
+    private void probeSentinelThrottled(final String pkg, final long winStart) {
+        long now = System.currentTimeMillis();
+        Long last = probeNudgeAt.get(pkg);
+        if (last != null && now - last < 250) return;
+        probeNudgeAt.put(pkg, now);
+        final int g = -1;
+        handler.post(() -> probeSentinel(pkg, winStart, g));
+    }
+
+    /* ═════════ v5.3.0 宿主窗档案（持久化：state.winProfile）═════════ */
+
+    /** 档案记账去重：pkg|winStart → 首次记账时刻（每窗实例只记一次） */
+    private final java.util.HashMap<String, Long> profileRecordedWin = new java.util.HashMap<>();
+
+    /** 是否抑制本窗全量梯子（CLEAN 且无强信号）。
+     *  强信号：Dialog/Popup 窗 · SDK 广告窗指纹 · className 学习指纹 ·
+     *  学习位置在场（手动教过的坐标）· 72h 复查期到。 */
+    private boolean profileSuppressScan(String pkg, String cls) {
+        if (pkg == null || cls == null || cls.length() == 0) return false;
+        if (isDialogClass(cls) || AdDecisionCore.isAdActivityClass(cls)) return false;
+        String key = pkg + "|" + cls;
+        Integer sBox = winStreak.get(key);
+        int streak = sBox == null ? 0 : sBox;
+        if (streak < PowerGovernor.CLEAN_STREAK_MIN) return false; // ACTIVE：全量
+        Boolean learned = winClsLearned.get(pkg);
+        if (learned != null && learned.booleanValue()) return false;
+        int[] lp = learnedPos(pkg); // 同窗类学习位置在场 → 全量（L1.4 要用）
+        if (lp[0] >= 0) return false;
+        Long lastFull = winLastFull.get(key);
+        long since = lastFull == null ? Long.MAX_VALUE : System.currentTimeMillis() - lastFull;
+        return since < PowerGovernor.PROFILE_RECHECK_MS; // 复查期到 → 放行全量
+    }
+
+    /** 档案是否已 CLEAN（突发预算门用；与抑制判定同源但不查复查闸） */
+    private boolean profileIsClean(String pkg, String cls) {
+        if (pkg == null || cls == null || cls.length() == 0) return false;
+        Integer sBox = winStreak.get(pkg + "|" + cls);
+        return sBox != null && sBox >= PowerGovernor.CLEAN_STREAK_MIN;
+    }
+
+    /** 档案复活：探针命中/出现候选/手动教学等强信号 → 回 ACTIVE 全量 */
+    private void profileReset(String pkg, String cls) {
+        if (pkg == null || cls == null) return;
+        String key = pkg + "|" + cls;
+        Integer sBox = winStreak.get(key);
+        if (sBox != null && sBox > 0) {
+            winStreak.put(key, 0);
+            profilePersist();
+        }
+    }
+
+    /** 每窗实例一次的档案记账（streak 递增/归零 + 72h 复查闸刷新） */
+    private void profileRecordOutcome(String pkg, String cls, long winStart,
+                                      boolean acted, ScanFind f, Ctx ctx) {
+        try {
+            if (pkg == null || cls == null || cls.length() == 0) return;
+            if (isDialogClass(cls) || AdDecisionCore.isAdActivityClass(cls)) return;
+            String wKey = pkg + "|" + winStart;
+            if (profileRecordedWin.containsKey(wKey)) return; // 每窗只记一次
+            profileRecordedWin.put(wKey, System.currentTimeMillis());
+            if (profileRecordedWin.size() > 96) profileRecordedWin.clear();
+            String key = pkg + "|" + cls;
+            winLastFull.put(key, System.currentTimeMillis());
+            boolean hasActionable = acted
+                    || (f != null && ctx != null && AdDecisionCore.hasActionableCand(f, ctx));
+            boolean zeroCand = !hasActionable && f != null;
+            Integer sBox = winStreak.get(key);
+            int streak = sBox == null ? 0 : sBox;
+            int next = PowerGovernor.nextStreak(streak, hasActionable, zeroCand);
+            if (next != streak) {
+                winStreak.put(key, next);
+                boolean was = streak >= PowerGovernor.CLEAN_STREAK_MIN;
+                boolean is = next >= PowerGovernor.CLEAN_STREAK_MIN;
+                if (was != is) profilePersist(); // 状态翻转才落盘（罕见，零写放大）
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** 档案持久化（写入 state.winProfile；条目上限 200 防膨胀） */
+    private void profilePersist() {
+        try {
+            synchronized (lock) {
+                org.json.JSONObject st = loadState();
+                org.json.JSONObject wp = new org.json.JSONObject();
+                int n = 0;
+                for (java.util.Map.Entry<String, Integer> e : winStreak.entrySet()) {
+                    if (e.getValue() == null || e.getValue() < 1) continue;
+                    org.json.JSONObject o = new org.json.JSONObject();
+                    o.put("s", e.getValue());
+                    Long lf = winLastFull.get(e.getKey());
+                    if (lf != null) o.put("f", lf);
+                    wp.put(e.getKey(), o);
+                    if (++n >= 200) break;
+                }
+                st.put("winProfile", wp);
+                saveState(st);
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** 档案加载（onServiceConnected：从 state.winProfile 恢复——重启后省电态不清零） */
+    private void profileLoad() {
+        try {
+            org.json.JSONObject wp = loadState().optJSONObject("winProfile");
+            if (wp == null) return;
+            java.util.Iterator<String> it = wp.keys();
+            while (it.hasNext()) {
+                String k = it.next();
+                org.json.JSONObject o = wp.optJSONObject(k);
+                if (o == null) continue;
+                int s = o.optInt("s", 0);
+                if (s > 0) winStreak.put(k, s);
+                long f = o.optLong("f", 0);
+                if (f > 0) winLastFull.put(k, f);
+            }
+        } catch (Throwable ignored) {
         }
     }
 
@@ -1645,20 +1900,48 @@ public class AdSkipService extends AccessibilityService {
         // v4.1.0 前台门：只对前台应用做突发检测（灵岛/悬浮窗动画的高频
         // 内容变化绝不开弹窗识别窗——乱点元凶）
         if (!pkg.equals(lastFgPkg)) return;
+        /* ═══ v5.3.0 突发预算三重门（#57/#58 实锤：豆包聊天 5 分钟 7 次
+         * 误报开窗——AI 流式回复/播放进度条是正常业务形态）═══
+         * ① 档案 CLEAN 窗/聊天主界面的动态内容绝不开识别窗；
+         * ② 每应用 10 分钟窗内最多 2 个识别窗（预算制）；
+         * ③ 空手识别窗（一个弹窗没关）后阈值指数升级 3→6→12→24 事件，
+         *   有战果（真关了弹窗）则立即归零——突发检测从「猜测」变「记账」。 */
+        if (profileIsClean(pkg, winClassOf(pkg))) return;
+        if (AdDecisionCore.isChatMainUi(pkg, winClassOf(pkg))) return;
+        long[] bb = burstBudget.get(pkg);
+        if (bb == null || now - bb[0] > 10 * 60 * 1000L) {
+            bb = new long[]{now, 0};
+            burstBudget.put(pkg, bb);
+        }
+        Integer escBox = burstEsc.get(pkg);
+        int escLv = escBox == null ? 0 : escBox;
         long[] w = burstWin.get(pkg);
         if (w == null || now - w[0] > BURST_WIN_MS) {
             burstWin.put(pkg, new long[]{now, 1});
             return;
         }
         w[1]++;
-        if (w[1] >= BURST_COUNT) {
+        if (PowerGovernor.burstGate(false, false, (int) bb[1], (int) w[1], escLv)) {
             burstWin.remove(pkg);
+            bb[1] = bb[1] + 1;
+            energyBursts++;
+            // 空手升级：上一次识别窗开了但一个弹窗没关 → 阈值升级
+            Long base = burstBasePopup.get(pkg);
+            if (base != null) {
+                boolean found = popupBlocks > base.longValue();
+                int nextLv = PowerGovernor.nextEscalate(escLv, found);
+                if (nextLv != escLv) burstEsc.put(pkg, nextLv);
+            }
+            burstBasePopup.put(pkg, popupBlocks);
             popupUntil.put(pkg, now + POPUP_WINDOW_MS);
             // v3.14.0：日志同包 30s 去重（issue#21：meituan 60s 内 3 条同语刷屏）
             Long lastB = burstLogAt.get(pkg);
             if (lastB == null || now - lastB > 30000) {
                 burstLogAt.put(pkg, now);
-                appendLog("🪟 检测到内容突发（" + shortPkg(pkg) + "）：疑似覆盖层弹窗 → 开启弹窗识别窗");
+                appendLog("🪟 检测到内容突发（" + shortPkg(pkg) + "）：疑似覆盖层弹窗 → 开启弹窗识别窗（本 10 分钟第 "
+                        + (int) bb[1] + "/" + PowerGovernor.BURST_BUDGET_PER_10MIN + " 窗 · 阈值 "
+                        + (PowerGovernor.BURST_BASE_COUNT << Math.min(escLv, PowerGovernor.BURST_ESCALATE_MAX_LEVEL))
+                        + " 事件）");
             }
             nudgePopupScan(pkg, now);
         }
@@ -1711,6 +1994,13 @@ public class AdSkipService extends AccessibilityService {
         // v5.0.0 小程序容器保护（L0 第二层）：扫描链里排着的任务一律作废
         //（进入容器前排定的扫描针，出手前再验一次窗口身份）
         if (MiniProgramGuard.isMiniProgramWindow(pkg, winClassOf(pkg))) return;
+        /* ═══ v5.3.0 档案省电：CLEAN 窗的任何补扫/救回/弹窗补扫请求（atMs<0）
+         * 降级为探针哨兵（250ms 节流）——零 DFS；固定梯子档（atMs≥0）只在
+         * 非抑制窗或低频档 {0,700} 里排到（bumpScanChain 已保证）。 ═══ */
+        if (atMs < 0 && profileSuppressScan(pkg, winClassOf(pkg))) {
+            probeSentinelThrottled(pkg, winStart);
+            return;
+        }
         long now = System.currentTimeMillis();
         long elapsed = now - winStart;
         // v4.1.0 前台门：开屏扫描链只对前台应用生效（非前台包的扫描
@@ -1805,18 +2095,17 @@ public class AdSkipService extends AccessibilityService {
                  * 订阅命中按需追加（文本候选用尽才轮到订阅 vid 候选——
                  * SubscriptionManager 的限流记账只在真正出手时消耗）。 */
                 if (splashLive || popupLive) {
-                    java.util.ArrayList<Hit> hits = splashLive
-                            ? RuleEngine.matchAll(new NodeAdapter(roots[ri]), ctx, 4)
-                            : new java.util.ArrayList<Hit>();
-                    /* ═══ v4.5.0 原生文本探针（提速+触发率，李跳跳同款核心路径）═══
-                     * findAccessibilityNodeInfosByText 是系统原生子树搜索，无
-                     * 节点预算限制——H5/WebView 深树（500+ 节点）里 600 预算的
-                     * DFS 常在按钮前耗尽预算 = 「有时候触发不了」残余元凶。
-                     * DFS 未命中时用原生搜索兜底（匹配含「跳过」的全部文本，
-                     * 复用 matchText 全套规则+形状门，零新乱点面）。 */
-                    if (hits.isEmpty()) {
-                        Hit probeHit = nativeTextProbe(roots[ri], ctx);
-                        if (probeHit != null) hits.add(probeHit);
+                    /* ═══ v5.3.0 探针前置（李跳跳核心路径优先）═══
+                     * findAccessibilityNodeInfosByText 是系统原生 C++ 子树搜索，
+                     * 成本≈DFS 扫描的 1/14——先探针后 DFS：文本类广告全流程
+                     * 零树遍历（#57/#58 实测 2396 次扫描的大头就是文本键广告
+                     * 上的重复 DFS）；探针不中再走五层规则 DFS（能力不减）。 */
+                    java.util.ArrayList<Hit> hits = new java.util.ArrayList<Hit>();
+                    energyProbes++;
+                    Hit probeHit = nativeTextProbe(roots[ri], ctx);
+                    if (probeHit != null) hits.add(probeHit);
+                    if (hits.isEmpty() && splashLive) {
+                        hits = RuleEngine.matchAll(new NodeAdapter(roots[ri]), ctx, 4);
                     }
                     boolean needSub = hits.isEmpty() || clickAttempts >= hits.size();
                     if (needSub) {
@@ -1921,6 +2210,12 @@ public class AdSkipService extends AccessibilityService {
              * 日志——用户上传日志即可定位缺哪种规则（此前静默失败无从查起）。 */
             if (!acted && splashLive) logScanMiss(pkg, roots, lastFind, now, winStart, false);
             else if (!acted && popupLive) logScanMiss(pkg, roots, lastFind, now, winStart, true);
+
+            /* ═══ v5.3.0 宿主窗档案记账（每窗实例一次，CLEAN 判定依据）═══
+             * 零候选（无可出手信号）→ 连续计数 +1；出现候选/已出手 → 归零
+             * （下次全量梯子）；首次全量扫描刷新 72h 复查闸。Dialog/SDK 广告窗
+             * /学习窗不参与（suppressLadder 已永久放行，无需记账）。 */
+            profileRecordOutcome(pkg, winClassOf(pkg), winStart, acted, lastFind, lastCtx);
         } catch (Exception ignored) {
         }
     }
@@ -2572,8 +2867,10 @@ public class AdSkipService extends AccessibilityService {
         }
         /* v3.7.0（issue#10 喜马拉雅根因）：文本键手动点击【同时学位置】——
          * 用户手指点通过的坐标 = 真实触点真正生效的位置（文本候选可能点不中，
-         * 教过的位置下次同窗 500ms 直点，优先于文本候选盲点） */
-        learnPositionFromManualClick(pkg, srcNode, now);
+         * 教过的位置下次同窗 500ms 直点，优先于文本候选盲点）。
+         * v5.3.0：文案是强信号（「跳过/关闭」字样）——文本路径免挂起验证，
+         * 立即提交；零文本路径才走 1.5s 事后验证。 */
+        learnPositionImmediateFromText(pkg, srcNode, now);
         appendLog("已学习：" + shortPkg(pkg) + " 中你手动点击了「" + text + "」→ 下次优先直点此位置（" + shortPkg(pkg) + " 同窗）");
     }
 
@@ -2706,23 +3003,128 @@ public class AdSkipService extends AccessibilityService {
      * 次启同窗 500ms 手势直点该位置（决策核心 L1.4 前置，优先于文本候选盲点）。
      */
     private void learnPositionFromManualClick(String pkg, AccessibilityNodeInfo src, long now) {
-        if (src == null || screenWidth <= 0 || screenHeight <= 0) return;
+        double[] xy = posCandidateFrom(pkg, src, now);
+        if (xy == null) return;
+        /* ═══ v5.3.0 零文本位置学习改为【挂起 + 事后验证】（#57/#58 实锤）═══
+         * 豆包聊天界面手动点击（同秒 (17%,82%) 与 (41%,82%) 两处）被当
+         * 「图片跳过键」学走 → 次启同窗 500ms 直点聊天气泡 = 乱点复发。
+         * 分界线：真跳过键点击必关窗（窗类切换/树体缩水 ≥40%）；聊天
+         * 点击必不关窗。挂起 1.5s：验证通过才提交，超时静默丢弃。
+         * 点击时同步取树画像（预算 80）：广告窗 = 简单树无滚动无输入；
+         * 内容页 = 有滚动/输入——窗类切换时仅广告窗画像可提交（用户自己
+         * 导航到新页绝不举以为是跳过键干的）。 */
+        try {
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            int nodes = 0;
+            boolean scroll = false, edit = false;
+            if (root != null) {
+                Ctx c2 = new Ctx();
+                c2.screenW = screenWidth;
+                c2.screenH = screenHeight;
+                c2.pkg = pkg;
+                c2.budgetNodes = 80;
+                ScanFind f2 = AdDecisionCore.walk(new NodeAdapter(root), c2);
+                nodes = f2.nodeCount;
+                scroll = f2.scrollPresent;
+                edit = f2.editPresent;
+            }
+            PendingPos pp = new PendingPos();
+            pp.x = xy[0];
+            pp.y = xy[1];
+            pp.cls = winClassOf(pkg);
+            pp.at = now;
+            pp.nodes = nodes;
+            pp.adLike = nodes > 0 && nodes <= AdDecisionCore.AD_LIKE_MAX_NODES * 3 && !scroll && !edit;
+            pendingPos.put(pkg, pp);
+            final String p2 = pkg;
+            handler.postDelayed(() -> {
+                PendingPos p = pendingPos.get(p2);
+                if (p != null && System.currentTimeMillis() - p.at >= PowerGovernor.POS_VERIFY_MS) {
+                    pendingPos.remove(p2);
+                    posLearnDropped++;
+                    Long lastDrop = posDropLogAt.get(p2);
+                    long nm = System.currentTimeMillis();
+                    if (lastDrop == null || nm - lastDrop > 60000) {
+                        posDropLogAt.put(p2, nm);
+                        appendLog("🛡 位置学习已拦截（" + shortPkg(p2) + "）：点击后 1.5s 窗口未关闭——普通界面点击，不当跳过键学习");
+                    }
+                }
+            }, PowerGovernor.POS_VERIFY_MS + 60);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** v5.3.0 挂起验证结果检查：窗类切换或树体缩水 → 提交；否则丢弃。
+     *  由 WINDOW_STATE_CHANGED / CONTENT_CHANGED 钩子调用。 */
+    private void posVerifyOnWindowChange(String pkg, String newCls, long now) {
+        try {
+            PendingPos pp = pendingPos.get(pkg);
+            if (pp == null) return;
+            long dt = now - pp.at;
+            if (dt > PowerGovernor.POS_VERIFY_MS) {
+                pendingPos.remove(pkg);
+                posLearnDropped++;
+                return;
+            }
+            boolean windowChanged = newCls != null && !newCls.equals(pp.cls);
+            // 窗类切换须同时具备广告窗画像（内容页导航 ≠ 跳过键关窗）
+            boolean pass = PowerGovernor.posCommit(dt, windowChanged && pp.adLike, false, false);
+            if (pass) {
+                pendingPos.remove(pkg);
+                posLearnVerified++;
+                commitPositionLearn(pkg, pp.x, pp.y, pp.cls);
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** v5.3.0 树体缩水验证：同窗广告容器卸载（Dialog 消散/开屏容器移除）。 */
+    private void posVerifyOnContentChange(String pkg, long now) {
+        try {
+            PendingPos pp = pendingPos.get(pkg);
+            if (pp == null) return;
+            long dt = now - pp.at;
+            if (dt > PowerGovernor.POS_VERIFY_MS) return; // 超时路径由 postDelayed 处理
+            Long last = posVerifyNudgeAt.get(pkg);
+            if (last != null && now - last < 300) return; // 流式内容节流
+            posVerifyNudgeAt.put(pkg, now);
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root == null) return;
+            Ctx c2 = new Ctx();
+            c2.screenW = screenWidth;
+            c2.screenH = screenHeight;
+            c2.pkg = pkg;
+            c2.budgetNodes = 80;
+            ScanFind f2 = AdDecisionCore.walk(new NodeAdapter(root), c2);
+            if (PowerGovernor.treeShrunk(pp.nodes, f2.nodeCount)) {
+                pendingPos.remove(pkg);
+                posLearnVerified++;
+                commitPositionLearn(pkg, pp.x, pp.y, pp.cls);
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** 位置候选提取（公共门：相机/OEM/短信/6s 窗/面积/形状/越界）；
+     *  返回归一化坐标 {x,y}，不合法返回 null。 */
+    private double[] posCandidateFrom(String pkg, AccessibilityNodeInfo src, long now) {
+        if (src == null || screenWidth <= 0 || screenHeight <= 0) return null;
         // v4.1.0：相机/拍摄窗绝不学位置（快门/翻转/相册键不是跳过键）
-        if (AdDecisionCore.isCameraPkg(pkg) || AdDecisionCore.isCameraClass(winClassOf(pkg))) return;
+        if (AdDecisionCore.isCameraPkg(pkg) || AdDecisionCore.isCameraClass(winClassOf(pkg))) return null;
         // v3.13.0（issue#16 实锤）：OEM 系统工具包（安全中心/系统管家）与短信
         // 类包的手动操作绝不当「跳过键」学习——securitycenter 应用详情页被学出
         // (91%,9%)，下次进详情页 500ms 直点=在权限管理页乱点
-        if (AdDecisionCore.isOemUtilityPkg(pkg) || AdDecisionCore.isSmsOverlayPkg(pkg)) return;
-        if (now - winAt(pkg) > 6000) return; // v3.9.0：仅窗口切换后 6s 内（开屏期收紧，防误学主页面控件）
+        if (AdDecisionCore.isOemUtilityPkg(pkg) || AdDecisionCore.isSmsOverlayPkg(pkg)) return null;
+        if (now - winAt(pkg) > 6000) return null; // v3.9.0：仅窗口切换后 6s 内（开屏期收紧，防误学主页面控件）
         try {
             Rect r = new Rect();
             src.getBoundsInScreen(r);
-            if (r.isEmpty()) return;
+            if (r.isEmpty()) return null;
             int[] b = new int[]{r.left, r.top, r.right, r.bottom};
             double area = AdDecisionCore.areaOf(b, screenWidth, screenHeight);
-            if (area > AdDecisionCore.POS_LEARN_AREA_MAX) return; // 大热区=CTA，不学
+            if (area > AdDecisionCore.POS_LEARN_AREA_MAX) return null; // 大热区=CTA，不学
             // v3.6.0：可学形状扩至底部（部分应用跳过键在右下角，真机反馈）
-            if (!AdDecisionCore.learnableSkipShape(b, screenWidth, screenHeight)) return;
+            if (!AdDecisionCore.learnableSkipShape(b, screenWidth, screenHeight)) return null;
             final double x = ((b[0] + b[2]) / 2.0) / screenWidth;
             final double y = ((b[1] + b[3]) / 2.0) / screenHeight;
             // v3.7.0：位置健全性校验（真机日志：微信学出 (63%,102%) 越界位置，
@@ -2736,9 +3138,18 @@ public class AdSkipService extends AccessibilityService {
                     appendLog("🚫 位置学习已拒绝（" + shortPkg(pkg) + "）：坐标 ("
                             + Math.round(x * 100) + "%," + Math.round(y * 100) + "%) 越界/贴边，点了也是死区");
                 }
-                return;
+                return null;
             }
-            final String cls = winClassOf(pkg);
+            return new double[]{x, y};
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    /** v5.3.0 位置学习提交（挂起验证通过后；文本路径直呼）——存储 + 日志 */
+    private void commitPositionLearn(String pkg, double x, double y, String cls) {
+        try {
+            long now = System.currentTimeMillis();
             synchronized (lock) {
                 try {
                     JSONObject st = loadState();
@@ -2786,10 +3197,17 @@ public class AdSkipService extends AccessibilityService {
                 } catch (Exception ignored) {
                 }
             }
-            appendLog("📍 位置已学习（" + shortPkg(pkg) + "）：图片跳过键零文本，已记住位置 ("
+            appendLog("📍 位置已学习（" + shortPkg(pkg) + "）：点击后窗口已关闭，验证通过——已记住位置 ("
                     + Math.round(x * 100) + "%," + Math.round(y * 100) + "%) → 下次启动同窗 500ms 直点");
         } catch (Exception ignored) {
         }
+    }
+
+    /** 文本键手动点击同步学位置（文案是强信号：文本路径免挂起验证） */
+    private void learnPositionImmediateFromText(String pkg, AccessibilityNodeInfo src, long now) {
+        double[] xy = posCandidateFrom(pkg, src, now);
+        if (xy == null) return;
+        commitPositionLearn(pkg, xy[0], xy[1], winClassOf(pkg));
     }
 
     /** 学习位置指纹（当前窗口类名匹配、manual>0、最新优先）；无则 {-1,-1} */
