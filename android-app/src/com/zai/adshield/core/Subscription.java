@@ -481,6 +481,20 @@ public final class Subscription {
         return c;
     }
 
+    /** v5.3.0：订阅是否覆盖该应用（仅专属规则；全局组 '*' 不算——宿主窗
+     *  档案据此决定 CLEAN 窗用纯探针哨兵还是低频档 {0,700}：vid 类规则
+     *  探针够不到，须保留少量 DFS 机会）。 */
+    public boolean covers(String pkg) {
+        if (pkg == null || pkg.length() == 0) return false;
+        for (int i = 0; i < apps.size(); i++) {
+            App a = apps.get(i);
+            if (!a.id.equals(pkg)) continue;
+            if (a.excludePkgs != null && a.excludePkgs.contains(pkg)) continue;
+            if (!a.rules.isEmpty()) return true;
+        }
+        return false;
+    }
+
     /* ══════════ 内置默认订阅（GKD 社区风格 · 与主引擎文本规则互补） ══════════
      * 主引擎五层规则认「文案」；本订阅认「控件 ID（vid）」——真实跳过键
      * 的 viewId 几乎都含 skip（btn_skip / iv_skip / tt_splash_skip_btn /
