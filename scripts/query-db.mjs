@@ -1,0 +1,13 @@
+import { PrismaClient } from "@prisma/client";
+const db = new PrismaClient();
+const total = await db.blockEvent.count();
+const blocks = await db.blockEvent.count({ where: { success: true } });
+const misses = await db.blockEvent.count({ where: { success: false } });
+console.log("BlockEvent total:", total, "blocks:", blocks, "misses:", misses);
+const recent = await db.blockEvent.findMany({ orderBy: { ts: "desc" }, take: 20 });
+for (const e of recent) console.log(e.ts.toISOString(), e.appName, e.adType, e.action, e.latencyMs, e.success ? "OK" : "MISS", e.note ?? "");
+console.log("Rules:", await db.rule.count());
+const syncs = await db.syncLog.findMany({ orderBy: { createdAt: "desc" }, take: 3 });
+for (const s of syncs) console.log("SYNC", s.kind, s.ok, s.message.slice(0, 80), s.createdAt.toISOString());
+console.log("FeedbackIssues:", await db.feedbackIssue.count());
+await db.$disconnect();

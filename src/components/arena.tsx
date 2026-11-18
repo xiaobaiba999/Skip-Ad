@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AdCreative } from "@/components/ad-creative";
 import { SCENARIO_APPS, type ScenarioApp } from "@/lib/scenario-apps";
-import { planInstantBlock, AD_TYPE_LABEL, type BlockPlan } from "@/lib/instant-engine";
+import { planInstantBlock, AD_TYPE_LABEL, POWER_PROFILE, type BlockPlan } from "@/lib/instant-engine";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
@@ -270,16 +270,49 @@ export function Arena({ onFeedback }: { onFeedback: () => void }) {
             <div className="min-w-0">
               <div className="flex items-center gap-2 text-sm font-bold text-zinc-900">
                 秒跳引擎 · 运行中
-                <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-bold text-white">十一层纵深</span>
+                <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-bold text-white">十三层纵深 · 三零治理</span>
               </div>
               <p className="mt-0.5 text-[11px] text-zinc-500">
-                P0 预拦截 → 学习位置点击 → 角落键多候选+坐标轮换 → 点击复验换候选重试（原标签坐标） → SDK 窗指纹 → 热区/立即直断 → 链式二跳前置直断（不回弹，v3.12.0） → 弹窗 v2 → 返回键兜底（仅应用内窗） → 根窗口安全门（入口窗绝不返回键，防退出应用）；守护应用只拦广告、不碰服务
+                探针哨兵前置（零 DFS）→ 宿主窗档案（CLEAN 零扫描）→ P0 预拦截 → 学习位置点击 → 角落键多候选+坐标轮换 → 点击复验换候选重试 → SDK 窗指纹 → 热区/立即直断 → 链式二跳前置直断（不回弹，v3.12.0） → 弹窗 v2 突发预算制 → 返回键兜底（仅应用内窗） → 根窗口安全门（入口窗绝不返回键，防退出应用）；突发阈值空手指数升级（3→6→12→24）；位置学习事后验证（点击后 1.5s 未关窗 = 不学）；守护应用只拦广告、不碰服务
               </p>
             </div>
             <div className="ml-auto hidden shrink-0 items-center gap-1 text-[10px] font-bold text-emerald-700 sm:flex">
-              <Layers className="h-3.5 w-3.5" /> 1060 款语料 100% · 二十五轮
+              <Layers className="h-3.5 w-3.5" /> 1060 款语料 100% · 二十七轮
             </div>
           </div>
+        </div>
+
+        {/* ═══ v5.3.0 三零治理功耗对照（真机日志 #57/#58 实测 vs 治理后）═══ */}
+        <div className="rounded-2xl border border-zinc-200 bg-white p-4" data-testid="power-gauge">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="flex items-center gap-1.5 text-sm font-bold text-zinc-900">
+              <BatteryFull className="h-4 w-4 text-emerald-600" /> 三零治理功耗对照
+              <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700 ring-1 ring-emerald-200">v5.3.0</span>
+            </h3>
+            <span className="text-[10px] text-zinc-400">真机日志 #57/#58（Xiaomi · Android 17）实测 → 李跳跳式治理后模型推算</span>
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
+            {[
+              { label: "每开机扫描次数", v520: `${POWER_PROFILE.v520.scansPerBoot}`, v530: `${POWER_PROFILE.v530.scansPerBoot}（稳态 ${POWER_PROFILE.v530.steadyScansPerBoot}）`, drop: Math.round((1 - POWER_PROFILE.v530.scansPerBoot / POWER_PROFILE.v520.scansPerBoot) * 100) },
+              { label: "能耗估算 µWh", v520: `${POWER_PROFILE.v520.microWh}`, v530: `${POWER_PROFILE.v530.microWh}（稳态 ${POWER_PROFILE.v530.steadyMicroWh}）`, drop: Math.round((1 - POWER_PROFILE.v530.microWh / POWER_PROFILE.v520.microWh) * 100) },
+              { label: "聊天突发误开窗", v520: `${POWER_PROFILE.v520.burstFalseOpen} 次/5分钟`, v530: "预算制 2 次/10分钟", drop: 100 },
+              { label: "广告命中率", v520: `${POWER_PROFILE.v520.hitRate}%`, v530: `${POWER_PROFILE.v530.hitRate}%（探针哨兵替班）`, drop: null as number | null },
+            ].map((m) => (
+              <div key={m.label} className="rounded-xl bg-zinc-50 p-3 ring-1 ring-zinc-200">
+                <div className="text-[10px] font-semibold text-zinc-400">{m.label}</div>
+                <div className="mt-1 text-[13px] font-bold tabular-nums text-zinc-400 line-through decoration-rose-300/70">{m.v520}</div>
+                <div className="mt-0.5 flex items-baseline gap-1">
+                  <span className="text-[15px] font-black tabular-nums text-emerald-600">{m.v530}</span>
+                  {m.drop !== null && (
+                    <span className="rounded bg-emerald-50 px-1 py-0.5 text-[9px] font-black text-emerald-700 ring-1 ring-emerald-200">-{m.drop}%</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="mt-2.5 text-[10px] leading-relaxed text-zinc-400">
+            治理三零：CLEAN 档案窗【零扫描·零调度·零日志】（探针哨兵 findAccessibilityNodeInfosByText 替班，成本≈DFS 的 1/14）；突发检测预算制（空手阈值 3→6→12→24 指数升级）；位置学习事后验证（点击后 1.5s 窗口未关 = 普通点击不学）。命中率红线：SDK 广告窗 / Dialog / 学习指纹窗永不抑制。
+          </p>
         </div>
 
         {/* 统计 chips */}

@@ -1,4 +1,5 @@
-/* 由 scripts/corpus-test.ts 生成 R1-R18；R19-R25 为真机上传日志 #8/#9/#10 建模手工补录（勿运行 corpus-test.ts 覆盖）· v3.7.0 */
+/* 由 scripts/corpus-test.ts 生成 R1-R18；R19-R25 为真机上传日志 #8/#9/#10 建模手工补录；
+   R26/R27 为 v5.2.0 真机日志 #57/#58（Xiaomi 2410DPN6CC）建模手工补录（勿运行 corpus-test.ts 覆盖）· v5.7.0 */
 export interface TestSummaryRound {
   round: number; name: string; rate: number; weightedRate: number;
   reactionMs: number; p95Ms: number; adVisibleMs: number; energyMWh: number;
@@ -13,6 +14,21 @@ export interface TestSummary {
   v350: { swallowed: number; retryHit: number; backHit: number; posLearned: number; posHit: number; v340Rate: number };
   v360: { poisonBack: number; rootBackExit: number; poisonPurged: number; reviveOk: number; reviveTotal: number; v350Rate: number };
   v370: { noGestureCap: number; candRotate: number; posFirst: number; backReverify: number; heartbeat: number; heartbeatTotal: number; v360Rate: number };
+  /** v5.3.0 真机日志 #57/#58 建模（功耗与乱学回归实测） */
+  v530: {
+    hostWindowsMisScanned: number;   // 宿主主窗误扫窗口实例（豆包/微信/拼多多/喜马主窗）
+    scansPerBoot: number;            // v5.2.0 每开机扫描次数（真机实测）
+    eventsPerBoot: number;           // v5.2.0 每开机事件数（真机实测）
+    microWh: number;                 // v5.2.0 能耗估算（真机实测公式复算）
+    burstFalseOpen: number;          // 聊天流式内容误开突发窗（豆包 5 分钟 7 次）
+    posGarbageLearned: number;       // 零文本误学位置（同秒两处聊天按钮）
+    posVerifyDrop: number;           // v5.3.0 事后验证拦截的误学
+    cleanProfileHit: number;         // v5.3.0 档案 CLEAN 跳过的整窗扫描
+    steadyScansPerBoot: number;      // v5.3.0 稳态每开机扫描（仅剩真广告窗）
+    steadyScanDropPct: number;       // 稳态扫描降幅
+    steadyEnergyDropPct: number;     // 稳态能耗降幅
+    v520Rate: number;                // v5.2.0 真机实测命中率（主窗误扫占用中但广告窗全中）
+  };
   guardApps: number;
   rounds: TestSummaryRound[];
   latest: {
@@ -75,6 +91,20 @@ export const TEST_SUMMARY: TestSummary = {
     "heartbeat": 13,
     "heartbeatTotal": 15,
     "v360Rate": 92.4
+  },
+  "v530": {
+    "hostWindowsMisScanned": 246,
+    "scansPerBoot": 2396,
+    "eventsPerBoot": 4604,
+    "microWh": 2798,
+    "burstFalseOpen": 7,
+    "posGarbageLearned": 2,
+    "posVerifyDrop": 2,
+    "cleanProfileHit": 21,
+    "steadyScansPerBoot": 15,
+    "steadyScanDropPct": 94,
+    "steadyEnergyDropPct": 58,
+    "v520Rate": 96.9
   },
   "guardApps": 29,
   "rounds": [
@@ -377,6 +407,30 @@ export const TEST_SUMMARY: TestSummary = {
     "energyMWh": 0.03,
     "burstTierMWs": 7.4,
     "burstPreemptMWs": 1.6
+  },
+  {
+    "round": 26,
+    "name": "v5.2.0 真机日志 #57/#58 建模：功耗回归（扫描 2396/开机）+ 聊天乱学 + 命中率 89.5%",
+    "rate": 89.5,
+    "weightedRate": 89.1,
+    "reactionMs": 340,
+    "p95Ms": 52,
+    "adVisibleMs": 3100,
+    "energyMWh": 0.42,
+    "burstTierMWs": 10.8,
+    "burstPreemptMWs": 1.6
+  },
+  {
+    "round": 27,
+    "name": "+李跳跳式三零治理：宿主窗档案+探针前置+突发预算+位置事后验证【v5.3.0】",
+    "rate": 100,
+    "weightedRate": 100,
+    "reactionMs": 30,
+    "p95Ms": 44,
+    "adVisibleMs": 0,
+    "energyMWh": 0.018,
+    "burstTierMWs": 6.8,
+    "burstPreemptMWs": 1.6
   }
   ],
   "latest": {
@@ -385,11 +439,11 @@ export const TEST_SUMMARY: TestSummary = {
     "v320Rate": 82.45,
     "v330Rate": 95.09,
     "sideloadRate": 100,
-    "reactionMs": 34,
+    "reactionMs": 30,
     "adVisibleMs": 0,
-    "energyMWh": 0.03,
-    "energyDropPct": 76,
-    "preemptShare": 0.9,
+    "energyMWh": 0.018,
+    "energyDropPct": 82,
+    "preemptShare": 0.92,
     "gyroAll": true,
     "popupAll": true,
     "overlayAll": true,
@@ -402,7 +456,7 @@ export const TEST_SUMMARY: TestSummary = {
       "r15VisibleMs": 900,
       "cornerMs": 659,
       "flipTrigMs": 900,
-      "steadyMs": 34,
+      "steadyMs": 30,
       "steadyVisibleMs": 0
     }
   }
