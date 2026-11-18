@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { APP_VERSION } from "@/lib/version";
 import {
@@ -43,6 +44,8 @@ export function LearningCenter() {
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
   const [logUploading, setLogUploading] = useState(false);
   const [logMsg, setLogMsg] = useState<{ ok: boolean; text: string; url?: string } | null>(null);
+  /* v5.3.0 弹屏提醒：日志上传成功后全屏弹窗确认（不再只是角落文字变化） */
+  const [logDone, setLogDone] = useState<{ number: number; url: string; blocks: number; rules: number; events: number } | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -95,7 +98,7 @@ export function LearningCenter() {
       ? learnedRules.map((r) => `- ${r.appName}（${r.appCategory}）：${r.pattern} · 命中 ${r.hitCount} 次 · 置信度 ${Math.round(r.confidence * 100)}%${r.enabled ? "" : " · 已停用"}`).join("\n")
       : "- （无学习规则）";
     const context = [
-      `### 版本：v${APP_VERSION}（验证码横幅四重防护 + 息屏休眠 + 夜间心跳降频）· 上传时间：${new Date().toLocaleString("zh-CN", { hour12: false })}`,
+      `### 版本：v${APP_VERSION}（李跳跳式三零治理 · 宿主窗档案 · 探针前置 · 位置学习验证）· 上传时间：${new Date().toLocaleString("zh-CN", { hour12: false })}`,
       "",
       "### 拦截战绩（累计）",
       `- 拦截 ${profile.totals.blocks} 次 · 漏拦截 ${profile.totals.misses} 次 · 成功率 ${Math.round(profile.totals.successRate * 100)}% · 平均耗时 ${profile.totals.avgLatencyMs}ms · 守护拦截 ${profile.totals.guardBlocks} 次 · 已覆盖 ${profile.perApp.length} 款应用`,
@@ -119,6 +122,14 @@ export function LearningCenter() {
       const d = await r.json();
       if (d.ok) {
         setLogMsg({ ok: true, text: `已上传 Issue #${d.number}，将直接成为下一版迭代的修复依据`, url: d.url });
+        // v5.3.0 弹屏提醒：上传成功 → 全屏弹窗确认（带上传内容清单）
+        setLogDone({
+          number: d.number,
+          url: d.url,
+          blocks: profile.totals.blocks,
+          rules: learnedRules.length,
+          events: Math.min(profile.recent.length, 40),
+        });
       } else {
         setLogMsg({ ok: false, text: d.error ?? "上传失败" });
       }
@@ -290,7 +301,7 @@ export function LearningCenter() {
                   {logUploading ? <RefreshCw className="mr-1 h-3.5 w-3.5 animate-spin" /> : <ScrollText className="mr-1 h-3.5 w-3.5" />}
                   {logUploading ? "上传中…" : "上传引擎日志到 GitHub"}
                 </Button>
-                <span className="text-[10px] leading-relaxed text-zinc-500">拦截战绩 + 学习规则 + 事件流一键直达 Issues，供下一版迭代参考</span>
+                <span className="text-[10px] leading-relaxed text-zinc-500">拦截战绩 + 学习规则 + 事件流一键直达 Issues，上传成功即弹屏提醒确认</span>
               </div>
               {logMsg && (
                 <div className={cn("mt-3 rounded-xl p-3 text-[11px] leading-relaxed ring-1",
@@ -351,6 +362,67 @@ export function LearningCenter() {
           </ul>
         )}
       </section>
+
+      {/* ═══ v5.3.0 弹屏提醒：引擎日志上传成功全屏确认 ═══ */}
+      <Dialog open={!!logDone} onOpenChange={(v) => { if (!v) setLogDone(null); }}>
+        <DialogContent className="max-w-sm rounded-2xl" data-testid="log-upload-dialog">
+          <div className="flex flex-col items-center gap-1 py-2 text-center">
+            <span className="relative flex h-20 w-20 items-center justify-center" aria-hidden>
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-25" />
+              <span className="relative flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 shadow-lg shadow-emerald-500/30">
+                <CloudUpload className="h-9 w-9 text-white" />
+              </span>
+            </span>
+            <DialogHeader className="mt-2 space-y-1">
+              <DialogTitle className="text-center text-lg">引擎日志已成功上传</DialogTitle>
+              <DialogDescription className="text-center text-[11px] leading-relaxed">
+                已通过内置加密通道直达 GitHub Issues，开发者可直接查看并据此迭代
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-zinc-50 px-3 py-2.5 ring-1 ring-zinc-200">
+              <Github className="h-4 w-4 shrink-0 text-zinc-700" />
+              <span className="text-sm font-black text-zinc-900">Issue #{logDone?.number}</span>
+              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">已创建</span>
+            </div>
+
+            <div className="mt-2.5 grid w-full grid-cols-3 gap-2">
+              {[
+                { label: "拦截战绩", value: `${logDone?.blocks ?? 0} 次` },
+                { label: "学习规则", value: `${logDone?.rules ?? 0} 条` },
+                { label: "事件流", value: `${logDone?.events ?? 0} 条` },
+              ].map((s) => (
+                <div key={s.label} className="rounded-xl bg-zinc-50 px-2 py-2 ring-1 ring-zinc-200">
+                  <div className="text-[10px] font-semibold text-zinc-400">{s.label}</div>
+                  <div className="mt-0.5 text-[13px] font-black tabular-nums text-zinc-800">{s.value}</div>
+                </div>
+              ))}
+            </div>
+
+            <p className="mt-3 flex items-center gap-1.5 text-[11px] leading-relaxed text-zinc-500">
+              <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
+              令牌仅存服务端，全程不出现在你的浏览器
+            </p>
+          </div>
+          <DialogFooter className="flex-row gap-2 sm:justify-center">
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-9 flex-1 rounded-lg"
+              onClick={() => setLogDone(null)}
+            >
+              完成
+            </Button>
+            <Button
+              size="sm"
+              className="h-9 flex-1 rounded-lg bg-emerald-600 hover:bg-emerald-500"
+              onClick={() => logDone?.url && window.open(logDone.url, "_blank", "noopener,noreferrer")}
+            >
+              <ExternalLink className="mr-1 h-3.5 w-3.5" /> 查看 Issue
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
