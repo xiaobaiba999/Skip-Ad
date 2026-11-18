@@ -1,118 +1,20 @@
 {
   "meta": {
     "version": "3.1.0",
-    "generatedAt": "2026-11-18T03:25:21.168Z",
+    "generatedAt": "2026-11-18T07:01:48.429Z",
     "timezone": "Asia/Shanghai",
     "purpose": "学习中心夜间自动同步——为后续版本迭代提供规则与画像参考"
   },
   "stats": {
-    "totalBlocks": 11,
+    "totalBlocks": 0,
     "totalMisses": 0,
-    "guardBlocks": 1,
-    "avgLatencyMs": 95,
+    "guardBlocks": 0,
+    "avgLatencyMs": 0,
     "successRate": 1
   },
-  "learnedRules": [
-    {
-      "appName": "喜马拉雅",
-      "appCategory": "音频",
-      "adType": "splash",
-      "action": "chain_block",
-      "pattern": "首次拦截即沉淀广告指纹（容器签名 + viewId + 出现时机）→ 下次启动 P0 预拦截，广告未及呈现",
-      "confidence": 0.788,
-      "hitCount": 2,
-      "enabled": true
-    },
-    {
-      "appName": "极选商城",
-      "appCategory": "电商",
-      "adType": "splash",
-      "action": "preempt_block",
-      "pattern": "首次拦截即沉淀广告指纹（容器签名 + viewId + 出现时机）→ 下次启动 P0 预拦截，广告未及呈现",
-      "confidence": 0.788,
-      "hitCount": 2,
-      "enabled": true
-    },
-    {
-      "appName": "邻里团购",
-      "appCategory": "生活",
-      "adType": "popup",
-      "action": "preempt_block",
-      "pattern": "首次拦截即沉淀广告指纹（容器签名 + viewId + 出现时机）→ 下次启动 P0 预拦截，广告未及呈现",
-      "confidence": 0.784,
-      "hitCount": 1,
-      "enabled": true
-    },
-    {
-      "appName": "惠银银行",
-      "appCategory": "银行",
-      "adType": "splash",
-      "action": "guard_skip",
-      "pattern": "首次拦截即沉淀广告指纹（容器签名 + viewId + 出现时机）→ 下次启动 P0 预拦截，广告未及呈现",
-      "confidence": 0.78,
-      "hitCount": 0,
-      "enabled": true
-    },
-    {
-      "appName": "星际远征",
-      "appCategory": "游戏",
-      "adType": "shake",
-      "action": "sensor_block",
-      "pattern": "首次拦截即沉淀广告指纹（容器签名 + viewId + 出现时机）→ 下次启动 P0 预拦截，广告未及呈现",
-      "confidence": 0.78,
-      "hitCount": 0,
-      "enabled": true
-    },
-    {
-      "appName": "政务通",
-      "appCategory": "政务",
-      "adType": "interstitial",
-      "action": "guard_skip",
-      "pattern": "首次拦截即沉淀广告指纹（容器签名 + viewId + 出现时机）→ 下次启动 P0 预拦截，广告未及呈现",
-      "confidence": 0.78,
-      "hitCount": 0,
-      "enabled": true
-    }
-  ],
+  "learnedRules": [],
   "habitProfile": {
-    "perApp": [
-      {
-        "appName": "喜马拉雅",
-        "category": "音频",
-        "count": 3,
-        "avgMs": 239
-      },
-      {
-        "appName": "极选商城",
-        "category": "电商",
-        "count": 3,
-        "avgMs": 37
-      },
-      {
-        "appName": "邻里团购",
-        "category": "生活",
-        "count": 2,
-        "avgMs": 43
-      },
-      {
-        "appName": "政务通",
-        "category": "政务",
-        "count": 1,
-        "avgMs": 53
-      },
-      {
-        "appName": "星际远征",
-        "category": "游戏",
-        "count": 1,
-        "avgMs": 42
-      },
-      {
-        "appName": "惠银银行",
-        "category": "银行",
-        "count": 1,
-        "avgMs": 42
-      }
-    ],
+    "perApp": [],
     "hourHistogram": [
       0,
       0,
@@ -124,8 +26,8 @@
       0,
       0,
       0,
-      6,
-      5,
+      0,
+      0,
       0,
       0,
       0,
@@ -139,134 +41,49 @@
       0,
       0
     ],
-    "scenarioDistribution": {
-      "normal": 9,
-      "popup": 1,
-      "guard": 1
-    }
+    "scenarioDistribution": {}
   },
   "hotPresetRules": [
     {
+      "appName": "*",
+      "pattern": "「跳过 | 跳过广告 | Skip」文本匹配（GKD 快照选择器同源）",
+      "hitCount": 0
+    },
+    {
+      "appName": "*",
+      "pattern": "启动 3.5s 时间窗内 + TYPE_WINDOW_CONTENT_CHANGED 持续监听（延迟出现的跳过键一出现即点）",
+      "hitCount": 0
+    },
+    {
+      "appName": "*",
+      "pattern": "面积安全阀：只代点 <35% 屏面积控件，全屏热区/假关闭 × 直接忽略",
+      "hitCount": 0
+    },
+    {
+      "appName": "*",
+      "pattern": "加速度阈值 <15m/s²、转角 <35°、持续 <3s 的传感器事件视为激进广告 → 挂起监听",
+      "hitCount": 0
+    },
+    {
+      "appName": "*",
+      "pattern": "广告窗口内发起的 Scheme / Universal Link 一律拦截，跳转链系统层断开",
+      "hitCount": 0
+    },
+    {
+      "appName": "守护名单",
+      "pattern": "支付、银行、政务类应用：广告照常拦截，但绝不终止进程/服务，仅温和代点",
+      "hitCount": 0
+    },
+    {
       "appName": "极选商城",
       "pattern": "极选商城：viewId 精确定位跳过控件（无障碍快照）",
-      "hitCount": 1
+      "hitCount": 0
     },
     {
       "appName": "喜马拉雅",
       "pattern": "喜马拉雅：viewId 精确定位跳过控件（无障碍快照）",
-      "hitCount": 1
-    },
-    {
-      "appName": "星际远征",
-      "pattern": "星际远征：加速度计监听冻结（激进阈值确认）",
-      "hitCount": 1
-    },
-    {
-      "appName": "惠银银行",
-      "pattern": "惠银银行：viewId 精确定位跳过控件（无障碍快照）",
-      "hitCount": 1
-    },
-    {
-      "appName": "政务通",
-      "pattern": "政务通：viewId 精确定位跳过控件（无障碍快照）",
-      "hitCount": 1
-    },
-    {
-      "appName": "邻里团购",
-      "pattern": "邻里团购：viewId 精确定位跳过控件（无障碍快照）",
-      "hitCount": 1
-    },
-    {
-      "appName": "喜马拉雅",
-      "pattern": "喜马拉雅专案 v2：无倒计时 + 右上角「跳过广告」+ 图内假「跳过」热区 + 底部「翻转手机，跳转详情页或第三方应用」陀螺仪诱导 + 链式二跳 → 极速链 0ms 首扫直配「跳过广告」；0.8s 无真跳过键返回键直断；v3.12.0 起二跳已发起后不再回弹；次启预拦截",
-      "hitCount": 1
-    },
-    {
-      "appName": "喜马拉雅",
-      "pattern": "喜马拉雅专案 v3：SDK 广告窗零文本（文案烧在图里）+ 无倒计时 + 翻转手机 900ms 即跳 + 浏览器二跳 → className 指纹 500ms 直断（抢在翻转前）；30s 后首页覆盖层弹窗内容突发检测关闭；次启预拦截 0ms 可见（v3.12.0：二跳已发起后不再回弹）",
-      "hitCount": 1
+      "hitCount": 0
     }
   ],
-  "recentEvents": [
-    {
-      "id": "cmwlk622f0005u8b0wawn0rou",
-      "ts": 1794972309495,
-      "appName": "邻里团购",
-      "action": "preempt_block",
-      "adType": "popup",
-      "latencyMs": 35,
-      "success": true,
-      "scenario": "normal"
-    },
-    {
-      "id": "cmwlk5m340003u8b0mif61yan",
-      "ts": 1794972288784,
-      "appName": "邻里团购",
-      "action": "popup_close",
-      "adType": "popup",
-      "latencyMs": 50,
-      "success": true,
-      "scenario": "popup"
-    },
-    {
-      "id": "cmwlk59fa0002u8b0btd6agvu",
-      "ts": 1794972272374,
-      "appName": "喜马拉雅",
-      "action": "preempt_block",
-      "adType": "splash",
-      "latencyMs": 35,
-      "success": true,
-      "scenario": "normal"
-    },
-    {
-      "id": "cmwlk4vyx0001u8b0em6gtusd",
-      "ts": 1794972254938,
-      "appName": "极选商城",
-      "action": "preempt_block",
-      "adType": "splash",
-      "latencyMs": 35,
-      "success": true,
-      "scenario": "normal"
-    },
-    {
-      "id": "cmwlhehvg0008u8xbmn09x96s",
-      "ts": 1794967664381,
-      "appName": "政务通",
-      "action": "guard_skip",
-      "adType": "interstitial",
-      "latencyMs": 53,
-      "success": true,
-      "scenario": "guard"
-    },
-    {
-      "id": "cmwlhdsom0007u8xbqfkevmg1",
-      "ts": 1794967631734,
-      "appName": "极选商城",
-      "action": "preempt_block",
-      "adType": "splash",
-      "latencyMs": 35,
-      "success": true,
-      "scenario": "normal"
-    },
-    {
-      "id": "cmwlhdetm0005u8xbz1yqz3pn",
-      "ts": 1794967613770,
-      "appName": "星际远征",
-      "action": "instant_skip",
-      "adType": "splash",
-      "latencyMs": 42,
-      "success": true,
-      "scenario": "normal"
-    },
-    {
-      "id": "cmwlhdet40003u8xbdjxz8a4o",
-      "ts": 1794967613753,
-      "appName": "惠银银行",
-      "action": "instant_skip",
-      "adType": "splash",
-      "latencyMs": 42,
-      "success": true,
-      "scenario": "normal"
-    }
-  ]
+  "recentEvents": []
 }
