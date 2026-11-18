@@ -44,7 +44,7 @@ declare global {
 const fmtMB = (bytes: number) => Math.round((bytes / 1048576) * 100) / 100;
 
 /**
- * 关于页：极简 —— 品牌 + 检查更新（页内流式直下，不跳转 GitHub）+ 最近三个版本。
+ * 关于页：极简 —— 品牌 + 检查更新（页内流式直下，不跳转 GitHub）+ 当前版本。
  */
 export function AboutPanel() {
   const [checking, setChecking] = useState(false);
@@ -295,25 +295,23 @@ export function AboutPanel() {
         )}
       </section>
 
-      {/* 最近三个版本 */}
+      {/* 当前版本（历史版本归档 GitHub Releases） */}
       <section className="rounded-2xl border border-zinc-200 bg-white p-4 lg:p-5">
         <h2 className="flex items-center gap-2 text-base font-bold text-zinc-900">
-          <Tag className="h-5 w-5 text-violet-600" /> 最近三个版本
+          <Tag className="h-5 w-5 text-violet-600" /> 当前版本
         </h2>
         <ol className="mt-4 space-y-4">
-          {/* v3.13.0：slice(0,3) 双保险——数组即使多塞条目也绝不破坏「只留三版本」红线 */}
-          {VERSION_HISTORY.slice(0, 3).map((v, i) => (
-            <li key={v.version} className={cn("rounded-xl border p-4", i === 0 ? "border-violet-200 bg-violet-50/50" : "border-zinc-100 bg-zinc-50/60")}>
+          {/* v5.5.0：版本记录极简化——仅展示当前安装版本（数组只保留最新 1 条，旧版本归档 GitHub Releases） */}
+          {VERSION_HISTORY.map((v) => (
+            <li key={v.version} className="rounded-xl border border-violet-200 bg-violet-50/50 p-4">
               <div className="flex flex-wrap items-center gap-2">
-                <span className={cn("rounded-lg px-2 py-0.5 text-xs font-black", i === 0 ? "bg-violet-600 text-white" : "bg-zinc-200 text-zinc-600")}>
+                <span className="rounded-lg bg-violet-600 px-2 py-0.5 text-xs font-black text-white">
                   v{v.version}
                 </span>
                 <span className="text-[11px] tabular-nums text-zinc-400">{v.date} · code {v.code}</span>
-                {i === 0 && (
-                  <span className="ml-auto flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
-                    <ShieldCheck className="h-3 w-3" /> 当前版本
-                  </span>
-                )}
+                <span className="ml-auto flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                  <ShieldCheck className="h-3 w-3" /> 已安装
+                </span>
               </div>
               <div className="mt-2 text-[13px] font-bold text-zinc-800">{v.tagline}</div>
               <ul className="mt-2 space-y-1">

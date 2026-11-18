@@ -1,14 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { APP_VERSION } from "@/lib/version";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   BrainCircuit, Clock, RefreshCw, CloudUpload, CheckCircle2, XCircle, Github,
-  Smartphone, ShieldCheck, Zap, Timer, TrendingUp, ExternalLink, Sparkles, ScrollText,
+  Smartphone, ShieldCheck, Zap, Timer, TrendingUp, ExternalLink, Sparkles, ScrollText, X,
 } from "lucide-react";
 
 interface LearningData {
@@ -46,6 +47,29 @@ export function LearningCenter() {
   const [logMsg, setLogMsg] = useState<{ ok: boolean; text: string; url?: string } | null>(null);
   /* v5.3.0 弹屏提醒：日志上传成功后全屏弹窗确认（不再只是角落文字变化） */
   const [logDone, setLogDone] = useState<{ number: number; url: string; blocks: number; rules: number; events: number } | null>(null);
+  /* v5.5.0 顶部成功横幅：上传成功后面板顶部展示醒目绿色横幅，8 秒自动淡出，也可手动关闭 */
+  const [successBanner, setSuccessBanner] = useState<{ number: number; url: string } | null>(null);
+  const bannerTimerRef = useRef<number | null>(null);
+
+  const showSuccessBanner = useCallback((number: number, url: string) => {
+    if (bannerTimerRef.current) window.clearTimeout(bannerTimerRef.current);
+    setSuccessBanner({ number, url });
+    bannerTimerRef.current = window.setTimeout(() => {
+      bannerTimerRef.current = null;
+      setSuccessBanner(null);
+    }, 8000);
+  }, []);
+
+  const closeSuccessBanner = useCallback(() => {
+    if (bannerTimerRef.current) window.clearTimeout(bannerTimerRef.current);
+    bannerTimerRef.current = null;
+    setSuccessBanner(null);
+  }, []);
+
+  /* 卸载时清理横幅自动淡出计时器 */
+  useEffect(() => () => {
+    if (bannerTimerRef.current) window.clearTimeout(bannerTimerRef.current);
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -87,6 +111,7 @@ export function LearningCenter() {
     if (!data) return;
     setLogUploading(true);
     setLogMsg(null);
+    closeSuccessBanner(); // 新一轮上传前清掉旧横幅，避免成功/失败状态打架
     const { profile, learnedRules } = data;
     const eventLines = profile.recent.length
       ? profile.recent
@@ -130,6 +155,8 @@ export function LearningCenter() {
           rules: learnedRules.length,
           events: Math.min(profile.recent.length, 40),
         });
+        // v5.5.0 顶部成功横幅：与弹窗同源触发，8 秒后自动淡出（失败不展示）
+        showSuccessBanner(d.number, d.url);
       } else {
         setLogMsg({ ok: false, text: d.error ?? "上传失败" });
       }
@@ -137,7 +164,7 @@ export function LearningCenter() {
       setLogMsg({ ok: false, text: "网络异常，请稍后重试" });
     }
     setLogUploading(false);
-  }, [data]);
+  }, [data, showSuccessBanner, closeSuccessBanner]);
 
   if (loading || !data) {
     return (
@@ -152,6 +179,44 @@ export function LearningCenter() {
 
   return (
     <div className="flex flex-col gap-5">
+      {/* ═══ v5.5.0 顶部成功横幅：日志上传成功后置顶展示，8 秒自动淡出，可手动关闭 ═══ */}
+      <AnimatePresence>
+        {successBanner && (
+          <motion.div
+            key="log-success-banner"
+            role="status"
+            aria-live="polite"
+            data-testid="log-success-banner"
+            initial={{ opacity: 0, y: -24 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -24 }}
+            transition={{ duration: 0.35, ease: "easeOut" }}
+            className="sticky top-2 z-40 flex items-center gap-2.5 rounded-xl border border-emerald-500/60 bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-3 text-white shadow-lg shadow-emerald-500/30"
+          >
+            <CheckCircle2 className="h-5 w-5 shrink-0" aria-hidden />
+            <p className="min-w-0 flex-1 text-[12px] font-bold leading-relaxed">
+              日志已上传，感谢反馈
+              <a
+                href={successBanner.url}
+                target="_blank"
+                rel="noreferrer"
+                className="ml-2 inline-flex items-center gap-0.5 rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-bold text-white transition hover:bg-white/30"
+              >
+                Issue #{successBanner.number} <ExternalLink className="h-2.5 w-2.5" aria-hidden />
+              </a>
+            </p>
+            <button
+              type="button"
+              aria-label="关闭成功横幅"
+              onClick={closeSuccessBanner}
+              className="flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-lg text-white/80 transition hover:bg-white/20 hover:text-white"
+            >
+              <X className="h-4 w-4" aria-hidden />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* 概览 */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[
@@ -301,7 +366,7 @@ export function LearningCenter() {
                   {logUploading ? <RefreshCw className="mr-1 h-3.5 w-3.5 animate-spin" /> : <ScrollText className="mr-1 h-3.5 w-3.5" />}
                   {logUploading ? "上传中…" : "上传引擎日志到 GitHub"}
                 </Button>
-                <span className="text-[10px] leading-relaxed text-zinc-500">拦截战绩 + 学习规则 + 事件流一键直达 Issues，上传成功即弹屏提醒确认</span>
+                <span className="text-[10px] leading-relaxed text-zinc-500">拦截战绩 + 学习规则 + 事件流一键直达 Issues，上传成功即弹窗确认 + 顶部成功横幅</span>
               </div>
               {logMsg && (
                 <div className={cn("mt-3 rounded-xl p-3 text-[11px] leading-relaxed ring-1",

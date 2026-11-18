@@ -86,6 +86,9 @@ public class MainActivity extends Activity {
         webView.setWebViewClient(new HardenedWebViewClient());
         webView.loadUrl("file:///android_asset/www/index.html");
 
+        // v5.5.0 崩溃采集：进程崩溃堆栈写本地（8KB 截断），下次日志上传自动附带
+        CrashCapture.install(this);
+
         // v3.5.0 保活：通知权限（13+）——保活常驻通知与恢复提醒必需
         requestNotifPermission();
         // v3.5.0：从「待恢复」通知点入 → 自动跳无障碍设置（两步恢复的第一步）
@@ -250,31 +253,24 @@ public class MainActivity extends Activity {
             AdSkipService.setMaster(a, on);
         }
 
+        /* ═══ v5.5.0 10 秒警告红线：系统设置跳转最终守卫 ═══
+         * 所有「去系统无障碍设置」的路径都必须过这道闸：只要服务仍在系统
+         * 登记列表中，一律返回 still_registered 拒绝跳转——由页面改走应用内
+         * 自愈（doRevive），绝不把登记仍在的用户送去系统设置看 10 秒强制
+         * 警告。系统设置只剩一种合法到达场景：登记真被系统吊销（未授权）。
+         * 本闸是 Java 侧最后一道（JS 侧 btn-enable/__autoRestore 已有各自
+         * 预判），任何一层被绕过都兜得住。
+         * @return {"ok":true} 已跳转 / {"ok":false,"reason":"still_registered"} 登记在、未跳转 */
         @JavascriptInterface
-        public void openAccessibilitySettings() {
+        public String openA11yDetail() {
             try {
-                Intent it = new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS);
-                it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                a.startActivity(it);
-            } catch (Exception ignored) {
-            }
-        }
-
-        /** v3.8.0：直达本服务无障碍详情页（Android 11+ 一个开关即恢复；旧系统回退列表页） */
-        @JavascriptInterface
-        public void openA11yDetail() {
-            try {
-                if (Build.VERSION.SDK_INT >= 30) {
-                    Intent it = new Intent(ACTION_A11Y_DETAILS);
-                    it.putExtra(Intent.EXTRA_COMPONENT_NAME,
-                            new android.content.ComponentName(a, AdSkipService.class));
-                    it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                    a.startActivity(it);
-                    return;
+                if (AdSkipService.registrationPresent(a)) {
+                    return "{\"ok\":false,\"reason\":\"still_registered\"}";
                 }
-                throw new IllegalStateException("pre-R");
+                a.openA11y();
+                return "{\"ok\":true}";
             } catch (Exception e) {
-                openAccessibilitySettings();
+                return "{\"ok\":false,\"reason\":\"error\"}";
             }
         }
 
@@ -293,6 +289,56 @@ public class MainActivity extends Activity {
             } catch (Exception ignored) {
             }
             return o.toString();
+        }
+
+        /* ───── v5.5.0 日志上传强反馈配套 ───── */
+
+        /** 上传结果系统通知（三重反馈之三：弹窗 + 页内横幅 + 本通知）。
+         *  独立 "upload" 通道 IMPORTANCE_DEFAULT（有状态栏横幅，无声音）；
+         *  无通知权限（Android 13+ 未授权）时降级返回 nof，页面已有弹窗/
+         *  横幅两重反馈，不打扰用户补授权。
+         * @return {"ok":true} / {"ok":false,"reason":"no_perm"} */
+        @JavascriptInterface
+        public String postNotify(String title, String text, boolean success) {
+            try {
+                android.app.NotificationManager nm = (android.app.NotificationManager)
+                        a.getSystemService(Context.NOTIFICATION_SERVICE);
+                if (Build.VERSION.SDK_INT >= 33
+                        && a.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+                        != PackageManager.PERMISSION_GRANTED) {
+                    return "{\"ok\":false,\"reason\":\"no_perm\"}";
+                }
+                if (Build.VERSION.SDK_INT >= 26) {
+                    android.app.NotificationChannel ch = new android.app.NotificationChannel(
+                            "upload", "上传结果通知",
+                            android.app.NotificationManager.IMPORTANCE_DEFAULT);
+                    ch.setDescription("日志上传成功/失败的结果通知");
+                    ch.setShowBadge(false);
+                    nm.createNotificationChannel(ch);
+                }
+                android.app.Notification.Builder b = Build.VERSION.SDK_INT >= 26
+                        ? new android.app.Notification.Builder(a, "upload")
+                        : new android.app.Notification.Builder(a);
+                b.setContentTitle(title)
+                        .setContentText(text)
+                        .setSmallIcon(R.drawable.ic_stat)
+                        .setColor(success ? 0xFF10B981 : 0xFFDC2626)
+                        .setAutoCancel(true)
+                        .setShowWhen(true)
+                        .setWhen(System.currentTimeMillis());
+                nm.notify(3001, b.build());
+                return "{\"ok\":true}";
+            } catch (Throwable t) {
+                return "{\"ok\":false,\"reason\":\"error\"}";
+            }
+        }
+
+        /** 上次进程崩溃堆栈（v5.5.0 崩溃采集：日志上传自动附带，异常不再靠猜）。
+         *  崩溃时 CrashCapture 已写入 cacheDir/last_crash.txt（截 8KB）；
+         *  读后即删（一次性消费，不长期留存隐私）。无崩溃返回空串。 */
+        @JavascriptInterface
+        public String crashDump() {
+            return CrashCapture.readAndClear(a);
         }
 
         /** keepOn：开启后除非手动关闭，更新/重启断连都会提醒恢复 */

@@ -23,8 +23,8 @@ const store = {
 };
 
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "5.0.0"; }
-function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "50000"; }
+function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "5.5.0"; }
+function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "50500"; }
 
 /* ══════════ 吉祥物（v4.1.0 全新形象：白机器人小侠 + 绿披风跳跃） ══════════
  * 与启动器图标同源；state: on（跳跃浮动）/ off（灰度待命） */
@@ -35,16 +35,19 @@ function mascotImg(size, state, head) {
 
 $("#brand-logo").innerHTML = mascotImg(30, "on", true);
 
-/* ══════════ 版本记录 ══════════ */
-const CHANGELOG = [
-  { v: "5.0.0", d: "小程序保护（用户实锤根治）：抖音团购券/电商/小程序容器（含微信/支付宝/QQ 小程序）内绝不扫描绝不点击——点团购券不再被弹回；内置规则库扩到 54 款必备应用（抖音/快手/淘宝/拼多多/四大厂商应用商店等），抖音家族限定开屏窗；订阅规则容器内失效双保险。" },
-  { v: "4.5.0", d: "乱点根治（菜单/抽屉列表行形状门，参考李跳跳）：进入 App 乱点、抽屉菜单「跳过」项被点、广告关了又点第二下全部根治；原生文本探针（H5 深树漏扫兜底，「有时候触发不了」再降）；系统开关与 App 开关彻底解耦：通知栏一键暂停/恢复（系统无障碍永不关，绝不去系统设置看 10 秒警告）；弹窗屏蔽开关「自动弹回」竞态根治；安全加固（WebView URL 白名单/反馈频控）；打开 App 自动拉活。" },
-  { v: "4.4.0", d: "露头就秒大提速：倒计时门控开闸瞬间即点（喜马拉雅/keep 实测快 4~5 秒）；点击后 450ms 快速复验（快于人手补刀）；H5 开屏按钮晚到也能救回（早退误杀根治）；恢复防护深度拉活 6 秒（绝不去系统设置看 10 秒强制警告）；功耗再降（事件热路径零 IPC + 晚档扫描预算收紧）。" },
-  { v: "4.3.0", d: "订阅主力规则真正接入：GKD globalGroups 全量解析（CSDN 等第三方 App 不再漏跳）+ 数字关系符/childCount/text.length 全语法；复验真正换候选（同坐标连点根治）；新增应用白名单（选中的应用零打扰）；喜马拉雅「为什么关闭广告」循环根治 + 跳过提速；未命中会记诊断日志；功耗再降（内容页早退 + 滚动风暴节流修复）。" },
-  { v: "4.2.0", d: "用户操作让路（你点开的页面绝不自动关）；微信主界面零扫描（乱划根治）；订阅规则接入弹窗场景 + Activity 限定（导入了就真生效）；日志每 12 小时自动提交；引擎日志翻倍更具体；功耗大降。" },
-  { v: "4.1.0", d: "应用内一键暂停/恢复防护（免看系统 10 秒警告）；修复微信拍摄被强退、灵动岛乱点、订阅导入 404；全新 Logo。" },
-  { v: "4.0.0", d: "接入 GKD 订阅生态：粘贴链接即可导入 gkd.li 社区规则；内置规则库升级为「文案 + 控件 ID」双引擎；全新界面。" },
-];
+/* ══════════ 版本记录（v5.5.0：仅展示当前安装版本） ══════════
+ * 版本号动态读 appVer()（构建时注入，非硬编码）；历史版本全部归档在
+ * GitHub Releases，本页不再堆叠多版本记录——只保留当前版本的
+ * 版本号 / 核心要点 / 发布时间三项信息。 */
+const CURRENT_RELEASE = {
+  date: "2026-11-20",
+  highlights: [
+    "UI 交互专项：版本记录极简化（仅展示当前版本，历史归档 GitHub Releases）；日志上传强反馈（弹窗 + 顶部横幅 + 系统通知三重确认）；10 秒警告红线（系统设置跳转前强制二次判定，登记仍在一律应用内自愈）",
+    "日志内容四类齐备：应用版本 / 设备信息 / 拦截日志 / 异常堆栈，全链路正则脱敏（手机号 / 身份证 / 邮箱 / IP），敏感信息本地脱敏后再上传",
+    "崩溃采集闭环：进程崩溃堆栈本地留存（读后即删），随日志上传自动附带，异常不再靠猜",
+    "继承 v5.4.0 全部能力：多源规则统一调度、统一规则 DSL、学习规则质量治理、五类新广告场景、敏感场景零扫描扩容、分级动态功耗、折叠屏/平板/分屏自适应",
+  ],
+};
 
 /* ══════════ 路由 ══════════ */
 $$(".tabbtn").forEach(b => b.addEventListener("click", () => {
@@ -517,9 +520,12 @@ $("#sub-toggle").addEventListener("change", () => {
 $("#me-ver").textContent = "v" + appVer();
 $("#ver-chip").textContent = "v" + appVer();
 
-$("#changelog").innerHTML = CHANGELOG.map(x =>
-  `<div class="log-item"><div class="log-v">v${esc(x.v)}</div><div class="log-d">${esc(x.d)}</div></div>`
-).join("");
+/* v5.5.0：版本记录仅展示当前安装版本（版本号动态读取，非硬编码） */
+$("#changelog").innerHTML =
+  '<div class="log-item"><div class="log-v">v' + esc(appVer())
+  + ' · ' + esc(CURRENT_RELEASE.date) + '</div>'
+  + CURRENT_RELEASE.highlights.map(h => '<div class="log-d">' + esc(h) + '</div>').join("")
+  + '</div>';
 
 const GH_API = "https://api.github.com/repos/xiaobaiba999/Skip-Ad";
 let ubTimer = null;
@@ -759,27 +765,192 @@ function renderLog() {
     : '<div class="empty">暂无日志</div>';
 }
 
-$("#btn-upload-log").addEventListener("click", async () => {
-  const box = $("#upload-log-result");
-  if (!HAS_BRIDGE) { box.className = "fb-result err"; box.textContent = "仅 APK 内可上传"; return; }
-  const btn = $("#btn-upload-log");
-  box.className = "fb-result"; box.textContent = "上传中…";
+/* ══════════ v5.5.0 日志上传强反馈 ══════════
+ * 三重成功反馈（避免用户不确定是否提交成功）：
+ *  ① 全屏弹窗确认（含 Issue 编号 + 「上传成功，感谢反馈」+ 查看链接）
+ *  ② 顶部醒目横幅（绿色，滑入动画，8s 自动收起 / 手动关闭）
+ *  ③ 系统通知（AndroidApp.postNotify，独立 upload 通道）
+ * 上传全程阶段化 loading（收集 → 脱敏 → 提交）；失败给明确原因 + 一键重试。
+ * 日志四类内容：应用版本 / 设备信息 / 拦截日志 / 异常堆栈，提交前
+ * maskText 正则脱敏（Java 侧 Net.maskSensitive 再脱敏一次，双端双层）。 */
+
+/* 脱敏（第一层，与 Net.maskSensitive 同规则）：手机号 / 身份证 / 邮箱 / IP */
+function maskText(s) {
+  return String(s == null ? "" : s)
+    .replace(/(?<![0-9])(1[3-9]\d)\d{4}(\d{4})(?![0-9])/g, "$1****$2")
+    .replace(/(?<![0-9A-Za-z])(\d{3})\d{12}(\d{3}[\dXx])(?![0-9A-Za-z])/g, "$1************$2")
+    .replace(/[A-Za-z0-9._%+-]+@([A-Za-z0-9.-]+\.[A-Za-z]{2,})/g, "***@$1")
+    .replace(/(?<![0-9])(\d{1,3}\.\d{1,3})\.\d{1,3}\.\d{1,3}(?![0-9])/g, "$1.*.*");
+}
+
+/* 上传阶段化 loading：按钮转圈 + 阶段文案 */
+function setUploadPhase(btn, phase) {
+  const SPIN = '<span style="display:inline-block;width:12px;height:12px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;margin-right:6px;vertical-align:-1px;animation:adspin .8s linear infinite"></span>';
+  btn.innerHTML = SPIN + esc(phase);
   btn.disabled = true;
-  let dev = {};
+}
+function resetUploadBtn(btn) {
+  btn.innerHTML = "上传日志";
+  btn.disabled = false;
+}
+
+/* 三重反馈之二：顶部醒目成功横幅 */
+let uploadBannerTimer = null;
+function showUploadBanner(number, url) {
+  let b = $("#upload-success-banner");
+  if (!b) {
+    b = document.createElement("div");
+    b.id = "upload-success-banner";
+    b.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:120;display:flex;align-items:center;gap:10px;"
+      + "background:linear-gradient(90deg,#0c2015,#123d26);color:#fff;padding:12px 16px;"
+      + "box-shadow:0 4px 18px rgba(6,40,23,.45);transform:translateY(-110%);"
+      + "transition:transform .35s cubic-bezier(.22,1,.36,1);"
+      + "padding-top:calc(12px + env(safe-area-inset-top));";
+    b.innerHTML =
+      '<span style="flex:0 0 22px;width:22px;height:22px;border-radius:50%;background:#10B981;'
+      + 'display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;">✓</span>'
+      + '<span style="flex:1;min-width:0;font-size:13.5px;line-height:1.45">'
+      + '<b>上传成功，感谢反馈</b><br>'
+      + '<span style="opacity:.85;font-size:12px">日志已提交 GitHub Issue，将直接成为下一版迭代的修复依据</span></span>'
+      + '<button data-act="link" style="flex:0 0 auto;background:#10B981;border:0;color:#fff;'
+      + 'border-radius:999px;padding:7px 14px;font-size:12.5px;font-weight:600">查看</button>'
+      + '<button data-act="close" aria-label="关闭" style="flex:0 0 auto;background:none;border:0;'
+      + 'color:#fff;opacity:.7;font-size:18px;line-height:1;padding:4px 6px">×</button>';
+    document.body.appendChild(b);
+    b.addEventListener("click", (ev) => {
+      const act = ev.target.getAttribute && ev.target.getAttribute("data-act");
+      if (act === "close") hideUploadBanner();
+      if (act === "link" && url) openUrl(url);
+    });
+  }
+  b.querySelector('[data-act="link"]').style.display = url ? "" : "none";
+  requestAnimationFrame(() => { b.style.transform = "translateY(0)"; });
+  if (uploadBannerTimer) clearTimeout(uploadBannerTimer);
+  uploadBannerTimer = setTimeout(hideUploadBanner, 8000);
+}
+function hideUploadBanner() {
+  const b = $("#upload-success-banner");
+  if (b) b.style.transform = "translateY(-110%)";
+  if (uploadBannerTimer) { clearTimeout(uploadBannerTimer); uploadBannerTimer = null; }
+}
+
+/* 三重反馈之一：全屏弹窗确认 */
+function showUploadDoneModal(number, url) {
+  closeModal();
+  const wrap = document.createElement("div");
+  wrap.id = "upload-done-modal";
+  wrap.style.cssText = "position:fixed;inset:0;z-index:130;background:rgba(4,12,8,.6);"
+    + "display:flex;align-items:center;justify-content:center;padding:24px;";
+  wrap.innerHTML =
+    '<div role="dialog" aria-modal="true" aria-label="上传成功" style="background:#fff;border-radius:16px;'
+    + 'max-width:320px;width:100%;padding:22px 20px 16px;text-align:center;box-shadow:0 18px 50px rgba(0,0,0,.28)">'
+    + '<div style="width:56px;height:56px;margin:0 auto 12px;border-radius:50%;background:#10B981;'
+    + 'display:flex;align-items:center;justify-content:center;font-size:28px;color:#fff;font-weight:700">✓</div>'
+    + '<div style="font-size:17px;font-weight:700;color:#0c2015">上传成功，感谢反馈</div>'
+    + '<div style="font-size:13px;color:#5b6b60;margin:8px 0 2px">日志已提交 GitHub Issue #' + esc(number) + '</div>'
+    + '<div style="font-size:12px;color:#8a978d;margin-bottom:14px">四类数据（版本 / 设备 / 拦截日志 / 异常堆栈）已脱敏上传</div>'
+    + (url ? '<button data-act="link" style="width:100%;margin-bottom:8px;border:0;border-radius:10px;'
+      + 'background:#10B981;color:#fff;font-size:14px;font-weight:600;padding:11px 0">在 GitHub 查看</button>' : "")
+    + '<button data-act="close" style="width:100%;border:0;border-radius:10px;background:#eef2ef;'
+    + 'color:#0c2015;font-size:14px;font-weight:600;padding:11px 0">好的</button></div>';
+  document.body.appendChild(wrap);
+  wrap.addEventListener("click", (ev) => {
+    const act = ev.target.getAttribute && ev.target.getAttribute("data-act");
+    if (act === "close" || ev.target === wrap) closeModal();
+    if (act === "link" && url) { closeModal(); openUrl(url); }
+  });
+}
+function closeModal() {
+  const m = $("#upload-done-modal");
+  if (m) m.remove();
+}
+
+/* 三重反馈之三：系统通知（独立 upload 通道；无权限时静默降级，前两重已足够） */
+function notifyUploadResult(ok, number) {
+  if (!HAS_BRIDGE) return;
+  try {
+    AndroidApp.postNotify(
+      ok ? "日志上传成功" : "日志上传失败",
+      ok ? "感谢反馈！日志已提交 GitHub Issue #" + number + "，将成为下一版迭代的修复依据"
+         : "本次上传未完成，可回到「我的 → 引擎日志」重试",
+      ok);
+  } catch (e) {}
+}
+
+/* 失败原因 → 人话提示 */
+function humanizeUploadError(err) {
+  const e = String(err || "");
+  if (e.includes("401")) return "内置令牌无效（401）——请到 GitHub 仓库 Issues 手动反馈";
+  if (e.includes("403")) return "触发 GitHub 限流（403）——请稍后重试";
+  if (e.includes("网络")) return "网络异常——请检查网络后重试";
+  if (e.includes("令牌")) return e;
+  return e || "上传失败（未知原因）";
+}
+
+/* 失败提示（含重试按钮） */
+function showUploadFail(box, err) {
+  box.className = "fb-result err";
+  box.innerHTML = esc(humanizeUploadError(err))
+    + ' <button id="btn-upload-retry" style="border:0;border-radius:999px;background:#fff;color:#b91c1c;'
+    + 'font-size:12px;font-weight:700;padding:4px 12px;margin-left:6px">重试</button>';
+  const rb = $("#btn-upload-retry");
+  if (rb) rb.addEventListener("click", () => doUploadLog());
+}
+
+/* 上传主流程：收集（四类内容）→ 脱敏 → 提交 → 三重反馈 */
+async function doUploadLog() {
+  const box = $("#upload-log-result");
+  const btn = $("#btn-upload-log");
+  if (!HAS_BRIDGE) { box.className = "fb-result err"; box.textContent = "仅 APK 内可上传（浏览器预览请用 Web 端学习中心）"; return; }
+
+  hideUploadBanner();
+  closeModal();
+  box.className = "fb-result";
+  box.textContent = "";
+  setUploadPhase(btn, "收集日志…");
+
+  // ① 四类内容收集（应用版本 / 设备信息 / 拦截日志 / 异常堆栈）
+  let dev = {}, crash = "";
   try { dev = JSON.parse(AndroidApp.deviceInfo()); } catch (e) {}
+  await new Promise(r => setTimeout(r, 250)); // 阶段可感知（收集<->脱敏间隔）
+  try { crash = AndroidApp.crashDump() || ""; } catch (e) { crash = ""; }
+  setUploadPhase(btn, "本地脱敏…");
+
   const title = "[引擎日志][v" + appVer() + "] " + (dev.brand || "") + " " + (dev.model || "设备") + "（手动上传）";
-  const body = "## 设备\n- " + (dev.brand || "") + " " + (dev.model || "") + " · " + (dev.os || "") + "\n\n## 状态\n" + engineProfile();
+  const bodyLines = [
+    "## 设备",
+    "- " + (dev.brand || "") + " " + (dev.model || "") + " · " + (dev.os || "") + " · SDK " + (dev.sdk || "?"),
+    "- 应用版本：v" + appVer() + "（build " + appCode() + "） · 环境：Android APK · 手动上传",
+    "",
+    "## 状态",
+    engineProfile(),
+  ];
+  if (crash) {
+    bodyLines.push("", "## 上次崩溃堆栈（自动附带，已读后即删）", "```", crash.trim(), "```");
+  } else {
+    bodyLines.push("", "## 上次崩溃堆栈", "（无——本次开机周期内进程未崩溃）");
+  }
+  // ② 本地脱敏（第一层；Java Net.postIssue 提交前还会再脱敏一次）
+  const body = maskText(bodyLines.join("\n"));
+
+  setUploadPhase(btn, "提交中…");
   let res = null;
   try { res = JSON.parse(AndroidApp.netPostIssue(title, body)); } catch (e) { res = { ok: false, error: "上传异常" }; }
-  btn.disabled = false;
+  resetUploadBtn(btn);
+
   if (res && res.ok) {
     box.className = "fb-result ok";
     box.textContent = "已上传 Issue #" + res.number;
+    showUploadDoneModal(res.number, res.url);      // ① 弹窗确认
+    showUploadBanner(res.number, res.url);          // ② 顶部横幅
+    notifyUploadResult(true, res.number);           // ③ 系统通知
   } else {
-    box.className = "fb-result err";
-    box.textContent = (res && res.error) || "上传失败";
+    showUploadFail(box, res && res.error);          // 明确原因 + 重试按钮
+    notifyUploadResult(false, 0);
   }
-});
+}
+
+$("#btn-upload-log").addEventListener("click", () => { void doUploadLog(); });
 
 /* ══════════ 我的：链接 ══════════ */
 function openUrl(u) {

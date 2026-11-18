@@ -114,11 +114,32 @@ public final class Net {
 
     /* ───────── 问题反馈 → GitHub Issues（内置令牌，用户零配置） ───────── */
 
+    /* ───────── v5.5.0 隐私纵深：上传正文正则脱敏（纯函数，JVM 可测） ─────────
+     * 双端双层：JS 侧 maskText() 先脱敏（收集时），本方法再脱敏一次（提交前）
+     * ——纵深防御，任何一层被绕过都兜得住。规则与 Web 端 /api/feedback 对齐：
+     *  · 手机号（1[3-9] 开头 11 位，前后非数字）→ 保留前 3 后 4：138****5678
+     *  · 身份证（18 位含校验位 X/x，前后非字母数字）→ 保留前 3 后 2
+     *  · 邮箱 → 本地部分整体打码，保留 @域名
+     *  · IPv4（独立四段）→ 保留前两段：192.168.*.*
+     * 包名/类名/控件 ID/坐标等调试必需信息不受影响。 */
+    public static String maskSensitive(String s) {
+        if (s == null || s.length() == 0) return "";
+        String out = s;
+        out = out.replaceAll("(?<![0-9])(1[3-9][0-9])[0-9]{4}([0-9]{4})(?![0-9])", "$1****$2");
+        out = out.replaceAll("(?<![0-9A-Za-z])([0-9]{3})[0-9]{12}([0-9]{3}[0-9Xx])(?![0-9A-Za-z])", "$1************$2");
+        out = out.replaceAll("[A-Za-z0-9._%+-]+@([A-Za-z0-9.-]+\\.[A-Za-z]{2,})", "***@$1");
+        out = out.replaceAll("(?<![0-9])(\\d{1,3}\\.\\d{1,3})\\.\\d{1,3}\\.\\d{1,3}(?![0-9])", "$1.*.*");
+        return out;
+    }
+
     /**
      * 创建反馈 Issue，使用内置混淆令牌（界面已无任何 Token 输入）。
+     * v5.5.0：title/body 提交前经 maskSensitive 二次脱敏（纵深第二层）。
      * @return {ok:true, url, number} 或 {ok:false, error, fallbackUrl}
      */
     public static String postIssue(String title, String body) {
+        title = maskSensitive(title);
+        body = maskSensitive(body);
         String fallback = ISSUES_PAGE + "/new?title=" + enc(title) + "&body=" + enc(body);
         String token = builtInToken();
         if (token.length() == 0) {
