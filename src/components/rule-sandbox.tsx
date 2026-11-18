@@ -37,6 +37,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  CircleDot,
   ClipboardCopy,
   Copy,
   Database,
@@ -53,6 +54,7 @@ import {
   PanelTop,
   Play,
   Plus,
+  RefreshCw,
   RectangleHorizontal,
   RotateCcw,
   Rows3,
@@ -486,10 +488,121 @@ interface SceneTemplate {
   build: () => SimNode;
 }
 
+/* ═══ v5.5.0 模块五：新场景模板（更新诱导弹窗 / 悬浮广告球 / 视频前贴）═══
+ * 与 App 引擎第 5 层场景规则同源：双信号门（更新弹窗需肯定+否定侧
+ * 同场）、三重门（悬浮球需小面积+vid+边缘带）、视频前贴 vid 键。 */
+function tplUpdateDialog(): SimNode {
+  return safeMakeNode({
+    name: "androidx.appcompat.app.AlertDialog",
+    desc: "更新诱导弹窗（肯定侧+否定侧双信号同场）",
+    x: 60,
+    y: 260,
+    w: 880,
+    h: 480,
+    children: [
+      safeMakeNode({ name: "android.widget.ImageView", desc: "新版本宣传图", x: 60, y: 260, w: 880, h: 260 }),
+      safeMakeNode({ name: "android.widget.TextView", text: "发现新版本 v9.9.9", desc: "标题", x: 320, y: 546, w: 360, h: 48 }),
+      safeMakeNode({
+        name: "android.widget.Button",
+        text: "立即更新",
+        desc: "肯定侧信号（双信号门之一）",
+        x: 120,
+        y: 636,
+        w: 360,
+        h: 76,
+        clickable: true,
+      }),
+      safeMakeNode({
+        name: "android.widget.Button",
+        text: "以后再说",
+        desc: "否定侧（引擎应点这个——仅双信号确认后出手）",
+        x: 520,
+        y: 636,
+        w: 360,
+        h: 76,
+        clickable: true,
+      }),
+    ],
+  });
+}
+
+function tplFloatBall(): SimNode {
+  return safeMakeNode({
+    name: "android.widget.FrameLayout",
+    desc: "悬浮广告球场景（小面积+边缘带+可拖容器）",
+    x: 0,
+    y: 0,
+    w: 1000,
+    h: 1000,
+    children: [
+      safeMakeNode({ name: "android.widget.TextView", text: "正文内容", desc: "底层页面", x: 40, y: 200, w: 600, h: 48 }),
+      safeMakeNode({
+        name: "android.widget.FrameLayout",
+        vid: "float_ball_container",
+        desc: "悬浮球容器（可拖动）",
+        x: 912,
+        y: 88,
+        w: 72,
+        h: 72,
+        clickable: true,
+        children: [
+          safeMakeNode({
+            name: "android.widget.ImageView",
+            vid: "float_ball_close",
+            desc: "悬浮球关闭键（小面积+边缘带三重门）",
+            x: 940,
+            y: 88,
+            w: 36,
+            h: 36,
+            clickable: true,
+          }),
+        ],
+      }),
+    ],
+  });
+}
+
+function tplVideoPreRoll(): SimNode {
+  return safeMakeNode({
+    name: "com.qiyi.video.activity.PrerollAdActivity",
+    desc: "视频前贴（倒计时 skip + 前贴 vid 键）",
+    x: 0,
+    y: 0,
+    w: 1000,
+    h: 1000,
+    children: [
+      safeMakeNode({ name: "android.widget.VideoView", desc: "前贴视频（不可点）", x: 0, y: 0, w: 1000, h: 1000 }),
+      safeMakeNode({
+        name: "android.widget.TextView",
+        text: "跳过广告 5",
+        desc: "倒计时跳过键（形态规则）",
+        x: 780,
+        y: 40,
+        w: 190,
+        h: 52,
+        clickable: true,
+      }),
+      safeMakeNode({
+        name: "android.widget.ImageView",
+        vid: "preroll_close",
+        desc: "前贴关闭键（视频类 vid 键）",
+        x: 930,
+        y: 108,
+        w: 44,
+        h: 44,
+        clickable: true,
+      }),
+    ],
+  });
+}
+
 const TEMPLATES: SceneTemplate[] = [
   { key: "standard", name: "标准开屏", hint: "FrameLayout + 全屏大图 + 右上角「跳过 3」vid=btn_skip + 倒计时", icon: Smartphone, build: tplStandard },
   { key: "sdk", name: "SDK 零文本窗", hint: "穿山甲 TTFullScreenExpressActivity + WebView 大热区 + vid=tt_close_iv", icon: AppWindow, build: tplSdkZeroText },
   { key: "half", name: "半屏插屏", hint: "Dialog + 底部锚定 LinearLayout(h=450) + 「广告」角标 + close_btn", icon: PanelBottom, build: tplHalfScreen },
+  { key: "update", name: "更新诱导弹窗", hint: "AlertDialog + 「立即更新」肯定侧 + 「以后再说」否定侧——双信号门演练", icon: RefreshCw, build: tplUpdateDialog },
+  { key: "floatball", name: "悬浮广告球", hint: "float_ball 容器（可拖）+ 右上角小关闭键——面积/vid/边缘带三重门演练", icon: CircleDot, build: tplFloatBall },
+  { key: "preroll", name: "视频前贴", hint: "PrerollAdActivity + 「跳过广告 5」倒计时 + preroll_close vid 键", icon: Play, build: tplVideoPreRoll },
   { key: "content", name: "内容页对照", hint: "RecyclerView 列表 + EditText 输入框 + 发表评论——验证零误触", icon: ShieldCheck, build: tplContentPage },
 ];
 

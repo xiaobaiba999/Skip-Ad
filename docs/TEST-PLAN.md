@@ -1,29 +1,31 @@
-# Skip-Ad 测试体系与质量保障（v5.4.0）
+# Skip-Ad 测试体系与质量保障（v5.5.0）
 
 | 项 | 说明 |
 | --- | --- |
-| 版本 | v5.4.0（对齐 [OPTIMIZATION-v5.4.0.md](./OPTIMIZATION-v5.4.0.md) 第六章） |
-| 执行入口 | `./gradlew :app:testDebugUnitTest`（ci.yml android job，769 项断言全量门禁） |
-| 断言总量 | v5.3.0 存量 **427** 项 + v5.4.0 新增 **342** 项 = **769** 项 |
+| 版本 | v5.5.0（模块七：新模块单测全量落地） |
+| 执行入口 | `android-app/run-tests.sh`（纯 javac 零 Gradle；ci.yml android job，599 项断言全量门禁） |
+| 断言总量 | v5.3.0 存量 **427** 项 + v5.4.0 功耗治理 **48** 项 + v5.5.0 新增 **124** 项 = **599** 项 |
 | 基线数据 | v5.3.0 真机日志 #57/#58（Xiaomi 2410DPN6CC）+ 演练场 27 轮回归 |
 
 ---
 
 ## 一、单元测试用例清单（按模块）
 
-### 1.1 断言规模总表
+### 1.1 断言规模总表（v5.5.0 实际套件）
 
-| 模块 | 测试类（规划） | 断言数 | 覆盖被测类 |
-| --- | --- | --- | --- |
-| 多源统一调度 | RuleSchedulerTest | 68 | engine/RuleScheduler |
-| 学习规则质量 | RuleQualityModelTest | 54 | quality/RuleQualityModel |
-| DSL 解析 | RuleDslParserTest | 92 | engine/RuleDslParser |
-| 敏感场景防护 | SensitiveSceneGuardTest + ComplianceSentinelTest | 36 | guard/* |
-| 功耗策略 | PowerGovernorTest | 48 | power/PowerGovernor |
-| 全形态阈值 | FormFitThresholdsTest | 44 | formfit/FormFitThresholds |
-| **新增小计** | | **342** | |
-| v5.3.0 存量（引擎/管线/档案/重试链/兜底等） | 存量测试组 | **427** | MatchingEngine 等 |
-| **总计** | | **769** | |
+| 套件（tests/com/zai/adshield/test/） | 断言数 | 覆盖被测类 |
+| --- | --- | --- |
+| MiniProgramGuardTest | 存量 | core/MiniProgramGuard（小程序容器保护） |
+| DecisionGuardTest | 存量 | core/AdDecisionCore（决策阶梯/守门） |
+| SubscriptionBuiltinTest | 存量 | core/Subscription（GKD 订阅解析金样本） |
+| RegressionCoreTest | 存量 | 回归核心（五层规则/复验/兜底） |
+| MultiDeviceMatrixTest | 存量 | 多设备矩阵（分辨率/形态自适应） |
+| NonMainstreamAppTest | 存量 | 非主流应用（百款包名/SDK 回归） |
+| RestoreGuardTest | 存量 | core/RestoreGuard（品牌族自愈/拉活） |
+| PowerGovernorTest | 48 | core/PowerGovernor（三零治理/突发预算/位置验证） |
+| **RuleGovernorTest（v5.5.0 新增）** | **77** | core/RuleMerge（三源合并）/ LearnGovernor（生命周期）/ SmartScanPlanner（分级预算）/ RuleEngine 第 5 层新场景（更新弹窗双信号/视频前贴/悬浮球/半屏插屏）/ 旧五层零回归 |
+| **ComplianceGuardTest（v5.5.0 新增）** | **47** | core/ComplianceGuard（设备分级降级/形态自适应/零扫描扩容/动作边界自检） |
+| **总计** | **599** | |
 
 ### 1.2 调度器 68 项（抽样）
 
@@ -289,6 +291,20 @@ Top31~100 抽样语料（每季轮换 20%），守护名单应用（银行/政�
 ---
 
 ## 三、误触率专项测试方案
+
+### 3.0 v5.5.0 专项落地（JVM 断言已入库）
+
+第三章的 12 场景清单中，以下已转化为可回归的 JVM 断言（任一回归即 CI FAIL）：
+
+| 场景 | 落地断言（套件·断言名） |
+| --- | --- |
+| 8 更新弹窗只点消极 | RuleGovernorTest「单信号以后再说不命中」「双信号后否定侧命中」 |
+| 9 权限/系统弹窗零动作 | ComplianceGuardTest「系统设置页零扫描」「锁屏零扫描」「PIN 码页零扫描」 |
+| 3 支付页零扫描 | ComplianceGuardTest 动作边界「密码页跳过键也拒绝」（场景门） |
+| 4 输入场景零扫描 | ComplianceGuardTest「Gboard/搜狗输入法零扫描」 |
+| 2 半屏面板形态门 | RuleGovernorTest「普通窗 close 不命中（SDK 指纹门不变）」 |
+| 12 分屏窗口换算 | ComplianceGuardTest「宽屏归一不严重低估（分屏保护）」 |
+| 启停红线（不跳系统设置） | Java 守卫 registrationPresent→still_registered（MainActivity.openA11yDetail）+ JS 侧 btn-enable 四路径状态校验（app.js）；构建验证：APK 打包 + app.js 语法检查 |
 
 ### 3.1 正常使用场景清单（零误触验证）
 

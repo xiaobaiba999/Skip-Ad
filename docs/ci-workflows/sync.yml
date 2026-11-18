@@ -1,0 +1,87 @@
+# Skip-Ad 规则与学习数据自动同步（v5.5.0 模块六）
+# 每周一 10:00 UTC（东八区 18:00，错峰避开 02:00 学习数据夜间同步窗口）触发：
+#   1. 内置 GKD 订阅完整性校验（SubscriptionBuiltinTest 金样本）；
+#   2. data/learning/ 归档一致性检查（latest.json 与按日归档无冲突）；
+#   3. 版本号双端统一巡检（version.ts 公式 + dist 防降级）；
+#   4. 若仓库内可同步产物有变化（预留：官方规则库更新），自动提交。
+# 说明：当前同步源（App 端学习数据）由服务端夜间任务直推 GitHub，
+# 本 job 是「巡检 + 门禁」角色——发现归档损坏或版本漂移立即报警。
+name: Sync
+
+on:
+  schedule:
+    - cron: '0 10 * * 1'   # 每周一 10:00 UTC
+  workflow_dispatch:        # 支持手动触发
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sync-weekly
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    name: 规则与版本巡检
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # ① 内置订阅金样本校验（含 GKD 兼容格式解析、组级 enable、
+      #    activityIds 限定——订阅格式漂移在此拦截）
+      - name: Builtin subscription integrity (JVM)
+        working-directory: android-app
+        run: |
+          chmod +x run-tests.sh
+          ./run-tests.sh
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache bun
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bun/install/cache
+            node_modules
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
+
+      # ② data/learning 归档一致性（latest.json 存在且可解析、按日归档
+      #    文件名合法；损坏即失败报警）
+      - name: Learning archive integrity
+        run: |
+          set -e
+          if [ -f data/learning/latest.json ]; then
+            bun -e "JSON.parse(require('fs').readFileSync('data/learning/latest.json','utf8')); console.log('✓ latest.json 可解析')"
+          else
+            echo "::notice::data/learning/latest.json 尚未生成（学习数据夜间同步会创建）"
+          fi
+          for f in data/learning/*.json; do
+            [ -f "$f" ] || continue
+            bun -e "JSON.parse(require('fs').readFileSync('$f','utf8'))" || { echo "::error::$f 损坏"; exit 1; }
+          done
+          echo "✓ 学习数据归档完整性通过"
+
+      # ③ 版本号双端统一巡检
+      - name: Version sync gate
+        run: |
+          chmod +x scripts/check-version-sync.sh
+          ./scripts/check-version-sync.sh
+
+      # ④ Web 端健康自检（tsc + lint）
+      - name: Web health check
+        run: |
+          bun install --frozen-lockfile
+          bunx prisma generate
+          bunx tsc --noEmit
+          bun run lint

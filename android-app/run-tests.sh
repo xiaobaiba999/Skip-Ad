@@ -1,8 +1,7 @@
 #!/bin/bash
-# 开屏卫士 JVM 测试跑器（v5.3.0）——纯 Java 核心零依赖可单测
+# 开屏卫士 JVM 测试跑器（v5.5.0）——纯 Java 核心零依赖可单测
 # 用法: ./run-tests.sh
-# v5.3.0：编译器自动选择——优先 JDK javac（本地/CI 均可用），
-# 无 javac（仅 JRE）时回退 ECJ；新增 PowerGovernorTest（功耗治理）套件。
+# v5.5.0：新增 RuleGovernorTest（三源合并/学习治理/分级扫描/新四大场景）套件。
 set -e
 set -o pipefail
 
@@ -35,7 +34,7 @@ echo "    编译产出: $OUT/classes"
 echo "==> [2/3] 运行测试套件"
 TOTAL_PASS=0
 TOTAL_FAIL=0
-for SUITE in MiniProgramGuardTest DecisionGuardTest SubscriptionBuiltinTest RegressionCoreTest MultiDeviceMatrixTest NonMainstreamAppTest RestoreGuardTest PowerGovernorTest; do
+for SUITE in MiniProgramGuardTest DecisionGuardTest SubscriptionBuiltinTest RegressionCoreTest MultiDeviceMatrixTest NonMainstreamAppTest RestoreGuardTest PowerGovernorTest RuleGovernorTest ComplianceGuardTest; do
   echo ""
   echo "══ $SUITE ══"
   if java -cp "$OUT/classes" "com.zai.adshield.test.$SUITE" | tee "$OUT/$SUITE.log"; then

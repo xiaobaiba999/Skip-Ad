@@ -128,6 +128,70 @@ public final class RuleEngine {
     static final String[] VID_SKIP_KEYS = { "skip" };
     static final String[] VID_CLOSE_KEYS = { "close", "exit", "dismiss" };
 
+    /* ═══ v5.5.0 模块二：第5层场景规则（新四大广告场景）═══
+     *
+     * 5a 更新诱导弹窗：否定侧精确等值（以后再说/暂不更新/下次再说/暂不升级/
+     *    稍后再说/忽略此版本）——仅 ctx.updateDialog（肯定侧+否定侧双信号
+     *    确认）才出手；点否定侧 = 拒绝更新，绝不误触普通页面同文案。
+     *    肯定侧信号词（立即更新/立即升级/马上更新/现在更新/下载安装）由
+     *    服务侧普查窗口文案后置位（isUpdatePositive/isUpdateNegative 供普查）。 */
+    static final String[] UPDATE_NEGATIVE = {
+            "以后再说", "暂不更新", "下次再说", "暂不升级", "稍后再说", "忽略此版本",
+    };
+    static final String[] UPDATE_POSITIVE = {
+            "立即更新", "立即升级", "马上更新", "现在更新", "下载安装", "更新体验",
+    };
+
+    /* 5b 视频前贴：视频类应用包名表——倒计时/skip 形态优先级提升 +
+     *    前贴 vid 键（preroll/pre_roll/front_ad）任意窗口放行 */
+    static final String[] VIDEO_APP_PKGS = {
+            "tv.danmaku.bili",        // 哔哩哔哩
+            "com.qiyi.video",          // 爱奇艺
+            "com.youku.phone",         // 优酷
+            "com.tencent.qqlive",      // 腾讯视频
+            "com.hunantv.imgo",        // 芒果TV
+            "com.sohu.sohuvideo",      // 搜狐视频
+            "com.le123.ysdq",          // 影视大全
+            "com.ss.android.article.video", // 抖音（视频前贴/图文前贴）
+            "com.smile.gifmaker",      // 快手
+            "com.mxtech.videoplayer",  // MX Player（本地视频贴片）
+    };
+    static final String[] VID_PREROLL_KEYS = { "preroll", "pre_roll", "front_ad", "prerollad" };
+
+    /* 5c 悬浮广告球：极小面积（≤5% 屏）+ close/取消 vid + 边缘带。
+     *    悬浮球特征：可拖动容器（vid 含 drag/floating/ball/side）或贴边小圆钮。
+     *    面积门比 sdk_close_vid 更紧（5% vs 35%），防普通控件误中。 */
+    static final String[] VID_FLOAT_KEYS = { "drag", "floating", "float", "ball", "side" };
+    static final double FLOAT_BALL_AREA_MAX = 0.05;
+
+    /** 5a 文案普查（服务侧扫描前调用）：肯定侧信号词在场？ */
+    public static boolean isUpdatePositive(String text) {
+        if (text == null) return false;
+        for (String k : UPDATE_POSITIVE) {
+            if (text.contains(k)) return true;
+        }
+        return false;
+    }
+
+    /** 5a 文案普查：否定侧文案在场？（与 UPDATE_NEGATIVE 等值/前缀容差） */
+    public static boolean isUpdateNegative(String text) {
+        if (text == null) return false;
+        String t = text.trim();
+        for (String k : UPDATE_NEGATIVE) {
+            if (t.equals(k)) return true;
+        }
+        return false;
+    }
+
+    /** 5b 视频类应用判定（包名前缀匹配） */
+    public static boolean isVideoApp(String pkg) {
+        if (pkg == null) return false;
+        for (String p : VIDEO_APP_PKGS) {
+            if (pkg.startsWith(p)) return true;
+        }
+        return false;
+    }
+
     /** 规则匹配主入口：遍历控件树，返回最优命中（null=无规则命中，不动作） */
     public static Hit match(NodeView root, Ctx ctx) {
         if (root == null) return null;
@@ -159,10 +223,12 @@ public final class RuleEngine {
         return out;
     }
 
-    /** 全置信度排序：精确/分应用/vid（定信）> 倒计时形态 > 短包含 */
-    static int tierFull(String appId) {
+    /** 全置信度排序（v5.5.0 增 update_negative，public 供测试）：精确/分应用/
+     *  vid/更新否定（定信 3）> 倒计时形态 2 > 短包含 1 */
+    public static int tierFull(String appId) {
         if ("global_exact".equals(appId) || "app_exact".equals(appId)
-                || "global_vid".equals(appId) || "sdk_close_vid".equals(appId)) return 3;
+                || "global_vid".equals(appId) || "sdk_close_vid".equals(appId)
+                || "update_negative".equals(appId)) return 3;
         if ("global_pattern".equals(appId)) return 2;
         return 1; // global_contains
     }
@@ -280,11 +346,18 @@ public final class RuleEngine {
         if (label.length() <= CONTAINS_MAX_LEN && containsShort(low) && !hasDangerousWord(low)) {
             return build("global_contains", label, b, node, ctx);
         }
+        /* ═══ 第5a层：更新诱导弹窗否定侧（仅双信号确认后放行）═══
+         * 误触红线：普通页面也有「以后再说」（如订阅到期提醒），
+         * 无肯定侧同场信号绝不出手——ctx.updateDialog 由服务侧
+         * 普查窗口文案（肯定+否定双在场）后置位。 */
+        if (ctx.updateDialog && isUpdateNegative(label)) {
+            return build("update_negative", label, b, node, ctx);
+        }
         return null;
     }
 
-    /** vid 规则匹配（第4层） */
-    static Hit matchVid(NodeView node, int[] b, Ctx ctx) {
+    /** vid 规则匹配（第4层 + v5.5.0 第5b/5c层扩展；public 供测试与探针复用） */
+    public static Hit matchVid(NodeView node, int[] b, Ctx ctx) {
         String vid = node.viewId();
         if (vid == null || vid.length() < 4) return null;
         String v = vid.toLowerCase();
@@ -298,9 +371,33 @@ public final class RuleEngine {
             if (s.contains("count") && s.contains("down") && !s.contains("download")) {
                 return build("global_vid", "vid:" + vid, b, node, ctx);
             }
+            /* ═══ v5.5.0 5b 视频前贴 vid 键：preroll/pre_roll/front_ad
+             * 任意窗口放行（这些 key 只存在于前贴广告容器，无误触面） */
+            if (ctx.videoApp) {
+                for (String k : VID_PREROLL_KEYS) {
+                    if (s.contains(k)) return build("global_vid", "vid:" + vid, b, node, ctx);
+                }
+            }
         }
-        /* close/exit/dismiss 族：仅 SDK 广告窗/学习窗 + 屏幕边缘带 */
-        if ((ctx.sdkAdWin || ctx.learnedCls) && edgeZone(b, ctx)) {
+        /* ═══ v5.5.0 5c 悬浮广告球：极小面积 + 悬浮容器特征 vid + 边缘带
+         * 面积门比 SDK close 更紧（5%），三重门下无误触面 */
+        if (b != null && edgeZone(b, ctx)
+                && areaRatio(b, ctx) <= FLOAT_BALL_AREA_MAX) {
+            for (String k : VID_FLOAT_KEYS) {
+                if (v.contains(k)) {
+                    /* 悬浮球要可关闭：优先 close 族子键，否则球体本身
+                     * （可拖球体点击=展开，关闭靠 close 键）——只有带
+                     * close/drag 语义的才出手 */
+                    for (String c : VID_CLOSE_KEYS) {
+                        if (v.contains(c)) return build("sdk_close_vid", "vid:" + vid, b, node, ctx);
+                    }
+                }
+            }
+        }
+        /* close/exit/dismiss 族：SDK 广告窗/学习窗 + 屏幕边缘带；
+         * v5.5.0 半屏插屏扩展：halfScreenAd（底部半屏 Dialog）本身是
+         * 强广告信号，与 SDK 指纹同级放行 */
+        if ((ctx.sdkAdWin || ctx.learnedCls || ctx.halfScreenAd) && edgeZone(b, ctx)) {
             for (String k : VID_CLOSE_KEYS) {
                 if (v.contains(k)) return build("sdk_close_vid", "vid:" + vid, b, node, ctx);
             }
@@ -341,7 +438,9 @@ public final class RuleEngine {
     /** 定信度命中（全树优先立即返回）：精确 / 分应用 / vid */
     static boolean isDefinitive(String appId) {
         return "global_exact".equals(appId) || "app_exact".equals(appId)
-                || "global_vid".equals(appId) || "sdk_close_vid".equals(appId);
+                || "global_vid".equals(appId) || "sdk_close_vid".equals(appId)
+                /* v5.5.0：更新弹窗否定侧等值精确命中——同属定信层 */
+                || "update_negative".equals(appId);
     }
 
     /** 候选层优先级：倒计时形态 > 短包含（exact 优先不在此层） */
@@ -374,7 +473,11 @@ public final class RuleEngine {
                 + " · 全局精确 " + TEXT_EXACT.length + " 条"
                 + " · 倒计时形态 2 类"
                 + " · 短包含 " + TEXT_SHORT.length + " 族(≤" + CONTAINS_MAX_LEN + "字,诱导词" + DANGEROUS_WORDS.length + " 否决)"
-                + " · vid skip/" + VID_SKIP_KEYS.length + " close/" + VID_CLOSE_KEYS.length;
+                + " · vid skip/" + VID_SKIP_KEYS.length + " close/" + VID_CLOSE_KEYS.length
+                + " · v5.5.0 场景层：更新弹窗否定" + UPDATE_NEGATIVE.length
+                + "+肯定信号" + UPDATE_POSITIVE.length
+                + " · 视频前贴 " + VIDEO_APP_PKGS.length + " 款"
+                + " · 悬浮球/半屏插屏 vid 扩展";
     }
 
     static double areaRatio(int[] b, Ctx ctx) {

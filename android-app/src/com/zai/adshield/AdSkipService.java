@@ -818,6 +818,103 @@ public class AdSkipService extends AccessibilityService {
                 ? "｜远程订阅已加载（" + SubscriptionManager.remoteSub.name + "）" : ""));
         // v5.3.0 宿主窗档案加载（重启后省电态不清零——CLEAN 窗继续零扫描）
         profileLoad();
+        /* ═══ v5.5.0 模块二：学习规则治理清扫 + 三源合并摘要 + 分级扫描 ═══
+         * LearnGovernor 生命周期管理：新生观察→活跃→衰退→退休；退休规则
+         * （噪声/失效）启动即清；RuleMerge 三源优先级摘要（official >
+         * gkd > learned）；SmartScanPlanner 分级预算（性能 ≤10% 红线）。 */
+        int retired = learnGovernorSweep();
+        if (retired > 0) {
+            appendLog("🧹 学习规则治理：退休 " + retired + " 条（新生期未复现/质量分过低/长期失效——噪声不过夜）");
+        }
+        appendLog("📐 " + com.zai.adshield.core.SmartScanPlanner.stats());
+        appendLog(com.zai.adshield.core.RuleMerge.threeSourceSummary(
+                bi == null ? 0 : bi.ruleCount(),
+                SubscriptionManager.remoteSub == null ? 0 : SubscriptionManager.remoteSub.ruleCount(),
+                learnedRuleCount()));
+    }
+
+    /** v5.5.0：学习规则总数（state.rules 全包名累计） */
+    private int learnedRuleCount() {
+        try {
+            JSONObject rules = loadState().optJSONObject("rules");
+            if (rules == null) return 0;
+            int n = 0;
+            JSONArray pkgs = rules.names();
+            if (pkgs == null) return 0;
+            for (int i = 0; i < pkgs.length(); i++) {
+                JSONArray list = rules.optJSONArray(pkgs.optString(i));
+                if (list != null) n += list.length();
+            }
+            return n;
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    /* ═══ v5.5.0 LearnGovernor 生命周期清扫 ═══
+     * 遍历全部学习规则（state.rules）：
+     *  · 退休（RETIRED）：新生期 72h 未复现 / 质量分 < 0.35 / 长期失效 →
+     *    直接删除（噪声不过夜——v5.1.0 实证「一次误学」是最大噪声源）；
+     *  · 衰退（DECAYING）：30 天未命中但历史 ≥3 次 → 标记 dec=true，
+     *    不再预拦截（仅候选层高门槛兜底）；
+     *  · 泛化（gen）计数：SDK 骨架规则跨应用可复用（学习效率量化）。
+     * 返回退休清理条数。 */
+    private int learnGovernorSweep() {
+        int retired = 0;
+        synchronized (lock) {
+            try {
+                JSONObject st = loadState();
+                JSONObject rules = st.optJSONObject("rules");
+                if (rules == null) return 0;
+                long now = System.currentTimeMillis();
+                JSONArray pkgs = rules.names();
+                if (pkgs == null) return 0;
+                boolean dirty = false;
+                int genCount = 0;
+                for (int p = 0; p < pkgs.length(); p++) {
+                    String pkg = pkgs.optString(p);
+                    JSONArray list = rules.optJSONArray(pkg);
+                    if (list == null) continue;
+                    JSONArray kept = new JSONArray();
+                    for (int i = 0; i < list.length(); i++) {
+                        JSONObject r = list.optJSONObject(i);
+                        if (r == null) continue;
+                        boolean gen = r.optBoolean("gen", false);
+                        if (gen) genCount++;
+                        /* LearnGovernor.Record 投影：hitCount=auto+manual,
+                         * failCount=miss, firstAt=createdAt（无则取 ts），
+                         * lastAt=ts */
+                        int hits = r.optInt("auto", 0) + r.optInt("manual", 0);
+                        com.zai.adshield.core.LearnGovernor.Record rec =
+                                new com.zai.adshield.core.LearnGovernor.Record(
+                                        pkg, r.optString("cls", ""), hits, r.optInt("miss", 0),
+                                        r.has("createdAt") ? r.optLong("createdAt") : r.optLong("ts", now),
+                                        r.optLong("ts", now));
+                        rec.generalized = gen;
+                        int stage = com.zai.adshield.core.LearnGovernor.stage(rec, now);
+                        if (stage == com.zai.adshield.core.LearnGovernor.STAGE_RETIRED) {
+                            retired++;
+                            dirty = true;
+                            continue; // 退休 → 删除
+                        }
+                        if (stage == com.zai.adshield.core.LearnGovernor.STAGE_DECAYING
+                                && !r.optBoolean("dec", false)) {
+                            r.put("dec", true);
+                            dirty = true;
+                        }
+                        kept.put(r);
+                    }
+                    if (kept.length() == 0) rules.remove(pkg);
+                    else rules.put(pkg, kept);
+                }
+                if (dirty) saveState(st);
+                if (genCount > 0) {
+                    appendLog("✨ SDK 泛化学习规则 " + genCount + " 条（跨应用可复用——A 应用学会的 SDK 骨架，B 应用同 SDK 广告直接预拦截）");
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        return retired;
     }
 
     /* ───────── v3.7.0 保活：onUnbind 保留 + 心跳自检闹钟 ─────────
@@ -1220,6 +1317,19 @@ public class AdSkipService extends AccessibilityService {
         // v4.1.0 相机/拍摄窗硬黑名单（issue#30：微信点「拍摄」进相机即被点「×」强退）
         if (AdDecisionCore.isCameraPkg(pkg) || AdDecisionCore.isCameraClass(cs(event.getClassName()))
                 || AdDecisionCore.isCameraClass(winClassOf(pkg))) return;
+
+        /* ═══ v5.5.0 模块四：零扫描场景扩容（系统设置/输入法/锁屏/密码框）═══
+         * 在既有短信/来电/相机/验证码横幅/支付页/白名单/聊天主界面之上
+         * 再堵四类：设置页开关、输入法候选词/键盘、锁屏紧急呼叫、银行
+         * 密码页——【绝不扫描、绝不点击、绝不学习】，仅维持前台追踪。 */
+        if (com.zai.adshield.core.ComplianceGuard.isZeroScanScenario(
+                pkg, cs(event.getClassName()))) {
+            if (et == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
+                    && !isDialogClass(cs(event.getClassName()))) {
+                lastFgPkg = pkg;
+            }
+            return;
+        }
 
         /* ═══ v5.0.0 小程序/团购容器保护（L0 第一层：事件入口）═══
          * 抖音团购券/微信/支付宝/QQ 小程序容器窗口：事件直接丢弃——
@@ -1683,6 +1793,59 @@ public class AdSkipService extends AccessibilityService {
         }
     }
 
+    /* ═══ v5.5.0 模块三：设备分级 + 电量缓存（60s sticky 广播查询，热路径零成本）═══ */
+    private int deviceTierCache = -1;
+    private int batteryPctCache = 100;
+    private boolean chargingCache = false;
+    private long batteryCheckedAt = 0;
+
+    /** 刷新设备分级与电量（60s 缓存；RAM 分级仅首次）。低端机低电量→预算 ×0.6。 */
+    private void refreshPerfTier() {
+        long now = System.currentTimeMillis();
+        if (now - batteryCheckedAt < 60_000L) return;
+        batteryCheckedAt = now;
+        try {
+            android.content.IntentFilter bf = new android.content.IntentFilter(
+                    android.content.Intent.ACTION_BATTERY_CHANGED);
+            android.content.Intent bi = registerReceiver(null, bf);
+            if (bi != null) {
+                int level = bi.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1);
+                int scale = bi.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, 100);
+                int status = bi.getIntExtra(android.os.BatteryManager.EXTRA_STATUS, -1);
+                batteryPctCache = level >= 0 && scale > 0 ? level * 100 / scale : 100;
+                chargingCache = status == android.os.BatteryManager.BATTERY_STATUS_CHARGING
+                        || status == android.os.BatteryManager.BATTERY_STATUS_FULL;
+            }
+        } catch (Throwable ignored) {
+        }
+        if (deviceTierCache < 0) {
+            try {
+                android.app.ActivityManager am = (android.app.ActivityManager) getSystemService(ACTIVITY_SERVICE);
+                android.app.ActivityManager.MemoryInfo mi = new android.app.ActivityManager.MemoryInfo();
+                am.getMemoryInfo(mi);
+                int ramMb = (int) (mi.totalMem / (1024L * 1024L));
+                deviceTierCache = com.zai.adshield.core.ComplianceGuard.deviceTier(ramMb);
+                appendLog("🔋 性能档：设备分级 " + ramMb + "MB → "
+                        + (deviceTierCache == com.zai.adshield.core.ComplianceGuard.TIER_LOW ? "低端（增益路径降级启用）"
+                        : deviceTierCache == com.zai.adshield.core.ComplianceGuard.TIER_MID ? "中端" : "旗舰（零降级）"));
+            } catch (Throwable t) {
+                deviceTierCache = com.zai.adshield.core.ComplianceGuard.TIER_HIGH; // 默认不降级（保守：能力优先）
+            }
+        }
+    }
+
+    /* ═══ v5.5.0 模块四：动作边界拦截日志（节流：同包 10s 一条，防刷屏）═══ */
+    private final java.util.HashMap<String, Long> boundaryLogAt = new java.util.HashMap<String, Long>();
+
+    private void boundaryGuardLog(String pkg, String reason) {
+        long now = System.currentTimeMillis();
+        Long last = boundaryLogAt.get(pkg);
+        if (last != null && now - last < 10_000L) return;
+        boundaryLogAt.put(pkg, now);
+        appendLog("🚧 动作边界自检拦截（" + shortPkg(pkg) + " · " + reasonZh(reason)
+                + "）：目标非跳过/关闭语义或越界 → 放弃（宁可漏拦绝不误触）");
+    }
+
     /** v5.3.0 探针哨兵：CLEAN 档案窗口的零 DFS 检查（李跳跳核心路径）。
      *  findAccessibilityNodeInfosByText 是系统侧 C++ 子树搜索（成本≈事件
      *  处理的 1/4、DFS 扫描的 1/14）；命中即档案复活并转入正常出手路径
@@ -1725,6 +1888,43 @@ public class AdSkipService extends AccessibilityService {
         probeNudgeAt.put(pkg, now);
         final int g = -1;
         handler.post(() -> probeSentinel(pkg, winStart, g));
+    }
+
+    /* ═══ v5.5.0 模块二：更新诱导弹窗双信号普查 ═══
+     * 肯定侧（立即更新/立即升级…）+否定侧（以后再说/暂不更新…）
+     * 同时在场才置位 ctx.updateDialog——单信号绝不出手（普通页面
+     * 「以后再说」文案不点，误触红线）。仅 Dialog 形态窗（半屏/弹窗
+     * 期内）调用，弹窗树浅，预算 120 零性能顾虑。 */
+    private boolean detectUpdateDialogSigns(AccessibilityNodeInfo root) {
+        try {
+            boolean[] positive = {false};
+            boolean[] negative = {false};
+            int[] budget = {120};
+            scanUpdateSigns(root, 0, budget, positive, negative);
+            return positive[0] && negative[0];
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    private void scanUpdateSigns(AccessibilityNodeInfo node, int depth, int[] budget,
+                                 boolean[] positive, boolean[] negative) {
+        if (node == null || depth > 24 || budget[0] <= 0
+                || (positive[0] && negative[0])) return;
+        budget[0]--;
+        try {
+            CharSequence t = node.getText();
+            if (t == null || t.length() == 0) t = node.getContentDescription();
+            String s = t == null ? "" : t.toString().trim();
+            if (s.length() > 0 && s.length() <= 12) {
+                if (com.zai.adshield.core.RuleEngine.isUpdatePositive(s)) positive[0] = true;
+                if (com.zai.adshield.core.RuleEngine.isUpdateNegative(s)) negative[0] = true;
+            }
+            for (int i = 0; i < node.getChildCount() && !(positive[0] && negative[0]); i++) {
+                scanUpdateSigns(node.getChild(i), depth + 1, budget, positive, negative);
+            }
+        } catch (Throwable ignored) {
+        }
     }
 
     /* ═════════ v5.3.0 宿主窗档案（持久化：state.winProfile）═════════ */
@@ -1900,6 +2100,14 @@ public class AdSkipService extends AccessibilityService {
         // v4.1.0 前台门：只对前台应用做突发检测（灵岛/悬浮窗动画的高频
         // 内容变化绝不开弹窗识别窗——乱点元凶）
         if (!pkg.equals(lastFgPkg)) return;
+        /* ═══ v5.5.0 模块三：设备分级/电量联动——低端机或极低电量突发检测
+         * 整体关闭（增益路径降级，事件驱动主路径不受影响）═══ */
+        refreshPerfTier();
+        if (!com.zai.adshield.core.ComplianceGuard.burstAllowed(
+                deviceTierCache, com.zai.adshield.core.ComplianceGuard.batteryTier(
+                        batteryPctCache, chargingCache))) {
+            return;
+        }
         /* ═══ v5.3.0 突发预算三重门（#57/#58 实锤：豆包聊天 5 分钟 7 次
          * 误报开窗——AI 流式回复/播放进度条是正常业务形态）═══
          * ① 档案 CLEAN 窗/聊天主界面的动态内容绝不开识别窗；
@@ -2073,15 +2281,48 @@ public class AdSkipService extends AccessibilityService {
                 ctx.clickAttempts = clickAttempts;
                 ctx.tapHintX = tapHint[0];
                 ctx.tapHintY = tapHint[1];
+                /* ═══ v5.5.0 模块二：新场景标志（半屏插屏/更新诱导弹窗/视频前贴）═══
+                 * videoApp：视频类应用包名表命中（前贴 vid 键 + L2 预算）；
+                 * halfScreenAd：底部半屏 Dialog（高 ≤60% 屏且贴底）——close
+                 *   族 vid 放开 SDK 指纹要求（半屏 Dialog 本身即强广告信号）；
+                 * updateDialog：肯定+否定侧文案【双信号】在场才置位——否定侧
+                 *   （以后再说/暂不更新…）仅此场景出手，误触红线不破。 */
+                ctx.videoApp = com.zai.adshield.core.RuleEngine.isVideoApp(pkg);
+                try {
+                    android.graphics.Rect rootR = new android.graphics.Rect();
+                    roots[ri].getBoundsInScreen(rootR);
+                    ctx.halfScreenAd = rootR.height() > 0 && screenHeight > 0
+                            && rootR.height() <= screenHeight * 6 / 10
+                            && rootR.bottom >= screenHeight * 9 / 10;
+                } catch (Throwable ignored) {
+                }
+                if (splashLive || popupLive || ctx.halfScreenAd) {
+                    ctx.updateDialog = detectUpdateDialogSigns(roots[ri]);
+                }
+                /* ═══ v5.5.0 模块三：设备分级 + 电量联动动态降级 ═══
+                 * 低端机低电量 → 扫描预算 ×0.6、突发检测关闭；仅作用于
+                 * 增益路径（事件驱动首扫与探针前置永不降级——命中率红线）。
+                 * 电量 sticky 广播 60s 缓存，热路径零成本。 */
+                refreshPerfTier();
+                double perfFactor = com.zai.adshield.core.ComplianceGuard.budgetFactor(
+                        deviceTierCache, com.zai.adshield.core.ComplianceGuard.batteryTier(
+                                batteryPctCache, chargingCache));
+                if (perfFactor < 1.0) {
+                    ctx.budgetNodes = Math.max(120, (int) (ctx.budgetNodes * perfFactor));
+                }
                 // v4.3.0 功耗分层 / v4.4.0 修正：早档【固定档 0~400ms】（广告窗
                 // 刚渲染树小）340 提速；中档 600（晚出键的深树覆盖）；晚档
                 // （固定档 ≥3.6s，真广告早该出手，深树几乎必是内容页）360。
                 // ⚠ atMs=-1（nudge 补扫/门控开闸针/快速复验针）必须保持 600：
                 // H5 开屏树深 500+，救回通道 340 预算够不到晚到按钮 =
                 // 「有时候触发不了」复发（v4.4.0 首版误伤，此为修正）。
+                // v5.5.0 非开屏窗口接入 SmartScanPlanner 分级（李跳跳式预算
+                // 治理）：SDK/学习窗 600 全量 · 新场景/弹窗期/视频 400 ·
+                // 普通窗 350（探针前置已保文本键零 DFS，预算仅影响 vid 键
+                // DFS 深度——性能开销 ≤10% 红线的保障）
                 ctx.budgetNodes = splashLive
                         ? (atMs >= 0 && atMs <= 400 ? 340 : (atMs >= 3600 ? 360 : 600))
-                        : (atMs == -2 ? 280 : 500);
+                        : (atMs == -2 ? 280 : com.zai.adshield.core.SmartScanPlanner.budgetFor(ctx));
 
                 /* ═══ v3.9.0 主路径：内嵌规则引擎 0ms 出手 ═══
                  * 规则只认控件属性（text/desc/vid），点击的是控件自身 bounds 中心
@@ -2520,6 +2761,31 @@ public class AdSkipService extends AccessibilityService {
             appendLog("🧩 小程序保护（" + shortPkg(pkg) + "）：容器内绝不动作");
             return false;
         }
+        /* ═══ v5.5.0 模块四：动作边界自检（出手前最后闸）═══
+         * 仅代点原生跳过控件：语义（跳过/关闭/否定侧）+场景（零扫描
+         * 场景绝不出手）+形态（≤35% 屏）三重断言；学习位置（用户手动
+         * 教过=用户意图）豁免语义断言，但场景/形态仍查。任一不过=
+         * 放弃（宁可漏拦绝不误触——误触率只降不升红线的最后一道闸）。 */
+        if (d.action.equals(AdDecisionCore.A_CLICK_BOUNDS) || d.action.equals(AdDecisionCore.A_CLOSE)
+                || d.action.equals(AdDecisionCore.A_TAP_POINT)) {
+            String bl = "", bv = "";
+            int[] bb2 = d.bounds != null ? d.bounds
+                    : (d.x >= 0 ? new int[]{d.x - 8, d.y - 8, d.x + 8, d.y + 8} : null);
+            try {
+                if (d.node != null) {
+                    bl = cs(d.node.text());
+                    if (bl.length() == 0) bl = cs(d.node.desc());
+                    bv = d.node.viewId() == null ? "" : d.node.viewId();
+                }
+            } catch (Throwable ignored) {
+            }
+            boolean userTaught = "learned_pos".equals(d.reason) || d.reason.startsWith("learned");
+            if (!com.zai.adshield.core.ComplianceGuard.actionBoundaryOk(
+                    bl, bv, bb2, screenWidth, screenHeight, pkg, winClassOf(pkg), userTaught)) {
+                boundaryGuardLog(pkg, d.reason);
+                return false;
+            }
+        }
         // v4.2.0 用户意图让路：任何出手（点击/关闭/返回键/学习位置直点）
         // 前统一校验——用户 4s 内点击过或正浏览自己打开的页面，一律让路
         if (userYield(pkg, now)) return false;
@@ -2928,6 +3194,11 @@ public class AdSkipService extends AccessibilityService {
                 r.put("manual", 0);
                 r.put("auto", 1);
                 r.put("ts", System.currentTimeMillis());
+                /* v5.5.0 LearnGovernor：SDK 特征泛化标记——窗口类名命中
+                 * SDK 通用骨架（Dialog/Popup/tt_* 等）的学习规则跨应用
+                 * 可复用（A 应用学会的 SDK 骨架，B 应用同 SDK 广告直接
+                 * 预拦截），新生期豁免（骨架强信号首次即可信）。 */
+                r.put("gen", com.zai.adshield.core.LearnGovernor.sdkGeneralize(cls));
                 list.put(r);
                 saveState(st);
             } catch (Exception ignored) {

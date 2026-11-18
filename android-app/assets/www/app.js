@@ -49,6 +49,48 @@ const CURRENT_RELEASE = {
   ],
 };
 
+/* ══════════ v5.5.0 模块四：权限使用审计（与 ComplianceGuard.privacyAudit 同源） ══════════
+ * 7 项权限逐条展示用途与触发时机；零权限声明（定位/通讯录/存储/相机/
+ * 麦克风/剪贴板全部未申请）置顶强调——用户不需要懂技术也能核对。 */
+const PRIVACY_AUDIT = [
+  { name: "网络（INTERNET）", use: "检查更新 / GKD 订阅拉取 / 日志上报（仅手动触发上传）" },
+  { name: "安装未知应用", use: "页内直下 APK 后的安装确认（仅你点「安装」时系统弹窗）" },
+  { name: "通知", use: "常驻守护通知 / 恢复提醒 / 上传结果（可在系统设置关闭）" },
+  { name: "前台服务（专用类型）", use: "无障碍跳过服务本体（Android 14+ 类型声明）" },
+  { name: "开机自启", use: "开机自检提醒（不自动拉起未授权服务）" },
+  { name: "电池白名单引导", use: "防省电策略杀服务（你可拒绝，拒绝后仅提醒降频）" },
+  { name: "无障碍服务", use: "核心跳过能力（系统设置内授权，App 绝不代开）" },
+];
+function renderPrivacyAudit() {
+  const box = $("#privacy-audit");
+  if (!box) return;
+  box.innerHTML = "";
+  const head = document.createElement("div");
+  head.style.cssText = "font-size:11px;line-height:1.6;color:var(--muted,#8a94a0);padding:2px 0 6px";
+  head.textContent = "共 7 项，全部最小化。定位 / 通讯录 / 短信读取 / 存储 / 相机 / 麦克风 / 剪贴板——全部未申请、永不需要。学习指纹仅存本机。";
+  box.appendChild(head);
+  PRIVACY_AUDIT.forEach((p) => {
+    const row = document.createElement("div");
+    row.className = "ka-row";
+    const info = document.createElement("div");
+    info.className = "ka-info";
+    const nm = document.createElement("div");
+    nm.className = "ka-name";
+    nm.textContent = p.name;
+    const ds = document.createElement("div");
+    ds.className = "ka-desc";
+    ds.textContent = p.use;
+    info.appendChild(nm);
+    info.appendChild(ds);
+    const dot = document.createElement("span");
+    dot.className = "ka-dot ok";
+    row.appendChild(dot);
+    row.appendChild(info);
+    box.appendChild(row);
+  });
+}
+renderPrivacyAudit();
+
 /* ══════════ 路由 ══════════ */
 $$(".tabbtn").forEach(b => b.addEventListener("click", () => {
   $$(".tabbtn").forEach(x => x.classList.remove("active"));
@@ -190,7 +232,7 @@ function doRevive() {
     // 旧版同步兑底（理论上不会走到）
     try {
       const r = JSON.parse(AndroidApp.tryAutoRevive());
-      window.__reviveCb && window.__reviveCb(null, r);
+      if (window.__reviveCb) window.__reviveCb(null, r);
       return;
     } catch (e2) {}
     reviving = false;
@@ -232,13 +274,35 @@ window.__autoRestore = function (fromNotification) {
   // 登记被系统吊销：去设置是唯一出路（预期管理 + 直达开关详情页）
   toast("服务开关被系统关闭：即将直达开关页，10 秒安全确认后开启即可");
   setTimeout(() => {
-    try { AndroidApp.openA11yDetail(); } catch (e) {}
+    try {
+      // v5.5.0 竞态兜底：预判与跳转之间登记若恢复（AMS 迟到重绑），
+      // Java 守卫会返回 still_registered——回落应用内自愈而非无反馈
+      const r = JSON.parse(AndroidApp.openA11yDetail() || "{}");
+      if (!r.ok && r.reason === "still_registered") doRevive();
+    } catch (e) {}
   }, 700);
 };
 
+/* v5.5.0 红线补齐：「开启服务」先状态校验再动——
+ * ① 服务在跑 → 提示守护中（按钮本不该出现，防御性）；
+ * ② 登记仍在 → 应用内自愈 doRevive（绝不送用户去系统设置看 10 秒警告）；
+ * ③ 登记真被吊销 → openA11yDetail 直达开关页 + 预期管理文案；
+ * ④ Java 守卫若仍拦（still_registered，预判后登记恢复的竞态）→ 回落自愈。
+ * 任何路径都不会「点了没反应」。 */
 $("#btn-enable").addEventListener("click", () => {
   if (HAS_BRIDGE) {
-    try { AndroidApp.openA11yDetail(); return; } catch (e) {}
+    let running = false, enabled = false;
+    try { running = !!AndroidApp.isServiceRunning(); } catch (e) {}
+    try { enabled = !!AndroidApp.a11yEnabledInSettings(); } catch (e) {}
+    if (running) { toast("防护守护中"); return; }
+    if (enabled) { toast("系统仍登记：应用内自愈中（不用去系统设置）"); doRevive(); return; }
+    try {
+      const r = JSON.parse(AndroidApp.openA11yDetail() || "{}");
+      if (r.ok) { toast("即将直达服务开关页：10 秒安全确认属正常，等待后开启即可"); return; }
+      if (r.reason === "still_registered") { doRevive(); return; }
+      toast("无法打开系统设置，请重试");
+      return;
+    } catch (e) {}
   }
   toast("请在系统设置中开启无障碍服务");
 });

@@ -1,6 +1,8 @@
-# Skip-Ad CI（v5.4.0）
+# Skip-Ad CI（v5.5.0）
 # 双栈流水线：web（Next.js 演示管理端）+ android（无障碍引擎 JVM 单测）。
-# 设计原则：快失败、缓存优先、金样本集一致性门禁（TS/Java 双端 DSL 判定必须逐条一致）。
+# 设计原则：快失败、缓存优先、版本号双端统一门禁（version.ts 为单一数据源）。
+#   · web：bun install → prisma generate → tsc --noEmit → lint → 版本一致性
+#   · android：JDK 17 + run-tests.sh（纯 javac 零 Gradle 依赖，599 项 JVM 断言）
 name: CI
 
 on:
@@ -16,9 +18,10 @@ jobs:
   # ─────────────────────────────────────────────────────────────
   # Web 端（Next.js + Prisma + TypeScript）
   # 产物链：bun install → prisma generate（tsc 类型依赖）→ tsc --noEmit → lint
+  # → 版本号双端统一门禁（version.ts 公式 + dist 防降级）
   # ─────────────────────────────────────────────────────────────
   web:
-    name: Web (tsc + lint)
+    name: Web (tsc + lint + 版本门禁)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -52,14 +55,21 @@ jobs:
       - name: Lint
         run: bun run lint
 
+      # v5.5.0 模块六：版本号双端统一门禁（公式校验 + 防降级）
+      - name: Version sync gate
+        run: |
+          chmod +x scripts/check-version-sync.sh
+          ./scripts/check-version-sync.sh
+
   # ─────────────────────────────────────────────────────────────
-  # Android 端（无障碍引擎 JVM 单元测试 + Lint）
-  # 断言规模：v5.3.0 存量 427 项 + v5.4.0 新增 342 项 = 769 项
-  # （调度器 68 / 质量模型 54 / DSL 解析 92 / 敏感防护 36 / 功耗策略 48 / 全形态 44，
-  #   详见 docs/TEST-PLAN.md）
+  # Android 端（无障碍引擎 JVM 单元测试）
+  # 真实工具链：android-app/run-tests.sh（javac --release 8 → 9 套件）
+  # 断言规模：v5.5.0 共 599 项
+  #   （小程序防护 / 决策守护 / GKD 订阅 / 回归核心 / 多设备矩阵 /
+  #     非主流应用 / 保活自愈 / 功耗治理 / 三源规则治理+新场景+合规守卫）
   # ─────────────────────────────────────────────────────────────
   android:
-    name: Android (JVM unit tests + lint)
+    name: Android (JVM 599 断言)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -71,36 +81,19 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      # gradle 缓存：wrapper + 依赖 + 构建缓存（首次约 90s，命中约 20s）
-      - name: Cache gradle
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-${{ hashFiles('android/**/*.gradle*', 'android/gradle/wrapper/gradle-wrapper.properties') }}
-          restore-keys: gradle-${{ runner.os }}-
-
-      # Gradle 脚手架渐进合入：android/gradlew 就位前本步骤静默通过（Java 框架
-      # 代码已合入，witnessed by 12 个框架类；脚手架随 Android 模块任务落地后
-      # 自动执行完整单测 + lint）
-      - name: Android JVM unit tests + lint
-        working-directory: android
+      # 纯 javac 编译：零 Gradle 依赖（构建脚本自动选择 javac，CI 无需 ECJ）
+      - name: Run JVM unit tests
+        working-directory: android-app
         run: |
-          if [ ! -f ./gradlew ]; then
-            echo "::notice::android/gradlew 尚未合入（Gradle 脚手架随 Android 模块任务落地），本次跳过单测"
-            exit 0
-          fi
-          chmod +x ./gradlew
-          ./gradlew :app:testDebugUnitTest --stacktrace
-          ./gradlew :app:lintDebug
+          chmod +x run-tests.sh
+          ./run-tests.sh
 
       # 单测报告归档（失败时上传，供 PR 排障）
-      - name: Upload test reports (on failure)
+      - name: Upload test logs (on failure)
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: android-test-reports
-          path: android/app/build/reports/tests/
+          name: android-test-logs
+          path: android-app/build-tests/*.log
           if-no-files-found: ignore
           retention-days: 7

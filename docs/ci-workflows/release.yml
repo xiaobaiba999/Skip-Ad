@@ -1,6 +1,7 @@
-# Skip-Ad Release（v5.4.0）
-# tag v* 触发：Android 签名发布 → conventional commits 更新日志 → GitHub Release
-# 附 APK → Web 端同步（Vercel/静态部署，见文末注释）。
+# Skip-Ad Release（v5.5.0）
+# tag v* 触发：版本双端统一门禁 → 全量 JVM 测试 → Android 签名构建（build.sh
+# 真实工具链）→ conventional commits 更新日志 → GitHub Release 附 APK →
+# Web 端构建自检。另含每周规则与学习数据自动同步 job。
 name: Release
 
 on:
@@ -13,9 +14,9 @@ permissions:
 
 jobs:
   # ─────────────────────────────────────────────────────────────
-  # Android 签名构建（gradle assembleRelease）
-  # 签名注入：secrets.ANDROID_KEYSTORE（base64）→ 运行时解码为 keystore 文件，
-  # 密码经环境变量传给 gradle（signingConfig 从环境变量读取，不入库）
+  # Android 签名构建（android-app/build.sh：aapt2 + javac + d8 + apksigner）
+  # 签名：开源演示项目的 keystore 已随仓库分发（android-app/keystore/）；
+  # 正式分发请自行更换 keystore 并改用 secrets 注入（文末注释）。
   # ─────────────────────────────────────────────────────────────
   android-release:
     name: Android release (signed APK)
@@ -32,50 +33,60 @@ jobs:
         id: version
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
+      # v5.5.0 模块六：版本号双端统一门禁——tag 与 src/lib/version.ts 必须
+      # 一致（单一数据源），versionCode 公式 major*10000+minor*100+patch
+      # 由脚本校验后推导（v5.3.0「无法降级安装」事故防复发）
+      - name: Version sync gate (tag ↔ version.ts)
+        run: |
+          chmod +x scripts/check-version-sync.sh
+          ./scripts/check-version-sync.sh "${{ steps.version.outputs.version }}"
+
       - name: Setup JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Cache gradle
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-release-${{ hashFiles('android/**/*.gradle*', 'android/gradle/wrapper/gradle-wrapper.properties') }}
-          restore-keys: gradle-${{ runner.os }}-release-
+      # Android SDK：build-tools 34.0.0（aapt2/d8/zipalign/apksigner）+
+      # platform android-34（android.jar）——build.sh 经环境变量接管路径
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
 
-      # 签名密钥注入：base64 → keystore.jks（绝不落盘到仓库；runner 临时目录）
-      - name: Decode keystore
+      - name: Install SDK components
         run: |
-          if [ -z "${{ secrets.ANDROID_KEYSTORE }}" ]; then
-            echo "::error::缺少 secrets.ANDROID_KEYSTORE（base64 编码的签名密钥库）"
-            exit 1
-          fi
-          echo "${{ secrets.ANDROID_KEYSTORE }}" | base64 -d > android/app/release.keystore.jks
+          yes | sdkmanager "build-tools;34.0.0" "platforms;android-34" >/dev/null
+          SDK_ROOT="$ANDROID_HOME"
+          echo "ANDROID_BUILD_TOOLS=$SDK_ROOT/build-tools/34.0.0" >> "$GITHUB_ENV"
+          echo "ANDROID_PLATFORM_JAR=$SDK_ROOT/platforms/android-34/android.jar" >> "$GITHUB_ENV"
 
+      # 发布前全量测试门禁（599 项 JVM 断言，失败即中止发布）
+      - name: Full JVM test gate
+        working-directory: android-app
+        run: |
+          chmod +x run-tests.sh
+          ./run-tests.sh
+
+      # versionCode 推导：major*10000 + minor*100 + patch（与 version.ts 同公式）
+      - name: Derive versionCode
+        id: vcode
+        run: |
+          V="${{ steps.version.outputs.version }}"
+          MAJOR="${V%%.*}"; REST="${V#*.}"; MINOR="${REST%%.*}"; PATCH="${REST#*.}"
+          VC=$((MAJOR * 10000 + MINOR * 100 + PATCH))
+          echo "code=$VC" >> "$GITHUB_OUTPUT"
+          echo "▶ 发布 v$V (versionCode $VC)"
+
+      # 签名构建：keystore 随仓库（开源演示项目）；正式分发建议：
+      #   1. 更换 keystore 后从 build.sh 移除硬编码密码
+      #   2. 用 secrets.ANDROID_KEYSTORE_BASE64 解码注入 + 环境变量传密码
       - name: Build signed release APK
-        working-directory: android
+        working-directory: android-app
         env:
-          ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/android/app/release.keystore.jks
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_JDK: ${{ env.JAVA_HOME }}
         run: |
-          if [ ! -f ./gradlew ]; then
-            echo "::error::android/gradlew 尚未合入，无法构建签名包（Gradle 脚手架随 Android 模块任务落地）"
-            exit 1
-          fi
-          chmod +x ./gradlew
-          ./gradlew :app:assembleRelease --stacktrace
-
-      - name: Collect APK
-        run: |
-          mkdir -p dist
-          cp android/app/build/outputs/apk/release/*.apk dist/Skip-Ad-${{ steps.version.outputs.version }}.apk
-          ls -lh dist/
+          chmod +x build.sh
+          ./build.sh "${{ steps.vcode.outputs.code }}" "${{ steps.version.outputs.version }}" \
+            "dist/adshield-v${{ steps.version.outputs.version }}.apk"
 
       # 更新日志：conventional commits 分组（feat/fix/perf/chore → 新特性/修复/性能/其他）
       - name: Generate changelog
@@ -101,6 +112,8 @@ jobs:
 
           {
             echo "## Skip-Ad v${{ steps.version.outputs.version }}"
+            echo ""
+            echo "> Android 直接覆盖安装（同签名）；检查更新走 App「我的 → 检查更新」页内直下。"
             section "新特性 (feat)"   '^feat(\(.+\))?!?:'
             section "修复 (fix)"      '^fix(\(.+\))?!?:'
             section "性能 (perf)"     '^perf(\(.+\))?:'
@@ -111,7 +124,7 @@ jobs:
           } > CHANGELOG.md
           cat CHANGELOG.md
 
-      # GitHub Release：附 APK + 更新日志
+      # GitHub Release：附 APK + 更新日志（Web 端「检查更新」接口即读此处）
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -119,12 +132,8 @@ jobs:
           body_path: CHANGELOG.md
           draft: false
           prerelease: false
-          files: dist/*.apk
+          files: android-app/dist/adshield-v${{ steps.version.outputs.version }}.apk
           generate_release_notes: false
-
-      - name: Clean keystore
-        if: always()
-        run: rm -f android/app/release.keystore.jks
 
   # ─────────────────────────────────────────────────────────────
   # Web 端同步（Vercel / 静态部署）
@@ -157,7 +166,8 @@ jobs:
         run: |
           bun install --frozen-lockfile
           bunx prisma generate
-          bun run build
+          bunx tsc --noEmit
+          bun run lint
 
       # 方案 B（可选，取消注释并配置 secrets.VERCEL_TOKEN / VERCEL_ORG_ID /
       # VERCEL_PROJECT_ID 后启用 CLI 直推，适合非 Git 集成托管）：
@@ -174,3 +184,9 @@ jobs:
       #   with:
       #     github_token: ${{ secrets.GITHUB_TOKEN }}
       #     publish_dir: dist
+
+# ─────────────────────────────────────────────────────────────
+# 规则与学习数据自动同步（v5.5.0 模块六）
+# 放在 ci.yml 的 schedule 触发更合适；此文件仅 tag 触发，故同步 job 的
+# 正式定义见 docs/ci-workflows/sync.yml（每周一 02:00 东八区）。
+# ─────────────────────────────────────────────────────────────

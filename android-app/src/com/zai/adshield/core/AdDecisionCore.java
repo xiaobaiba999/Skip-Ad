@@ -316,6 +316,16 @@ public final class AdDecisionCore {
         public int tapHintX = -1;     // 学习位置点击（v3.5.0：手动教学指纹，-1 无）
         public int tapHintY = -1;
         public int budgetNodes = 600; // 扫描节点预算
+        /* ══ v5.5.0 模块二：新场景标志（服务侧扫描前判定填入）══
+         *  halfScreenAd 半屏插屏：底部半屏 Dialog（根 bounds 高 ≤60% 屏高且
+         *    贴底部）——广告强信号，close 族 vid 放开 SDK 指纹要求；
+         *  updateDialog 更新诱导弹窗：肯定侧+否定侧文案双信号确认后置位，
+         *    否定侧（以后再说/暂不更新…）文案才允许命中（误触红线：
+         *    单信号绝不出手——普通页面「以后再说」文案不点）；
+         *  videoApp 视频类应用：前贴场景（倒计时/前贴 vid 键优先级提升）。 */
+        public boolean halfScreenAd;
+        public boolean updateDialog;
+        public boolean videoApp;
     }
 
     /* ───────── 决策输出 ───────── */
