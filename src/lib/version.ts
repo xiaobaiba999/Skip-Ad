@@ -1,6 +1,6 @@
 /** 版本与 GitHub 仓库信息（Web 端与发布节奏共用） */
-export const APP_VERSION = "5.8.0";
-export const VERSION_CODE = 50800; // major*10000 + minor*100 + patch，随版本单调递增
+export const APP_VERSION = "5.9.0";
+export const VERSION_CODE = 50900; // major*10000 + minor*100 + patch，随版本单调递增
 export const GITHUB_REPO = "xiaobaiba999/Skip-Ad";
 export const GITHUB_API = `https://api.github.com/repos/${GITHUB_REPO}`;
 export const GITHUB_HOME = `https://github.com/${GITHUB_REPO}`;
@@ -19,17 +19,16 @@ export interface VersionEntry {
  *  旧版本内容归档在 GitHub Releases 与 git 历史） */
 export const VERSION_HISTORY: VersionEntry[] = [
   {
-    version: "5.8.0",
-    code: 50800,
+    version: "5.9.0",
+    code: 50900,
     date: "2026-11-18",
-    tagline: "屏蔽速度压榨 · 三轮激进 · 首页极简防呆 · 订阅市场防呆版 · 10×15 机型矩阵",
+    tagline: "设备自适应触点 · 四轮激进 · 覆盖层防误触 · 11×15 机型矩阵",
     notes: [
-      "屏蔽速度压榨：点击冷却 420→300ms · 倒计时缓冲 180→120ms（将尽提前 0.38s 开火）· 骨架扫描档 13→18 档（前 4s 密度×2）· 补扫节流 120→80ms · 弹窗冷却 1600→1200ms——从「按钮出现」到「点击命中」全链路压榨，功耗红线保持",
-      "命中三轮激进：SDK 指纹 +4 段（Mintegral/Pangle/TopOn/Moloco）·「推广」文案族全量补收（合规敏感 App 以推广代广告）· 分应用表 +10 款（快手/搜狐视频/闲鱼/酷安/虎牙/斗鱼/百度网盘/WiFi万能钥匙/链家/抖音主线）",
-      "首页怎么简单怎么来：保活体检压缩为一行状态只列待处理项；免打扰持久模式移入「我的→高级」，首页零极客内容",
-      "订阅市场防呆版：只留 3 个高星活跃源（⭐7.4k/⭐935/⭐496），点一下整行即导入，去仓库按钮/去更多订阅/App 内零跳转",
-      "我的模块：权限使用审计卡移除；引擎日志旁新增「刷新」按钮；上传成功只保留一个确认弹窗（单一反馈通道防呆）",
-      "10 品牌 × 15 机型 = 150 机型测试矩阵六维全绿（开屏命中/屏蔽速度/bug/功耗/精准度/算法）；全仓 1666 项 JVM 断言全绿",
+      "设备自适应触点引擎（用户实锤：设备不同→多点或无点=误触）：原始几何中心 → TapPoint 四层防线——祖先可见交集（半裁剪标签点可见侧）· 节点窗口钳制（分屏/折叠另半区拒点）· 安全选点（复验象限轮换不再盲刺同坐标 + 边缘内缩防圆角/波纹死区 + 可见缝<12px 盲刺拒绝）",
+      "覆盖层防误触（泛化）：触点被 Z 序更高窗口（输入法/悬浮球/他应用 overlay/状态栏/横幅）覆盖 → 拒发手势改用无障碍代点——键盘弹出不再乱打字、验证码横幅不再被点掉",
+      "形变防死区：扁矩形纵向恒居中（横幅状标签不贴上下边死区）· 竖窄矩形横向恒居中——水波纹/圆角死区零接触",
+      "命中四轮激进：SDK 指纹 +2 段（快手 KSAdSDK ksad · 穿山甲联盟 csj_ 复合族——刻意不用裸 csj 防业务包碰撞）；分应用表 +6 款（网易新闻/腾讯新闻/新浪新闻/夸克/有道词典/哈啰出行）；LearnGovernor 泛化清单同源对齐",
+      "11 品牌 × 15 机型 = 165 机型矩阵六维全绿（新增传音 Tecno/Infinix/itel·HiOS/XOS 族）+ 设备自适应触点矩阵 24 类几何 × 9 场景全绿；全仓 1985 项 JVM 断言全绿（+319）",
     ],
   },
 ];

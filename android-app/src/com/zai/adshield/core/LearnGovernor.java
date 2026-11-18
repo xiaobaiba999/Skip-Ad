@@ -178,6 +178,9 @@ public final class LearnGovernor {
                 "miui.zeus", "doubleclick", "unionad",
                 /* v5.8.0 同源对齐：isAdActivityClass v5.8 新认的聚合/国际段 */
                 "mintegral", "pangle", "topon", "moloco",
+                /* v5.9.0 同源对齐：isAdActivityClass v5.9 新认的国内聚合段
+                 *（ksad 原已在表——快手族；csj_ 为穿山甲联盟复合族补齐） */
+                "csj_",
         };
         for (String seg : sdkSegs) {
             if (c.contains(seg)) return true;

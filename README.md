@@ -2,13 +2,14 @@
 
 # Skip-Ad · 开屏卫士
 
-**安卓开屏广告秒跳引擎 —— 露头就跳、弹窗自动关、296KB 零依赖**
+**安卓开屏广告秒跳引擎 —— 露头就跳、弹窗自动关、297KB 零依赖、设备自适应触点**
 
 [![Releases](https://img.shields.io/github/v/release/xiaobaiba999/Skip-Ad?style=flat-square&label=%E6%9C%80%E6%96%B0%E5%8F%91%E5%B8%83)](https://github.com/xiaobaiba999/Skip-Ad/releases/latest)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](#许可)
-[![APK](https://img.shields.io/badge/APK-296KB-orange?style=flat-square)](https://github.com/xiaobaiba999/Skip-Ad/releases/latest)
-[![Tests](https://img.shields.io/badge/JVM%E6%96%AD%E8%A8%80-1666%20%E2%9C%85-brightgreen?style=flat-square)](docs/test-reports/round-24.json)
-[![Matrix](https://img.shields.io/badge/%E6%9C%BA%E5%9E%8B%E7%9F%A9%E9%98%B5-10%E5%93%81%E7%89%8C%C3%9715%E6%9C%BA%E5%9E%8B-150-blue?style=flat-square)](android-app/tests/com/zai/adshield/test/BrandMatrix150Test.java)
+[![APK](https://img.shields.io/badge/APK-297KB-orange?style=flat-square)](https://github.com/xiaobaiba999/Skip-Ad/releases/latest)
+[![Tests](https://img.shields.io/badge/JVM%E6%96%AD%E8%A8%80-1985%20%E2%9C%85-brightgreen?style=flat-square)](docs/test-reports/round-25.json)
+[![Matrix](https://img.shields.io/badge/%E6%9C%BA%E5%9E%8B%E7%9F%A9%E9%98%B5-11%E5%93%81%E7%89%8C%C3%9715%E6%9C%BA%E5%9E%8B-165-blue?style=flat-square)](android-app/tests/com/zai/adshield/test/BrandMatrix165Test.java)
+[![TapPoint](https://img.shields.io/badge/%E8%AE%BE%E5%A4%87%E8%87%AA%E9%80%82%E5%BA%94%E8%A7%A6%E7%82%B9-24%E5%87%A0%E4%BD%95%C3%979%E5%9C%BA%E6%99%AF-9cf5b1?style=flat-square)](android-app/tests/com/zai/adshield/test/TapPointMatrixTest.java)
 [![Topic](https://img.shields.io/badge/topic-gkd--subscription-8e8e8e?style=flat-square)](https://github.com/topics/gkd-subscription)
 
 Java 引擎 · GKD 订阅生态兼容 · [Releases](https://github.com/xiaobaiba999/Skip-Ad/releases) · [订阅仓库](https://github.com/xiaobaiba999/skip-ad-subscription) · [问题反馈](https://github.com/xiaobaiba999/Skip-Ad/issues)
@@ -21,20 +22,18 @@ Java 引擎 · GKD 订阅生态兼容 · [Releases](https://github.com/xiaobaiba
 
 | | |
 | --- | --- |
-| **怎么工作** | 无障碍服务读屏找到「跳过」控件（文本/描述/控件 ID/图片角落键四通道），0ms 露头即点；点击冷却 300ms · 倒计时将尽提前 0.38s 开火 · 骨架扫描前 4s 密度×2 |
+| **怎么工作** | 无障碍服务读屏找到「跳过」控件（文本/描述/控件 ID/图片角落键四通道），0ms 露头即点；**设备自适应触点**（可见交集+窗口钳制+象限轮换——分屏/折叠/键盘/悬浮窗下零误触）；点击冷却 300ms · 倒计时将尽提前 0.38s 开火 |
 | **拦截范围** | 开屏广告 · 插屏/激励弹窗 · 摇一摇诱导 · 悬浮广告球 · 视频前贴（134 款内置 + 任意 GKD 订阅扩展） |
 | **不碰什么** | 小程序/支付/团购容器零扫描零点击；银行/政务/相机零干预；只点应用自带「跳过」键（合规红线） |
 | **隐私** | 数据仅存本机；联网仅日志上传（脱敏）与更新检查；零定位/通讯录/存储权限 |
 | **体积** | APK 297KB · 冷启动毫秒级 · 典型日功耗 0.05mWh 级 |
 
-## 当前版本 v5.8.0（2026-11-18）
+## 当前版本 v5.9.0（2026-11-18）
 
-- **屏蔽速度压榨（从「按钮出现」到「点击命中」全链路）**：点击冷却 420→**300ms** · 倒计时缓冲 180→**120ms**（将尽提前 0.38s 开火）· 骨架扫描档 13→**18 档**（前 4s 密度×2——补齐「内容事件不发射」广告窗的命中延迟）· 补扫节流 120→**80ms** · 弹窗冷却 1600→**1200ms** · 同窗预算 10→**12** · 跳过候选 6→**8**；功耗红线（典型日 < 0.15mWh）实测保持
-- **命中三轮激进**：SDK 指纹 +4 段（Mintegral / Pangle / TopOn / Moloco，累计 44+ 段）；「推广」文案族全量补收（合规敏感 App 以「推广」代「广告」——旧库未收零命中）；分应用表 +10 款（快手/搜狐视频/闲鱼/酷安/虎牙/斗鱼/百度网盘/WiFi万能钥匙/链家/抖音主线）
-- **首页怎么简单怎么来**：保活体检一行状态化（全部通过一行绿字，只列待处理项）；「持久守护」ADB 极客卡移出首页 → 「我的 → 高级」（普通路径零系统设置零电脑：一键恢复 + 前台看门狗自动拉活）
-- **订阅市场防呆版**：6→**3 个高星活跃源**（⭐7.4k/⭐935/⭐496），**点一下整行即导入**（导入中…→已导入 ✓），仓库按钮/底部更多订阅/App 内跳转全部移除
-- **我的模块**：权限使用审计卡移除；引擎日志旁新增**刷新**按钮；上传成功只保留**一个确认弹窗**（顶部横幅与成功通知移除——单一反馈通道防呆）
-- **10 品牌 × 15 机型 = 150 机型测试矩阵**：新增魅族·Flyme 独立族、中兴/努比亚/红魔·MyOS 独立族；六维全 150/150（开屏命中/屏蔽速度/bug 防线/功耗/精准度/算法优化）；全仓 **1666 项 JVM 断言全绿**
+- **设备自适应触点引擎（用户实锤：设备不同→多点或无点=误触）**：原始几何中心 → `TapPoint` 四层防线——① 祖先可见交集（标签被裁剪时点【可见侧】）② 节点窗口钳制（分屏/折叠另半区零盲点）③ 安全选点（**复验象限轮换**不再盲刺同坐标 + 边缘内缩 6px 防死区 + 可见缝 <12px 盲刺拒绝）④ 形变防死区（扁/竖标签恒居中带）；拒发手势自动降级无障碍代点（绝不乱刺）
+- **覆盖层防误触泛化**：触点被 Z 序更高窗口（**输入法/悬浮球/他应用 overlay/状态栏/横幅**）覆盖 → 拒发手势改用代点——键盘弹出不再乱打字、验证码横幅不再被点掉
+- **命中四轮激进**：SDK 指纹 +2 段（快手 `ksad` · 穿山甲联盟 `csj_` 复合族，累计 46+ 段）；分应用表 +6 款（网易新闻/腾讯新闻/新浪新闻/夸克/有道词典/哈啰出行）
+- **11 品牌 × 15 机型 = 165 机型测试矩阵**：新增传音 Tecno/Infinix/itel·HiOS/XOS 族（非洲/东南亚/南亚真实大市场）；六维全 165/165；另新增**设备自适应触点矩阵 24 类几何 × 9 场景**全绿；全仓 **1985 项 JVM 断言全绿（+319）**
 
 历史版本全部归档在 [docs/CHANGELOG.md](docs/CHANGELOG.md)。
 
@@ -63,7 +62,8 @@ Java 引擎 · GKD 订阅生态兼容 · [Releases](https://github.com/xiaobaiba
 | --- | --- |
 | 文本/vid 跳过键 | 「跳过/Skip/推广族」+ viewId 双通道，0ms 首扫毫秒级代点 |
 | 第一方图片开屏 | 无字图片跳过键 → 角落小可点控件手势点击（形状门防误点） |
-| SDK 广告窗 | className 指纹 44+ 段精确匹配（穿山甲/优量汇/Unity/IronSource/Mintegral/Pangle/…）→ 点击梯子 + 返回键直断兜底 |
+| SDK 广告窗 | className 指纹 46+ 段精确匹配（穿山甲/优量汇/Unity/IronSource/Mintegral/Pangle/快手 ksad/联盟 csj_ …）→ 点击梯子 + 返回键直断兜底 |
+| 设备自适应触点 | 可见交集 + 窗口钳制 + 象限轮换 + 覆盖层 Z 序判定——分屏/折叠/键盘/悬浮窗千差万别的设备上零误触 |
 | 屏蔽速度 | 点击冷却 300ms · 倒计时将尽提前 0.38s 开火 · 骨架扫描前 4s 密度×2 · 补扫节流 80ms——全链路压榨 |
 | 弹窗广告 | 弹窗窗期独立、角标+关闭键、Dialog 形态安全门 |
 | 摇一摇/翻转诱导 | 文案识别抢先关闭（不对抗用户真实跳转） |
@@ -82,15 +82,16 @@ android-app/
 ├─ src/com/zai/adshield/        # Java 无障碍引擎（决策阶梯 L0-L6 · 纯 JVM 可测）
 │  └─ core/                      # AdDecisionCore / RuleEngine / GkdSelector / RestoreGuard …
 ├─ assets/www/                   # JS 壳 UI（订阅市场防呆版 / 首页极简 / 高级折叠）
-├─ tests/                        # 1666 项 JVM 断言（含 BrandMatrix150Test 10×15 机型矩阵）
+├─ tests/                        # 1985 项 JVM 断言（含 BrandMatrix165Test 11×15 机型矩阵 + TapPointMatrixTest 24 几何 × 9 场景触点矩阵）
 └─ run-tests.sh                  # 零依赖测试跑器
 ```
 
 ## 测试
 
-- **10 品牌 × 15 机型 = 150 机型**：小米/华为/OPPO/一加/vivo/荣耀/三星/魅族/中兴-努比亚-红魔/其他（Pixel·Nothing·索尼·moto·联想）× 各 15 款——开屏命中 / 屏蔽速度 / bug 防线 / 功耗 / 精准度 / 算法优化 **六维各 150/150**
-- 二十四轮自测轨迹（1060 款语料 · 诚实模型）见 [docs/test-reports/summary.md](docs/test-reports/summary.md)
-- 每轮报告：`docs/test-reports/round-N.json`（最新：[round-24](docs/test-reports/round-24.json) · 1666 断言全绿）
+- **11 品牌 × 15 机型 = 165 机型**：小米/华为/OPPO/一加/vivo/荣耀/三星/魅族/中兴-努比亚-红魔/传音 Tecno/Infinix/itel/其他（Pixel·Nothing·索尼·moto·联想）× 各 15 款——开屏命中 / 屏蔽速度 / bug 防线 / 功耗 / 精准度 / 算法优化 **六维各 165/165**
+- **设备自适应触点矩阵**：24 类真实设备几何（直板/16:9 遗留/折叠内外屏/平板/分屏/刘海/挖孔/正方/横屏）× 9 误触场景（半裁剪/窗外/盲刺/轮换/内缩/覆盖层/不可见/形变死区/全链路）全绿
+- 二十五轮自测轨迹（1060 款语料 · 诚实模型）见 [docs/test-reports/summary.md](docs/test-reports/summary.md)
+- 每轮报告：`docs/test-reports/round-N.json`（最新：[round-25](docs/test-reports/round-25.json) · 1985 断言全绿）
 
 ## 安装
 

@@ -12,16 +12,18 @@ import com.zai.adshield.core.Subscription;
 import com.zai.adshield.test.TestHost.SimNode;
 
 /**
- * 10 品牌 × 15 机型全维度矩阵测试（v5.8.0 · 用户三轮要求：模拟「N 多」品牌
- * 机型测试修复——8 大品牌族 × 每族 12 款机型 = 96 机型；含 app 开屏广告
- * 测试、屏蔽速度测试、bug 测试、功耗测试、精准度测试、算法优化测试）。
+ * 11 品牌 × 15 机型全维度矩阵测试（v5.9.0 · 用户四轮要求：模拟「N 多」品牌
+ * 机型测试修复；含 app 开屏广告测试、屏蔽速度测试、bug 测试、功耗测试、
+ * 精准度测试、算法优化测试）。
  *
- * 矩阵（v5.6.0 5×10=50 → v5.7.0 8×12=96 · 覆盖面 +92%）：
- *  Xiaomi/Redmi/POCO·HyperOS 12 + Huawei·HarmonyOS 12 +
- *  OPPO/realme·ColorOS 12 + 一加·ColorOS 12 + vivo/iQOO·OriginOS 12 +
- *  荣耀·MagicOS 12 + Samsung·OneUI 12 + 其他（Pixel/Nothing/魅族/努比亚/
- *  红魔/索尼/moto）12 = 96 机型。分辨率取真实规格（水滴/挖孔/直屏/折叠
- * 外屏主流档），引擎全 bounds 中心点击——任意分辨率目标面一致。
+ * 矩阵（v5.6.0 5×10=50 → v5.7.0 8×12=96 → v5.8.0 10×15=150 →
+ * v5.9.0 11×15=165 · 新增传音 Tecno/Infinix/itel·HiOS/XOS 族）：
+ *  Xiaomi/Redmi/POCO·HyperOS + Huawei·HarmonyOS + OPPO/realme·ColorOS +
+ *  一加·ColorOS + vivo/iQOO·OriginOS + 荣耀·MagicOS + Samsung·OneUI +
+ *  魅族·Flyme + 中兴/努比亚/红魔·MyOS + 传音 Tecno/Infinix/itel·HiOS/XOS +
+ *  其他（Pixel/Nothing/索尼/moto）= 165 机型。分辨率取真实规格（水滴/挖孔/直屏/折叠
+ * 外屏主流档），引擎全 bounds 触点经 TapPoint 四层防线（v5.9 设备自适应
+ * 触点）——任意分辨率目标面安全落点（误触零容忍）。
  *
  * 每机型六维（对应报告六列）：
  *  ① 开屏广告命中（六信号：文本键/desc 键/vid 订阅键/图片角落键/
@@ -31,10 +33,10 @@ import com.zai.adshield.test.TestHost.SimNode;
  *  ③ bug 测试（菜单陷阱行/巨横幅/验证码横幅/游戏 jump vid 四陷阱零动作）
  *  ④ 功耗测试（典型日 45 启动 + 120 后台事件 < 0.15mWh · 分级预算在场）
  *  ⑤ 精准度测试（银行守护零返回键 · 验证码标记 · Unity 游戏引擎窗免疫）
- *  ⑥ 算法优化测试（v5.8 新指纹 4 段全命中 · 非广告窗 7 档全免疫
- *    · 10 品牌族归一正确 · 免设置自愈合并纯函数正确）
+ *  ⑥ 算法优化测试（v5.9 新指纹 ksad/csj_ 全命中 · 非广告窗 7 档全免疫
+ *    · 11 品牌族归一正确 · 免设置自愈合并纯函数正确）
  */
-public final class BrandMatrix150Test {
+public final class BrandMatrix165Test {
 
     static final String[][] XIAOMI = {
             {"Xiaomi 15 Ultra", "1440", "3200"},
@@ -206,8 +208,25 @@ public final class BrandMatrix150Test {
             {"motorola edge 50 Ultra", "1220", "2712", "motorola"},
             {"联想拯救者 Y700 二代", "1600", "2560", "Lenovo"},
     };
+    static final String[][] TRANSSION = {
+            {"Tecno Camon 40 Premier", "1260", "2780"},
+            {"Tecno Camon 40 Pro", "1080", "2436"},
+            {"Tecno Camon 30 Pro", "1080", "2436"},
+            {"Tecno Spark 30 Pro", "1080", "2412"},
+            {"Tecno Spark 20", "720", "1612"},
+            {"Tecno Pop 9", "720", "1612"},
+            {"Infinix Note 50 Pro+", "1260", "2780"},
+            {"Infinix Note 40 Pro", "1080", "2436"},
+            {"Infinix Hot 50 Pro", "1080", "2408"},
+            {"Infinix Hot 40i", "720", "1612"},
+            {"Infinix GT 20 Pro", "1080", "2400"},
+            {"Infinix Zero 40", "1080", "2400"},
+            {"itel S25 Ultra", "1080", "2436"},
+            {"itel A70", "720", "1612"},
+            {"itel P70", "720", "1612"},
+    };
     static final String[][][] BRANDS = {
-            XIAOMI, HUAWEI, OPPO, ONEPLUS, VIVO, HONOR, SAMSUNG, MEIZU, ZTE, OTHERS,
+            XIAOMI, HUAWEI, OPPO, ONEPLUS, VIVO, HONOR, SAMSUNG, MEIZU, ZTE, TRANSSION, OTHERS,
     };
     static final String[] BRAND_NAMES = {
             "小米/Redmi/POCO·HyperOS",
@@ -219,6 +238,7 @@ public final class BrandMatrix150Test {
             "三星·OneUI",
             "魅族·Flyme",
             "中兴/努比亚/红魔·MyOS",
+            "传音 Tecno/Infinix/itel·HiOS/XOS",
             "其他·Pixel/Nothing/索尼/moto",
     };
     static final String[] BRAND_MANUFACTURERS = {
@@ -231,6 +251,7 @@ public final class BrandMatrix150Test {
             "samsung",
             "meizu",
             "ZTE",
+            "Transsion",
             null,
     };
     static final String[] EXPECTED_FAMILIES = {
@@ -242,12 +263,15 @@ public final class BrandMatrix150Test {
             RestoreGuard.FAMILY_MAGIC,
             RestoreGuard.FAMILY_ONEUI,
             RestoreGuard.FAMILY_FLYME,
-            null, // generic（中兴族/其他组）
-            null, // generic（中兴族/其他组）
+            null, // generic（中兴族/传音族/其他组）
+            null, // generic（中兴族/传音族/其他组）
+            null, // generic（中兴族/传音族/其他组）
     };
 
-    /* ══ v5.8.0 新增 SDK 指纹（激进化）vs 非广告窗对照 ══ */
+    /* ══ v5.8.0/v5.9.0 新增 SDK 指纹（激进化）vs 非广告窗对照 ══ */
     static final String[] NEW_FINGERPRINTS = {
+            "com.ksad.splash.KSSplashActivity",                // 快手 KSAdSDK（v5.9 新增）
+            "com.bytedance.csj_splash.CSJSplashActivity",     // 穿山甲联盟复合族（v5.9 新增）
             "com.mbridge.mintegral.ads.MBActivity",          // Mintegral（v5.8 新增）
             "com.example.app.pangle.PangleSplashActivity",   // Pangle 穿山甲国际版（v5.8 新增）
             "com.topon.sdk.adapter.TopOnAdActivity",          // TopOn 聚合（v5.8 新增）
@@ -508,16 +532,16 @@ public final class BrandMatrix150Test {
             brandAlgoTotal += algoN;
         }
 
-        /* ══ 矩阵总检（10×15=150 · 六维全 150/150）══ */
-        TestHost.suite("矩阵总检（10 品牌 × 15 机型）");
-        TestHost.check(brandHitTotal == 150, "开屏命中总 " + brandHitTotal + "/150");
-        TestHost.check(brandSpeedTotal == 150, "屏蔽速度总 " + brandSpeedTotal + "/150");
-        TestHost.check(brandBugTotal == 150, "bug 防线总 " + brandBugTotal + "/150");
-        TestHost.check(brandPowerTotal == 150, "功耗总 " + brandPowerTotal + "/150");
-        TestHost.check(brandPrecTotal == 150, "精准度总 " + brandPrecTotal + "/150");
-        TestHost.check(brandAlgoTotal == 150, "算法优化总 " + brandAlgoTotal + "/150");
+        /* ══ 矩阵总检（11×15=165 · 六维全 165/165）══ */
+        TestHost.suite("矩阵总检（11 品牌 × 15 机型）");
+        TestHost.check(brandHitTotal == 165, "开屏命中总 " + brandHitTotal + "/165");
+        TestHost.check(brandSpeedTotal == 165, "屏蔽速度总 " + brandSpeedTotal + "/165");
+        TestHost.check(brandBugTotal == 165, "bug 防线总 " + brandBugTotal + "/165");
+        TestHost.check(brandPowerTotal == 165, "功耗总 " + brandPowerTotal + "/165");
+        TestHost.check(brandPrecTotal == 165, "精准度总 " + brandPrecTotal + "/165");
+        TestHost.check(brandAlgoTotal == 165, "算法优化总 " + brandAlgoTotal + "/165");
         System.out.println("  矩阵: " + brandHitTotal + "/" + brandSpeedTotal + "/" + brandBugTotal
-                + "/" + brandPowerTotal + "/" + brandPrecTotal + "/" + brandAlgoTotal + "（六维各 /150）");
+                + "/" + brandPowerTotal + "/" + brandPrecTotal + "/" + brandAlgoTotal + "（六维各 /165）");
 
         TestHost.done();
     }

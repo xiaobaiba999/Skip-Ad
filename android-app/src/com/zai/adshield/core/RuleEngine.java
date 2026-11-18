@@ -124,6 +124,16 @@ public final class RuleEngine {
             { "com.snda.wifilocating", "跳过" },               // WiFi万能钥匙
             { "com.homelink.android", "跳过广告" },             // 链家
             { "com.ss.android.ugc.aweme", "跳过广告", "跳过" }, // 抖音主线
+            /* v5.9.0 四轮激进（用户实锤：继续大胆激进——新闻/工具类高频
+             * App 未命中诊断日志实锤：网易新闻/腾讯新闻/新浪新闻/夸克/
+             * 有道词典/哈啰出行开屏跳过文案只走全局层，窗口无 SDK 指纹，
+             * 整窗零候选；分应用精确等值零误点面） */
+            { "com.netease.newsreader", "跳过广告", "跳过" },  // 网易新闻
+            { "com.tencent.news", "跳过广告", "跳过" },          // 腾讯新闻
+            { "com.sina.news", "跳过广告", "跳过" },            // 新浪新闻
+            { "com.quark.browser", "跳过" },                    // 夸克浏览器
+            { "com.youdao.dict", "跳过广告", "跳过" },          // 有道词典
+            { "com.jingyao.easybike", "跳过广告", "跳过" },    // 哈啰出行
     };
     /* v5.6.0 三件套之补：分应用表并行小写副本（类加载期一次构建；
      * 原写法每匹配一行 row[j].toLowerCase() 都分配新串——热路径高频） */

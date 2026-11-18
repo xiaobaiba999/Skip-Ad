@@ -32,6 +32,7 @@ import com.zai.adshield.core.RestoreGuard;
 import com.zai.adshield.core.RuleEngine;
 import com.zai.adshield.core.RuleEngine.Hit;
 import com.zai.adshield.core.Subscription;
+import com.zai.adshield.core.TapPoint;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -393,6 +394,8 @@ public class AdSkipService extends AccessibilityService {
     /** v5.0.0：小程序容器树标识兜底日志节流（同包 10s 去重） */
     private final java.util.HashMap<String, Long> miniGuardLogAt = new java.util.HashMap<>();
     private final java.util.HashMap<String, Long> headsUpLogAt = new java.util.HashMap<>();
+    /* v5.9.0 覆盖层防误触日志节流（同包 10s 去重——输入法/悬浮窗/他应用 overlay 拦截） */
+    private final java.util.HashMap<String, Long> overlayLogAt = new java.util.HashMap<>();
     private final java.util.HashMap<String, Long> misclickLogAt = new java.util.HashMap<>();
     /* v3.14.0 跳过后反馈弹窗：最近引擎自动跳过时间 / 日志去重 / 代点冷却 */
     private final java.util.HashMap<String, Long> skipAt = new java.util.HashMap<>();
@@ -2983,6 +2986,7 @@ public class AdSkipService extends AccessibilityService {
         if (d.action.equals(AdDecisionCore.A_CLICK_BOUNDS) || d.action.equals(AdDecisionCore.A_CLOSE)) {
             if (!clickCoolOK) return false;
             int attempts = triesOfClick(pkg);
+            clickAttemptNow = attempts; // v5.9.0：复验象限轮换基数（同候选换点防多点盲刺）
             // v3.8.0：手势真实触点【首选】——performAction 首点常被应用无声吞掉
             //（喜马拉雅实锤）；派发失败才降级 performAction 兜底（见 clickNode）
             if (clickNode(d)) {
@@ -3054,13 +3058,18 @@ public class AdSkipService extends AccessibilityService {
      *  按钮立刻生效」。performAction 走无障碍点击通道，广告 SDK/自绘控件普遍
      *  只认真实触点。改为先 dispatchGesture 点【原标签控件】中心（=手动点击的
      *  完全等价物），派发失败（系统手势限流）才降级 performAction 兜底。
-     *  假跳过候选（d.node=null）只走手势——大容器祖先 performAction=点开广告 */
+     *  假跳过候选（d.node=null）只走手势——大容器祖先 performAction=点开广告
+     *  ══ v5.9.0 设备自适应触点（用户实锤：设备不同→多点或无点=误触）═══
+     *  原始几何中心 → TapPoint 四层防线：L1 祖先可见交集 + L2 节点窗口钳制
+     *  （分屏/折叠另半区拒点）+ L3 安全选点（复验象限轮换/边缘内缩/过小拒点）
+     *  + L4 覆盖层判定（gestureTap 内，输入法/悬浮窗拦截拒发）。拒发手势
+     *  ≠放弃：自动降级 performAction 无障碍代点（不经屏幕坐标，点得到
+     *  语义目标）；再失败由复验扫描换候选——绝不在危险坐标上盲刺。 */
     private boolean clickNode(Decision d) {
         lastGesture = false;
         if (d.bounds != null) {
-            int cx = (d.bounds[0] + d.bounds[2]) / 2;
-            int cy = (d.bounds[1] + d.bounds[3]) / 2;
-            if (gestureTap(cx, cy)) {
+            int[] pt = adaptiveTapPoint(d); // v5.9.0：可见交集+窗口钳制+安全选点
+            if (pt != null && gestureTap(pt[0], pt[1])) {
                 lastGesture = true;
                 energyGestures++;
                 return true;
@@ -3075,6 +3084,65 @@ public class AdSkipService extends AccessibilityService {
             }
         }
         return false;
+    }
+
+    /** v5.9.0 复验象限轮换基数：本窗第几次出手（execute 出手前写入 clickTries
+     *  当前值——同候选复验换象限点，不再盲点同一坐标=「多点」根治） */
+    private int clickAttemptNow = 0;
+
+    /** v5.9.0 设备自适应触点：Decision → 安全触点 {x,y}；null=拒发手势。
+     *  L1 标签∩祖先可见链（TapPoint.tapRect·node 为可点祖先时=标签须在其
+     *  可见区内）→ L2 标签∩节点自身窗口 bounds（分屏/折叠另半区/窗口已
+     *  切换拒点）→ L3 TapPoint.pick（中心+象限轮换+内缩+过小拒点）。 */
+    private int[] adaptiveTapPoint(Decision d) {
+        int[] win = nodeWindowBounds(d.node);
+        int[] rect = TapPoint.tapRect(d.node, d.bounds, win);
+        if (rect == null) {
+            // 日志口径：拒发原因可诊断（同包 10s 节流）
+            Long last = overlayLogAt.get(lastGesturePkg == null ? "" : lastGesturePkg);
+            long now = System.currentTimeMillis();
+            if (last == null || now - last > 10000) {
+                overlayLogAt.put(lastGesturePkg == null ? "" : lastGesturePkg, now);
+                appendLog("🛡 触点拒发（" + shortPkg(lastGesturePkg) + "）：标签不可见/被裁剪/在窗口外"
+                        + "（分屏·折叠形态）→ 改用无障碍代点（绝不在危险坐标盲刺）");
+            }
+            return null;
+        }
+        return TapPoint.pick(rect, clickAttemptNow);
+    }
+
+    /** v5.9.0：标签所属窗口 bounds——取节点自身窗口（node.getWindow()，
+     *  分屏/多窗/弹窗最精确），拿不到时回退活跃根窗。返回 null=未知
+     *  （旧 ROM）→ 钳制跳过（其余防线仍在）。 */
+    private int[] nodeWindowBounds(NodeView node) {
+        try {
+            if (node instanceof NodeAdapter) {
+                AccessibilityWindowInfo w = ((NodeAdapter) node).n.getWindow();
+                if (w != null) {
+                    Rect r = new Rect();
+                    w.getBoundsInScreen(r);
+                    if (!r.isEmpty()) {
+                        return new int[]{r.left, r.top, r.right, r.bottom};
+                    }
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return activeWindowBounds();
+    }
+
+    /** v5.9.0：当前活跃窗（广告窗）bounds 兜底源。 */
+    private int[] activeWindowBounds() {
+        try {
+            AccessibilityNodeInfo r = getRootInActiveWindow();
+            if (r == null) return null;
+            Rect rr = new Rect();
+            r.getBoundsInScreen(rr);
+            if (rr.isEmpty()) return null;
+            return new int[]{rr.left, rr.top, rr.right, rr.bottom};
+        } catch (Throwable t) {
+            return null;
+        }
     }
 
     /** v3.7.0 手势结果回调（静态内部类，规避 d8 8.2 匿名类 bug）。
@@ -3123,12 +3191,14 @@ public class AdSkipService extends AccessibilityService {
             if (x <= 0 || y <= 0) return false;
             if (screenWidth > 0 && x >= screenWidth) x = screenWidth - 2; // 边界钳制
             if (screenHeight > 0 && y >= screenHeight) y = screenHeight - 2;
-            // v3.13.0 验证码横幅防护③：触点被 SystemUI 顶部小窗（状态栏/
-            // heads-up 横幅）覆盖时拒发手势——真实触点会被横幅截走（点掉
-            // 验证码横幅的事故路径）。拒发后 clickNode 自动降级 performAction
-            // 代点（走无障碍通道不经屏幕坐标，绝不碰横幅），学习位置点择机重试
-            if (pointUnderHeadsUp(x, y)) {
-                headsUpGuardLog(lastGesturePkg, System.currentTimeMillis());
+            // v3.13.0 验证码横幅防护③ → v5.9.0 设备差异误触防线泛化：
+            // 触点被 Z 序更高窗口（状态栏/heads-up 横幅/输入法/悬浮球/他应用
+            // overlay/折叠任务栏）覆盖时拒发手势——真实触点会被覆盖物截走
+            //（点掉验证码横幅·键盘上乱打字·误触他应用悬浮窗的事故路径）。
+            // 拒发后 clickNode 自动降级 performAction 代点（走无障碍通道不
+            // 经屏幕坐标，绝不碰覆盖物），学习位置点择机重试
+            if (pointCoveredByUpperOverlay(x, y)) {
+                overlayGuardLog(lastGesturePkg, System.currentTimeMillis());
                 return false;
             }
             Path p = new Path();
@@ -3710,6 +3780,53 @@ public class AdSkipService extends AccessibilityService {
 
     private boolean pointUnderHeadsUp(int x, int y) {
         return headsUpBanner(new int[]{x, y}) != null;
+    }
+
+    /** v5.9.0 设备差异误触防线（覆盖层 Z 序判定）：触点是否被 Z 序更高
+     *  （在广告窗之上）的窗口覆盖。getWindows() 按 Z 序返回（索引小=层级高）
+     *  ——先定位活跃窗（我们的广告窗），其上的任何窗口（SystemUI 状态栏/
+     *  heads-up 横幅/输入法/悬浮球/他应用 overlay）包含触点 → 手势必被
+     *  截走=点到覆盖物。查不到活跃窗（过渡态/特殊 ROM 顺序异常）退化为
+     *  旧 SystemUI 顶条判定（v3.13.0 行为保持兜底）。
+     *  IPC 成本：一次 getWindows()（v3.13.0 起 headsUpBanner 本就在此路径
+     *  消耗同量调用——成本持平）。 */
+    private boolean pointCoveredByUpperOverlay(int x, int y) {
+        if (screenWidth <= 0 || screenHeight <= 0) return pointUnderHeadsUp(x, y);
+        try {
+            List<AccessibilityWindowInfo> wins = getWindows();
+            if (wins == null || wins.isEmpty()) return pointUnderHeadsUp(x, y);
+            int activeIdx = -1;
+            for (int i = 0; i < wins.size(); i++) {
+                AccessibilityWindowInfo w = wins.get(i);
+                if (w != null && w.isActive()) {
+                    activeIdx = i;
+                    break;
+                }
+            }
+            if (activeIdx < 0) return pointUnderHeadsUp(x, y); // 找不到活跃窗→旧行为
+            for (int i = 0; i < activeIdx; i++) {
+                AccessibilityWindowInfo w = wins.get(i);
+                if (w == null) continue;
+                Rect r = new Rect();
+                w.getBoundsInScreen(r);
+                if (r.isEmpty()) continue;
+                if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return true;
+            }
+            return false;
+        } catch (Throwable t) {
+            return pointUnderHeadsUp(x, y); // 旧 ROM getWindows 异常→旧行为
+        }
+    }
+
+    /** v5.9.0 覆盖层防误触日志（同包 10s 去重；pkg 可能为空） */
+    private void overlayGuardLog(String pkg, long now) {
+        String key = pkg == null ? "" : pkg;
+        Long last = overlayLogAt.get(key);
+        if (last != null && now - last < 10000) return;
+        overlayLogAt.put(key, now);
+        appendLog("🛡 覆盖层防误触（" + (key.length() == 0 ? "系统" : shortPkg(pkg))
+                + "）：触点被更高层窗口覆盖（输入法/悬浮窗/状态栏/横幅）→ 已拒发手势"
+                + "（改用无障碍代点，绝不点到覆盖物）");
     }
 
     /** 验证码横幅保护日志（同包 10s 去重） */

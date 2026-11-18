@@ -1050,6 +1050,18 @@ public final class AdDecisionCore {
              *  依旧绝不误认（红线不碰）。 */
             if (s.contains("mintegral") || s.contains("pangle")
                     || s.contains("topon") || s.contains("moloco")) return true;
+            /* v5.9.0 四轮激进（用户实锤：继续大胆激进——国内聚合漏网主力）：
+             *  · ksad——快手 KSAdSDK 广告窗命名段（com.ksad.* 家族与
+             *    com.kwad.* 并行的真实包段，LearnGovernor 泛化表已认、
+             *    指纹表此前漏网 = 整窗零 vid-close 点击零返回兜底）；
+             *  · csj_——穿山甲巨量引擎联盟窗复合命名段（csj_splash /
+             *    csj_reward 等——LearnGovernor 泛化表已认 csj_splash，
+             *    指纹表此前只认 csjad 整串漏掉 csj_ 复合族）。刻意不用
+             *    裸 csj 短段：com.csj 业务包碰撞面（误报→根窗返回键=
+             *    退出应用红线），csj_ + csjad 双形态已全覆盖联盟命名。
+             *  两段均为纯广告 SDK 侧命名约定，业务 App 窗口绝无此命名
+             *  ——误报面可控；游戏/下载/登录红线对照进测试断言。 */
+            if (s.contains("ksad") || s.contains("csj_")) return true;
         }
         return false;
     }
