@@ -31,7 +31,17 @@
  *  · P3 守护模式：支付/银行/政务类应用广告照拦、服务绝不终止。
  */
 
-export type AdType = "splash" | "interstitial" | "shake" | "deeplink" | "popup";
+export type AdType =
+  | "splash"
+  | "interstitial"
+  | "half_interstitial"
+  | "update_dialog"
+  | "float_ball"
+  | "feed_native"
+  | "video_preroll"
+  | "shake"
+  | "deeplink"
+  | "popup";
 export type AppCategory = "电商" | "游戏" | "银行" | "政务" | "支付" | "视频" | "音频" | "生活";
 export type BlockAction =
   | "instant_skip"
@@ -44,6 +54,11 @@ export type BlockAction =
   | "sdk_window_cut"
   | "coord_tap"
   | "popup_close"
+  | "halfsheet_close"
+  | "decline_tap"
+  | "overlay_notice"
+  | "mark_only"
+  | "preroll_skip"
   | "back_fallback"
   | "dns_block"
   | "miss";
@@ -74,6 +89,11 @@ export const GUARD_CATEGORIES: AppCategory[] = ["银行", "政务", "支付"];
 export const AD_TYPE_LABEL: Record<AdType, string> = {
   splash: "开屏广告",
   interstitial: "插屏广告",
+  half_interstitial: "半屏插屏广告",
+  update_dialog: "更新诱导弹窗",
+  float_ball: "悬浮广告球",
+  feed_native: "信息流嵌入式广告",
+  video_preroll: "视频前贴广告",
   shake: "摇一摇广告",
   deeplink: "Deeplink 诱导跳转",
   popup: "应用内弹窗广告",
@@ -90,6 +110,11 @@ export const ACTION_LABEL: Record<BlockAction, string> = {
   coord_tap: "角落控件/坐标级点击",
   sdk_window_cut: "SDK 广告窗指纹直断",
   popup_close: "弹窗广告代点关闭",
+  halfsheet_close: "半屏插屏代点关闭",
+  decline_tap: "诱导弹窗代点消极按钮",
+  overlay_notice: "悬浮窗识别提示引导",
+  mark_only: "信息流广告识别标注（不代点）",
+  preroll_skip: "前贴广告到点即跳",
   back_fallback: "返回键兜底",
   dns_block: "定向域名阻断",
   miss: "漏拦截（用户手动）",
@@ -224,6 +249,139 @@ export function planInstantBlock(
       confidence: Math.min(99.4, (app.learnedRuleName ? 97 : 93) + (app.guard ? 1.5 : 0) + 1.2),
       headline: isShake ? "摇一摇企图已拦截 · 传感器事件挂起" : "诱导跳转已拦截 · Deeplink 意图断链",
       subline: `${app.name} · ${AD_TYPE_LABEL[app.adType]} · ${ACTION_LABEL[isShake ? "sensor_block" : "intent_block"]}`,
+      preempt: false,
+    };
+  }
+
+  /* ── v5.4.0 五类新广告场景（主流 SDK 源码特征对齐） ── */
+  if (app.adType === "half_interstitial") {
+    // 优量汇 HalfScreenExpressAd / 穿山甲 TTHalfScreenAd 形态：Dialog 窗
+    // 底部锚定、高度 35%~55% 屏、「广告」角标 + 关闭键双信号 → 代点关闭
+    const steps: PipelineStep[] = [
+      { label: "半屏窗口捕获", detail: "TYPE_WINDOW_STATE_CHANGED → Dialog 底部锚定窗（高度占屏 35%~55%、底边贴合），命中半屏插屏形态（优量汇 HalfScreenExpressAd / 穿山甲 TTHalfScreenAd 同源结构）", atMs: 0 },
+      { label: "形态自适应验证", detail: "窗口几何校验（全形态阈值：折叠屏展开态/平板/分屏下按实际窗口尺寸换算，非固定像素）——防把平板半屏正常面板误判", atMs: jitter(9, 4) },
+      { label: "双信号同扫", detail: "一次 DFS 收集：「广告」角标（短文本精确匹配）+ 关闭键（×/关闭/我知道了）；角标缺失但有 SDK 容器指纹（com.qq.e.ads / 穿山甲 openadsdk）亦可确认", atMs: jitter(16, 6) },
+      { label: app.guard ? "守护·代点关闭" : "代点关闭键", detail: app.guard ? "双信号成立 → 温和代点关闭键，进程与服务零干预" : "双信号成立 → 代点关闭键（半屏插屏的关闭键必为原生控件，代点合规）", atMs: jitter(31, 8) },
+      { label: "冷却保护", detail: "关闭后 2.5s 冷却，防连环半屏弹窗；窗口出栈确认", atMs: jitter(46, 10) },
+    ];
+    const totalMs = steps[steps.length - 1].atMs;
+    return {
+      action: app.guard ? "guard_skip" : "halfsheet_close",
+      scenario: app.guard ? "guard" : "popup",
+      ruleName: app.learnedRuleName ?? app.ruleName,
+      steps,
+      totalMs,
+      engineMs: totalMs,
+      waitMs: 0,
+      confidence: Math.min(99.2, (app.learnedRuleName ? 96 : 93) + (app.guard ? 1.5 : 0) + 2),
+      headline: app.guard
+        ? `守护模式 · 半屏插屏已关闭，${app.category}应用服务保持运行`
+        : "半屏插屏已关闭 · 形态 + 双信号判定",
+      subline: `${app.name} · ${AD_TYPE_LABEL[app.adType]} · ${ACTION_LABEL[app.guard ? "guard_skip" : "halfsheet_close"]}`,
+      preempt: false,
+    };
+  }
+
+  if (app.adType === "update_dialog") {
+    // 更新诱导弹窗：「发现新版本」类 Dialog —— 合规红线：只点消极按钮
+    // （以后再说/暂不更新/取消），绝不点「立即更新」类积极按钮
+    const steps: PipelineStep[] = [
+      { label: "Dialog 窗口捕获", detail: "TYPE_WINDOW_STATE_CHANGED → Dialog 形态窗（非开屏窗、非内容变化）", atMs: 0 },
+      { label: "诱导弹窗识别", detail: "标题/正文命中「发现新版本/立即更新/版本更新」特征 + 主按钮为下载类 CTA → 判定为更新诱导弹窗（非广告，属体验治理）", atMs: jitter(12, 5) },
+      { label: "按钮语义分级", detail: "控件树内按钮语义分级：积极（立即更新/马上升级）vs 消极（以后再说/暂不更新/取消/关闭）——只允许代点消极按钮，积极按钮永不触碰（动作边界自检）", atMs: jitter(21, 6) },
+      { label: "合规代点", detail: "代点消极按钮关窗；无消极按钮时仅提示不动作（宁漏勿误）", atMs: jitter(35, 8) },
+      { label: "边界自检留痕", detail: "动作审计：目标控件语义 = 消极按钮 ✓ · 面积 <1% ✓ · 非输入类 ✓ —— 结构化日志落盘（供权限透明化审计）", atMs: jitter(44, 10) },
+    ];
+    const totalMs = steps[steps.length - 1].atMs;
+    return {
+      action: "decline_tap",
+      scenario: "popup",
+      ruleName: app.learnedRuleName ?? app.ruleName,
+      steps,
+      totalMs,
+      engineMs: totalMs,
+      waitMs: 0,
+      confidence: Math.min(98.6, 94 + 2),
+      headline: "更新诱导弹窗已处理 · 仅代点消极按钮",
+      subline: `${app.name} · ${AD_TYPE_LABEL[app.adType]} · ${ACTION_LABEL["decline_tap"]}`,
+      preempt: false,
+    };
+  }
+
+  if (app.adType === "float_ball") {
+    // 悬浮广告球：TYPE_APPLICATION_OVERLAY 窗口 —— 识别 + 引导关闭权限，
+    // 绝不自动点击（风险高）也绝不代点（球体本身就是广告入口）
+    const steps: PipelineStep[] = [
+      { label: "悬浮窗捕获", detail: "TYPE_WINDOW_STATE_CHANGED → TYPE_APPLICATION_OVERLAY 小尺寸窗（直径≤12%屏宽、圆形/异形、非系统桌面组件）", atMs: 0 },
+      { label: "广告球甄别", detail: "窗口白名单校验（系统桌面组件/音乐控件/输入法悬浮条豁免）+ 前台应用关联性校验 → 判定为第三方广告悬浮球", atMs: jitter(14, 6) },
+      { label: "零点击策略", detail: "合规红线：悬浮球本体即广告入口，代点/滑动都可能触发跳转 → 只识别不点击，绝不触碰", atMs: jitter(22, 6) },
+      { label: "引导关闭", detail: "通知栏提示 + 一键直达「悬浮窗权限」设置页（收回该应用的 overlay 授权）——根治而非对抗", atMs: jitter(33, 8) },
+      { label: "识别留痕", detail: "结构化日志：悬浮窗包名/尺寸/出现时机落盘，夜间同步仅同步脱敏统计（不含包名以外的任何用户数据）", atMs: jitter(41, 10) },
+    ];
+    const totalMs = steps[steps.length - 1].atMs;
+    return {
+      action: "overlay_notice",
+      scenario: "normal",
+      ruleName: app.learnedRuleName ?? app.ruleName,
+      steps,
+      totalMs,
+      engineMs: totalMs,
+      waitMs: 0,
+      confidence: Math.min(97.8, 93 + 2),
+      headline: "悬浮广告球已识别 · 引导关闭权限（零点击）",
+      subline: `${app.name} · ${AD_TYPE_LABEL[app.adType]} · ${ACTION_LABEL["overlay_notice"]}`,
+      preempt: false,
+    };
+  }
+
+  if (app.adType === "feed_native") {
+    // 信息流嵌入式广告：合规底线——用户正在浏览的内容绝不自动滑走；
+    // 仅识别标注 + 用户点开关闭菜单时代点「不感兴趣」
+    const steps: PipelineStep[] = [
+      { label: "信息流滚动捕获", detail: "TYPE_WINDOW_CONTENT_CHANGED（列表容器）→ 节流采样（分级功耗策略：低端机降频）", atMs: 0 },
+      { label: "嵌入式广告识别", detail: "列表 Item 内「广告/推广/赞助」角标 + 营销容器指纹（穿山甲 NativeExpressView / 优量汇 GDTNativeExprView）→ 识别为信息流嵌入广告", atMs: jitter(18, 7) },
+      { label: "标注不代点", detail: "合规红线：用户正在浏览的内容流绝不自动滑走/点击 → 仅在引擎面板标注识别结果，浏览体验零干预", atMs: jitter(27, 7) },
+      { label: "协助关闭", detail: "仅当用户主动点开 Item 的关闭菜单时，代点「不感兴趣/减少此类推荐」（用户意图明确后的协助，非自动干预）", atMs: jitter(38, 9) },
+      { label: "自检留痕", detail: "动作边界自检：代点目标 = 用户已展开的菜单内消极项 ✓；未展开菜单永不主动触碰", atMs: jitter(47, 10) },
+    ];
+    const totalMs = steps[steps.length - 1].atMs;
+    return {
+      action: "mark_only",
+      scenario: "normal",
+      ruleName: app.learnedRuleName ?? app.ruleName,
+      steps,
+      totalMs,
+      engineMs: totalMs,
+      waitMs: 0,
+      confidence: Math.min(97.2, 92 + 2),
+      headline: "信息流广告已识别标注 · 浏览零干预",
+      subline: `${app.name} · ${AD_TYPE_LABEL[app.adType]} · ${ACTION_LABEL["mark_only"]}`,
+      preempt: false,
+    };
+  }
+
+  if (app.adType === "video_preroll") {
+    // 视频前贴：播放器容器 + 倒计时 + 5s 后出现的「跳过广告」原生控件
+    const waitMs = traits.realSkipDelayMs ?? 5000;
+    const steps: PipelineStep[] = [
+      { label: "播放器容器捕获", detail: "TYPE_WINDOW_CONTENT_CHANGED → 命中播放器容器指纹（VideoView/ExoPlayer/ijkplayer/自研播放器 className）+ 倒计时控件在场", atMs: 0 },
+      { label: "前贴形态确认", detail: "「跳过广告」文案 + 倒计时数字 + 播放器容器三信号 → 判定为视频前贴（非正片内字幕/按钮，防误触正片控件）", atMs: jitter(13, 5) },
+      { label: "倒计时静候", detail: `广告方约定 ${(waitMs / 1000).toFixed(0)}s 后才挂载真跳过键——引擎静候控件树变化（前密后疏重试链），一挂载即出手`, atMs: waitMs },
+      { label: "到点即跳", detail: "performAction(ACTION_CLICK) 代点「跳过广告」（原生跳过控件，代点合规）；假倒计时（点了不跳）甄别：未跳则 1.2s 后手势重试一次", atMs: waitMs + jitter(36, 8) },
+      { label: "跳转校验", detail: "正片开始播放确认（播放进度条启动）；若误触正片内控件迹象则立即停手并写入误触反思日志", atMs: waitMs + jitter(52, 12) },
+    ];
+    const totalMs = steps[steps.length - 1].atMs;
+    return {
+      action: "preroll_skip",
+      scenario: "normal",
+      ruleName: app.learnedRuleName ?? app.ruleName,
+      steps,
+      totalMs,
+      engineMs: totalMs - waitMs,
+      waitMs,
+      confidence: Math.min(99.0, (app.learnedRuleName ? 96 : 93) + 2),
+      headline: "前贴广告已到点即跳 · 直达正片",
+      subline: `${app.name} · ${AD_TYPE_LABEL[app.adType]} · ${ACTION_LABEL["preroll_skip"]}`,
       preempt: false,
     };
   }

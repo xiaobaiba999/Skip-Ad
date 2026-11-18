@@ -1,0 +1,103 @@
+name: Release APK
+
+# 自动发版流水线：推送 v* 标签（或在 Actions 页面手动指定标签运行）
+# → 云端构建「开屏卫士」APK（同一 keystore 签名，versionCode 按 semver 单调递增）
+# → 自动创建 GitHub Release 并附上 APK，手机端「关于 → 检查更新」即可下载覆盖升级。
+#
+# 发新版本只需两步：
+#   1. 修改代码并提交
+#   2. git tag v1.4.0 && git push origin v1.4.0
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "要发布的版本标签（如 v1.4.0）"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: 配置 JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: 安装 Android SDK 组件 (platform-34 / build-tools 34.0.0)
+        run: |
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
+          yes | "$SDKMANAGER" "platforms;android-34" "build-tools;34.0.0" > /dev/null
+          echo "ANDROID_BUILD_TOOLS=$ANDROID_HOME/build-tools/34.0.0" >> "$GITHUB_ENV"
+          echo "ANDROID_PLATFORM_JAR=$ANDROID_HOME/platforms/android-34/android.jar" >> "$GITHUB_ENV"
+
+      - name: 解析版本号（versionCode = major*10000 + minor*100 + patch）
+        id: ver
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then TAG="${{ inputs.tag }}"; fi
+          VN="${TAG#v}"
+          IFS='.' read -r MA MI PA <<< "$VN"
+          VC=$(( (10#${MA:-0})*10000 + (10#${MI:-0})*100 + (10#${PA:-0}) ))
+          {
+            echo "tag=$TAG"
+            echo "vn=$VN"
+            echo "vc=$VC"
+          } >> "$GITHUB_OUTPUT"
+          echo "发布 $TAG → versionCode=$VC"
+
+      - name: 构建 APK（aapt2 + javac + d8 + apksigner）
+        run: |
+          cd android-app
+          ANDROID_JDK="$JAVA_HOME" bash build.sh "${{ steps.ver.outputs.vc }}" "${{ steps.ver.outputs.vn }}" "dist/adshield-v${{ steps.ver.outputs.vn }}.apk"
+
+      - name: 验证签名与版本
+        run: |
+          "$ANDROID_BUILD_TOOLS/apksigner" verify --print-certs android-app/dist/*.apk | sed -n '1,4p'
+          "$ANDROID_BUILD_TOOLS/aapt" dump badging android-app/dist/*.apk | grep -E "^package|^application-label" || true
+
+      - name: 生成发布说明
+        run: |
+          cat > release-notes.md <<'EOF'
+          ## 开屏卫士 v${{ steps.ver.outputs.vn }}
+
+          > 与历史版本同一签名（`adshield.keystore`），**直接安装即可覆盖升级，无需卸载**，学习规则与统计数据全部保留。
+
+          ### 下载
+
+          - 下方 Assets 中的 `adshield-v${{ steps.ver.outputs.vn }}.apk`（约 56KB，零第三方依赖）
+          - 或在手机端「开屏卫士 → 关于 → 检查更新」一键下载
+
+          ### 安装 / 升级 / 卸载
+
+          | 操作 | 说明 |
+          | --- | --- |
+          | 新安装 | 下载 APK → 允许「安装未知应用」→ 安装 → 开启无障碍服务 |
+          | 覆盖升级 | 直接安装新版（versionCode 递增 + 同签名），无需卸载 |
+          | 正常卸载 | 系统设置 → 应用管理 → 开屏卫士 → 卸载（普通用户应用，无任何锁定机制） |
+
+          ### 说明
+
+          - 联网仅两处出口：问题反馈（GitHub Issues）与检查更新（GitHub Releases）；学习数据全部保存在本机
+          - 引擎只「替用户点击跳过按钮」，不屏蔽广告本身（与「拦精灵」案裁判边界一致）
+          - 遇到问题请在 App 内「问题反馈」提交，会自动同步为本仓库 Issue
+          EOF
+
+      - name: 发布 Release（附 APK）
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          name: 开屏卫士 v${{ steps.ver.outputs.vn }}
+          body_path: release-notes.md
+          files: android-app/dist/adshield-v${{ steps.ver.outputs.vn }}.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

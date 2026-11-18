@@ -52,3 +52,6 @@ prompt
 server.log
 # Skills directory
 /skills/
+# 临时工具产物
+tool-results/
+.zscripts/dev.pid

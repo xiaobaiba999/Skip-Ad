@@ -1,0 +1,132 @@
+{
+  "round": 19,
+  "version": "4.5.0",
+  "date": "2026-11-17",
+  "trigger": "issue#42/#43/#44 + 用户五项要求：最新日志优化 / 弹窗屏蔽自动关闭 / 恢复防护10秒 / 乱点根治(参考李跳跳) / 跳转提速 / 安全加固 / 全套测试",
+  "suites": [
+    {
+      "name": "单元测试（V450Test · JVM）",
+      "assertions": 27,
+      "passed": 27,
+      "failed": 0,
+      "coverage": [
+        "V1 抽屉菜单乱点根治：issue#43/44 原场景复现（BaseCustomDialogFragment + 播放历史/录音/扫一扫/切换模式 + 「跳过」陷阱行）——rule 路径零命中、walk 路径零候选、decide 零动作、弹窗路径双验证",
+        "V2 形状门矩阵：57% 宽不可点标签否决 / 65% 可点长条按钮放行 / SDK 广告窗豁免 / 横排按钮组不误伤",
+        "V3 isMenuListRow 单元：真抽屉 true / 根容器 false / 横排 false / 孤立按钮 false / 3 行短列表 false（宁漏勿错杀）/ null 安全",
+        "V4 主路径回归：Keep 右上跳过 0ms / 喜马拉雅分应用精确 / 倒计时形态门控 / 穿山甲 vid skip / 英文 Skip Ad / 右下角跳过键——全部不回退",
+        "V5 原生文本探针路径（matchText 直调）：菜单行内拒绝、正常位置命中——与 DFS 零行为差异"
+      ]
+    },
+    {
+      "name": "回归测试（RuleEngineTest · JVM）",
+      "assertions": 60,
+      "passed": 60,
+      "failed": 0,
+      "coverage": "v3.10.0 以来 28 组规则用例全绿（主路径/防误点红线/结构/倒计时/分应用表）"
+    },
+    {
+      "name": "回归测试（DecisionCoreTest · JVM）",
+      "assertions": 151,
+      "passed": 151,
+      "failed": 0,
+      "coverage": "决策阶梯 L1-L6 + 学习 + 形状 + 验证码横幅防护全量回归"
+    },
+    {
+      "name": "白盒测试（APK 结构断言）",
+      "assertions": 17,
+      "passed": 17,
+      "failed": 0,
+      "coverage": [
+        "W1 零 disableSelf 调用（系统无障碍开关永不触碰——用户核心诉求的地基）",
+        "W2-W3 MasterToggleReceiver 编译进 dex + TOGGLE_MASTER action 在场",
+        "W4 setStateBool 桥（状态竞态修复）在场",
+        "W5-W6 WebView shouldOverrideUrlLoading + setAllowFileAccessFromFileURLs(false) 已编译",
+        "W7 findAccessibilityNodeInfosByText 原生探针已编译",
+        "W8/W12 isMenuListRow + validSkipTextShape 双路径形状门在场",
+        "W9/W11/W13 通知栏暂停恢复按钮 / 反馈频控文案（字节级 UTF-8 验证）",
+        "W14 繁体探针「跳過」在场",
+        "W15 MasterToggleReceiver exported=false（aapt2 xmltree 验证，第三方无法伪造广播）",
+        "W16-W17 保活链完整 + 详情页直达保留"
+      ]
+    },
+    {
+      "name": "黑盒测试（blackbox-v450.ts · bun 模拟桥）",
+      "assertions": 14,
+      "passed": 14,
+      "failed": 0,
+      "coverage": [
+        "B1-B2 弹窗屏蔽/学习开关走 setStateBool 专用通道（不再 kvSet 整写 state——「开启后被自动关闭」竞态根治）",
+        "B3 无桥环境回退本地存储",
+        "B4 shortPkgName：me.ele.android → ele.android（「android」歧义修复，战绩榜不再误导）",
+        "B5 产物内容断言：CHANGELOG/调用路径/文案/版本回退值"
+      ]
+    },
+    {
+      "name": "整体测试（签名/资产/兼容性）",
+      "assertions": 10,
+      "passed": 10,
+      "failed": 0,
+      "coverage": [
+        "I1-I3 v1+v2 签名验证 + 与 v4.4.0 指纹一致（覆盖升级通道畅通）",
+        "I4-I6 assets 内 app.js v4.5.0 + setStateBool + shortPkgName",
+        "I7 体积 263KB ≤ 400KB 轻量红线",
+        "I8 versionCode 40500 递增",
+        "I9 权限面无变化（无 ADB 提权残留）",
+        "I10 包结构完整（manifest/res/assets/dex/签名 19 文件）"
+      ]
+    }
+  ],
+  "total": { "assertions": 279, "passed": 279, "failed": 0 },
+  "fixes": [
+    {
+      "id": "MISC-LICK-DRAWER",
+      "symptom": "部分用户进入 App 后乱点（issue#42-44 实锤：右侧抽屉菜单「跳过」列表项被点击，用户点开抽屉 4 秒让路期一过就连点 2 次）",
+      "rootCause": "文本规则命中无形状校验：菜单/抽屉列表行与真跳过键同为「小面积短文案可点控件」，纯文案等值匹配无法区分",
+      "fix": "三重防线：① RuleEngine.build 形状门（标签宽 ≤55% 屏 / 自身可点放宽 70% / isMenuListRow 祖先行 vs 兄弟行同列同宽竖排 ≥4 检测——李跳跳形状白名单方法论）；② walk→decide 兜底路径同款门；③ 用户 2.5s 内点击后弹出的 Dialog 窗标记 30s 零动作（userOpenCls 守护）",
+      "tests": "V1a-h / V2a-d / V3a-f / V5a"
+    },
+    {
+      "id": "TOGGLE-RACE",
+      "symptom": "点击开启弹窗广告屏蔽之后又被 App 自动关闭",
+      "rootCause": "UI 开关走 kvSet(\"state\") 只写 SharedPreferences；服务持有 stateInMemory 旧副本，任何战绩/日志更新触发 flushNow()（15s 延迟落盘）都用旧内存态整体覆盖 UI 写入 → 开关自动弹回",
+      "fix": "setStateBool 专用通道：服务活着直接改服务内存本体（唯一数据源）；app.js bindToggle 分流；服务死了读写 prefs",
+      "tests": "B1-B3 / W4 / I5"
+    },
+    {
+      "id": "TEN-SECOND-DECOUPLE",
+      "symptom": "部分用户打开防护还是要跳转到系统强制观看 10 秒才可以确认",
+      "rootCause": "系统级无障碍开关与 App 开关未彻底解耦：用户在系统设置关闭后再开（或 ROM 收回）必然触发 MIUI/HyperOS 10 秒强制确认",
+      "fix": "系统开关零触碰（零 disableSelf + onUnbind 保留实例）+ 通知栏一键暂停/恢复（MasterToggleReceiver，exported=false）+ App 内开关即开即用 + 打开 App 自动深挖拉活（onResume 6s 后台重绑 + 页面 600ms 自动 revive）+ 首页文案明确引导「关闭防护用 App 开关，别去系统设置」",
+      "tests": "W1-W3 / W9 / W11 / W15-W16"
+    },
+    {
+      "id": "SPEED-PROBE",
+      "symptom": "跳转速度还是有点慢 / 有时候触发不了（H5 深树）",
+      "rootCause": "600 节点预算的 DFS 在 H5/WebView 深树（500+ 节点）里常在按钮前耗尽预算；0ms 首扫经 handler 排队多一跳 5-16ms",
+      "fix": "① 原生文本探针：findAccessibilityNodeInfosByText（系统原生搜索，无节点预算，李跳跳同款核心路径）「跳过/跳過」双探针，DFS 未命中即兜底，复用 matchText 全套规则+形状门零新乱点面；② 内联首扫：窗口事件现场同步出手（省一跳 handler）",
+      "tests": "V5a-b / W7 / W14"
+    },
+    {
+      "id": "FEEDBACK-DOUBLE-CLICK",
+      "symptom": "广告已关（反馈面板收起后）引擎又点第二下",
+      "rootCause": "反馈面板确认后 clickTries 清零 + 12s 开屏窗仍活着，扫描链继续在后续界面找「跳过」文案",
+      "fix": "反馈面板在场 = 广告已关铁证 → chainKilledAt 杀本窗固定扫描档",
+      "tests": "V1 系列（同形态防护）"
+    },
+    {
+      "id": "LOG-AMBIGUITY",
+      "symptom": "日志/战绩榜显示「android(49/0/10)」——被误读为引擎在系统包乱点",
+      "rootCause": "shortPkg 只取末段：me.ele.android（饿了么）等以 .android 结尾的第三方包全部显示为「android」",
+      "fix": "末段为通用词（android/app/main/ui/mobile/phone/client/core/sdk/online/lite）时取两段（Java + JS 双端）",
+      "tests": "B4a-f / W10"
+    },
+    {
+      "id": "SEC-HARDENING",
+      "symptom": "安全问题（用户点名）",
+      "rootCause": "攻击面：WebView 可导航任意 URL（JS 桥含 GitHub 令牌能力）/ 下载器任意 URL / 订阅源明文 http / 反馈通道无频控",
+      "fix": "① HardenedWebViewClient：仅放行 file:///android_asset + about:，http(s) 转系统浏览器（零桥暴露），file外/intent/javascript 全拦截；② WebSettings 六项显式关闭（跨文件/跨域/自动开窗/地理定位/表单保存/远程调试）；③ openUrl 协议+域名白名单；④ Downloader https+域名白名单+文件名净化；⑤ 订阅源强制 https；⑥ netPostIssue 频控 15s+长度上限；⑦ kvSet 256KB 上限",
+      "tests": "W5-W6 / W13 / I9"
+    }
+  ],
+  "verdict": "279/279 全绿，允许发版 v4.5.0"
+}

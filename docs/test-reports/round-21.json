@@ -1,0 +1,59 @@
+{
+  "round": 21,
+  "version": "5.2.0",
+  "date": "2026-11-18",
+  "trigger": "用户要求：issue#56 Redmi 25060RK16C 每次退后台/覆盖安装都要看 10 秒系统警告（Xiaomi 15 对照组不用）——识别根因、优化近 5 年全品牌、深度优化、安全同步、层层测试后提交",
+  "suites": [
+    {
+      "name": "恢复防护核心（RestoreGuardTest · JVM 新增）",
+      "assertions": 106,
+      "passed": 106,
+      "failed": 0,
+      "coverage": [
+        "品牌族归一 22 项：issue#56 主角 Redmi 25060RK16C + 对照组 Xiaomi 15 → HyperOS 族；华为/荣耀分离（HONOR 不误入华为族）；OPPO/realme/一加 → ColorOS；vivo/iQOO；三星/魅族/中兴/联想/空值安全",
+        "保活体检项注册表：HyperOS 双项（自启动 securitycenter + 省电策略 powerkeeper+miui_pkg extra）；六大厂商每项候选合法；ColorOS/vivo ≥3 候选回退链；华为 ≥2 候选",
+        "安全不变量 ×3：候选包名全部落在硬编码 OEM 系统包白名单（零注入面）；候选绝不含自身包名；全族体检项 id 全局唯一",
+        "登记精确解析 12 项：':' 逐段 equals——flat/短名/多服务混排/trim 容错；前缀相似服务（.AdSkipServiceV2）不误报（contains 时代真 bug 绝杀）；null/空串/纯分隔符 → 吊销",
+        "恢复决策状态机：★核心不变量穷举——registered=true 的任何状态组合绝不输出 TO_SETTINGS（10 秒警告仅剩真吊销）；活着 → 恒零通知；踢链自愈成功 → 零打扰",
+        "App 内拉活单步决策：★不变量——登记仍在绝不 FAIL_DISABLED；吊销态非活着即 FAIL_DISABLED（立即止损不傻等）；窗口边界 14999/15000ms",
+        "15s 自适应轮询：首针 0/单调递增/末针 ≤15s/间隔只取 300|500/前 2s ≥7 针快踢/总针数 ≥30（v4.4.0 仅 12 针 6s）/零窗与 900ms 窗边界",
+        "动态启动横幅：含运行时版本（v9.9.9 验证永不陈旧）/不再含硬编码 v4.5.0/条件段（3 类清理+白名单）零值不显示/null 版本回退占位符",
+        "两态通知文案：自动恢复态明示「无需系统设置·10 秒等待」且不含「直达」；吊销态含 10 秒预期管理「属正常」；两态标题可区分；大文本均含保活体检指引"
+      ]
+    },
+    {
+      "name": "存量回归（6 套件 · JVM）",
+      "assertions": 321,
+      "passed": 321,
+      "failed": 0,
+      "coverage": "MiniProgramGuard 29 + DecisionGuard 22 + SubscriptionBuiltin 76 + Regression 15 + MultiDeviceMatrix 42 + NonMainstream 137——v5.1.1 全量零回归"
+    },
+    {
+      "name": "白盒（APK 结构 · aapt2/xmltree）",
+      "assertions": 18,
+      "passed": 18,
+      "failed": 0,
+      "coverage": "KeepAliveReceiver 受 com.zai.adshield.PRIVATE_BROADCAST signature 级权限保护（protectionLevel=0x2）· queries 声明 10 个 OEM 系统包可见性 · MasterToggleReceiver exported=false 保持 · dex 含 RestoreGuard/SmartRevive/registrationPresent/openKeepAliveTarget/autoRestoreHandled/jump_restore/保活体检/无障碍登记被移除 10 组符号 · assets 含 __autoRestore/renderKeepAlive/ka-card"
+    },
+    {
+      "name": "整体（构建/签名/分发）",
+      "assertions": 8,
+      "passed": 8,
+      "failed": 0,
+      "coverage": "v1+v2 签名指纹与历版一致（覆盖升级）· versionCode 50200 / versionName 5.2.0 · 272KB · minSdk 24 / targetSdk 34 · APK 分发至 dist/ + download/ + download/开屏卫士APK/（MD5 一致 564f40ff29c089a9090ab27459662288）"
+    }
+  ],
+  "total": { "assertions": 453, "passed": 453, "failed": 0 },
+  "fixes": [
+    "TEN-SECOND-REVOKED（issue#56 主因）：HyperOS 清理后台/覆盖安装吊销无障碍登记 → 两态通知 + 保活体检卡（近 5 年全品牌自启动/省电策略直达）根治",
+    "NOTIFY-JUMP-BLIND：待恢复通知点按无条件 500ms 直跳系统设置 → 改 __autoRestore 先 15s 深挖拉活，真吊销才直达开关页（含预期管理文案）",
+    "REVIVE-WINDOW-SHORT：拉活窗口 6s 固定 → 15s 自适应（前 2s 300ms 快踢），低端机冷启动不再误判；每轮复查登记，中途吊销立即止损",
+    "REPLACED-ASSUME-DEAD：覆盖安装直接假设系统已关闭 → SmartRevive 步骤化踢链（600ms+3×2500ms ≤8.2s 广播预算，单点 finish 绝不广播 ANR），能自愈零打扰",
+    "STALE-BANNER：启动横幅硬编码 v4.5.0 文案（v5.1.1 日志实锤）→ 运行时动态版本注入",
+    "REG-SUBSTRING：登记判断 contains 子串误报（.AdSkipServiceV2 会误判仍登记）→ ':' 逐段精确 equals",
+    "NOTIFY-SPAM：5 分钟心跳周期重复 heads-up → 同态 10 分钟冷却",
+    "SEC-PRIVATE-BROADCAST：第三方可伪造 SELF_CHECK 显式广播（骚扰通知/耗尽日志上传配额）→ signature 级私有广播权限（系统广播与自家闹钟不受影响）",
+    "SEC-DEEPLINK-INJECTION：保活深链零任意组件注入面（硬编码 OEM 注册表 + resolveActivity 校验 + queries 显式可见性 + 应用详情页兜底）",
+    "TELEMETRY-REVOKED：服务为什么被关无证据链 → ContentObserver 登记移除瞬间打点 + 2.5s 自动排自检"
+  ]
+}

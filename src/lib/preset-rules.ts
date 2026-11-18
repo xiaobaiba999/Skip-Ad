@@ -34,6 +34,15 @@ const MATCH_LABEL: Record<string, string> = {
   chain: "链式二跳",
   backkey: "返回键兜底",
   dns: "定向域名",
+  "half-screen": "半屏插屏形态",
+  "update-guard": "更新弹窗消极按钮",
+  overlay: "悬浮窗识别",
+  "feed-mark": "信息流角标标注",
+  preroll: "前贴到点即跳",
+  "sensitive-zero-scan": "敏感场景零扫描",
+  "power-tier": "分级动态功耗",
+  formfit: "全形态自适应",
+  "gkd-selector": "GKD 快照选择器",
 };
 
 export function matchTypeLabel(t: string): string {
@@ -303,15 +312,93 @@ export function presetRulesV34(): PresetRuleSeed[] {
   ];
 }
 
+/** v5.4.0 新增规则（多源统一调度 + 五类新广告场景 + 敏感场景防护） */
+export function presetRulesV54(): PresetRuleSeed[] {
+  return [
+    {
+      appName: "*",
+      appCategory: "通用",
+      adType: "half_interstitial",
+      matchType: "half-screen",
+      pattern: "半屏插屏形态规则：Dialog 底部锚定窗（高度 35%~55% 屏、底边贴合，全形态自适应阈值）+「广告」角标 + 关闭键双信号 → 代点关闭；优量汇 HalfScreenExpressAd / 穿山甲 TTHalfScreenAd 同源结构",
+      action: "halfsheet_close",
+      confidence: 0.96,
+    },
+    {
+      appName: "*",
+      appCategory: "通用",
+      adType: "update_dialog",
+      matchType: "update-guard",
+      pattern: "更新诱导弹窗规则：「发现新版本/立即更新」特征 + 下载类主 CTA → 按钮语义分级，只代点消极按钮（以后再说/暂不更新/取消），积极按钮永不触碰（动作边界自检强制项）；无消极按钮仅提示不动作",
+      action: "decline_tap",
+      confidence: 0.95,
+    },
+    {
+      appName: "*",
+      appCategory: "通用",
+      adType: "float_ball",
+      matchType: "overlay",
+      pattern: "悬浮广告球规则：TYPE_APPLICATION_OVERLAY 小尺寸窗（≤12% 屏宽）+ 系统组件白名单豁免 → 零点击策略：识别 + 通知引导直达悬浮窗权限设置页（收回 overlay 授权），绝不代点球体",
+      action: "overlay_notice",
+      confidence: 0.94,
+    },
+    {
+      appName: "*",
+      appCategory: "通用",
+      adType: "feed_native",
+      matchType: "feed-mark",
+      pattern: "信息流嵌入式广告规则：列表 Item 内「广告/推广/赞助」角标 + 营销容器指纹（穿山甲 NativeExpressView / 优量汇 GDTNativeExprView）→ 仅识别标注不代点；仅当用户主动展开关闭菜单时协助代点「不感兴趣」（浏览零干预）",
+      action: "mark_only",
+      confidence: 0.93,
+    },
+    {
+      appName: "*",
+      appCategory: "通用",
+      adType: "video_preroll",
+      matchType: "preroll",
+      pattern: "视频前贴规则：播放器容器指纹（VideoView/ExoPlayer/ijkplayer）+ 倒计时控件 +「跳过广告」文案三信号 → 静候真跳过键挂载（通常 5s）到点即点；假倒计时甄别：未跳则 1.2s 后手势重试一次；正片控件零误触校验",
+      action: "preroll_skip",
+      confidence: 0.96,
+    },
+    {
+      appName: "*",
+      appCategory: "通用",
+      adType: "any",
+      matchType: "sensitive-zero-scan",
+      pattern: "敏感场景零扫描（v5.4.0 扩容 12 类）：支付页/密码输入框/验证码/短信隐私页/系统设置/输入法/锁屏/通话/银行转账/实名认证/OTP/系统权限对话框 → 探针与扫描全挂起，引擎完全静默，杜绝误触隐私与系统控件",
+      action: "guard_skip",
+      confidence: 0.99,
+    },
+    {
+      appName: "*",
+      appCategory: "通用",
+      adType: "any",
+      matchType: "power-tier",
+      pattern: "分级动态功耗策略（v5.4.0）：设备四档分级（旗舰/高端/中端/入门）× 电量四态（充电/正常/低电/极低）联动 → 扫描频率/遍历深度/重试链长度/学习功能动态降级；命中率红线：SDK 广告窗/Dialog/学习指纹窗永不抑制",
+      action: "instant_skip",
+      confidence: 0.97,
+    },
+    {
+      appName: "*",
+      appCategory: "通用",
+      adType: "any",
+      matchType: "formfit",
+      pattern: "全形态设备自适应阈值（v5.4.0）：折叠屏（展开/折叠双态）/平板/分屏/自由窗口 → 角落区判定、形状门阈值、热区占比、触点最小尺寸全部按当前窗口尺寸动态换算，不再固定像素——平板半屏正常面板不再误判",
+      action: "instant_skip",
+      confidence: 0.96,
+    },
+  ];
+}
+
 /** 幂等播种：规则库为空时写入全量；已有旧版规则则逐版补种 */
 export async function ensureRulesSeed(): Promise<void> {
   const count = await db.rule.count();
   if (count === 0) {
-    await db.rule.createMany({ data: [...presetRules(), ...presetRulesV31(), ...presetRulesV32(), ...presetRulesV33(), ...presetRulesV34()] });
+    await db.rule.createMany({ data: [...presetRules(), ...presetRulesV31(), ...presetRulesV32(), ...presetRulesV33(), ...presetRulesV34(), ...presetRulesV54()] });
     return;
   }
   // 逐版升级补种：按 appName + matchType + action 判重
-  for (const r of [...presetRulesV31(), ...presetRulesV32(), ...presetRulesV33(), ...presetRulesV34()]) {
+  for (const r of [...presetRulesV31(), ...presetRulesV32(), ...presetRulesV33(), ...presetRulesV34(), ...presetRulesV54()]) {
     const exists = await db.rule.findFirst({
       where: { appName: r.appName, matchType: r.matchType, action: r.action },
     });

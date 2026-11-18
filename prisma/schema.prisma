@@ -7,25 +7,38 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ── 秒跳引擎规则库 ─────────────────────────────────────────────
+// ── 秒跳引擎规则库（v5.4.0 多源统一调度）──────────────────────
 // 预置规则来自市面方案调研（GKD 等同类方案的文本与 viewId 匹配、面积安全阀、
-// 摇一摇阈值标准、Deeplink 黑名单），学习规则由学习中心从使用习惯中沉淀。
+// 摇一摇阈值标准、Deeplink 黑名单），学习规则由学习中心从使用习惯中沉淀，
+// GKD 订阅规则由统一 DSL 解析器从社区订阅导入（100% 语法兼容）。
 model Rule {
   id          String    @id @default(cuid())
   appName     String    @default("*") // * = 全局规则
   appCategory String    @default("通用")
-  adType      String // splash | interstitial | shake | deeplink | any
-  matchType   String // text | viewId | timing | area | sensor | intent | guard-list | learned
-  pattern     String // 匹配特征描述（文本正则 / viewId / 名单）
-  action      String // instant_skip | sensor_block | intent_block | guard_skip
-  source      String    @default("preset") // preset | learned
+  adType      String // splash | interstitial | half_interstitial | update_dialog | float_ball | feed_native | video_preroll | shake | deeplink | popup | any
+  matchType   String // text | viewId | timing | area | sensor | intent | guard-list | learned | preempt | fake-skip | sdk-window | coord | popup-v2 | chain | backkey | dns | half-screen | update-guard | overlay | feed-mark | preroll | gkd-selector
+  pattern     String // 匹配特征描述（文本正则 / viewId / 名单 / DSL 表达式）
+  action      String // instant_skip | sensor_block | intent_block | guard_skip | halfsheet_close | decline_tap | overlay_notice | mark_only | preroll_skip | ...
+  source      String    @default("preset") // preset | gkd | learned | custom
   confidence  Float     @default(0.9) // 0~1，随命中次数增长
   hitCount    Int       @default(0)
+  missCount   Int       @default(0) // v5.4.0：漏拦截计数（质量评分输入）
+  falseCount  Int       @default(0) // v5.4.0：误触计数（质量评分输入）
   enabled     Boolean   @default(true)
+  priority    Int       @default(0) // v5.4.0：调度优先级分（越大越先出手，0 = 按公式计算）
+  quality     Float     @default(0) // v5.4.0：质量评分 0~100（A/B/C/D 分级）
+  status      String    @default("active") // v5.4.0：active | cooling | retired | shadow
+  sdkFamily   String? // v5.4.0：广告 SDK 家族（csj 穿山甲 | gdt 优量汇 | ks 快手 | admob | host 宿主自建）
+  generalizedFrom String? // v5.4.0：泛化来源（同 SDK 家族应用迁移的源应用名）
+  gkdRef      String? // v5.4.0：GKD 订阅来源标识（categoryId.groupId）
+  version     Int       @default(1) // v5.4.0：规则版本（每次编辑 +1，审计用）
   lastHitAt   DateTime?
   createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @default(now())
 
   @@index([source, enabled])
+  @@index([appName, source])
+  @@index([status])
 }
 
 // ── 拦截流水（演练场与后续真机服务共用的埋点结构） ─────────────
@@ -34,16 +47,51 @@ model BlockEvent {
   ts          DateTime @default(now())
   appName     String
   appCategory String
-  adType      String // splash | interstitial | shake | deeplink
-  action      String // instant_skip | sensor_block | intent_block | guard_skip | miss
+  adType      String // splash | interstitial | half_interstitial | update_dialog | float_ball | feed_native | video_preroll | shake | deeplink | popup
+  action      String // instant_skip | sensor_block | intent_block | guard_skip | halfsheet_close | decline_tap | overlay_notice | mark_only | preroll_skip | miss
   latencyMs   Int      @default(0) // 引擎耗时（miss = 用户手动跳过耗时）
   confidence  Float    @default(0)
   success     Boolean  @default(true)
-  scenario    String   @default("normal") // normal | shake | deeplink | guard
+  scenario    String   @default("normal") // normal | shake | deeplink | guard | popup
+  sdkFamily   String? // v5.4.0：命中的广告 SDK 家族（看板按 SDK 维度统计）
   note        String? // 展示用备注（命中规则名等）
 
   @@index([ts])
   @@index([appName])
+  @@index([adType])
+}
+
+// ── GKD 社区订阅源（v5.4.0 多源规则统一调度） ─────────────────
+model Subscription {
+  id         String    @id @default(cuid())
+  name       String
+  url        String // 订阅地址或本地导入标识
+  kind       String    @default("gkd") // gkd | official | custom
+  version    String? // 订阅自身版本号
+  author     String?
+  ruleCount  Int       @default(0) // 解析出的规则组数
+  enabled    Boolean   @default(true)
+  status     String    @default("ok") // ok | syncing | error | parsed
+  message    String? // 最近一次同步/解析结果说明
+  lastSyncAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@unique([url])
+}
+
+// ── 规则冲突检测记录（v5.4.0 统一调度体系） ───────────────────
+model RuleConflict {
+  id         String   @id @default(cuid())
+  ruleAId    String
+  ruleBId    String
+  kind       String // duplicate | overlap | contradict
+  severity   String // high | medium | low
+  detail     String // 冲突说明（重叠特征 / 动作矛盾点）
+  suggestion String // 处置建议（合并 / 阴影运行 / 人工确认）
+  resolution String   @default("pending") // pending | merged | shadowed | dismissed
+  createdAt  DateTime @default(now())
+
+  @@index([kind, severity])
 }
 
 // ── 问题反馈（内置通道自动上报 GitHub Issues 的留痕） ──────────

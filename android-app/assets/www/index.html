@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<title>开屏卫士</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- 顶栏 -->
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-logo" id="brand-logo"></span>
+      <span class="brand-name">开屏卫士</span>
+    </div>
+    <span class="ver-chip" id="ver-chip">v?</span>
+  </header>
+
+  <!-- 更新横幅 -->
+  <div class="update-banner" id="update-banner" style="display:none">
+    <div class="ub-row">
+      <span class="ub-dot"></span>
+      <span class="ub-text">新版本 <b id="ub-tag">v?</b></span>
+      <button class="ub-btn" id="ub-toggle">查看</button>
+    </div>
+    <div class="ub-detail" id="ub-detail" style="display:none">
+      <div class="progress-wrap" id="ub-progress-wrap" style="display:none">
+        <div class="progress"><div class="progress-bar" id="ub-bar"></div></div>
+        <div class="progress-text" id="ub-progress-text">准备中</div>
+      </div>
+      <button class="btn btn-primary btn-block" id="ub-action">下载更新</button>
+    </div>
+  </div>
+
+  <main id="main">
+
+    <!-- ───────── 首页 ───────── -->
+    <section class="page active" id="page-home">
+
+      <div class="battery-banner" id="battery-banner" style="display:none">
+        <span>加入电池白名单，守护更稳</span>
+        <button class="link-btn" id="btn-battery">去设置</button>
+      </div>
+
+      <!-- 守护状态 -->
+      <div class="hero-card" id="hero-card">
+        <div class="hero-mascot" id="hero-mascot"></div>
+        <div class="hero-status">
+          <div class="hero-title" id="hero-title">检查中</div>
+          <div class="hero-sub" id="hero-sub">无障碍跳过服务</div>
+        </div>
+        <div class="hero-actions" id="hero-actions">
+          <button class="btn btn-primary btn-block" id="btn-enable">开启服务</button>
+          <button class="btn btn-primary btn-block" id="btn-revive" style="display:none">一键恢复</button>
+          <button class="btn btn-primary btn-block" id="btn-resume" style="display:none">恢复防护</button>
+          <button class="btn btn-ghost btn-block" id="btn-pause" style="display:none">暂停防护</button>
+          <div class="hero-tip" id="hero-tip">开启一次，持续守护</div>
+        </div>
+      </div>
+
+      <!-- v5.2.0 保活体检（issue#56：防清理后台/覆盖安装吊销无障碍登记） -->
+      <div class="card" id="ka-card" style="display:none">
+        <div class="row-between">
+          <div>
+            <div class="card-title">保活体检</div>
+            <div class="sub-note" style="margin-top:4px" id="ka-sub">防止系统清理后台/升级时关掉防护</div>
+          </div>
+          <span class="chip" id="ka-chip">体检中</span>
+        </div>
+        <div id="ka-list" style="margin-top:10px"></div>
+      </div>
+
+      <!-- 战绩 -->
+      <div class="card stats-card">
+        <div class="stat">
+          <div class="num" id="st-auto">0</div>
+          <div class="lbl">跳过广告</div>
+        </div>
+        <div class="stat">
+          <div class="num" id="st-popup">0</div>
+          <div class="lbl">关闭弹窗</div>
+        </div>
+        <div class="stat">
+          <div class="num" id="st-manual">0</div>
+          <div class="lbl">学习样本</div>
+        </div>
+      </div>
+
+      <!-- 开关 -->
+      <div class="card switch-card">
+        <div class="switch-row">
+          <span class="sw-name">弹窗广告屏蔽</span>
+          <label class="switch"><input type="checkbox" id="toggle-popup"><span class="slider"></span></label>
+        </div>
+        <div class="switch-row">
+          <span class="sw-name">习惯学习</span>
+          <label class="switch"><input type="checkbox" id="toggle-learning" checked><span class="slider"></span></label>
+        </div>
+      </div>
+
+      <!-- v4.3.0 应用白名单 -->
+      <div class="card" id="wl-card">
+        <div class="row-between">
+          <div>
+            <div class="card-title">应用白名单</div>
+            <div class="sub-note" style="margin-top:4px">白名单内应用不扫描、不点击、不打扰</div>
+          </div>
+          <span class="chip" id="wl-count">0</span>
+        </div>
+        <div class="wl-list" id="wl-list"><div class="empty">加载中…</div></div>
+        <div class="wl-add-row">
+          <input type="text" id="wl-input" class="fb-input" placeholder="输入应用包名，如 net.csdn.csdnplus">
+          <button class="btn btn-primary" id="btn-wl-add">添加</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ───────── 订阅 ───────── -->
+    <section class="page" id="page-sub">
+
+      <div class="card">
+        <div class="row-between">
+          <div class="card-title">内置规则库</div>
+          <span class="chip chip-green">常开</span>
+        </div>
+        <div class="kv"><span>覆盖应用</span><b id="sub-builtin-apps">--</b></div>
+        <div class="kv"><span>规则数</span><b id="sub-builtin-rules">--</b></div>
+        <div class="sub-note">文案五层规则 + 控件 ID 规则，随安装包内置，无需联网</div>
+      </div>
+
+      <div class="card">
+        <div class="row-between">
+          <div class="card-title">GKD 订阅</div>
+          <label class="switch"><input type="checkbox" id="sub-toggle" checked><span class="slider"></span></label>
+        </div>
+        <div class="sub-note">粘贴 GKD 订阅链接，导入社区规则（与 gkd.li 生态兼容）</div>
+        <input type="url" id="sub-url" class="fb-input" placeholder="https://…/gkd.json5">
+        <div class="btn-row">
+          <button class="btn btn-primary" id="btn-sub-import">导入</button>
+          <button class="btn btn-ghost" id="btn-sub-example">官方订阅</button>
+          <button class="btn btn-ghost" id="btn-sub-clear">移除</button>
+        </div>
+        <div class="sub-status" id="sub-status" style="display:none">
+          <div class="kv"><span>订阅</span><b id="sub-name">--</b></div>
+          <div class="kv"><span>规则</span><b id="sub-count">--</b></div>
+          <div class="kv"><span>更新于</span><b id="sub-updated">--</b></div>
+          <div class="kv"><span>命中</span><b id="sub-hits">--</b></div>
+          <button class="btn btn-ghost btn-block" id="btn-sub-update" style="margin-top:8px">检查更新</button>
+        </div>
+        <div class="fb-result" id="sub-result"></div>
+      </div>
+    </section>
+
+    <!-- ───────── 我的 ───────── -->
+    <section class="page" id="page-me">
+
+      <div class="card">
+        <div class="row-between">
+          <div class="kv" style="padding:0"><span>当前版本</span><b id="me-ver">--</b></div>
+          <button class="btn btn-ghost btn-sm" id="btn-check-update">检查更新</button>
+        </div>
+        <div class="progress-wrap" id="page-progress-wrap" style="display:none">
+          <div class="progress"><div class="progress-bar" id="page-bar"></div></div>
+          <div class="progress-text" id="page-progress-text">准备中</div>
+        </div>
+        <button class="btn btn-primary btn-block" id="page-dl-btn" style="display:none;margin-top:10px">下载更新</button>
+        <button class="btn btn-primary btn-block" id="page-install-btn" style="display:none;margin-top:10px">立即安装</button>
+        <div class="fb-result" id="page-dl-note" style="display:none"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">版本记录</div>
+        <div class="changelog" id="changelog"></div>
+      </div>
+
+      <div class="card">
+        <div class="row-between">
+          <div class="card-title">引擎日志</div>
+          <button class="btn btn-primary btn-sm" id="btn-upload-log">上传日志</button>
+        </div>
+        <div class="log-box" id="real-log"></div>
+        <div class="fb-result" id="upload-log-result"></div>
+      </div>
+
+      <div class="card links-card">
+        <button class="link-row" id="link-repo">
+          <span>GitHub 仓库</span><span class="arrow">›</span>
+        </button>
+      </div>
+
+      <p class="foot-note">数据仅存本机 · 联网仅日志与更新 · 日志每 12 小时自动提交一次</p>
+    </section>
+  </main>
+
+  <!-- 底部导航 -->
+  <nav class="tabbar">
+    <button class="tabbtn active" data-page="home">
+      <svg viewBox="0 0 24 24" width="22" height="22"><path d="M4 11.5 12 4l8 7.5V20a1 1 0 0 1-1 1h-4.5v-6h-5v6H5a1 1 0 0 1-1-1z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/></svg>
+      <span>首页</span>
+    </button>
+    <button class="tabbtn" data-page="sub">
+      <svg viewBox="0 0 24 24" width="22" height="22"><path d="M6 3h9l4 4v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M8.5 12h7M8.5 15.5h7M8.5 8.5h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      <span>订阅</span>
+    </button>
+    <button class="tabbtn" data-page="me">
+      <svg viewBox="0 0 24 24" width="22" height="22"><circle cx="12" cy="8" r="3.6" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M5 20c.8-3.6 3.6-5.4 7-5.4s6.2 1.8 7 5.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      <span>我的</span>
+    </button>
+  </nav>
+</div>
+<script src="app.js"></script>
+</body>
+</html>

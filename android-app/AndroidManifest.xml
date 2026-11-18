@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.zai.adshield"
+    android:versionCode="50200"
+    android:versionName="5.2.0">
+
+    <!-- 网络：问题反馈（GitHub Issues）与检查更新（GitHub Releases） -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- v3.0.0 应用内更新：系统 DownloadManager 下载 + 拉起安装 -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- v3.5.0 保活：前台常驻通知 + 更新/重启后断连提醒 -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- v3.5.0 保活：电池优化白名单（防厂商省电策略杀服务） -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+    <!-- queries：用于在学习中心展示应用名称（可启动应用可见性） -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <!-- v5.2.0 保活体检：厂商自启动/省电策略直达页的包可见性
+             （resolveActivity 校验候选存在 + 静默回退，Android 11+ 必须） -->
+        <package android:name="com.miui.securitycenter" />
+        <package android:name="com.miui.powerkeeper" />
+        <package android:name="com.huawei.systemmanager" />
+        <package android:name="com.hihonor.systemmanager" />
+        <package android:name="com.coloros.safecenter" />
+        <package android:name="com.oppo.safe" />
+        <package android:name="com.iqoo.secure" />
+        <package android:name="com.vivo.permissionmanager" />
+        <package android:name="com.samsung.android.lool" />
+        <package android:name="com.meizu.safe" />
+    </queries>
+
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:theme="@style/AppTheme">
+
+        <activity
+            android:name=".MainActivity"
+            android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|smallestScreenSize"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <service
+            android:name=".AdSkipService"
+            android:exported="true"
+            android:foregroundServiceType="specialUse"
+            android:label="@string/service_name"
+            android:stopWithTask="false"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="AdSkip accessibility service: keep enabled until user manually disables" />
+        </service>
+
+        <!-- v4.5.0 通知栏快捷开关：暂停/恢复防护一键翻转（显式 Intent 投递，
+             exported=false + 无 intent-filter = 第三方应用无法伪造触发）。
+             系统无障碍开关永不触碰——卫士开关由 App 内/通知栏一键控制。 -->
+        <receiver
+            android:name=".MasterToggleReceiver"
+            android:enabled="true"
+            android:exported="false" />
+
+        <!-- v3.5.0 保活：开机/应用更新后检测服务断开 → 高优先级通知一键恢复
+             （Android 会在覆盖安装/系统更新后关闭无障碍服务，系统层无法绕过，
+               此接收器保证用户第一时间收到提醒，点按直达恢复流程）。
+             v5.2.0 安全加固：signature 级私有广播权限保护——第三方应用无法
+             伪造 SELF_CHECK 显式广播（防恢复通知骚扰 + 防日志上传配额耗尽）；
+             系统广播（BOOT/MY_PACKAGE_REPLACED）来自系统 uid 恒放行，自家
+             PendingIntent 拉活闹钟同签名恒放行，功能零影响。 -->
+        <receiver
+            android:name=".KeepAliveReceiver"
+            android:enabled="true"
+            android:exported="true"
+            android:permission="com.zai.adshield.PRIVATE_BROADCAST">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+    </application>
+
+    <!-- v5.2.0：signature 权限——仅同签名应用（即本应用自身）持有，
+         用于保护 KeepAliveReceiver 免受第三方伪造广播（receiver 侧
+         android:permission 声明要求广播发送方持有本权限） -->
+    <permission
+        android:name="com.zai.adshield.PRIVATE_BROADCAST"
+        android:protectionLevel="signature"
+        android:label="@string/private_broadcast_label"
+        android:description="@string/private_broadcast_desc" />
+</manifest>

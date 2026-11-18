@@ -2,6 +2,9 @@
 
 import { useCallback, useState } from "react";
 import { Arena } from "@/components/arena";
+import { IntelStation } from "@/components/intel-station";
+import { RuleManager } from "@/components/rule-manager";
+import { RuleSandbox } from "@/components/rule-sandbox";
 import { LearningCenter } from "@/components/learning-center";
 import { AboutPanel } from "@/components/about-panel";
 import { FeedbackDialog } from "@/components/feedback-dialog";
@@ -10,11 +13,14 @@ import { Button } from "@/components/ui/button";
 import { APP_VERSION, GITHUB_HOME } from "@/lib/version";
 import { cn } from "@/lib/utils";
 import {
-  Zap, Swords, BrainCircuit, Info, MessageSquareWarning, Github, ShieldCheck,
+  Swords, BarChart3, ScrollText, FlaskConical, BrainCircuit, Info, MessageSquareWarning, Github, ShieldCheck,
 } from "lucide-react";
 
 const TABS = [
   { key: "arena", label: "演练场", icon: Swords },
+  { key: "intel", label: "情报站", icon: BarChart3 },
+  { key: "rules", label: "规则管理", icon: ScrollText },
+  { key: "sandbox", label: "调试沙箱", icon: FlaskConical },
   { key: "learning", label: "学习中心", icon: BrainCircuit },
   { key: "about", label: "关于", icon: Info },
 ] as const;
@@ -40,7 +46,7 @@ export default function Home() {
                   v{APP_VERSION}
                 </span>
               </h1>
-              <p className="text-[11px] text-zinc-500">GKD 订阅融合 · 双引擎规则 · 露头秒跳 · 开启一次持续守护</p>
+              <p className="text-[11px] text-zinc-500">多源规则统一调度 · 统一 DSL · GKD 订阅兼容 · 露头秒跳</p>
             </div>
           </div>
 
@@ -65,6 +71,7 @@ export default function Home() {
               key={key}
               type="button"
               data-testid={`tab-${key}`}
+              aria-label={`切换到${label}`}
               onClick={() => setTab(key)}
               className={cn(
                 "flex shrink-0 items-center gap-1.5 rounded-xl px-3.5 py-2 text-[13px] font-bold transition",
@@ -80,12 +87,15 @@ export default function Home() {
       {/* 内容区 */}
       <main className="mx-auto w-full max-w-7xl flex-1 p-4 lg:p-6">
         {tab === "arena" && <Arena onFeedback={openFeedback} />}
+        {tab === "intel" && <IntelStation />}
+        {tab === "rules" && <RuleManager />}
+        {tab === "sandbox" && <RuleSandbox />}
         {tab === "learning" && <LearningCenter />}
         {tab === "about" && <AboutPanel />}
       </main>
 
       {/* 页脚 */}
-      <footer className="border-t border-zinc-200 bg-white/60 py-3 text-center text-[11px] leading-relaxed text-zinc-400">
+      <footer className="mt-auto border-t border-zinc-200 bg-white/60 py-3 text-center text-[11px] leading-relaxed text-zinc-400">
         Skip-Ad 秒跳引擎 · 学习规则每晚 02:00 自动同步 GitHub ·
         <a href={GITHUB_HOME} target="_blank" rel="noreferrer" className="mx-1 inline-flex items-center gap-0.5 text-violet-600 hover:underline">
           <Github className="h-3 w-3" /> xiaobaiba999/Skip-Ad

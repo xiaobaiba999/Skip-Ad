@@ -2,6 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AdCreative } from "@/components/ad-creative";
+import {
+  HalfScreenAdStage, UpdateDialogStage, FloatBallStage, FeedNativeStage, PreRollStage,
+  type FakePhase,
+} from "@/components/arena-extended-scenes";
 import { SCENARIO_APPS, type ScenarioApp } from "@/lib/scenario-apps";
 import { planInstantBlock, AD_TYPE_LABEL, POWER_PROFILE, type BlockPlan } from "@/lib/instant-engine";
 import { Button } from "@/components/ui/button";
@@ -12,6 +16,7 @@ import {
   Link2Off, ChevronLeft, Search, ScanLine, ArrowLeftRight, Receipt, TrendingUp,
   PiggyBank, UserRound, FileText, CalendarClock, ThumbsUp, Share2,
   Flame, Tv, Music2, Activity, Gauge, Timer, Vibrate, Layers, X, Smartphone, Apple,
+  PanelBottom, Download, CircleDot, Newspaper, Clapperboard,
 } from "lucide-react";
 
 type Stage = "home" | "launch" | "ad" | "flash" | "main";
@@ -25,10 +30,13 @@ const APP_ICONS: Record<string, React.ElementType> = {
   wallet: Wallet,
   play: Play,
   headphones: Headphones,
+  // v5.4.0 五类新场景（注：lucide 0.525 无 LayoutPanelBottom，以 PanelBottom 表意底部锚定半屏）
+  "layout-panel-bottom": PanelBottom,
+  download: Download,
+  "circle-dot": CircleDot,
+  newspaper: Newspaper,
+  clapperboard: Clapperboard,
 };
-
-/** 喜马拉雅类广告的甄别阶段（演示节奏，已放慢） */
-type FakePhase = "scanning" | "ignored" | "chain";
 
 interface SessionLogItem {
   id: number;
@@ -37,6 +45,33 @@ interface SessionLogItem {
   text: string;
   ms: number;
 }
+
+/* ── v5.4.0 五类新广告场景拦截时序（与 instant-engine.ts planInstantBlock 新分支一一对应；
+ *    演示节奏已放慢：scanning 甄别 → ignored 判定成立/已代点 → [chain 引导态] → 完成拦截） ── */
+interface NewSceneTiming {
+  scanningAt: number;
+  ignoredAt: number;
+  doneAt: number;
+  chainAt?: number; // 仅悬浮球需要：识别 → 零点击 → 发通知引导关权限
+  note: string; // 埋点 note（/api/block-events）
+}
+
+const NEW_SCENE_TIMING: Record<string, NewSceneTiming> = {
+  half_interstitial: { scanningAt: 400, ignoredAt: 1000, doneAt: 1700, note: "半屏形态+双信号关闭" },
+  update_dialog: { scanningAt: 400, ignoredAt: 1100, doneAt: 1900, note: "更新弹窗·仅代点消极按钮" },
+  float_ball: { scanningAt: 500, ignoredAt: 1200, chainAt: 1600, doneAt: 2000, note: "悬浮球识别·零点击引导" },
+  feed_native: { scanningAt: 600, ignoredAt: 1400, doneAt: 2200, note: "信息流标注·浏览零干预" },
+  video_preroll: { scanningAt: 800, ignoredAt: 5600, doneAt: 6300, note: "前贴到点即跳" }, // ignored 前含 5s 倒计时静候（traits.realSkipDelayMs 5000）
+};
+
+/* 完成拦截的会话日志文案（与 AD_TYPE_LABEL 呼应） */
+const NEW_SCENE_DONE_TEXT: Record<string, string> = {
+  half_interstitial: "半屏插屏已关闭",
+  update_dialog: "更新弹窗已处理",
+  float_ball: "悬浮球已识别引导",
+  feed_native: "信息流广告已标注",
+  video_preroll: "前贴广告已到点即跳",
+};
 
 export function Arena({ onFeedback }: { onFeedback: () => void }) {
   const [app, setApp] = useState<ScenarioApp | null>(null);
@@ -160,11 +195,33 @@ export function Arena({ onFeedback }: { onFeedback: () => void }) {
     }
   }, [stage, app, learnedApps, postEvent, pushLog]);
 
+  /* ── v5.4.0 新场景拦截时序执行器（参数表见 NEW_SCENE_TIMING，与 planInstantBlock 新分支一一对应） ── */
+  const scheduleNewSceneTimers = useCallback(
+    (a: ScenarioApp, p: BlockPlan, cfg: NewSceneTiming) => {
+      const timers: ReturnType<typeof setTimeout>[] = [];
+      timers.push(setTimeout(() => setFakePhase("scanning"), cfg.scanningAt));
+      timers.push(setTimeout(() => setFakePhase("ignored"), cfg.ignoredAt));
+      if (cfg.chainAt !== undefined) timers.push(setTimeout(() => setFakePhase("chain"), cfg.chainAt));
+      timers.push(
+        setTimeout(() => {
+          setBlocks((n) => n + 1);
+          setMsSum((s) => s + p.totalMs);
+          pushLog({ app: a.name, kind: "block", text: `${p.ruleName} · ${NEW_SCENE_DONE_TEXT[a.adType] ?? AD_TYPE_LABEL[a.adType]}`, ms: p.totalMs });
+          void postEvent(p, cfg.note);
+          setStage("flash");
+        }, cfg.doneAt),
+      );
+      return timers;
+    },
+    [postEvent, pushLog],
+  );
+
   /* ── 引擎拦截（广告展示中） ── */
   useEffect(() => {
     if (stage !== "ad" || !app || !plan) return;
     const isAdversarial = !!app.traits?.fakeSkip && (!!app.traits?.chainJump || !!app.traits?.gyroFlip);
     const isPopup = app.adType === "popup";
+    const newSceneCfg = NEW_SCENE_TIMING[app.adType]; // v5.4.0 五类新场景时序参数
     const timers: ReturnType<typeof setTimeout>[] = [];
     if (isPopup) {
       // 应用内弹窗广告 v2：Dialog 窗口事件 → 角标/营销话术双信号 → 代点关闭
@@ -179,6 +236,9 @@ export function Arena({ onFeedback }: { onFeedback: () => void }) {
           setStage("flash");
         }, 1700),
       );
+    } else if (newSceneCfg) {
+      // v5.4.0：半屏插屏 / 更新弹窗 / 悬浮球 / 信息流 / 前贴（前贴含 5s 倒计时静候）
+      timers.push(...scheduleNewSceneTimers(app, plan, newSceneCfg));
     } else if (isAdversarial) {
       // 喜马拉雅类：SDK 广告窗 className 识别 → 极速链复核无真跳过键 → 500ms 直断（v3.12.0：不再回弹）
       timers.push(setTimeout(() => setFakePhase("scanning"), 400));
@@ -205,7 +265,7 @@ export function Arena({ onFeedback }: { onFeedback: () => void }) {
       );
     }
     return () => timers.forEach(clearTimeout);
-  }, [stage, app, plan, postEvent, pushLog]);
+  }, [stage, app, plan, postEvent, pushLog, scheduleNewSceneTimers]);
 
   /* ── 假跳过陷阱教学点按 ── */
   const tapFakeSkip = useCallback(() => {
@@ -379,7 +439,7 @@ export function Arena({ onFeedback }: { onFeedback: () => void }) {
         {/* 场景速览 + 会话日志 */}
         <div className="grid gap-4 md:grid-cols-2">
           <div className="rounded-2xl border border-zinc-200 bg-white p-4">
-            <h3 className="text-sm font-bold text-zinc-900">八大场景</h3>
+            <h3 className="text-sm font-bold text-zinc-900">十三大场景</h3>
             <ul className="mt-2.5 space-y-2">
               {SCENARIO_APPS.map((a) => {
                 const Icon = APP_ICONS[a.icon];
@@ -496,7 +556,7 @@ function HomeScreen({ onLaunch }: { onLaunch: (a: ScenarioApp) => void }) {
       </div>
       {/* 壁纸提示 */}
       <div className="mx-5 mb-2 rounded-xl bg-white/60 px-3 py-2 text-center text-[10px] leading-relaxed text-zinc-500 backdrop-blur">
-        点击应用体验秒跳 · 银行/政务/支付为守护模式 · 喜马拉雅为 SDK 广告窗专案 · 邻里团购为弹窗 v2
+        点击应用体验秒跳 · 银行/政务/支付为守护模式 · 喜马拉雅为 SDK 广告窗专案 · 邻里团购为弹窗 v2 · 半屏插屏/更新弹窗/悬浮球/信息流/前贴为 v5.4.0 新场景
       </div>
       {/* Dock */}
       <div className="mx-4 mb-3 flex items-center justify-around rounded-2xl bg-white/70 p-2.5 backdrop-blur">
@@ -558,6 +618,13 @@ function AdStage({
         ? "陀螺仪诱导 → 返回键抢先直断（翻转触发前）"
         : "链式二跳识别 → 广告窗前置直断"
     : "秒跳引擎拦截中…";
+
+  /* ── v5.4.0 五类新广告场景：专用舞台渲染（与 instant-engine planInstantBlock 分支一一对应） ── */
+  if (app.adType === "half_interstitial") return <HalfScreenAdStage app={app} plan={plan} phase={fakePhase} />;
+  if (app.adType === "update_dialog") return <UpdateDialogStage app={app} plan={plan} phase={fakePhase} />;
+  if (app.adType === "float_ball") return <FloatBallStage app={app} plan={plan} phase={fakePhase} />;
+  if (app.adType === "feed_native") return <FeedNativeStage app={app} plan={plan} phase={fakePhase} />;
+  if (app.adType === "video_preroll") return <PreRollStage app={app} plan={plan} phase={fakePhase} />;
 
   /* 应用内弹窗广告：主页内容 + 底部弹层广告（角标 + 小号关闭键） */
   if (isPopup) {
