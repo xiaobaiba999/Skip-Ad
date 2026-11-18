@@ -1,0 +1,9 @@
+{"lang": "python", "compile_us": 122, "sel_sink": 731, "match_linear_first1000_ns": 6989, "match_linear_ns": 9596.6, "match_optimized_ns": 6166.6, "hits": 20000, "sink": 485562, "rss_kb": 13204}
+{"lang": "python", "compile_us": 118, "sel_sink": 731, "match_linear_first1000_ns": 6902, "match_linear_ns": 9538.8, "match_optimized_ns": 5717.9, "hits": 20000, "sink": 485562, "rss_kb": 13132}
+{"lang": "python", "compile_us": 119, "sel_sink": 731, "match_linear_first1000_ns": 6987, "match_linear_ns": 10029.3, "match_optimized_ns": 5605.5, "hits": 20000, "sink": 485562, "rss_kb": 13168}
+{"lang": "python", "compile_us": 118, "sel_sink": 731, "match_linear_first1000_ns": 6854, "match_linear_ns": 9511.7, "match_optimized_ns": 5585.8, "hits": 20000, "sink": 485562, "rss_kb": 13160}
+{"lang": "python", "compile_us": 120, "sel_sink": 731, "match_linear_first1000_ns": 6924, "match_linear_ns": 9494.1, "match_optimized_ns": 5586.9, "hits": 20000, "sink": 485562, "rss_kb": 13248}
+{"lang": "python", "compile_us": 123, "sel_sink": 731, "match_linear_first1000_ns": 6968, "match_linear_ns": 9531.5, "match_optimized_ns": 5593.5, "hits": 20000, "sink": 485562, "rss_kb": 13244}
+{"lang": "python", "compile_us": 120, "sel_sink": 731, "match_linear_first1000_ns": 6944, "match_linear_ns": 9529.9, "match_optimized_ns": 6001.3, "hits": 20000, "sink": 485562, "rss_kb": 13144}
+{"lang": "python", "compile_us": 119, "sel_sink": 731, "match_linear_first1000_ns": 6978, "match_linear_ns": 9730.7, "match_optimized_ns": 5584.1, "hits": 20000, "sink": 485562, "rss_kb": 13168}
+{"lang": "python", "compile_us": 119, "sel_sink": 731, "match_linear_first1000_ns": 6974, "match_linear_ns": 9541.2, "match_optimized_ns": 5575.4, "hits": 20000, "sink": 485562, "rss_kb": 13124}

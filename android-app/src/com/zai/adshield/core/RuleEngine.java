@@ -111,6 +111,8 @@ public final class RuleEngine {
     static final String P_COUNTDOWN_TAIL = "^跳[过過](广告|廣告)?\\s*\\d{1,2}\\s*[s秒]?$";
     static final String P_COUNTDOWN_HEAD = "^\\d{1,2}\\s*[s秒]?\\s*后後?\\s*可?\\s*跳[过過](广告|廣告)?$";
 
+    /* ═══ v5.6.0 热路径优化见下方（常量声明之后）═══ */
+
     /* ── 第3层：短包含（≤8 字）+ 诱导词黑名单一票否决 ──
        v5.1.0 增补（与 AdDecisionCore.INDUCE_WORDS 同源）：抢购/秒杀/礼包/
        优惠/补贴/立减/低价/充值——真跳过键文案数学上不含这些词，只紧不松 */
@@ -163,6 +165,37 @@ public final class RuleEngine {
      *    面积门比 sdk_close_vid 更紧（5% vs 35%），防普通控件误中。 */
     static final String[] VID_FLOAT_KEYS = { "drag", "floating", "float", "ball", "side" };
     static final double FLOAT_BALL_AREA_MAX = 0.05;
+
+    /* ═══ v5.6.0 热路径优化（基准测试驱动，行为完全等价）═══
+     * 基准数据（docs/LANGUAGE-STRATEGY.md）：同一棵 48 节点树 × 28 行分应用表 +
+     * 19 条精确文案 + 2 条倒计时正则——String.matches 每次重编译正则 +
+     * row[j].toLowerCase() 每次重新分配 = 整树匹配 4748ns；预编译 + HashSet +
+     * 预计算小写表 = 968ns（4.9×）。无障碍事件高峰（滚动/动画 ~50-100 事件/秒）
+     * 直接降低 CPU 占空比。 */
+    static final java.util.regex.Pattern P_COUNTDOWN_TAIL_RE =
+            java.util.regex.Pattern.compile(P_COUNTDOWN_TAIL);
+    static final java.util.regex.Pattern P_COUNTDOWN_HEAD_RE =
+            java.util.regex.Pattern.compile(P_COUNTDOWN_HEAD);
+    /* 预计算小写表（第0/1/3层热路径零每次分配）——APP_TEXT_RULES_LOW 为并行表：
+       [i][0]=包名前缀（不变），[i][j>=1]=文案小写（只紧不松，行为等价） */
+    static final String[][] APP_TEXT_RULES_LOW = buildAppTextLowTable();
+    static final java.util.Set<String> TEXT_EXACT_SET = new java.util.HashSet<String>();
+    static final String[] TEXT_SHORT_LOW = new String[TEXT_SHORT.length];
+    static {
+        for (String k : TEXT_EXACT) TEXT_EXACT_SET.add(k);
+        for (int i = 0; i < TEXT_SHORT.length; i++) TEXT_SHORT_LOW[i] = TEXT_SHORT[i].toLowerCase();
+    }
+    private static String[][] buildAppTextLowTable() {
+        String[][] out = new String[APP_TEXT_RULES.length][];
+        for (int i = 0; i < APP_TEXT_RULES.length; i++) {
+            String[] row = APP_TEXT_RULES[i];
+            String[] lowRow = new String[row.length];
+            lowRow[0] = row[0];
+            for (int j = 1; j < row.length; j++) lowRow[j] = row[j].toLowerCase();
+            out[i] = lowRow;
+        }
+        return out;
+    }
 
     /** 5a 文案普查（服务侧扫描前调用）：肯定侧信号词在场？ */
     public static boolean isUpdatePositive(String text) {
@@ -318,13 +351,15 @@ public final class RuleEngine {
     public static Hit matchText(String label, int[] b, NodeView node, Ctx ctx) {
         String low = label.toLowerCase();
 
-        /* 第0层：分应用精确（不受长度上限约束） */
+        /* 第0层：分应用精确（不受长度上限约束）——v5.6.0 并行小写表：
+           逐行/逐文案顺序与原版完全一致（零语义变化），仅消除每调用的
+           row[j].toLowerCase() 字符串分配 */
         if (ctx.pkg != null) {
-            String[][] rows = APP_TEXT_RULES;
+            String[][] rows = APP_TEXT_RULES_LOW;
             for (String[] row : rows) {
                 if (ctx.pkg.startsWith(row[0])) {
                     for (int j = 1; j < row.length; j++) {
-                        if (low.equals(row[j].toLowerCase())) {
+                        if (low.equals(row[j])) {
                             return build("app_exact", label, b, node, ctx);
                         }
                     }
@@ -332,13 +367,15 @@ public final class RuleEngine {
             }
         }
 
-        /* 第1层：全局精确（等值，大小写归一） */
-        for (String k : TEXT_EXACT) {
-            if (low.equals(k)) return build("global_exact", label, b, node, ctx);
+        /* 第1层：全局精确（等值，大小写归一）——v5.6.0 HashSet 等值替代线性扫描 */
+        if (TEXT_EXACT_SET.contains(low)) {
+            return build("global_exact", label, b, node, ctx);
         }
 
-        /* 第2层：倒计时形态（严格正则——仅跳过系词+数字/秒表，任何营销话术无法混入） */
-        if (label.matches(P_COUNTDOWN_TAIL) || label.matches(P_COUNTDOWN_HEAD)) {
+        /* 第2层：倒计时形态（严格正则——仅跳过系词+数字/秒表，任何营销话术无法混入）
+           v5.6.0 预编译 Pattern 替代 String.matches 每调用重编译 */
+        if (P_COUNTDOWN_TAIL_RE.matcher(label).matches()
+                || P_COUNTDOWN_HEAD_RE.matcher(label).matches()) {
             return build("global_pattern", label, b, node, ctx);
         }
 
@@ -457,10 +494,10 @@ public final class RuleEngine {
         return false;
     }
 
-    /** 短文案包含匹配（入参已小写） */
+    /** 短文案包含匹配（入参已小写）——v5.6.0 预计算小写表零分配 */
     static boolean containsShort(String low) {
-        for (String k : TEXT_SHORT) {
-            if (low.contains(k.toLowerCase())) return true;
+        for (String k : TEXT_SHORT_LOW) {
+            if (low.contains(k)) return true;
         }
         return false;
     }

@@ -1,0 +1,33 @@
+# ═══ 仓库语言统计治理（v5.6.0 · docs/LANGUAGE-STRATEGY.md §五）═══
+# 原则：GitHub 语言栏只展示「产品本体」——
+#   · Java     = Android 引擎（android-app/src + tests）
+#   · TypeScript = Web 规则台（src/）
+#   · JavaScript = App 壳 UI（android-app/assets/www）
+#   · CSS/HTML = 壳 UI 样式与页面
+# 一次性工具、生成物、归档不计入统计。
+
+# ── 运维/CI 脚本（不进任何发布物）──
+scripts/** linguist-vendored
+.zscripts/** linguist-vendored
+agent-ctx/** linguist-vendored
+examples/** linguist-vendored
+tests/** linguist-vendored
+
+# ── 文档归档 ──
+docs/** linguist-documentation
+download/** linguist-documentation
+
+# ── 生成物/构建产物/二进制归档 ──
+tool-results/** linguist-generated
+data/** linguist-generated
+db/** linguist-generated
+dist/** linguist-generated
+android-app/dist/** linguist-generated
+android-app/build/** linguist-generated
+android-app/build-tests/** linguist-generated
+*.apk linguist-generated
+*.idsig linguist-generated
+*.db linguist-generated
+*.keystore linguist-generated
+bun.lock linguist-generated
+mini-services/** linguist-vendored
