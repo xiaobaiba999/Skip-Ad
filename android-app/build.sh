@@ -32,6 +32,25 @@ VC="${1:?versionCode 必填，如 1}"
 VN="${2:?versionName 必填，如 1.0.0}"
 OUT="${3:-$ROOT/dist/adshield-v${VN}.apk}"
 
+# ── versionCode 单调递增守卫（v5.3.0 事故防复发）────────────────────────────
+# 事故：v5.3.0 构建时误传 versionCode=530（< v5.2.0 的 50200），用户覆盖安装
+# 被系统拒绝，提示「无法降级安装」。守卫扫描 dist 历史包，一旦新 VC 不大于
+# 历史最大 VC 立即终止构建，从源头杜绝此类事故。
+LAST_VC=0
+LAST_REF=""
+for prev in "$ROOT"/dist/*.apk; do
+  [ -f "$prev" ] || continue
+  prev_vc="$(aapt dump badging "$prev" 2>/dev/null | grep -o "versionCode='[0-9]*'" | head -1 | grep -o '[0-9]*')"
+  [ -n "$prev_vc" ] || continue
+  if [ "$prev_vc" -gt "$LAST_VC" ]; then LAST_VC="$prev_vc"; LAST_REF="$(basename "$prev")"; fi
+done
+if [ "$LAST_VC" -gt 0 ] && [ "$VC" -le "$LAST_VC" ]; then
+  echo "✗ 拒绝构建：versionCode=$VC 未大于历史最大 versionCode=$LAST_VC（来自 dist/$LAST_REF）"
+  echo "  Android 系统会拒绝覆盖安装并提示「无法降级安装」。"
+  echo "  请使用更大的 versionCode（当前版本号建议 major*10000+minor*100+patch）。"
+  exit 1
+fi
+
 BUILD="$ROOT/build"
 rm -rf "$BUILD"
 mkdir -p "$BUILD/gen" "$BUILD/classes" "$BUILD/dex" "$(dirname "$OUT")"
