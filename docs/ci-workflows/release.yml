@@ -1,0 +1,176 @@
+# Skip-Ad Release（v5.4.0）
+# tag v* 触发：Android 签名发布 → conventional commits 更新日志 → GitHub Release
+# 附 APK → Web 端同步（Vercel/静态部署，见文末注释）。
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  # ─────────────────────────────────────────────────────────────
+  # Android 签名构建（gradle assembleRelease）
+  # 签名注入：secrets.ANDROID_KEYSTORE（base64）→ 运行时解码为 keystore 文件，
+  # 密码经环境变量传给 gradle（signingConfig 从环境变量读取，不入库）
+  # ─────────────────────────────────────────────────────────────
+  android-release:
+    name: Android release (signed APK)
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # 更新日志需要完整提交历史
+
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Cache gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-release-${{ hashFiles('android/**/*.gradle*', 'android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: gradle-${{ runner.os }}-release-
+
+      # 签名密钥注入：base64 → keystore.jks（绝不落盘到仓库；runner 临时目录）
+      - name: Decode keystore
+        run: |
+          if [ -z "${{ secrets.ANDROID_KEYSTORE }}" ]; then
+            echo "::error::缺少 secrets.ANDROID_KEYSTORE（base64 编码的签名密钥库）"
+            exit 1
+          fi
+          echo "${{ secrets.ANDROID_KEYSTORE }}" | base64 -d > android/app/release.keystore.jks
+
+      - name: Build signed release APK
+        working-directory: android
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/android/app/release.keystore.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ ! -f ./gradlew ]; then
+            echo "::error::android/gradlew 尚未合入，无法构建签名包（Gradle 脚手架随 Android 模块任务落地）"
+            exit 1
+          fi
+          chmod +x ./gradlew
+          ./gradlew :app:assembleRelease --stacktrace
+
+      - name: Collect APK
+        run: |
+          mkdir -p dist
+          cp android/app/build/outputs/apk/release/*.apk dist/Skip-Ad-${{ steps.version.outputs.version }}.apk
+          ls -lh dist/
+
+      # 更新日志：conventional commits 分组（feat/fix/perf/chore → 新特性/修复/性能/其他）
+      - name: Generate changelog
+        id: changelog
+        run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          RANGE=""
+          if [ -n "$PREV_TAG" ]; then RANGE="$PREV_TAG..HEAD"; fi
+
+          # 分组渲染（空组输出占位行，杜绝 grep 空管道导致的空标题）
+          section() {
+            local title="$1" pattern="$2"
+            echo ""
+            echo "### $title"
+            local out
+            out=$(git log $RANGE --pretty=format:'%s' 2>/dev/null | grep -E "$pattern" || true)
+            if [ -z "$out" ]; then
+              echo "-（本组无提交）"
+            else
+              echo "$out"
+            fi
+          }
+
+          {
+            echo "## Skip-Ad v${{ steps.version.outputs.version }}"
+            section "新特性 (feat)"   '^feat(\(.+\))?!?:'
+            section "修复 (fix)"      '^fix(\(.+\))?!?:'
+            section "性能 (perf)"     '^perf(\(.+\))?:'
+            section "其他 (chore/docs/style/refactor/test)" '^(chore|docs|style|refactor|test)(\(.+\))?:'
+            echo ""
+            echo "---"
+            echo "**完整变更**：[\`v${{ steps.version.outputs.version }}\`](https://github.com/${{ github.repository }}/releases)"
+          } > CHANGELOG.md
+          cat CHANGELOG.md
+
+      # GitHub Release：附 APK + 更新日志
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Skip-Ad v${{ steps.version.outputs.version }}
+          body_path: CHANGELOG.md
+          draft: false
+          prerelease: false
+          files: dist/*.apk
+          generate_release_notes: false
+
+      - name: Clean keystore
+        if: always()
+        run: rm -f android/app/release.keystore.jks
+
+  # ─────────────────────────────────────────────────────────────
+  # Web 端同步（Vercel / 静态部署）
+  # ─────────────────────────────────────────────────────────────
+  web-sync:
+    name: Web sync (Vercel)
+    runs-on: ubuntu-latest
+    needs: android-release
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # 方案 A（默认）：Vercel Git 集成自动部署——push tag 后 Vercel 自拉自建，
+      # 本 job 仅做构建自检，保证 tag 指向的 Web 端代码可构建。
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache bun
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bun/install/cache
+            node_modules
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
+
+      - name: Install and build check
+        run: |
+          bun install --frozen-lockfile
+          bunx prisma generate
+          bun run build
+
+      # 方案 B（可选，取消注释并配置 secrets.VERCEL_TOKEN / VERCEL_ORG_ID /
+      # VERCEL_PROJECT_ID 后启用 CLI 直推，适合非 Git 集成托管）：
+      #
+      # - name: Deploy to Vercel
+      #   run: |
+      #     bunx vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+      #     bunx vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+      #     bunx vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}
+      #
+      # 方案 C（静态导出托管，适合纯演示端）：
+      # - run: bun run build && cp -r .next/standalone .next/static public dist/
+      # - uses: peaceiris/actions-gh-pages@v4
+      #   with:
+      #     github_token: ${{ secrets.GITHUB_TOKEN }}
+      #     publish_dir: dist

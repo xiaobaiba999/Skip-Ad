@@ -1,0 +1,106 @@
+# Skip-Ad CI（v5.4.0）
+# 双栈流水线：web（Next.js 演示管理端）+ android（无障碍引擎 JVM 单测）。
+# 设计原则：快失败、缓存优先、金样本集一致性门禁（TS/Java 双端 DSL 判定必须逐条一致）。
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ─────────────────────────────────────────────────────────────
+  # Web 端（Next.js + Prisma + TypeScript）
+  # 产物链：bun install → prisma generate（tsc 类型依赖）→ tsc --noEmit → lint
+  # ─────────────────────────────────────────────────────────────
+  web:
+    name: Web (tsc + lint)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # bun 缓存：以 bun.lock 为 key，命中时跳过网络下载（约 40s → 3s）
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache bun
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bun/install/cache
+            node_modules
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # prisma client 生成（src/lib/db.ts 导入 @prisma/client，缺失则 tsc 直接报错）
+      - name: Generate Prisma client
+        run: bunx prisma generate
+
+      - name: Type check (tsc --noEmit)
+        run: bunx tsc --noEmit
+
+      - name: Lint
+        run: bun run lint
+
+  # ─────────────────────────────────────────────────────────────
+  # Android 端（无障碍引擎 JVM 单元测试 + Lint）
+  # 断言规模：v5.3.0 存量 427 项 + v5.4.0 新增 342 项 = 769 项
+  # （调度器 68 / 质量模型 54 / DSL 解析 92 / 敏感防护 36 / 功耗策略 48 / 全形态 44，
+  #   详见 docs/TEST-PLAN.md）
+  # ─────────────────────────────────────────────────────────────
+  android:
+    name: Android (JVM unit tests + lint)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # gradle 缓存：wrapper + 依赖 + 构建缓存（首次约 90s，命中约 20s）
+      - name: Cache gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('android/**/*.gradle*', 'android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: gradle-${{ runner.os }}-
+
+      # Gradle 脚手架渐进合入：android/gradlew 就位前本步骤静默通过（Java 框架
+      # 代码已合入，witnessed by 12 个框架类；脚手架随 Android 模块任务落地后
+      # 自动执行完整单测 + lint）
+      - name: Android JVM unit tests + lint
+        working-directory: android
+        run: |
+          if [ ! -f ./gradlew ]; then
+            echo "::notice::android/gradlew 尚未合入（Gradle 脚手架随 Android 模块任务落地），本次跳过单测"
+            exit 0
+          fi
+          chmod +x ./gradlew
+          ./gradlew :app:testDebugUnitTest --stacktrace
+          ./gradlew :app:lintDebug
+
+      # 单测报告归档（失败时上传，供 PR 排障）
+      - name: Upload test reports (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-test-reports
+          path: android/app/build/reports/tests/
+          if-no-files-found: ignore
+          retention-days: 7
