@@ -1,0 +1,1057 @@
+     1→"use client";
+     2→
+     3→import { useCallback, useEffect, useRef, useState } from "react";
+     4→import { AdCreative } from "@/components/ad-creative";
+     5→import { SCENARIO_APPS, type ScenarioApp } from "@/lib/scenario-apps";
+     6→import { planInstantBlock, AD_TYPE_LABEL, POWER_PROFILE, type BlockPlan } from "@/lib/instant-engine";
+     7→import { Button } from "@/components/ui/button";
+     8→import { cn } from "@/lib/utils";
+     9→import {
+    10→  ShoppingBag, ShoppingBasket, Rocket, Landmark, Building2, Wallet, Play, Phone, MessageCircle,
+    11→  Globe, Camera, Signal, Wifi, BatteryFull, Zap, ShieldCheck, Headphones,
+    12→  Link2Off, ChevronLeft, Search, ScanLine, ArrowLeftRight, Receipt, TrendingUp,
+    13→  PiggyBank, UserRound, FileText, CalendarClock, ThumbsUp, Share2,
+    14→  Flame, Tv, Music2, Activity, Gauge, Timer, Vibrate, Layers, X, Smartphone, Apple,
+    15→} from "lucide-react";
+    16→
+    17→type Stage = "home" | "launch" | "ad" | "flash" | "main";
+    18→
+    19→const APP_ICONS: Record<string, React.ElementType> = {
+    20→  "shopping-bag": ShoppingBag,
+    21→  "shopping-basket": ShoppingBasket,
+    22→  rocket: Rocket,
+    23→  landmark: Landmark,
+    24→  "building-2": Building2,
+    25→  wallet: Wallet,
+    26→  play: Play,
+    27→  headphones: Headphones,
+    28→};
+    29→
+    30→/** 喜马拉雅类广告的甄别阶段（演示节奏，已放慢） */
+    31→type FakePhase = "scanning" | "ignored" | "chain";
+    32→
+    33→interface SessionLogItem {
+    34→  id: number;
+    35→  app: string;
+    36→  kind: "block" | "preempt";
+    37→  text: string;
+    38→  ms: number;
+    39→}
+    40→
+    41→export function Arena({ onFeedback }: { onFeedback: () => void }) {
+    42→  const [app, setApp] = useState<ScenarioApp | null>(null);
+    43→  const [stage, setStage] = useState<Stage>("home");
+    44→  const [plan, setPlan] = useState<BlockPlan | null>(null);
+    45→  const [fakePhase, setFakePhase] = useState<FakePhase | null>(null);
+    46→  const [learnedApps, setLearnedApps] = useState<Set<string>>(new Set());
+    47→  const [blocks, setBlocks] = useState(0);
+    48→  const [preempts, setPreempts] = useState(0);
+    49→  const [msSum, setMsSum] = useState(0);
+    50→  const [log, setLog] = useState<SessionLogItem[]>([]);
+    51→  const [toast, setToast] = useState<{ id: number; text: string; sub?: string } | null>(null);
+    52→  const logIdRef = useRef(0);
+    53→  const toastIdRef = useRef(0);
+    54→
+    55→  const pushToast = useCallback((text: string, sub?: string) => {
+    56→    const id = ++toastIdRef.current;
+    57→    setToast({ id, text, sub });
+    58→    setTimeout(() => setToast((t) => (t?.id === id ? null : t)), 3600);
+    59→  }, []);
+    60→
+    61→  const pushLog = useCallback((item: Omit<SessionLogItem, "id">) => {
+    62→    setLog((cur) => [{ ...item, id: ++logIdRef.current }, ...cur].slice(0, 12));
+    63→  }, []);
+    64→
+    65→  /* 学习指纹（命中即预拦截资格） */
+    66→  const refreshLearning = useCallback(async () => {
+    67→    try {
+    68→      const r = await fetch("/api/learning");
+    69→      if (!r.ok) return;
+    70→      const d = await r.json();
+    71→      setLearnedApps(new Set<string>((d.learnedRules ?? []).map((x: { appName: string }) => x.appName)));
+    72→    } catch { /* 静默 */ }
+    73→  }, []);
+    74→  useEffect(() => {
+    75→    let alive = true;
+    76→    fetch("/api/learning")
+    77→      .then((r) => (r.ok ? r.json() : null))
+    78→      .then((d) => {
+    79→        if (!alive || !d) return;
+    80→        setLearnedApps(new Set<string>((d.learnedRules ?? []).map((x: { appName: string }) => x.appName)));
+    81→      })
+    82→      .catch(() => {});
+    83→    return () => { alive = false; };
+    84→  }, []);
+    85→
+    86→  /* ── 埋点 ── */
+    87→  const postEvent = useCallback(
+    88→    async (p: BlockPlan, note: string) => {
+    89→      if (!app) return;
+    90→      try {
+    91→        const r = await fetch("/api/block-events", {
+    92→          method: "POST",
+    93→          headers: { "Content-Type": "application/json" },
+    94→          body: JSON.stringify({
+    95→            appKey: app.key,
+    96→            kind: "block",
+    97→            action: p.action,
+    98→            latencyMs: p.totalMs,
+    99→            confidence: p.confidence / 100,
+   100→            scenario: p.scenario,
+   101→            adType: app.adType,
+   102→            note,
+   103→          }),
+   104→        });
+   105→        if (r.ok) {
+   106→          const d = await r.json();
+   107→          if (d.learnedCreated) {
+   108→            pushToast("广告指纹已学习", `${app.name} 下次启动将 P0 预拦截——广告未及呈现`);
+   109→            void refreshLearning();
+   110→          }
+   111→        }
+   112→      } catch { /* 静默 */ }
+   113→    },
+   114→    [app, pushToast, refreshLearning],
+   115→  );
+   116→
+   117→  /* ── 启动应用 ── */
+   118→  const launchApp = useCallback((a: ScenarioApp) => {
+   119→    setApp(a);
+   120→    setPlan(null);
+   121→    setFakePhase(null);
+   122→    setStage("launch");
+   123→  }, []);
+   124→
+   125→  /* ── 阶段流转 ── */
+   126→  useEffect(() => {
+   127→    if (stage === "launch" && app) {
+   128→      const isPreempt = learnedApps.has(app.name);
+   129→      const t = setTimeout(() => {
+   130→        const p = planInstantBlock(
+   131→          {
+   132→            name: app.name,
+   133→            category: app.category,
+   134→            adType: app.adType,
+   135→            guard: app.guard,
+   136→            ruleName: app.ruleName,
+   137→            learnedRuleName: learnedApps.has(app.name) ? `${app.name} 学习指纹` : null,
+   138→            traits: app.traits ?? null,
+   139→          },
+   140→          { preempt: isPreempt },
+   141→        );
+   142→        setPlan(p);
+   143→        if (isPreempt) {
+   144→          // P0 预拦截：广告未及呈现，直接进入拦截成功层
+   145→          setPreempts((n) => n + 1);
+   146→          setBlocks((n) => n + 1);
+   147→          setMsSum((s) => s + p.totalMs);
+   148→          pushLog({ app: app.name, kind: "preempt", text: `P0 预拦截 · ${AD_TYPE_LABEL[app.adType]} · 广告未及呈现`, ms: p.totalMs });
+   149→          void postEvent(p, "P0 预拦截（学习指纹）");
+   150→          setStage("flash");
+   151→        } else {
+   152→          setStage("ad");
+   153→        }
+   154→      }, 850);
+   155→      return () => clearTimeout(t);
+   156→    }
+   157→    if (stage === "flash") {
+   158→      const t = setTimeout(() => setStage("main"), 1250);
+   159→      return () => clearTimeout(t);
+   160→    }
+   161→  }, [stage, app, learnedApps, postEvent, pushLog]);
+   162→
+   163→  /* ── 引擎拦截（广告展示中） ── */
+   164→  useEffect(() => {
+   165→    if (stage !== "ad" || !app || !plan) return;
+   166→    const isAdversarial = !!app.traits?.fakeSkip && (!!app.traits?.chainJump || !!app.traits?.gyroFlip);
+   167→    const isPopup = app.adType === "popup";
+   168→    const timers: ReturnType<typeof setTimeout>[] = [];
+   169→    if (isPopup) {
+   170→      // 应用内弹窗广告 v2：Dialog 窗口事件 → 角标/营销话术双信号 → 代点关闭
+   171→      timers.push(setTimeout(() => setFakePhase("scanning"), 400));
+   172→      timers.push(setTimeout(() => setFakePhase("ignored"), 1000));
+   173→      timers.push(
+   174→        setTimeout(() => {
+   175→          setBlocks((n) => n + 1);
+   176→          setMsSum((s) => s + plan.totalMs);
+   177→          pushLog({ app: app.name, kind: "block", text: `${plan.ruleName} · 弹窗广告已关闭`, ms: plan.totalMs });
+   178→          void postEvent(plan, "弹窗 v2 双信号关闭");
+   179→          setStage("flash");
+   180→        }, 1700),
+   181→      );
+   182→    } else if (isAdversarial) {
+   183→      // 喜马拉雅类：SDK 广告窗 className 识别 → 极速链复核无真跳过键 → 500ms 直断（v3.12.0：不再回弹）
+   184→      timers.push(setTimeout(() => setFakePhase("scanning"), 400));
+   185→      timers.push(setTimeout(() => setFakePhase("ignored"), 1100));
+   186→      timers.push(setTimeout(() => setFakePhase("chain"), 1900));
+   187→      timers.push(
+   188→        setTimeout(() => {
+   189→          setBlocks((n) => n + 1);
+   190→          setMsSum((s) => s + plan.totalMs);
+   191→          pushLog({ app: app.name, kind: "block", text: `${plan.ruleName} · ${app.traits?.sdkWindow ? "SDK 广告窗指纹直断" : "陀螺仪诱导直断"}`, ms: plan.totalMs });
+   192→          void postEvent(plan, app.traits?.sdkWindow ? "SDK 广告窗指纹直断（抢先关闭）" : "假跳过甄别 + 链式前置直断");
+   193→          setStage("flash");
+   194→        }, 2700),
+   195→      );
+   196→    } else {
+   197→      timers.push(
+   198→        setTimeout(() => {
+   199→          setBlocks((n) => n + 1);
+   200→          setMsSum((s) => s + plan.totalMs);
+   201→          pushLog({ app: app.name, kind: "block", text: `${plan.ruleName} · ${AD_TYPE_LABEL[app.adType]}`, ms: plan.totalMs });
+   202→          void postEvent(plan, plan.ruleName);
+   203→          setStage("flash");
+   204→        }, 700),
+   205→      );
+   206→    }
+   207→    return () => timers.forEach(clearTimeout);
+   208→  }, [stage, app, plan, postEvent, pushLog]);
+   209→
+   210→  /* ── 假跳过陷阱教学点按 ── */
+   211→  const tapFakeSkip = useCallback(() => {
+   212→    pushToast(
+   213→      "假跳过陷阱 · 引擎已忽略",
+   214→      "这是广告图内嵌的热区：点击即跳落地页并二跳商店。多信号甄别（面积/容器归属/时序）判定为陷阱",
+   215→    );
+   216→  }, [pushToast]);
+   217→
+   218→  const backHome = useCallback(() => {
+   219→    setApp(null);
+   220→    setStage("home");
+   221→    setPlan(null);
+   222→    setFakePhase(null);
+   223→  }, []);
+   224→
+   225→  const avgMs = blocks > 0 ? Math.round(msSum / blocks) : 0;
+   226→
+   227→  return (
+   228→    <div className="flex flex-col gap-5 lg:flex-row lg:items-start">
+   229→      {/* ═══ 左：手机模拟器 ═══ */}
+   230→      <section className="flex w-full shrink-0 flex-col items-center gap-3 lg:w-[420px]" aria-label="演练场手机模拟器">
+   231→        <div className="relative w-full max-w-[360px] rounded-[2.6rem] border-[10px] border-zinc-800 bg-zinc-800 shadow-2xl shadow-zinc-900/25 ring-1 ring-zinc-700">
+   232→          <div className="overflow-hidden rounded-[2rem] bg-white">
+   233→            <div className="relative aspect-[9/19] w-full select-none">
+   234→              <PhoneScreen
+   235→                stage={stage}
+   236→                app={app}
+   237→                plan={plan}
+   238→                fakePhase={fakePhase}
+   239→                onLaunch={launchApp}
+   240→                onBack={backHome}
+   241→                onTapFakeSkip={tapFakeSkip}
+   242→              />
+   243→
+   244→              {/* 拦截 Toast */}
+   245→              {toast && (
+   246→                <div className="pointer-events-none absolute inset-x-3 top-11 z-[70] animate-[toast-in_.25s_ease-out] rounded-xl bg-zinc-900/95 p-2.5 text-[11px] leading-snug text-white shadow-lg ring-1 ring-white/15">
+   247→                  <div className="flex items-center gap-1.5 font-bold">
+   248→                    <Zap className="h-3.5 w-3.5 shrink-0 text-amber-300" />
+   249→                    <span>{toast.text}</span>
+   250→                  </div>
+   251→                  {toast.sub && <div className="mt-0.5 opacity-80">{toast.sub}</div>}
+   252→                </div>
+   253→              )}
+   254→            </div>
+   255→          </div>
+   256→        </div>
+   257→        <p className="max-w-[360px] text-center text-[10px] leading-relaxed text-zinc-400">
+   258→          同一应用第二次启动将触发 <span className="font-bold text-violet-600">P0 预拦截</span>：窗口附加阶段直接阻断，广告未及呈现
+   259→        </p>
+   260→      </section>
+   261→
+   262→      {/* ═══ 右：引擎面板 ═══ */}
+   263→      <section className="flex min-w-0 flex-1 flex-col gap-4" aria-label="秒跳引擎面板">
+   264→        {/* 引擎状态 */}
+   265→        <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4">
+   266→          <div className="flex items-center gap-2.5">
+   267→            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white">
+   268→              <ShieldCheck className="h-4.5 w-4.5" />
+   269→            </span>
+   270→            <div className="min-w-0">
+   271→              <div className="flex items-center gap-2 text-sm font-bold text-zinc-900">
+   272→                秒跳引擎 · 运行中
+   273→                <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-bold text-white">十三层纵深 · 三零治理</span>
+   274→              </div>
+   275→              <p className="mt-0.5 text-[11px] text-zinc-500">
+   276→                探针哨兵前置（零 DFS）→ 宿主窗档案（CLEAN 零扫描）→ P0 预拦截 → 学习位置点击 → 角落键多候选+坐标轮换 → 点击复验换候选重试 → SDK 窗指纹 → 热区/立即直断 → 链式二跳前置直断（不回弹，v3.12.0） → 弹窗 v2 突发预算制 → 返回键兜底（仅应用内窗） → 根窗口安全门（入口窗绝不返回键，防退出应用）；突发阈值空手指数升级（3→6→12→24）；位置学习事后验证（点击后 1.5s 未关窗 = 不学）；守护应用只拦广告、不碰服务
+   277→              </p>
+   278→            </div>
+   279→            <div className="ml-auto hidden shrink-0 items-center gap-1 text-[10px] font-bold text-emerald-700 sm:flex">
+   280→              <Layers className="h-3.5 w-3.5" /> 1060 款语料 100% · 二十七轮
+   281→            </div>
+   282→          </div>
+   283→        </div>
+   284→
+   285→        {/* ═══ v5.3.0 三零治理功耗对照（真机日志 #57/#58 实测 vs 治理后）═══ */}
+   286→        <div className="rounded-2xl border border-zinc-200 bg-white p-4" data-testid="power-gauge">
+   287→          <div className="flex flex-wrap items-center justify-between gap-2">
+   288→            <h3 className="flex items-center gap-1.5 text-sm font-bold text-zinc-900">
+   289→              <BatteryFull className="h-4 w-4 text-emerald-600" /> 三零治理功耗对照
+   290→              <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700 ring-1 ring-emerald-200">v5.3.0</span>
+   291→            </h3>
+   292→            <span className="text-[10px] text-zinc-400">真机日志 #57/#58（Xiaomi · Android 17）实测 → 李跳跳式治理后模型推算</span>
+   293→          </div>
+   294→          <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
+   295→            {[
+   296→              { label: "每开机扫描次数", v520: `${POWER_PROFILE.v520.scansPerBoot}`, v530: `${POWER_PROFILE.v530.scansPerBoot}（稳态 ${POWER_PROFILE.v530.steadyScansPerBoot}）`, drop: Math.round((1 - POWER_PROFILE.v530.scansPerBoot / POWER_PROFILE.v520.scansPerBoot) * 100) },
+   297→              { label: "能耗估算 µWh", v520: `${POWER_PROFILE.v520.microWh}`, v530: `${POWER_PROFILE.v530.microWh}（稳态 ${POWER_PROFILE.v530.steadyMicroWh}）`, drop: Math.round((1 - POWER_PROFILE.v530.microWh / POWER_PROFILE.v520.microWh) * 100) },
+   298→              { label: "聊天突发误开窗", v520: `${POWER_PROFILE.v520.burstFalseOpen} 次/5分钟`, v530: "预算制 2 次/10分钟", drop: 100 },
+   299→              { label: "广告命中率", v520: `${POWER_PROFILE.v520.hitRate}%`, v530: `${POWER_PROFILE.v530.hitRate}%（探针哨兵替班）`, drop: null as number | null },
+   300→            ].map((m) => (
+   301→              <div key={m.label} className="rounded-xl bg-zinc-50 p-3 ring-1 ring-zinc-200">
+   302→                <div className="text-[10px] font-semibold text-zinc-400">{m.label}</div>
+   303→                <div className="mt-1 text-[13px] font-bold tabular-nums text-zinc-400 line-through decoration-rose-300/70">{m.v520}</div>
+   304→                <div className="mt-0.5 flex items-baseline gap-1">
+   305→                  <span className="text-[15px] font-black tabular-nums text-emerald-600">{m.v530}</span>
+   306→                  {m.drop !== null && (
+   307→                    <span className="rounded bg-emerald-50 px-1 py-0.5 text-[9px] font-black text-emerald-700 ring-1 ring-emerald-200">-{m.drop}%</span>
+   308→                  )}
+   309→                </div>
+   310→              </div>
+   311→            ))}
+   312→          </div>
+   313→          <p className="mt-2.5 text-[10px] leading-relaxed text-zinc-400">
+   314→            治理三零：CLEAN 档案窗【零扫描·零调度·零日志】（探针哨兵 findAccessibilityNodeInfosByText 替班，成本≈DFS 的 1/14）；突发检测预算制（空手阈值 3→6→12→24 指数升级）；位置学习事后验证（点击后 1.5s 窗口未关 = 普通点击不学）。命中率红线：SDK 广告窗 / Dialog / 学习指纹窗永不抑制。
+   315→          </p>
+   316→        </div>
+   317→
+   318→        {/* 统计 chips */}
+   319→        <div className="grid grid-cols-3 gap-2.5">
+   320→          {[
+   321→            { icon: Zap, label: "本次会话拦截", value: `${blocks} 次`, tone: "text-emerald-600" },
+   322→            { icon: Gauge, label: "平均拦截耗时", value: blocks > 0 ? `${avgMs} ms` : "—", tone: "text-violet-600" },
+   323→            { icon: Timer, label: "预拦截（0ms 可见）", value: `${preempts} 次`, tone: "text-fuchsia-600" },
+   324→          ].map(({ icon: Icon, label, value, tone }) => (
+   325→            <div key={label} className="rounded-xl border border-zinc-200 bg-white p-3">
+   326→              <div className="flex items-center gap-1 text-[10px] font-semibold text-zinc-400">
+   327→                <Icon className="h-3 w-3" /> {label}
+   328→              </div>
+   329→              <div className={cn("mt-1 text-lg font-black tabular-nums", tone)}>{value}</div>
+   330→            </div>
+   331→          ))}
+   332→        </div>
+   333→
+   334→        {/* 判定流水线 */}
+   335→        <div className="rounded-2xl border border-zinc-200 bg-white p-4">
+   336→          <div className="flex items-center justify-between">
+   337→            <h3 className="flex items-center gap-1.5 text-sm font-bold text-zinc-900">
+   338→              <Activity className="h-4 w-4 text-violet-600" /> 毫秒级判定流水线
+   339→            </h3>
+   340→            {plan && (
+   341→              <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-bold ring-1",
+   342→                plan.preempt ? "bg-fuchsia-50 text-fuchsia-700 ring-fuchsia-200" : "bg-violet-50 text-violet-700 ring-violet-200")}>
+   343→                {plan.preempt ? "P0 预拦截" : plan.ruleName}
+   344→              </span>
+   345→            )}
+   346→          </div>
+   347→          {plan ? (
+   348→            <>
+   349→              <div className="mt-3 flex items-baseline gap-2">
+   350→                <span className="text-2xl font-black tabular-nums text-zinc-900">{plan.totalMs}<span className="text-sm">ms</span></span>
+   351→                <span className="text-[11px] font-semibold text-zinc-500">端到端耗时</span>
+   352→                <span className="ml-auto text-[11px] font-bold text-emerald-600">置信度 {plan.confidence}%</span>
+   353→              </div>
+   354→              {plan.waitMs > 0 && (
+   355→                <p className="mt-1 text-[10px] leading-relaxed text-amber-600">
+   356→                  含等待广告方 { (plan.waitMs / 1000).toFixed(1) }s 显示真跳过（引擎出手仅 {plan.engineMs}ms）——假跳过陷阱甄别中，真跳过一挂载即出手
+   357→                </p>
+   358→              )}
+   359→              <ol className="mt-3 space-y-1.5">
+   360→                {plan.steps.map((s, i) => (
+   361→                  <li key={i} className="flex items-start gap-2 rounded-lg bg-zinc-50 px-2.5 py-1.5">
+   362→                    <span className="mt-px w-11 shrink-0 text-right text-[10px] font-bold tabular-nums text-violet-500">{s.atMs}ms</span>
+   363→                    <span className="min-w-0">
+   364→                      <span className="text-[11px] font-bold text-zinc-800">{s.label}</span>
+   365→                      <span className="ml-1.5 text-[10px] leading-relaxed text-zinc-500">{s.detail}</span>
+   366→                    </span>
+   367→                  </li>
+   368→                ))}
+   369→              </ol>
+   370→              <p className="mt-2 text-[10px] leading-relaxed text-zinc-400">※ 演示动画已放慢节奏以便观察，引擎真实耗时以上方流水线为准（真机由无障碍服务毫秒级执行）。</p>
+   371→            </>
+   372→          ) : (
+   373→            <p className="mt-3 rounded-lg bg-zinc-50 px-3 py-6 text-center text-xs text-zinc-400">
+   374→              点按左侧任意应用图标启动，观察秒跳引擎的拦截过程；再次启动同一应用可体验预拦截
+   375→            </p>
+   376→          )}
+   377→        </div>
+   378→
+   379→        {/* 场景速览 + 会话日志 */}
+   380→        <div className="grid gap-4 md:grid-cols-2">
+   381→          <div className="rounded-2xl border border-zinc-200 bg-white p-4">
+   382→            <h3 className="text-sm font-bold text-zinc-900">八大场景</h3>
+   383→            <ul className="mt-2.5 space-y-2">
+   384→              {SCENARIO_APPS.map((a) => {
+   385→                const Icon = APP_ICONS[a.icon];
+   386→                return (
+   387→                  <li key={a.key} className="flex items-center gap-2.5">
+   388→                    <span className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br text-white", a.gradient)}>
+   389→                      <Icon className="h-3.5 w-3.5" />
+   390→                    </span>
+   391→                    <div className="min-w-0 flex-1">
+   392→                      <div className="flex items-center gap-1.5 text-xs font-bold text-zinc-800">
+   393→                        {a.name}
+   394→                        <span className="rounded bg-zinc-100 px-1 text-[9px] font-semibold text-zinc-500">{a.category}</span>
+   395→                        {a.guard && <span className="rounded bg-emerald-100 px-1 text-[9px] font-bold text-emerald-700">守护</span>}
+   396→                        {a.traits?.fakeSkip && <span className="rounded bg-rose-100 px-1 text-[9px] font-bold text-rose-600">专案</span>}
+   397→                        {learnedApps.has(a.name) && <span className="rounded bg-fuchsia-100 px-1 text-[9px] font-bold text-fuchsia-700">指纹</span>}
+   398→                      </div>
+   399→                      <div className="truncate text-[10px] text-zinc-400">{a.note} · {AD_TYPE_LABEL[a.adType]}</div>
+   400→                    </div>
+   401→                  </li>
+   402→                );
+   403→              })}
+   404→            </ul>
+   405→            <Button size="sm" variant="outline" data-testid="btn-arena-feedback" className="mt-3 h-7 w-full rounded-lg text-[11px]" onClick={onFeedback}>
+   406→              遇到漏拦截 / 误拦截？反馈给开发者
+   407→            </Button>
+   408→          </div>
+   409→          <div className="rounded-2xl border border-zinc-200 bg-white p-4">
+   410→            <h3 className="text-sm font-bold text-zinc-900">会话拦截日志</h3>
+   411→            {log.length === 0 ? (
+   412→              <p className="mt-3 rounded-lg bg-zinc-50 px-3 py-6 text-center text-xs text-zinc-400">暂无记录</p>
+   413→            ) : (
+   414→              <ul className="mt-2.5 max-h-72 space-y-1.5 overflow-y-auto pr-1">
+   415→                {log.map((l) => (
+   416→                  <li key={l.id} className="flex items-center gap-2 rounded-lg bg-zinc-50 px-2.5 py-1.5 text-[11px]">
+   417→                    <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", l.kind === "preempt" ? "bg-fuchsia-500" : "bg-emerald-500")} />
+   418→                    <span className="font-bold text-zinc-800">{l.app}</span>
+   419→                    <span className="min-w-0 flex-1 truncate text-zinc-500">{l.text}</span>
+   420→                    <span className="shrink-0 font-bold tabular-nums text-emerald-600">{l.ms}ms</span>
+   421→                  </li>
+   422→                ))}
+   423→              </ul>
+   424→            )}
+   425→          </div>
+   426→        </div>
+   427→      </section>
+   428→    </div>
+   429→  );
+   430→}
+   431→
+   432→/* ═══════════ 手机屏幕（状态机渲染） ═══════════ */
+   433→function PhoneScreen({
+   434→  stage, app, plan, fakePhase, onLaunch, onBack, onTapFakeSkip,
+   435→}: {
+   436→  stage: Stage;
+   437→  app: ScenarioApp | null;
+   438→  plan: BlockPlan | null;
+   439→  fakePhase: FakePhase | null;
+   440→  onLaunch: (a: ScenarioApp) => void;
+   441→  onBack: () => void;
+   442→  onTapFakeSkip: () => void;
+   443→}) {
+   444→  return (
+   445→    <div className="relative flex h-full w-full flex-col overflow-hidden bg-zinc-50">
+   446→      <StatusBar />
+   447→      {stage === "home" && <HomeScreen onLaunch={onLaunch} />}
+   448→      {stage === "launch" && app && <LaunchScreen app={app} />}
+   449→      {stage === "ad" && app && plan && (
+   450→        <AdStage app={app} plan={plan} fakePhase={fakePhase} onTapFakeSkip={onTapFakeSkip} />
+   451→      )}
+   452→      {stage === "flash" && app && plan && <BlockFlash app={app} plan={plan} />}
+   453→      {stage === "main" && app && <MainScreen app={app} onBack={onBack} />}
+   454→    </div>
+   455→  );
+   456→}
+   457→
+   458→function StatusBar() {
+   459→  const [time, setTime] = useState("--:--");
+   460→  useEffect(() => {
+   461→    const tick = () => setTime(new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false }));
+   462→    tick();
+   463→    const t = setInterval(tick, 15000);
+   464→    return () => clearInterval(t);
+   465→  }, []);
+   466→  return (
+   467→    <div className="flex h-8 shrink-0 items-center justify-between bg-inherit px-5 text-[11px] font-semibold text-zinc-800">
+   468→      <span className="tabular-nums">{time}</span>
+   469→      <span className="absolute left-1/2 top-1.5 h-4 w-20 -translate-x-1/2 rounded-full bg-black" aria-hidden />
+   470→      <span className="flex items-center gap-1.5">
+   471→        <span className="flex items-center gap-0.5 text-emerald-600" title="秒跳引擎守护中">
+   472→          <ShieldCheck className="h-3 w-3" />
+   473→        </span>
+   474→        <Signal className="h-3 w-3" /> <Wifi className="h-3 w-3" /> <BatteryFull className="h-3.5 w-3.5" />
+   475→      </span>
+   476→    </div>
+   477→  );
+   478→}
+   479→
+   480→/* ── 桌面 ── */
+   481→function HomeScreen({ onLaunch }: { onLaunch: (a: ScenarioApp) => void }) {
+   482→  return (
+   483→    <div className="flex min-h-0 flex-1 flex-col bg-gradient-to-b from-violet-100 via-sky-50 to-emerald-50">
+   484→      <div className="grid flex-1 grid-cols-3 content-start gap-x-2 gap-y-4 px-5 pt-6">
+   485→        {SCENARIO_APPS.map((a) => {
+   486→          const Icon = APP_ICONS[a.icon];
+   487→          return (
+   488→            <button key={a.key} type="button" data-testid={`app-${a.key}`} onClick={() => onLaunch(a)} className="group flex flex-col items-center gap-1.5">
+   489→              <span className={cn("flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br text-white shadow-md shadow-zinc-300/60 transition group-active:scale-90", a.gradient)}>
+   490→                <Icon className="h-6 w-6" />
+   491→              </span>
+   492→              <span className="text-[11px] font-semibold text-zinc-700">{a.name}</span>
+   493→            </button>
+   494→          );
+   495→        })}
+   496→      </div>
+   497→      {/* 壁纸提示 */}
+   498→      <div className="mx-5 mb-2 rounded-xl bg-white/60 px-3 py-2 text-center text-[10px] leading-relaxed text-zinc-500 backdrop-blur">
+   499→        点击应用体验秒跳 · 银行/政务/支付为守护模式 · 喜马拉雅为 SDK 广告窗专案 · 邻里团购为弹窗 v2
+   500→      </div>
+   501→      {/* Dock */}
+   502→      <div className="mx-4 mb-3 flex items-center justify-around rounded-2xl bg-white/70 p-2.5 backdrop-blur">
+   503→        {[Phone, MessageCircle, Globe, Camera].map((Icon, i) => (
+   504→          <span key={i} className="flex h-10 w-10 items-center justify-center rounded-xl bg-zinc-100 text-zinc-500">
+   505→            <Icon className="h-5 w-5" />
+   506→          </span>
+   507→        ))}
+   508→      </div>
+   509→    </div>
+   510→  );
+   511→}
+   512→
+   513→/* ── 启动画面 ── */
+   514→function LaunchScreen({ app }: { app: ScenarioApp }) {
+   515→  const Icon = APP_ICONS[app.icon];
+   516→  return (
+   517→    <div className="flex flex-1 flex-col items-center justify-center gap-3.5 bg-white">
+   518→      <span className={cn("flex h-20 w-20 animate-[app-launch_0.85s_ease-out] items-center justify-center rounded-3xl bg-gradient-to-br text-white shadow-lg", app.gradient)}>
+   519→        <Icon className="h-9 w-9" />
+   520→      </span>
+   521→      <div className="text-sm font-semibold tracking-widest text-zinc-400">{app.name}</div>
+   522→    </div>
+   523→  );
+   524→}
+   525→
+   526→/* ── 广告展示（引擎拦截过程演示） ── */
+   527→function AdStage({
+   528→  app, plan, fakePhase, onTapFakeSkip,
+   529→}: {
+   530→  app: ScenarioApp;
+   531→  plan: BlockPlan;
+   532→  fakePhase: FakePhase | null;
+   533→  onTapFakeSkip: () => void;
+   534→}) {
+   535→  const isShake = app.adType === "shake";
+   536→  const isAdversarial = !!app.traits?.fakeSkip && (!!app.traits?.chainJump || !!app.traits?.gyroFlip);
+   537→  const isPopup = app.adType === "popup";
+   538→  const isGyro = !!app.traits?.gyroFlip;
+   539→  const isSdkWin = !!app.traits?.sdkWindow;
+   540→
+   541→  const overlayText =
+   542→    fakePhase === "scanning"
+   543→      ? isPopup
+   544→        ? "弹窗多信号扫描中 · 寻找「广告」角标与关闭键"
+   545→        : isSdkWin
+   546→          ? "SDK 广告窗识别中 · className 指纹比对（零文本可判）"
+   547→          : "极速链首扫中 · 假跳过甄别 + 翻转文案识别"
+   548→    : fakePhase === "ignored"
+   549→      ? isPopup
+   550→        ? "已确认「广告」角标 + 关闭键 → 双信号成立"
+   551→        : isSdkWin
+   552→          ? "SDK 窗指纹命中 · 复核无真跳过键 → 升级直断"
+   553→          : isGyro
+   554→            ? "已忽略假「跳过」陷阱 · 识别到「翻转手机」文案"
+   555→            : "已忽略假「跳过」陷阱 · 监听中"
+   556→    : fakePhase === "chain"
+   557→      ? isGyro
+   558→        ? "陀螺仪诱导 → 返回键抢先直断（翻转触发前）"
+   559→        : "链式二跳识别 → 广告窗前置直断"
+   560→    : "秒跳引擎拦截中…";
+   561→
+   562→  /* 应用内弹窗广告：主页内容 + 底部弹层广告（角标 + 小号关闭键） */
+   563→  if (isPopup) {
+   564→    return (
+   565→      <div className="relative min-h-0 flex-1" data-testid="ad-stage">
+   566→        <GroupBuyScreen compact />
+   567→        {/* 弹窗广告层 */}
+   568→        <div className="absolute inset-x-4 bottom-4 z-20 overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-zinc-200">
+   569→          <div className="flex">
+   570→            <div className="h-24 w-24 shrink-0 bg-gradient-to-br from-rose-500 to-orange-400" />
+   571→            <div className="min-w-0 flex-1 p-3">
+   572→              <div className="flex items-center gap-1.5">
+   573→                <span className="rounded bg-zinc-800/80 px-1 text-[8px] font-black text-white">广告</span>
+   574→                <span className="truncate text-[11px] font-bold text-zinc-800">{app.ad.brand}</span>
+   575→              </div>
+   576→              <div className="mt-1 truncate text-[12px] font-black text-zinc-900">{app.ad.title}</div>
+   577→              <div className="truncate text-[10px] text-zinc-500">{app.ad.subtitle}</div>
+   578→              <button type="button" className="mt-1.5 rounded-full bg-rose-500 px-3 py-1 text-[10px] font-black text-white">
+   579→                {app.ad.ctaText}
+   580→              </button>
+   581→            </div>
+   582→            {/* 关闭键：引擎双信号确认后代点 */}
+   583→            <button
+   584→              type="button"
+   585→              data-testid="btn-popup-close"
+   586→              className={cn(
+   587→                "absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-bold transition",
+   588→                fakePhase === "ignored" || fakePhase === "chain"
+   589→                  ? "bg-emerald-500 text-white ring-2 ring-emerald-300"
+   590→                  : "bg-zinc-200/80 text-zinc-500",
+   591→              )}
+   592→              aria-label="关闭广告"
+   593→            >
+   594→              <X className="h-3 w-3" />
+   595→            </button>
+   596→          </div>
+   597→        </div>
+   598→        {/* 引擎状态覆盖层 */}
+   599→        <div className="absolute inset-x-0 top-2 z-30 flex justify-center">
+   600→          <div className={cn(
+   601→            "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[10px] font-semibold backdrop-blur",
+   602→            fakePhase === "ignored" || fakePhase === "chain" ? "bg-emerald-600/85 text-white" : "bg-black/45 text-white/90",
+   603→          )}>
+   604→            {fakePhase === "ignored" || fakePhase === "chain"
+   605→              ? <ShieldCheck className="h-3 w-3" />
+   606→              : <Zap className="h-3 w-3 animate-pulse text-amber-300" />}
+   607→            {overlayText}
+   608→          </div>
+   609→        </div>
+   610→        {plan.preempt === false && (
+   611→          <div className="absolute left-2.5 top-2.5 z-20 rounded-full bg-fuchsia-600/90 px-2 py-0.5 text-[9px] font-bold text-white">
+   612→            首拦学习指纹 · 下次启动预拦截
+   613→          </div>
+   614→        )}
+   615→      </div>
+   616→    );
+   617→  }
+   618→
+   619→  return (
+   620→    <div className="relative flex-1" data-testid="ad-stage">
+   621→      <AdCreative ad={app.ad} variant="splash" />
+   622→
+   623→      {/* 真跳过按钮（非对抗类：正常跳过键，引擎将代点） */}
+   624→      {!isAdversarial && (
+   625→        <button
+   626→          type="button"
+   627→          data-testid="btn-skip"
+   628→          className="absolute right-2.5 top-2.5 z-20 rounded-full bg-black/35 px-2.5 py-1 text-[10px] font-semibold text-white backdrop-blur"
+   629→        >
+   630→          {app.traits?.noCountdown ? "跳过广告" : "跳过"}
+   631→        </button>
+   632→      )}
+   633→
+   634→      {/* 假跳过陷阱（喜马拉雅类：广告图内嵌的大号假「跳过」，点击即跳转；无倒计时形态文案直配） */}
+   635→      {isAdversarial && (
+   636→        <button
+   637→          type="button"
+   638→          data-testid="btn-fake-skip"
+   639→          onClick={onTapFakeSkip}
+   640→          className={cn(
+   641→            "absolute bottom-5 right-3 z-20 flex items-center gap-1.5 rounded-full bg-gradient-to-r from-orange-500 to-amber-400 px-4 py-2 text-[12px] font-black text-white shadow-lg shadow-orange-500/40 transition",
+   642→            fakePhase === "ignored" || fakePhase === "chain"
+   643→              ? "pointer-events-none opacity-60 ring-2 ring-rose-500 ring-offset-2 ring-offset-black/20"
+   644→              : "animate-pulse",
+   645→          )}
+   646→        >
+   647→          {fakePhase === "ignored" || fakePhase === "chain" ? (
+   648→            <>
+   649→              <span className="line-through decoration-rose-500 decoration-2">{app.traits?.noCountdown ? "跳过广告" : "跳过 5"}</span>
+   650→              <span className="rounded bg-rose-500 px-1 text-[9px]">陷阱已忽略</span>
+   651→            </>
+   652→          ) : (
+   653→            <>{app.traits?.noCountdown ? "跳过广告" : "跳过 5"}</>
+   654→          )}
+   655→        </button>
+   656→      )}
+   657→
+   658→      {/* 陀螺仪诱导提示条（喜马拉雅实测：翻转手机，跳转详情页或第三方应用） */}
+   659→      {isGyro && (
+   660→        <div className={cn(
+   661→          "absolute bottom-11 left-1/2 z-20 flex max-w-[92%] -translate-x-1/2 items-center gap-1 rounded-full bg-black/55 px-3 py-1.5 text-[10px] font-bold text-white backdrop-blur transition",
+   662→          fakePhase === "chain" && "bg-rose-600/80",
+   663→        )} data-testid="gyro-hint">
+   664→          <Smartphone className={cn("h-3.5 w-3.5", fakePhase === "chain" ? "text-white" : "animate-pulse text-amber-300")} />
+   665→          翻转手机，跳转详情页或第三方应用
+   666→        </div>
+   667→      )}
+   668→
+   669→      {/* 摇一摇角标 */}
+   670→      {isShake && (
+   671→        <div className="absolute bottom-16 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1 rounded-full bg-black/45 px-3 py-1.5 text-[11px] font-bold text-white backdrop-blur">
+   672→          <Vibrate className="h-3.5 w-3.5 animate-pulse text-amber-300" />
+   673→          传感器已被引擎挂起
+   674→        </div>
+   675→      )}
+   676→      {/* Deeplink 角标 */}
+   677→      {app.adType === "deeplink" && (
+   678→        <div className="absolute bottom-16 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1 rounded-full bg-black/45 px-3 py-1.5 text-[11px] font-bold text-white backdrop-blur">
+   679→          <Link2Off className="h-3.5 w-3.5 text-rose-300" />
+   680→          跳转意图已断链
+   681→        </div>
+   682→      )}
+   683→
+   684→      {/* 引擎状态覆盖层 */}
+   685→      <div className="absolute inset-x-0 bottom-0 z-10 flex items-center justify-center pb-6">
+   686→        <div className={cn(
+   687→          "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[10px] font-semibold backdrop-blur",
+   688→          fakePhase === "chain" ? "bg-rose-600/80 text-white" : "bg-black/45 text-white/90",
+   689→        )}>
+   690→          {fakePhase === "chain"
+   691→            ? <Link2Off className="h-3 w-3" />
+   692→            : <Zap className="h-3 w-3 animate-pulse text-amber-300" />}
+   693→          {overlayText}
+   694→        </div>
+   695→      </div>
+   696→
+   697→      {/* 首启学习提示（尚未沉淀指纹的应用） */}
+   698→      {plan.preempt === false && (
+   699→        <div className="absolute left-2.5 top-2.5 z-20 rounded-full bg-fuchsia-600/90 px-2 py-0.5 text-[9px] font-bold text-white">
+   700→          首拦学习指纹 · 下次启动预拦截
+   701→        </div>
+   702→      )}
+   703→    </div>
+   704→  );
+   705→}
+   706→
+   707→/* ── 拦截成功闪光层 ── */
+   708→function BlockFlash({ app, plan }: { app: ScenarioApp; plan: BlockPlan }) {
+   709→  return (
+   710→    <div className="relative flex-1 animate-[toast-in_.2s_ease-out]" data-testid={plan.preempt ? "preempt-flash" : "block-flash"}>
+   711→      <div className="absolute inset-0 bg-zinc-950/92" />
+   712→      <div className="relative flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+   713→        <span className={cn(
+   714→          "flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br text-white shadow-lg",
+   715→          plan.preempt ? "from-fuchsia-500 to-violet-600" : app.guard ? "from-emerald-500 to-teal-600" : "from-violet-500 to-fuchsia-600",
+   716→        )}>
+   717→          {plan.preempt ? <Timer className="h-8 w-8" /> : app.guard ? <ShieldCheck className="h-8 w-8" /> : <Zap className="h-8 w-8" />}
+   718→        </span>
+   719→        <div className="text-[15px] font-black leading-snug text-white">{plan.headline}</div>
+   720→        <div className="text-[11px] text-zinc-400">{plan.subline}</div>
+   721→        <div className="mt-1 flex items-center gap-2">
+   722→          <span className={cn(
+   723→            "rounded-lg px-3 py-1.5 text-lg font-black tabular-nums ring-1",
+   724→            plan.preempt ? "bg-white/10 text-fuchsia-300 ring-fuchsia-400/30" : "bg-white/10 text-emerald-400 ring-emerald-400/30",
+   725→          )}>
+   726→            {plan.totalMs}ms
+   727→          </span>
+   728→          <span className="rounded-lg bg-white/10 px-3 py-1.5 text-[11px] font-bold text-zinc-200 ring-1 ring-white/10">
+   729→            置信度 {plan.confidence}%
+   730→          </span>
+   731→        </div>
+   732→        {plan.preempt ? (
+   733→          <div className="mt-1 flex items-center gap-1.5 rounded-full bg-fuchsia-500/15 px-3 py-1 text-[10px] font-bold text-fuchsia-300 ring-1 ring-fuchsia-400/30">
+   734→            <Timer className="h-3 w-3" /> 0ms 广告可见时间 · 用户零感知
+   735→          </div>
+   736→        ) : app.guard ? (
+   737→          <div className="mt-1 flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-3 py-1 text-[10px] font-bold text-emerald-300 ring-1 ring-emerald-400/30">
+   738→            <ShieldCheck className="h-3 w-3" /> 应用进程与服务未受任何影响
+   739→          </div>
+   740→        ) : null}
+   741→      </div>
+   742→    </div>
+   743→  );
+   744→}
+   745→
+   746→/* ── 各应用主页 ── */
+   747→function MainScreen({ app, onBack }: { app: ScenarioApp; onBack: () => void }) {
+   748→  return (
+   749→    <div className="flex min-h-0 flex-1 flex-col bg-zinc-50">
+   750→      {app.guard && (
+   751→        <div className="flex items-center gap-1.5 bg-emerald-600 px-4 py-1.5 text-[10px] font-bold text-white">
+   752→          <ShieldCheck className="h-3 w-3" /> 守护模式：开屏广告已拦截 · 应用服务保持运行
+   753→        </div>
+   754→      )}
+   755→      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+   756→        {app.screen === "mall" && <MallScreen />}
+   757→        {app.screen === "game" && <GameScreen />}
+   758→        {app.screen === "bank" && <BankScreen />}
+   759→        {app.screen === "gov" && <GovScreen />}
+   760→        {app.screen === "pay" && <PayScreen />}
+   761→        {app.screen === "video" && <VideoScreen />}
+   762→        {app.screen === "audio" && <AudioScreen />}
+   763→      </div>
+   764→      {/* 底部返回 */}
+   765→      <button type="button" data-testid="btn-home" onClick={onBack} className="flex h-9 shrink-0 items-center justify-center gap-1 border-t border-zinc-200 bg-white text-[11px] font-semibold text-zinc-500 active:bg-zinc-50">
+   766→        <ChevronLeft className="h-3.5 w-3.5" /> 返回桌面
+   767→      </button>
+   768→    </div>
+   769→  );
+   770→}
+   771→
+   772→function AppHeader({ app, right }: { app: ScenarioApp; right?: React.ReactNode }) {
+   773→  const Icon = APP_ICONS[app.icon];
+   774→  return (
+   775→    <div className="sticky top-0 z-10 flex items-center gap-2.5 border-b border-zinc-100 bg-white/95 px-4 pb-2.5 pt-1 backdrop-blur">
+   776→      <span className={cn("flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br text-white", app.gradient)}>
+   777→        <Icon className="h-4 w-4" />
+   778→      </span>
+   779→      <span className="text-[15px] font-bold text-zinc-900">{app.name}</span>
+   780→      <span className="ml-auto flex items-center gap-2.5 text-zinc-400">{right}</span>
+   781→    </div>
+   782→  );
+   783→}
+   784→
+   785→function MallScreen() {
+   786→  const goods = [
+   787→    { name: "无线降噪耳机", price: "¥299", g: "from-violet-400 to-fuchsia-500" },
+   788→    { name: "智能手环 Pro", price: "¥399", g: "from-sky-400 to-blue-500" },
+   789→    { name: "便携咖啡机", price: "¥199", g: "from-amber-400 to-orange-500" },
+   790→    { name: "机械键盘 87 键", price: "¥249", g: "from-emerald-400 to-teal-500" },
+   791→  ];
+   792→  return (
+   793→    <div>
+   794→      <AppHeader app={SCENARIO_APPS[0]} right={<Search className="h-4 w-4" />} />
+   795→      <div className="p-3">
+   796→        <div className="mb-3 h-20 rounded-xl bg-gradient-to-r from-rose-500 to-orange-400 p-3 text-white">
+   797→          <div className="text-sm font-black">限时秒杀 · 12:00 场</div>
+   798→          <div className="text-[10px] opacity-90">全场包邮 · 每 30 分钟上新</div>
+   799→        </div>
+   800→        <div className="grid grid-cols-2 gap-2.5">
+   801→          {goods.map((g) => (
+   802→            <div key={g.name} className="overflow-hidden rounded-xl bg-white ring-1 ring-zinc-100">
+   803→              <div className={cn("h-24 bg-gradient-to-br", g.g)} />
+   804→              <div className="p-2">
+   805→                <div className="truncate text-[11px] font-bold text-zinc-800">{g.name}</div>
+   806→                <div className="mt-0.5 text-xs font-black text-rose-600">{g.price}</div>
+   807→              </div>
+   808→            </div>
+   809→          ))}
+   810→        </div>
+   811→      </div>
+   812→    </div>
+   813→  );
+   814→}
+   815→
+   816→function GameScreen() {
+   817→  return (
+   818→    <div className="flex min-h-full flex-col bg-gradient-to-b from-zinc-950 to-purple-950 text-white">
+   819→      <div className="flex items-center justify-between px-4 pb-2 pt-1 text-[11px] text-zinc-300">
+   820→        <span className="font-bold">星际远征</span>
+   821→        <span>Lv.42 · 战力 128,600</span>
+   822→      </div>
+   823→      <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 pb-8">
+   824→        <div className="text-center">
+   825→          <div className="text-xl font-black tracking-widest text-fuchsia-300">S3 赛季开启</div>
+   826→          <div className="mt-1 text-[11px] text-zinc-400">段位重置 · 赛季皮肤限时领取</div>
+   827→        </div>
+   828→        <button type="button" className="rounded-full bg-gradient-to-r from-fuchsia-500 to-purple-600 px-10 py-3 text-sm font-black shadow-lg shadow-fuchsia-500/40 active:scale-95">
+   829→          开始游戏
+   830→        </button>
+   831→        <div className="grid w-full grid-cols-3 gap-2 pt-2 text-center text-[10px] text-zinc-300">
+   832→          {["排位赛", "剧情模式", "军团"].map((t) => (
+   833→            <div key={t} className="rounded-xl bg-white/10 py-3 font-bold ring-1 ring-white/10">{t}</div>
+   834→          ))}
+   835→        </div>
+   836→      </div>
+   837→    </div>
+   838→  );
+   839→}
+   840→
+   841→function BankScreen() {
+   842→  return (
+   843→    <div>
+   844→      <AppHeader app={SCENARIO_APPS.find((a) => a.key === "bank")!} right={<UserRound className="h-4 w-4" />} />
+   845→      <div className="p-4">
+   846→        <div className="rounded-2xl bg-gradient-to-br from-sky-700 to-indigo-700 p-4 text-white shadow-md">
+   847→          <div className="text-[10px] opacity-80">储蓄卡（**** 8867）</div>
+   848→          <div className="mt-1 text-2xl font-black tabular-nums">¥ 12,345.67</div>
+   849→          <div className="mt-2 flex gap-4 text-[10px] opacity-80">
+   850→            <span>待收利息 ¥23.40</span>
+   851→            <span>积分 4,520</span>
+   852→          </div>
+   853→        </div>
+   854→        <div className="mt-4 grid grid-cols-4 gap-2 text-center text-[10px] font-semibold text-zinc-600">
+   855→          {[
+   856→            { icon: ArrowLeftRight, t: "转账" },
+   857→            { icon: ScanLine, t: "扫一扫" },
+   858→            { icon: Receipt, t: "明细" },
+   859→            { icon: TrendingUp, t: "理财" },
+   860→          ].map(({ icon: Icon, t }) => (
+   861→            <div key={t} className="rounded-xl bg-white py-3 ring-1 ring-zinc-100">
+   862→              <Icon className="mx-auto h-4.5 w-4.5 text-sky-600" />
+   863→              <div className="mt-1">{t}</div>
+   864→            </div>
+   865→          ))}
+   866→        </div>
+   867→        <div className="mt-4 space-y-2">
+   868→          {["工资到账 +8,420.00", "消费 -128.50 · 便利店"].map((t) => (
+   869→            <div key={t} className="flex items-center justify-between rounded-xl bg-white px-3 py-2.5 text-[11px] ring-1 ring-zinc-100">
+   870→              <span className="text-zinc-700">{t}</span>
+   871→              <PiggyBank className="h-3.5 w-3.5 text-zinc-300" />
+   872→            </div>
+   873→          ))}
+   874→        </div>
+   875→      </div>
+   876→    </div>
+   877→  );
+   878→}
+   879→
+   880→function GovScreen() {
+   881→  const services = [
+   882→    { icon: FileText, t: "社保查询", d: "参保信息 · 缴费明细" },
+   883→    { icon: PiggyBank, t: "公积金", d: "余额 · 提取预约" },
+   884→    { icon: CalendarClock, t: "办事预约", d: "政务大厅取号" },
+   885→    { icon: Receipt, t: "电子证照", d: "身份证 · 驾驶证" },
+   886→  ];
+   887→  return (
+   888→    <div>
+   889→      <AppHeader app={SCENARIO_APPS.find((a) => a.key === "gov")!} />
+   890→      <div className="p-4">
+   891→        <div className="rounded-2xl bg-gradient-to-r from-teal-600 to-emerald-500 p-4 text-white">
+   892→          <div className="text-sm font-black">一键办事</div>
+   893→          <div className="mt-0.5 text-[10px] opacity-90">高频服务 · 免排队 · 全程网办</div>
+   894→        </div>
+   895→        <div className="mt-4 space-y-2.5">
+   896→          {services.map(({ icon: Icon, t, d }) => (
+   897→            <div key={t} className="flex items-center gap-3 rounded-xl bg-white px-3.5 py-3 ring-1 ring-zinc-100">
+   898→              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-teal-50 text-teal-600">
+   899→                <Icon className="h-4.5 w-4.5" />
+   900→              </span>
+   901→              <div className="min-w-0 flex-1">
+   902→                <div className="text-xs font-bold text-zinc-800">{t}</div>
+   903→                <div className="text-[10px] text-zinc-400">{d}</div>
+   904→              </div>
+   905→              <ChevronLeft className="h-4 w-4 rotate-180 text-zinc-300" />
+   906→            </div>
+   907→          ))}
+   908→        </div>
+   909→      </div>
+   910→    </div>
+   911→  );
+   912→}
+   913→
+   914→function PayScreen() {
+   915→  return (
+   916→    <div>
+   917→      <AppHeader app={SCENARIO_APPS.find((a) => a.key === "pay")!} right={<UserRound className="h-4 w-4" />} />
+   918→      <div className="flex flex-col items-center gap-4 p-6">
+   919→        <button type="button" className="flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-lg shadow-emerald-500/30 active:scale-95">
+   920→          <ScanLine className="h-8 w-8" />
+   921→        </button>
+   922→        <div className="text-[11px] font-semibold text-zinc-500">扫一扫 · 收付款</div>
+   923→        <div className="grid w-full grid-cols-3 gap-2 text-center text-[10px] font-semibold text-zinc-600">
+   924→          {["乘车码", "生活缴费", "红包"].map((t) => (
+   925→            <div key={t} className="rounded-xl bg-white py-3 ring-1 ring-zinc-100">{t}</div>
+   926→          ))}
+   927→        </div>
+   928→        <div className="w-full space-y-2">
+   929→          {["商户消费 -36.00 · 超市", "红包 +8.88 · 好友"].map((t) => (
+   930→            <div key={t} className="rounded-xl bg-white px-3 py-2.5 text-[11px] text-zinc-700 ring-1 ring-zinc-100">{t}</div>
+   931→          ))}
+   932→        </div>
+   933→      </div>
+   934→    </div>
+   935→  );
+   936→}
+   937→
+   938→function VideoScreen() {
+   939→  const videos = [
+   940→    { t: "3 分钟看懂量子计算", a: "科技星说", g: "from-violet-500 to-purple-600", hot: "128 万" },
+   941→    { t: "城市夜跑 vlog", a: "跑者小K", g: "from-sky-500 to-cyan-500", hot: "36 万" },
+   942→    { t: "深夜食堂 · 一碗葱油面", a: "灶台笔记", g: "from-amber-500 to-orange-500", hot: "89 万" },
+   943→  ];
+   944→  return (
+   945→    <div>
+   946→      <AppHeader app={SCENARIO_APPS.find((a) => a.key === "video")!} right={<Search className="h-4 w-4" />} />
+   947→      <div className="space-y-3 p-3">
+   948→        {videos.map((v) => (
+   949→          <div key={v.t} className="overflow-hidden rounded-xl bg-white ring-1 ring-zinc-100">
+   950→            <div className={cn("relative flex h-32 items-center justify-center bg-gradient-to-br", v.g)}>
+   951→              <Tv className="h-8 w-8 text-white/70" />
+   952→              <span className="absolute bottom-1.5 right-2 rounded bg-black/40 px-1.5 py-0.5 text-[9px] font-bold text-white">02:14</span>
+   953→            </div>
+   954→            <div className="flex items-center justify-between p-2.5">
+   955→              <div className="min-w-0">
+   956→                <div className="truncate text-xs font-bold text-zinc-800">{v.t}</div>
+   957→                <div className="mt-0.5 flex items-center gap-2 text-[10px] text-zinc-400">
+   958→                  <span className="flex items-center gap-0.5"><Music2 className="h-2.5 w-2.5" />{v.a}</span>
+   959→                  <span className="flex items-center gap-0.5"><Flame className="h-2.5 w-2.5 text-rose-400" />{v.hot}</span>
+   960→                </div>
+   961→              </div>
+   962→              <div className="flex items-center gap-2.5 text-zinc-300">
+   963→                <ThumbsUp className="h-4 w-4" />
+   964→                <Share2 className="h-4 w-4" />
+   965→              </div>
+   966→            </div>
+   967→          </div>
+   968→        ))}
+   969→      </div>
+   970→    </div>
+   971→  );
+   972→}
+   973→
+   974→function AudioScreen() {
+   975→  const audios = [
+   976→    { t: "深夜电台 · 都市情感树洞", a: "夜声Live", d: "12.4 万人在听", g: "from-orange-400 to-amber-500" },
+   977→    { t: "三分钟财经早知道", a: "财听天下", d: "早 7 点更新", g: "from-sky-400 to-blue-500" },
+   978→    { t: "郭氏相声精选集", a: "曲艺茶馆", d: "完本 · 342 集", g: "from-rose-400 to-pink-500" },
+   979→    { t: "枕边名著 · 平凡的世界", a: "声书馆", d: "播到第 96 集", g: "from-emerald-400 to-teal-500" },
+   980→  ];
+   981→  return (
+   982→    <div>
+   983→      <AppHeader app={SCENARIO_APPS.find((a) => a.key === "ximalaya")!} right={<Search className="h-4 w-4" />} />
+   984→      <div className="p-3">
+   985→        <div className="flex items-center gap-3 rounded-2xl bg-gradient-to-r from-orange-500 to-amber-400 p-3.5 text-white">
+   986→          <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/20">
+   987→            <Play className="h-5 w-5" />
+   988→          </span>
+   989→          <div className="min-w-0 flex-1">
+   990→            <div className="truncate text-sm font-black">继续收听 · 夜听电台 第 214 期</div>
+   991→            <div className="mt-0.5 text-[10px] opacity-90">已播 18:26 / 42:10</div>
+   992→          </div>
+   993→        </div>
+   994→        <div className="mt-3 space-y-2">
+   995→          {audios.map((v) => (
+   996→            <div key={v.t} className="flex items-center gap-3 rounded-xl bg-white px-3 py-2.5 ring-1 ring-zinc-100">
+   997→              <span className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br text-white", v.g)}>
+   998→                <Music2 className="h-4.5 w-4.5" />
+   999→              </span>
+  1000→              <div className="min-w-0 flex-1">
+  1001→                <div className="truncate text-xs font-bold text-zinc-800">{v.t}</div>
+  1002→                <div className="mt-0.5 flex items-center gap-2 text-[10px] text-zinc-400">
+  1003→                  <span>{v.a}</span>
+  1004→                  <span>·</span>
+  1005→                  <span>{v.d}</span>
+  1006→                </div>
+  1007→              </div>
+  1008→              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-orange-50 text-orange-500">
+  1009→                <Play className="h-3.5 w-3.5" />
+  1010→              </span>
+  1011→            </div>
+  1012→          ))}
+  1013→        </div>
+  1014→      </div>
+  1015→    </div>
+  1016→  );
+  1017→}
+  1018→
+  1019→/* ── 邻里团购主页（弹窗广告宿主） ── */
+  1020→function GroupBuyScreen({ compact = false }: { compact?: boolean }) {
+  1021→  const goods = [
+  1022→    { name: "红颜草莓 2 盒", price: "¥19.9", g: "from-rose-400 to-red-500", tag: "热卖" },
+  1023→    { name: "本地青菜 3 斤", price: "¥6.8", g: "from-lime-400 to-green-500", tag: "今日到货" },
+  1024→    { name: "土鸡蛋 30 枚", price: "¥25.0", g: "from-amber-400 to-orange-500", tag: "补货" },
+  1025→    { name: "纯牛奶 12 盒", price: "¥39.9", g: "from-sky-400 to-blue-500", tag: "满减" },
+  1026→  ];
+  1027→  return (
+  1028→    <div className={cn("flex min-h-0 flex-1 flex-col bg-zinc-50", compact && "min-h-0")}>
+  1029→      <AppHeader app={SCENARIO_APPS.find((a) => a.key === "groupbuy")!} right={<Search className="h-4 w-4" />} />
+  1030→      <div className={cn("overflow-y-auto", compact ? "flex-1" : "min-h-0 flex-1")}>
+  1031→        <div className="p-3">
+  1032→          <div className="mb-3 rounded-xl bg-gradient-to-r from-lime-500 to-green-500 p-3 text-white">
+  1033→            <div className="text-sm font-black">周末自提团 · 楼下驿站 17:00 开柜</div>
+  1034→            <div className="text-[10px] opacity-90">2.1 万人参团 · 本小区已拼 342 单</div>
+  1035→          </div>
+  1036→          <div className="grid grid-cols-2 gap-2.5">
+  1037→            {goods.map((g) => (
+  1038→              <div key={g.name} className="overflow-hidden rounded-xl bg-white ring-1 ring-zinc-100">
+  1039→                <div className={cn("relative h-20 bg-gradient-to-br", g.g)}>
+  1040→                  <span className="absolute left-1.5 top-1.5 rounded bg-black/35 px-1 text-[8px] font-bold text-white">{g.tag}</span>
+  1041→                </div>
+  1042→                <div className="p-2">
+  1043→                  <div className="truncate text-[11px] font-bold text-zinc-800">{g.name}</div>
+  1044→                  <div className="mt-0.5 flex items-center justify-between">
+  1045→                    <span className="text-xs font-black text-rose-600">{g.price}</span>
+  1046→                    <span className="rounded-full bg-rose-500 px-2 py-0.5 text-[9px] font-bold text-white">加购</span>
+  1047→                  </div>
+  1048→                </div>
+  1049→              </div>
+  1050→            ))}
+  1051→          </div>
+  1052→        </div>
+  1053→      </div>
+  1054→    </div>
+  1055→  );
+  1056→}
+  1057→
