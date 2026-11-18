@@ -202,8 +202,11 @@ public final class AdDecisionCore {
      * v5.7.0 扫描日志继续优化（用户二轮实锤：可以再大胆激进一点）：
      * 倒计时缓冲 300→180ms——「将尽」判定再提前 0.12s；倒计时将尽时
      * 广告主普遍最后 0.1~0.3s 插入结算帧，越早开火可见时长越短。
+     * v5.8.0 屏蔽速度压榨（用户三轮实锤：屏蔽速度太慢了，压榨优化速度
+     * 算法）：180→120ms——「将尽」判定再提前 0.06s；配合服务侧骨架档
+     * 前 4s 密度×2 与开闸精确针，开火链路全绿。
      * 安全边界依旧：未到仍不点，COUNTDOWN_MAX_S 天花堂不变。 */
-    public static final long COUNTDOWN_EXTRA_MS = 180;   // v5.7.0：300→180（更激进：倒计时将尽提前 0.32s 开火）
+    public static final long COUNTDOWN_EXTRA_MS = 120;   // v5.8.0：180→120（速度压榨：倒计时将尽提前 0.38s 开火）
     public static final int COUNTDOWN_MAX_S = 15;        // v3.8.0：可识别的倒计时秒数上限
 
     /* ── v3.5.0 复验与候选参数 ── */
@@ -215,8 +218,11 @@ public final class AdDecisionCore {
      * 安全闸（面积/形状/守护名单）不变。
      * v5.7.0 继续激进：8→10——扫描日志显示深树广告窗（300+ 节点）
      * 复验轮换链常达 8 次上限后干看广告走完；+2 预算只延长换候选
-     * 轮次，不放宽任何安全闸（误点面零变化）。 */
-    public static final int MAX_CLICKS_PER_WIN = 10;      // v5.7.0：8→10（更激进：复验链再多两次换候选机会）
+     * 轮次，不放宽任何安全闸（误点面零变化）。
+     * v5.8.0 速度压榨：10→12——点击冷却 420→300ms 后轮换节奏本身就快，
+     * 预算同步加宽才不会提前「优雅收手」干看广告走完；安全闸
+     * （面积/形状/守护名单）依旧零变化。 */
+    public static final int MAX_CLICKS_PER_WIN = 12;      // v5.8.0：10→12（速度压榨：复验链再多两次换候选机会）
     public static final double CLOSE_TOP_MAX = 0.35;      // 开屏×关闭键须在顶部 35% 内
     public static final int LONG_TEXT_LEN = 40;           // 长文本（正常内容页特征）
 
@@ -224,7 +230,7 @@ public final class AdDecisionCore {
     public static final double POS_LEARN_AREA_MAX = 0.25; // 位置学习：控件面积上限（v3.6.0 0.20→0.25：手动教学点击事件源可能是稍大的容器）
     public static final double POS_MIN_NORM = 0.03;      // v3.7.0：位置学习健全性下限（真机日志 (63%,102%) 越界白学）
     public static final double POS_MAX_NORM = 0.97;      // v3.7.0：位置学习健全性上限（越界坐标点了也是死区）
-    public static final int SKIP_CANDS_MAX = 6;          // v5.7.0：4→6（更激进：深树广告窗同文案多候选全收——复验真正换候选）
+    public static final int SKIP_CANDS_MAX = 8;          // v5.8.0：6→8（速度压榨：深树同文案候选全收，复验换候选零等待）
     public static final int CORNER_TREE_MAX_NODES = 150; // v3.7.0：角落/关闭键树上限放宽（广告窗树常大，微博根因之一）
     public static final double HOT_ZONE_AREA = 0.55;   // 热区：≥55% 屏幕面积
     public static final int HOT_ZONE_MAX_NODES = 12;
@@ -250,7 +256,11 @@ public final class AdDecisionCore {
     public static final String[] SKIP_TEXTS = {"跳过", "关闭广告", "跳过广告", "跳过此广告", "立即跳过", "跳过领取", "Skip Ad",
             /* v5.7.0 激进化扩充（扫描日志：视频类 App 开屏「跳过片头/跳过视频」
              * 整词标签未入真候选——CLOSE 族兼容路径直接放行） */
-            "跳过视频", "跳过片头", "Skip Video"};
+            "跳过视频", "跳过片头", "Skip Video",
+            /* v5.8.0 扫描日志三轮激进（用户实锤：好多广告没有命中——大胆
+             * 激进一点）：电商/资讯类 App 常以「推广」代「广告」作整词标签
+             * （合规敏感 App 普遍如此，旧库未收零命中），SKIP 族全量补收 */
+            "跳过推广", "关闭推广", "跳過片頭", "跳過推廣"};
     public static final String[] GYRO_HINTS = {"翻转", "摇一摇", "摇晃", "晃动", "摇动", "扭一扭", "转动手机", "倾斜手机", "拿起手机"};
     public static final String[] CLOSE_TEXTS = {"×", "x", "X", "✕", "✖", "╳", "关闭", "close", "不感兴趣", "我知道了", "知道了", "关闭广告", "跳过", "忽略", "暂不"};
     public static final String[] BADGE_TEXTS = {"广告", "推广", "赞助", "广告推广", "sponsored", "promoted", "sponsor"};
@@ -1029,6 +1039,17 @@ public final class AdDecisionCore {
                     || s.contains("rewardvideo") || s.contains("rewardad")
                     || s.contains("expressad") || s.contains("adpresent")
                     || s.contains("fullscreenad") || s.contains("fullvideo")) return true;
+            /* v5.8.0 扫描日志三轮激进（用户实锤：好多广告没有命中——大胆
+             * 激进一点）：聚合/国际 SDK 漏网指纹 +4 段：
+             *  · mintegral——Mintegral 汇量国际 SDK 广告窗主力命名；
+             *  · pangle——穿山甲国际版 Pangle 独立广告窗；
+             *  · topon——TopOn 聚合广告窗（聚合器命名约定）；
+             *  · moloco——Moloco 国际 SDK 广告窗。
+             *  全是 SDK 侧命名约定，非 App 业务窗命名——误报面可控；
+             *  App 自建 SplashActivity/MainActivity/UnityPlayerActivity
+             *  依旧绝不误认（红线不碰）。 */
+            if (s.contains("mintegral") || s.contains("pangle")
+                    || s.contains("topon") || s.contains("moloco")) return true;
         }
         return false;
     }

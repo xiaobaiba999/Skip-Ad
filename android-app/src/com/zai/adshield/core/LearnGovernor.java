@@ -176,6 +176,8 @@ public final class LearnGovernor {
                 /* v5.5.1 同源对齐：isAdActivityClass 认的家族段（此前漏网） */
                 "qq.e.ads", "gms.ads", "bytedance.sdk", "kwad", "admob",
                 "miui.zeus", "doubleclick", "unionad",
+                /* v5.8.0 同源对齐：isAdActivityClass v5.8 新认的聚合/国际段 */
+                "mintegral", "pangle", "topon", "moloco",
         };
         for (String seg : sdkSegs) {
             if (c.contains(seg)) return true;

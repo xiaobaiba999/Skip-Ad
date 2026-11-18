@@ -12,7 +12,7 @@ import com.zai.adshield.core.Subscription;
 import com.zai.adshield.test.TestHost.SimNode;
 
 /**
- * 8 品牌 × 12 机型全维度矩阵测试（v5.7.0 · 用户二轮要求：模拟「N 多」品牌
+ * 10 品牌 × 15 机型全维度矩阵测试（v5.8.0 · 用户三轮要求：模拟「N 多」品牌
  * 机型测试修复——8 大品牌族 × 每族 12 款机型 = 96 机型；含 app 开屏广告
  * 测试、屏蔽速度测试、bug 测试、功耗测试、精准度测试、算法优化测试）。
  *
@@ -25,150 +25,233 @@ import com.zai.adshield.test.TestHost.SimNode;
  *
  * 每机型六维（对应报告六列）：
  *  ① 开屏广告命中（六信号：文本键/desc 键/vid 订阅键/图片角落键/
- *    v5.7「跳过片头」新文案/v5.7 iv_ad_close 复合 vid 键——≥5 过）
- *  ② 屏蔽速度（JVM walk+decide 120 节点树 < 20ms · v5.7 激进参数在场：
- *    COUNTDOWN_EXTRA_MS=180 / MAX_CLICKS_PER_WIN=10 / SKIP_CANDS_MAX=6）
+ *    v5.8「跳过推广」新文案/v5.8 iv_ad_close 复合 vid 键——≥5 过）
+ *  ② 屏蔽速度（JVM walk+decide 120 节点树 < 20ms · v5.8 速度压榨参数在场：
+ *    COUNTDOWN_EXTRA_MS=120 / MAX_CLICKS_PER_WIN=12 / SKIP_CANDS_MAX=8）
  *  ③ bug 测试（菜单陷阱行/巨横幅/验证码横幅/游戏 jump vid 四陷阱零动作）
  *  ④ 功耗测试（典型日 45 启动 + 120 后台事件 < 0.15mWh · 分级预算在场）
  *  ⑤ 精准度测试（银行守护零返回键 · 验证码标记 · Unity 游戏引擎窗免疫）
- *  ⑥ 算法优化测试（v5.7 新指纹 12 档全命中 · 非广告窗 7 档全免疫
- *    · 8 品牌族归一正确 · 免设置自愈合并纯函数正确）
+ *  ⑥ 算法优化测试（v5.8 新指纹 4 段全命中 · 非广告窗 7 档全免疫
+ *    · 10 品牌族归一正确 · 免设置自愈合并纯函数正确）
  */
-public final class BrandMatrix96Test {
+public final class BrandMatrix150Test {
 
-    /* ══ 8 品牌 × 12 机型（名称 · 分辨率 · ROM 族 · 厂商标识）══ */
     static final String[][] XIAOMI = {
-            {"Xiaomi 15", "1440", "3200"},
+            {"Xiaomi 15 Ultra", "1440", "3200"},
             {"Xiaomi 15 Pro", "1440", "3200"},
-            {"Xiaomi 14", "1200", "2670"},
+            {"Xiaomi 15", "1440", "3200"},
             {"Xiaomi 14 Pro", "1440", "3200"},
-            {"Redmi K80", "1440", "3200"},
+            {"Xiaomi 14", "1200", "2670"},
             {"Redmi K80 Pro", "1440", "3200"},
-            {"Redmi K70E", "1220", "2712"},
+            {"Redmi K80", "1440", "3200"},
+            {"Redmi Turbo 4", "1200", "2712"},
             {"Redmi Note 14 Pro+", "1220", "2712"},
             {"Redmi Note 13", "1080", "2400"},
             {"Redmi 14C", "720", "1650"},
+            {"POCO F7", "1220", "2712"},
             {"POCO X7 Pro", "1220", "2712"},
             {"Xiaomi Pad 6S Pro", "1800", "3048"},
+            {"小米 14T Pro", "1220", "2712"},
     };
     static final String[][] HUAWEI = {
-            {"Mate 70", "1080", "2376"},
-            {"Mate 70 Pro", "1260", "2844"},
             {"Mate 70 Pro+", "1260", "2844"},
+            {"Mate 70 Pro", "1260", "2844"},
+            {"Mate 70", "1080", "2376"},
+            {"Mate 70 RS", "1260", "2844"},
+            {"Mate X6 外屏", "1080", "2376"},
+            {"Mate 60 Pro", "1260", "2720"},
             {"Mate 60", "1080", "2376"},
-            {"Pura 70", "1080", "2376"},
             {"Pura 70 Pro", "1260", "2844"},
+            {"Pura 70", "1080", "2376"},
+            {"nova 14", "1080", "2376"},
             {"nova 13", "1080", "2376"},
             {"nova 12", "1080", "2376"},
-            {"Enjoy 70", "720", "1600"},
+            {"Enjoy 80", "720", "1600"},
             {"Pocket 2", "1080", "2690"},
             {"MatePad Pro 13.2", "2160", "2880"},
-            {"MatePad 11.5S", "1440", "2200"},
     };
     static final String[][] OPPO = {
-            {"Find X8", "1260", "2640"},
+            {"Find X8 Ultra", "1260", "2760"},
             {"Find X8 Pro", "1260", "2760"},
+            {"Find X8", "1260", "2640"},
+            {"Find X7 Ultra", "1440", "3168"},
             {"Find X7", "1260", "2772"},
-            {"Reno 13", "1080", "2412"},
+            {"Reno 14", "1080", "2412"},
             {"Reno 13 Pro", "1080", "2412"},
             {"Reno 12", "1080", "2412"},
-            {"Ace 5", "1080", "2412"},
+            {"Ace 5 Pro", "1080", "2400"},
+            {"Ace 5", "1080", "2400"},
+            {"K13", "1080", "2412"},
+            {"realme GT8 Pro", "1260", "2800"},
             {"realme GT7", "1260", "2800"},
             {"realme Neo7", "1080", "2340"},
-            {"realme GT Neo6", "1080", "2400"},
-            {"OPPO A3 Pro", "1080", "2412"},
             {"OPPO Pad 3 Pro", "1800", "2800"},
     };
     static final String[][] ONEPLUS = {
+            {"一加 15", "1440", "3168"},
             {"一加 13", "1440", "3168"},
             {"一加 13T", "1216", "2640"},
             {"一加 12", "1440", "3168"},
             {"一加 11", "1440", "3216"},
+            {"一加 Ace 6", "1080", "2412"},
             {"一加 Ace 5 Pro", "1080", "2400"},
             {"一加 Ace 5", "1080", "2400"},
             {"一加 Ace 3", "1080", "2412"},
             {"一加 Nord 5", "1080", "2400"},
             {"一加 Nord 4", "1260", "2772"},
             {"一加 Nord CE4", "1080", "2412"},
-            {"一加 Pad 2 Pro", "1800", "2800"},
+            {"一加 Nord N5", "1080", "2400"},
             {"一加 Ace 2 Pro", "1240", "2772"},
+            {"一加 Pad 2 Pro", "1800", "2800"},
     };
     static final String[][] VIVO = {
+            {"X300 Pro", "1260", "2800"},
+            {"X300", "1260", "2800"},
+            {"X200 Pro mini", "1176", "2368"},
             {"X200 Pro", "1260", "2800"},
             {"X200", "1260", "2800"},
-            {"X200 Pro mini", "1176", "2368"},
             {"X100 Ultra", "1440", "3200"},
             {"S20 Pro", "1260", "2800"},
             {"S20", "1260", "2800"},
-            {"S19", "1080", "2376"},
+            {"Y300 Pro", "1080", "2376"},
+            {"iQOO 15", "1440", "3200"},
             {"iQOO 13", "1440", "3200"},
             {"iQOO Neo10 Pro", "1260", "2800"},
             {"iQOO Neo10", "1080", "2340"},
-            {"iQOO Z9", "1080", "2400"},
+            {"iQOO Z9 Turbo", "1080", "2400"},
             {"vivo Pad3 Pro", "1800", "2800"},
     };
     static final String[][] HONOR = {
+            {"Magic8 Pro", "1280", "2800"},
+            {"Magic8", "1080", "2400"},
             {"Magic7 Pro", "1280", "2800"},
             {"Magic7", "1080", "2400"},
+            {"Magic V4 外屏", "1080", "2316"},
             {"Magic6 Pro", "1260", "2800"},
-            {"Magic6", "1080", "2400"},
+            {"荣耀 400 Pro", "1276", "2744"},
+            {"荣耀 400", "1080", "2340"},
             {"荣耀 300", "1080", "2376"},
             {"荣耀 200", "1080", "2340"},
             {"荣耀 100", "1080", "2376"},
-            {"荣耀 X60", "1080", "2340"},
-            {"荣耀 X50", "1200", "2652"},
             {"荣耀 GT", "1260", "2800"},
+            {"荣耀 X60", "1080", "2340"},
             {"荣耀 Play 50", "720", "1600"},
             {"荣耀 Pad 9", "1440", "2240"},
     };
     static final String[][] SAMSUNG = {
             {"Galaxy S25 Ultra", "1440", "3120"},
+            {"Galaxy S25 Edge", "1080", "2400"},
             {"Galaxy S25+", "1080", "2340"},
             {"Galaxy S25", "1080", "2340"},
             {"Galaxy S24 Ultra", "1440", "3120"},
             {"Galaxy S24", "1080", "2340"},
             {"Galaxy S23", "1080", "2340"},
             {"Galaxy A56", "1080", "2340"},
+            {"Galaxy A36", "1080", "2340"},
             {"Galaxy A26", "720", "1650"},
+            {"Galaxy Z Fold7 外屏", "1080", "2316"},
             {"Galaxy Z Fold6 外屏", "1080", "2316"},
             {"Galaxy Z Flip6 外屏", "720", "1632"},
             {"Galaxy Tab S10+", "1752", "2800"},
             {"Galaxy M55", "1080", "2340"},
     };
+    static final String[][] MEIZU = {
+            {"魅族 21 Note", "1080", "2400"},
+            {"魅族 21 Pro", "1071", "2392"},
+            {"魅族 21", "1080", "2400"},
+            {"魅族 20 Infinity", "1080", "2400"},
+            {"魅族 20 Pro", "1440", "3200"},
+            {"魅族 20", "1080", "2400"},
+            {"魅族 18s Pro", "1440", "3200"},
+            {"魅族 18s", "1080", "2400"},
+            {"魅族 18 Pro", "1440", "3200"},
+            {"魅族 18", "1080", "2400"},
+            {"魅族 17 Pro", "1080", "2340"},
+            {"魅族 17", "1080", "2340"},
+            {"魅族 16th", "1080", "2340"},
+            {"魅族 Lucky 08", "1080", "2340"},
+            {"魅族 Note 22", "1080", "2400"},
+    };
+    static final String[][] ZTE = {
+            {"努比亚 Z70 Ultra", "1216", "2688"},
+            {"努比亚 Z60 Ultra", "1116", "2480"},
+            {"努比亚 Z60S Pro", "1080", "2400"},
+            {"努比亚 Flip2 外屏", "1080", "2316"},
+            {"努比亚 小牛", "1080", "2340"},
+            {"红魔 10 Pro+", "1216", "2688"},
+            {"红魔 10 Pro", "1216", "2688"},
+            {"红魔 9 Pro+", "1116", "2480"},
+            {"红魔 9 Pro", "1116", "2480"},
+            {"红魔 8 Pro", "1116", "2480"},
+            {"红魔 7S Pro", "1080", "2400"},
+            {"中兴 Axon 60 Ultra", "1080", "2400"},
+            {"中兴 Axon 40 Ultra", "1116", "2480"},
+            {"中兴 Axon 30", "1080", "2400"},
+            {"中兴 远航40", "720", "1600"},
+    };
     static final String[][] OTHERS = {
+            {"Pixel 10 Pro XL", "1344", "2992", "Google"},
+            {"Pixel 10 Pro", "1280", "2856", "Google"},
             {"Pixel 9 Pro XL", "1344", "2992", "Google"},
             {"Pixel 9 Pro", "1280", "2856", "Google"},
             {"Pixel 9", "1080", "2424", "Google"},
             {"Nothing Phone (3)", "1080", "2412", "Nothing"},
-            {"魅族 21", "1080", "2400", "meizu"},
-            {"魅族 Lucky 08", "1080", "2340", "meizu"},
-            {"努比亚 Z70 Ultra", "1216", "2688", "nubia"},
-            {"红魔 10 Pro", "1216", "2688", "nubia"},
-            {"索尼 Xperia 1 VI", "1080", "2340", "Sony"},
-            {"moto razr 50 Ultra", "1080", "2400", "motorola"},
-            {"motorola edge 50 Ultra", "1220", "2712", "motorola"},
+            {"Nothing Phone (3a)", "1080", "2412", "Nothing"},
             {"Nothing Phone (2a)", "1080", "2400", "Nothing"},
+            {"索尼 Xperia 1 VI", "1080", "2340", "Sony"},
+            {"索尼 Xperia 5 VI", "1080", "2340", "Sony"},
+            {"moto razr 60 Ultra 外屏", "1272", "2688", "motorola"},
+            {"moto razr 50 Ultra", "1080", "2400", "motorola"},
+            {"motorola edge 60 Pro", "1220", "2712", "motorola"},
+            {"motorola edge 50 Ultra", "1220", "2712", "motorola"},
+            {"联想拯救者 Y700 二代", "1600", "2560", "Lenovo"},
     };
     static final String[][][] BRANDS = {
-            XIAOMI, HUAWEI, OPPO, ONEPLUS, VIVO, HONOR, SAMSUNG, OTHERS,
+            XIAOMI, HUAWEI, OPPO, ONEPLUS, VIVO, HONOR, SAMSUNG, MEIZU, ZTE, OTHERS,
     };
     static final String[] BRAND_NAMES = {
-            "小米/Redmi/POCO·HyperOS", "华为·HarmonyOS", "OPPO/realme·ColorOS",
-            "一加·ColorOS", "vivo/iQOO·OriginOS", "荣耀·MagicOS", "三星·OneUI",
-            "其他·Pixel/Nothing/魅族/努比亚/索尼/moto",
+            "小米/Redmi/POCO·HyperOS",
+            "华为·HarmonyOS",
+            "OPPO/realme·ColorOS",
+            "一加·ColorOS",
+            "vivo/iQOO·OriginOS",
+            "荣耀·MagicOS",
+            "三星·OneUI",
+            "魅族·Flyme",
+            "中兴/努比亚/红魔·MyOS",
+            "其他·Pixel/Nothing/索尼/moto",
     };
     static final String[] BRAND_MANUFACTURERS = {
-            "Xiaomi", "HUAWEI", "OPPO", "OnePlus", "vivo", "HONOR", "samsung", null,
+            "Xiaomi",
+            "HUAWEI",
+            "OPPO",
+            "OnePlus",
+            "vivo",
+            "HONOR",
+            "samsung",
+            "meizu",
+            "ZTE",
+            null,
     };
     static final String[] EXPECTED_FAMILIES = {
-            RestoreGuard.FAMILY_HYPEROS, RestoreGuard.FAMILY_HARMONY,
-            RestoreGuard.FAMILY_COLOROS, RestoreGuard.FAMILY_COLOROS,
-            RestoreGuard.FAMILY_ORIGINOS, RestoreGuard.FAMILY_MAGIC,
-            RestoreGuard.FAMILY_ONEUI, null, // null = 其他组：魅族 flyme / 其余 generic
+            RestoreGuard.FAMILY_HYPEROS,
+            RestoreGuard.FAMILY_HARMONY,
+            RestoreGuard.FAMILY_COLOROS,
+            RestoreGuard.FAMILY_COLOROS,
+            RestoreGuard.FAMILY_ORIGINOS,
+            RestoreGuard.FAMILY_MAGIC,
+            RestoreGuard.FAMILY_ONEUI,
+            RestoreGuard.FAMILY_FLYME,
+            null, // generic（中兴族/其他组）
+            null, // generic（中兴族/其他组）
     };
 
-    /* ══ v5.7.0 新增 SDK 指纹（激进化）vs 非广告窗对照 ══ */
+    /* ══ v5.8.0 新增 SDK 指纹（激进化）vs 非广告窗对照 ══ */
     static final String[] NEW_FINGERPRINTS = {
+            "com.mbridge.mintegral.ads.MBActivity",          // Mintegral（v5.8 新增）
+            "com.example.app.pangle.PangleSplashActivity",   // Pangle 穿山甲国际版（v5.8 新增）
+            "com.topon.sdk.adapter.TopOnAdActivity",          // TopOn 聚合（v5.8 新增）
+            "com.example.ads.moloco.MolocoAdActivity",       // Moloco（v5.8 新增）
             "com.unity3d.ads.adunit.AdUnitActivity",            // Unity Ads（国际游戏广告主力）
             "com.ironsource.sdk.controller.ControllerActivity",// IronSource
             "com.chartboost.sdk.CBImpressionActivity",          // Chartboost
@@ -264,10 +347,10 @@ public final class BrandMatrix96Test {
                 ScanFind cf = AdDecisionCore.walk(cTree, cCtx);
                 Decision cd = AdDecisionCore.decide(cf, cCtx);
                 if (!AdDecisionCore.A_NONE.equals(cd.action)) hitOk++;
-                // ①e v5.7 新文案「跳过片头」（视频类 App 开屏整词独立标签）
+                // ①e v5.8 新文案「跳过推广」（合规敏感 App 以推广代广告——SKIP 族新词）
                 SimNode pTree = new SimNode();
                 pTree.boundsArr = new int[]{0, 0, w, h};
-                SimNode preRollBtn = new SimNode("跳过片头", (int) (w * 0.86), (int) (h * 0.03),
+                SimNode preRollBtn = new SimNode("跳过推广", (int) (w * 0.86), (int) (h * 0.03),
                         (int) (w * 0.97), (int) (h * 0.065));
                 preRollBtn.clickable = true;
                 pTree.add(preRollBtn);
@@ -298,10 +381,10 @@ public final class BrandMatrix96Test {
                 }
                 long perDecisionMs = (System.nanoTime() - t0) / 1000L / rounds / 1000L;
                 boolean speedOk = perDecisionMs < 20
-                        && AdDecisionCore.COUNTDOWN_EXTRA_MS == 180
-                        && AdDecisionCore.MAX_CLICKS_PER_WIN == 10
-                        && AdDecisionCore.SKIP_CANDS_MAX == 6;
-                TestHost.check(speedOk, "② 屏蔽速度 " + model + "（" + perDecisionMs + "ms/决策 · 激进参数在场）");
+                        && AdDecisionCore.COUNTDOWN_EXTRA_MS == 120
+                        && AdDecisionCore.MAX_CLICKS_PER_WIN == 12
+                        && AdDecisionCore.SKIP_CANDS_MAX == 8;
+                TestHost.check(speedOk, "② 屏蔽速度 " + model + "（" + perDecisionMs + "ms/决策 · 速度压榨参数在场）");
                 if (speedOk) speedN++;
 
                 /* ③ bug 测试（菜单陷阱 / 巨横幅 / 验证码横幅 / 游戏 jump vid） */
@@ -352,8 +435,8 @@ public final class BrandMatrix96Test {
                 TestHost.check(bugOk == 4, "③ bug 防线 " + model + "（菜单/横幅/overlay/游戏jump " + bugOk + "/4）");
                 if (bugOk == 4) bugN++;
 
-                /* ④ 功耗测试（典型日：45 启动 + 120 后台事件 · 12 扫描 · 2 返回键） */
-                double microWh = PowerGovernor.microWh(165, 45, 12, 2);
+                /* ④ 功耗测试（典型日：45 启动 + 120 后台事件 · v5.8 骨架档 18 · 2 返回键） */
+                double microWh = PowerGovernor.microWh(165, 45, 18, 2);
                 boolean powOk = microWh < 150 && SmartScanPlannerCheck();
                 TestHost.check(powOk, "④ 功耗 " + model + "（" + (microWh / 1000.0) + "mWh/典型日 · 分级预算在场）");
                 if (powOk) powN++;
@@ -376,7 +459,7 @@ public final class BrandMatrix96Test {
                 TestHost.check(precOk == 3, "⑤ 精准度 " + model + "（守护零返回键/验证码标记/游戏窗免疫 " + precOk + "/3）");
                 if (precOk == 3) precN++;
 
-                /* ⑥ 算法优化（v5.7 新指纹命中 · 非广告窗免疫 · 品牌族归一 · 自愈合并） */
+                /* ⑥ 算法优化（v5.8 新指纹命中 · 非广告窗免疫 · 品牌族归一 · 自愈合并） */
                 int algoOk = 0;
                 int newFpHit = 0;
                 for (String cls : NEW_FINGERPRINTS) {
@@ -388,15 +471,13 @@ public final class BrandMatrix96Test {
                     if (AdDecisionCore.isAdActivityClass(cls)) nonAdHit++;
                 }
                 if (nonAdHit == 0) algoOk++;
-                // 品牌族归一（每机型都验——8 族全检，其他组魅族→flyme/其余→generic）
+                // 品牌族归一（每机型都验——10 族全检，中兴族与其他组→generic）
                 String fam = RestoreGuard.familyOf(manuf, manuf, model);
                 boolean famOk;
                 if (EXPECTED_FAMILIES[bi] != null) {
                     famOk = EXPECTED_FAMILIES[bi].equals(fam);
                 } else {
-                    famOk = model.contains("魅族")
-                            ? RestoreGuard.FAMILY_FLYME.equals(fam)
-                            : RestoreGuard.FAMILY_GENERIC.equals(fam);
+                    famOk = RestoreGuard.FAMILY_GENERIC.equals(fam);
                 }
                 if (famOk) algoOk++;
                 String flat = "com.zai.adshield/com.zai.adshield.AdSkipService";
@@ -427,16 +508,16 @@ public final class BrandMatrix96Test {
             brandAlgoTotal += algoN;
         }
 
-        /* ══ 矩阵总检（8×12=96 · 六维全 96/96）══ */
-        TestHost.suite("矩阵总检（8 品牌 × 12 机型）");
-        TestHost.check(brandHitTotal == 96, "开屏命中总 " + brandHitTotal + "/96");
-        TestHost.check(brandSpeedTotal == 96, "屏蔽速度总 " + brandSpeedTotal + "/96");
-        TestHost.check(brandBugTotal == 96, "bug 防线总 " + brandBugTotal + "/96");
-        TestHost.check(brandPowerTotal == 96, "功耗总 " + brandPowerTotal + "/96");
-        TestHost.check(brandPrecTotal == 96, "精准度总 " + brandPrecTotal + "/96");
-        TestHost.check(brandAlgoTotal == 96, "算法优化总 " + brandAlgoTotal + "/96");
+        /* ══ 矩阵总检（10×15=150 · 六维全 150/150）══ */
+        TestHost.suite("矩阵总检（10 品牌 × 15 机型）");
+        TestHost.check(brandHitTotal == 150, "开屏命中总 " + brandHitTotal + "/150");
+        TestHost.check(brandSpeedTotal == 150, "屏蔽速度总 " + brandSpeedTotal + "/150");
+        TestHost.check(brandBugTotal == 150, "bug 防线总 " + brandBugTotal + "/150");
+        TestHost.check(brandPowerTotal == 150, "功耗总 " + brandPowerTotal + "/150");
+        TestHost.check(brandPrecTotal == 150, "精准度总 " + brandPrecTotal + "/150");
+        TestHost.check(brandAlgoTotal == 150, "算法优化总 " + brandAlgoTotal + "/150");
         System.out.println("  矩阵: " + brandHitTotal + "/" + brandSpeedTotal + "/" + brandBugTotal
-                + "/" + brandPowerTotal + "/" + brandPrecTotal + "/" + brandAlgoTotal + "（六维各 /96）");
+                + "/" + brandPowerTotal + "/" + brandPrecTotal + "/" + brandAlgoTotal + "（六维各 /150）");
 
         TestHost.done();
     }

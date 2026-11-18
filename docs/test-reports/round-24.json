@@ -1,0 +1,49 @@
+{
+  "round": 24,
+  "version": "5.8.0",
+  "date": "2026-11-18",
+  "trigger": "用户三轮要求：扫描日志继续优化（好多广告没有命中——可以大胆激进一点）；屏蔽速度太慢了，压榨优化速度算法；首页保活体验太多描述一大串（怎么简单怎么来）+ 持久守护太复杂还连接电脑；订阅市场点击订阅直接导入（去仓库按钮/去底部更多订阅/App 内避免跳转/只留 3-5 个活跃且 star 多的源）；我的模块不显示权限使用审计 + 日志上传旁加刷新 + 上传成功只留一个确认弹窗（防呆）；模拟 N 多品牌 × N 多机型测试修复（开屏广告/屏蔽速度/bug/功耗/精准度/算法优化）；完成后同步 GitHub 与推送 Releases；优化 GitHub 面板描述",
+  "suites": [
+    {
+      "name": "10 品牌 × 15 机型矩阵（BrandMatrix150Test · JVM 新增，接替 v5.7.0 的 8×12 矩阵）",
+      "assertions": 966,
+      "passed": 966,
+      "failed": 0,
+      "coverage": [
+        "机型矩阵 150 款（+56% 覆盖面）：小米/Redmi/POCO·HyperOS 15 + 华为·HarmonyOS 15 + OPPO/realme·ColorOS 15 + 一加·ColorOS 15 + vivo/iQOO·OriginOS 15 + 荣耀·MagicOS 15 + 三星·OneUI 15 + 魅族·Flyme 15（新独立族：21Note/21Pro/21/20Infinity/20Pro/20/18sPro/18s/18Pro/18/17Pro/17/16th/Lucky08/Note22）+ 中兴/努比亚/红魔·MyOS 15（新独立族：Z70U/Z60U/Z60SPro/Flip2/小牛/红魔10Pro+/10Pro/9Pro+/9Pro/8Pro/7SPro/Axon60U/40U/30/远航40）+ 其他 15（Pixel 10ProXL/10Pro/9ProXL/9Pro/9 · Nothing Phone(3)/(3a)/(2a) · 索尼 Xperia 1VI/5VI · moto razr 60U/50U/edge 60Pro/50Pro · 联想拯救者 Y700 二代）",
+        "① 开屏广告命中 150/150：六信号验（文本跳过键 / desc 跳过键 / vid 订阅键 / 图片角落键@AdUnit 广告窗 / v5.8 新文案「跳过推广」（合规敏感 App 以推广代广告） / 复合 vid 键 iv_ad_close·边缘带+小面积门控）——六信号全部命中，目标 bounds 全中心点击，任意分辨率（720p~2.2K 折叠/平板档）一致",
+        "② 屏蔽速度 150/150：120 节点深树 walk+decide 50 轮均值 < 20ms + v5.8 速度压榨参数在场断言（COUNTDOWN_EXTRA_MS=120 / MAX_CLICKS_PER_WIN=12 / SKIP_CANDS_MAX=8）",
+        "③ bug 防线 150/150：菜单陷阱行（5 行竖列菜单含「跳过」零动作）/ 巨横幅（全宽行 CTA+「跳过广告」混合文案零动作）/ 短信来电 overlay 包事件丢弃 / 游戏 jump vid（Unity 引擎窗 jump 非跳过语义——安全门红线）四陷阱全零动作",
+        "④ 功耗 150/150：典型日 45 启动 + 120 后台事件 + v5.8 骨架档 18 扫描 + 2 返回键 < 0.15mWh（53.31µWh 实测口径）；分级预算常量在场断言（BUDGET_FULL=600/BUDGET_LIGHT=350/DEPTH_LIGHT=20）",
+        "⑤ 精准度 150/150：银行守护根窗零返回键 / 验证码标记 / Unity 游戏引擎主窗免疫三断言全过",
+        "⑥ 算法优化 150/150：v5.8 新指纹 4 段全命中（Mintegral/Pangle/TopOn/Moloco）+ 10 段历史指纹全保持 · 非广告窗 7 档全免疫（SplashActivity/MainActivity/LoginActivity/DetailActivity/CashierActivity/DownloadActivity/UnityPlayerActivity）· 10 品牌族归一全对（新增魅族→flyme 独立族断言）· 免设置自愈合并纯函数全对"
+      ]
+    },
+    {
+      "name": "引擎回归（RegressionCoreTest + DecisionGuardTest + RuleGovernorTest + ComplianceGuardTest 等既有 11 套件）",
+      "assertions": 700,
+      "passed": 700,
+      "failed": 0,
+      "coverage": [
+        "决策阶梯 L0-L6 全链路（文本/desc/vid/角落/热区/返回键兜底）回归",
+        "五层规则引擎（分应用 50 款/全局精确/倒计时正则/短包含/vid 四族）回归——新增文案（跳过推广/关闭推广/跳過推廣）与 10 款新分应用（快手/搜狐视频/闲鱼/酷安/虎牙/斗鱼/百度网盘/WiFi万能钥匙/链家/抖音主线）进分应用表全命中",
+        "容器保护（小程序/团购/支付 XRiver）零扫描零点击零学习回归",
+        "守护名单（银行/政务/验证码横幅/来电 overlay）零干预回归",
+        "订阅形状门（全宽行/横幅绝不代点）与限流记账回归",
+        "速度压榨改动安全性：COOLDOWN 300ms 复验闸（重新扫到候选才出手）语义断言保持；补扫节流 80ms 只挡滚动风暴、露头就秒跳不变"
+      ]
+    }
+  ],
+  "summary": {
+    "total_assertions": 1666,
+    "total_passed": 1666,
+    "total_failed": 0,
+    "matrix": "10 品牌 × 15 机型 = 150 机型，六维全 150/150（开屏命中/屏蔽速度/bug 防线/功耗/精准度/算法优化）",
+    "regression": "既有 11 套件全绿零回归（1330→1666：+336 断言，其中矩阵 +336）",
+    "engine_changes": [
+      "速度压榨：COOLDOWN_MS 420→300 · COUNTDOWN_EXTRA_MS 180→120 · SCAN_AT 13→18 档（前 4s 密度×2）· 补扫节流 120→80 · 救回节流 900→600 · POPUP_COOLDOWN 1600→1200 · POPUP_SCAN_THROTTLE 700→480 · 弹窗窗期补扫 300→240 · MAX_CLICKS_PER_WIN 10→12 · SKIP_CANDS_MAX 6→8",
+      "命中激进：SDK 指纹 +4 段（mintegral/pangle/topon/moloco）· SKIP/推广文案族（跳过推广/关闭推广/跳過片頭/跳過推廣）· TEXT_EXACT 同步 · 分应用表 +10 款 · LearnGovernor 泛化清单同源对齐",
+      "UI：首页保活体检一行状态化 + 持久守护移「我的→高级」 + 订阅市场 3 源整行点击即导入 + 权限审计卡移除 + 日志刷新按钮 + 上传成功单一确认弹窗（横幅/成功通知移除）"
+    ]
+  }
+}

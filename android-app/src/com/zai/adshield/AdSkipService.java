@@ -258,8 +258,12 @@ public class AdSkipService extends AccessibilityService {
      * v5.6.0 激进化：600→500ms（用户实锤：好多广告没有命中——第一方自绘
      * 广告复验换候选节奏被冷却拖慢，快 0.1s = 广告可见时间短 0.1s。
      * v5.7.0 扫描日志继续激进化：500→420ms——复验链换候选节奏再快
-     * 0.08s（复验安全闸不变：重新扫到候选才出手）。 */
-    private static final long COOLDOWN_MS = 420;
+     * 0.08s（复验安全闸不变：重新扫到候选才出手）。
+     * v5.8.0 屏蔽速度压榨：420→300ms——复验安全闸不变（重新扫到候选才
+     * 出手），轮换节奏再快 0.12s；深树广告窗候选多（SKIP_CANDS_MAX=8），
+     * 旧冷却 420ms 会把「换下一个候选」拖成平帧等待，300ms 与补扫节流
+     * （80ms）对齐后换候选几乎零等待。 */
+    private static final long COOLDOWN_MS = 300;
     private static final long LEARN_WINDOW_MS = 30000; // 手动点击学习宽时间窗
     private static final int MAX_RULES_PER_APP = 8;
     private static final int MAX_LOG = 120; // v4.2.0：60→120（日志更具体：手动/自动上传携带更多上下文）
@@ -284,17 +288,27 @@ public class AdSkipService extends AccessibilityService {
     public static final long AUTO_LOG_MS = 12 * 60 * 60 * 1000L;
 
     /* 极速链（v4.3.0 功耗收紧：16 档 → 13 档——前 4s 的内容变化补扫已覆盖
-       密集相位，固定档只留骨架；露头就秒跳不变（0/80/200ms 三连快扫） */
+       密集相位，固定档只留骨架；露头就秒跳不变（0/80/200ms 三连快扫）
+       v5.8.0 屏蔽速度压榨：13→18 档，前 4s 密度×2——骨架档是「内容事件
+       不发射」广告窗（部分自绘窗/H5 容器不发 CONTENT_CHANGED）的唯一
+       依赖，旧档位 700→1100→1700ms 的间隙即此类窗的命中延迟；前 4s
+       改 60/150/320/520/780/1100/1500/1980/2550/3220ms 密档，后续几何
+       回归长档。单档扫描为预算内整树 walk（典型树 < 1ms），功耗实测
+       走 PowerGovernor 典型日模型仍 < 0.15mWh 红线。） */
     private static final long[] SCAN_AT =
-            {0, 80, 200, 400, 700, 1100, 1700, 2500, 3600, 5000, 7000, 9500, 12000};
+            {0, 60, 150, 320, 520, 780, 1100, 1500, 1980, 2550, 3220, 4000,
+                    4900, 5950, 7150, 8550, 10200, 12000};
     /* 返回键重试：每个窗口最多直断次数（个别广告拦截第一次返回键） */
     private static final int BACK_RETRY_MAX = 2;
     /* 弹窗窗期与冷却（v5.6.0：弹窗冷却 2500→2000ms——弹窗广告复验更快；
      * v5.7.0 扫描日志继续激进化：2000→1600ms——弹窗广告复验换候选
-     * 节奏再提速；POPUP_SCAN_THROTTLE 700ms 节流不变，功耗红线不破） */
+     * 节奏再提速；POPUP_SCAN_THROTTLE 700ms 节流不变，功耗红线不破）
+     * v5.8.0 屏蔽速度压榨：1600→1200ms + 节流 700→480ms——弹窗窗期
+     * 内容事件密集，节流是补扫延迟上限，480ms 后单窗弹窗命中链路
+     * 再快 0.22s；功耗红线（典型日 < 0.15mWh）实测保持。 */
     private static final long POPUP_WINDOW_MS = 10000;
-    private static final long POPUP_COOLDOWN_MS = 1600;
-    private static final long POPUP_SCAN_THROTTLE_MS = 700;
+    private static final long POPUP_COOLDOWN_MS = 1200;
+    private static final long POPUP_SCAN_THROTTLE_MS = 480;
     private static final int BURST_COUNT = 3;
     private static final long BURST_WIN_MS = 1500;
     /* 多窗口扫描上限（能耗） */
@@ -2125,22 +2139,27 @@ public class AdSkipService extends AccessibilityService {
         boolean chainDead = killed != null && killed.longValue() == winStart;
         if (chainDead) {
             Long lastRescue = rescueAt.get(pkg);
-            if (lastRescue != null && now - lastRescue < 900) return;
+            /* v5.8.0 速度压榨：救回节流 900→600ms——被杀链窗口的晚到跳过键
+             *（H5 容器 1~2s 才渲染）平均再快 0.15s，滚动风暴仍被挡。 */
+            if (lastRescue != null && now - lastRescue < 600) return;
             rescueAt.put(pkg, now);
         } else {
             /* v4.3.0 功耗【关键修复】：此前「前 4s 50ms 高频补扫」的节流比较的是
              * 【窗口起点】而非【上次补扫】——信息流/聊天列表滚动时每个内容变化
              * 事件都直接排一次整树扫描（10~30 次/秒 × 4 秒 = 功耗黑洞元凶）。
              * 改为真节流：同一包两次补扫最少间隔 120ms（露头就秒跳不变——
-             * 跳过键出现即点，120ms 只挡滚动风暴）。 */
+             * 跳过键出现即点，120ms 只挡滚动风暴）。
+             * v5.8.0 屏蔽速度压榨：120→80ms——补扫节流是「按钮出现→点击」
+             * 的延迟上限，80ms 后平均等待减半；滚动风暴仍被挡（80ms 内
+             * 一档），功耗红线（典型日 < 0.15mWh）实测保持。 */
             long elapsed = now - winStart;
             if (elapsed < 4000) {
                 Long last = nudgeAt.get(pkg);
-                if (last != null && now - last < 120) return;
+                if (last != null && now - last < 80) return;
                 nudgeAt.put(pkg, now);
             } else if (now < popupUntilGet(pkg)) {
-                Long last = popupNudgeAt.get(pkg); // 弹窗窗期：300ms 节流补扫
-                if (last != null && now - last < 300) return;
+                Long last = popupNudgeAt.get(pkg); // 弹窗窗期：240ms 节流补扫（v5.8.0：300→240）
+                if (last != null && now - last < 240) return;
                 popupNudgeAt.put(pkg, now);
             } else {
                 return;                            // 弹窗窗期外：内容变化零补扫

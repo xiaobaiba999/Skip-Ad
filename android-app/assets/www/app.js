@@ -23,8 +23,8 @@ const store = {
 };
 
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "5.7.0"; }
-function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "50700"; }
+function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "5.8.0"; }
+function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "50800"; }
 
 /* ══════════ 吉祥物（v4.1.0 全新形象：白机器人小侠 + 绿披风跳跃） ══════════
  * 与启动器图标同源；state: on（跳跃浮动）/ off（灰度待命） */
@@ -42,54 +42,16 @@ $("#brand-logo").innerHTML = mascotImg(30, "on", true);
 const CURRENT_RELEASE = {
   date: "2026-11-18",
   highlights: [
-    "命中激进化：SDK 指纹 +8 档（UnionSplash/插屏/Advertising 等）、倒计时提前 0.2s 开火、同窗预算 6→8、点击冷却 500ms、内置规则库 102→114 款 + 全局 vid 兜底两档——好多广告没命中的根子一刀切断",
-    "订阅市场：旧默认订阅已停止维护全面下架，换 gkd-subscription 话题活跃维护源一键导入（含本仓库官方订阅·subscription-template 构建）；topics 列表与自建订阅指引页内直达",
-    "10 秒警告终局：前台 3s 看门狗自动深挖拉活（退后台再进零操作）；新增可选「零打扰持久模式」——一次 ADB 授权 WRITE_SECURE_SETTINGS，登记被吊销自动写回重绑（零系统设置 · 零 10 秒警告）",
-    "5 品牌 × 10 机型矩阵自测 50 机型六维全绿（开屏命中 / 屏蔽速度 / bug 防线 / 功耗 / 精准度 / 算法优化），总断言 1036 项零回归",
+    "屏蔽速度压榨：点击冷却 420→300ms · 倒计时缓冲 180→120ms · 骨架扫描档 13→18 档（前 4s 密度×2）· 补扫节流 120→80ms · 弹窗冷却 1600→1200ms——从「按钮出现」到「点击命中」全链路压榨",
+    "命中三轮激进：SDK 指纹 +4 档（Mintegral/Pangle/TopOn/Moloco）·「推广」文案族全量补收（合规敏感 App 以推广代广告）· 分应用表 +10 款（快手/闲鱼/酷安/虎牙/斗鱼等）",
+    "首页怎么简单怎么来：保活体检压缩为一行状态只列待处理项；免打扰持久模式移入「我的→高级」，首页零极客内容",
+    "订阅市场防呆版：只留 3 个高星活跃源，点一下整行即导入，去仓库按钮/去更多订阅/App 内零跳转",
+    "10 品牌 × 15 机型 = 150 机型测试矩阵六维全绿（开屏命中/屏蔽速度/bug/功耗/精准度/算法）",
   ],
 };
 
-/* ══════════ v5.5.0 模块四：权限使用审计（与 ComplianceGuard.privacyAudit 同源） ══════════
- * 7 项权限逐条展示用途与触发时机；零权限声明（定位/通讯录/存储/相机/
- * 麦克风/剪贴板全部未申请）置顶强调——用户不需要懂技术也能核对。 */
-const PRIVACY_AUDIT = [
-  { name: "网络（INTERNET）", use: "检查更新 / GKD 订阅拉取 / 日志上报（仅手动触发上传）" },
-  { name: "安装未知应用", use: "页内直下 APK 后的安装确认（仅你点「安装」时系统弹窗）" },
-  { name: "通知", use: "常驻守护通知 / 恢复提醒 / 上传结果（可在系统设置关闭）" },
-  { name: "前台服务（专用类型）", use: "无障碍跳过服务本体（Android 14+ 类型声明）" },
-  { name: "开机自启", use: "开机自检提醒（不自动拉起未授权服务）" },
-  { name: "电池白名单引导", use: "防省电策略杀服务（你可拒绝，拒绝后仅提醒降频）" },
-  { name: "无障碍服务", use: "核心跳过能力（系统设置内授权，App 绝不代开）" },
-];
-function renderPrivacyAudit() {
-  const box = $("#privacy-audit");
-  if (!box) return;
-  box.innerHTML = "";
-  const head = document.createElement("div");
-  head.style.cssText = "font-size:11px;line-height:1.6;color:var(--muted,#8a94a0);padding:2px 0 6px";
-  head.textContent = "共 7 项，全部最小化。定位 / 通讯录 / 短信读取 / 存储 / 相机 / 麦克风 / 剪贴板——全部未申请、永不需要。学习指纹仅存本机。";
-  box.appendChild(head);
-  PRIVACY_AUDIT.forEach((p) => {
-    const row = document.createElement("div");
-    row.className = "ka-row";
-    const info = document.createElement("div");
-    info.className = "ka-info";
-    const nm = document.createElement("div");
-    nm.className = "ka-name";
-    nm.textContent = p.name;
-    const ds = document.createElement("div");
-    ds.className = "ka-desc";
-    ds.textContent = p.use;
-    info.appendChild(nm);
-    info.appendChild(ds);
-    const dot = document.createElement("span");
-    dot.className = "ka-dot ok";
-    row.appendChild(dot);
-    row.appendChild(info);
-    box.appendChild(row);
-  });
-}
-renderPrivacyAudit();
+/* v5.8.0：权限使用审计卡已移除（用户实测：我的模块不需要展示权限审计——
+ * 零权限声明已在 GitHub README 与系统设置里可查，App 内不再堆叠信息）。 */
 
 /* ══════════ 路由 ══════════ */
 $$(".tabbtn").forEach(b => b.addEventListener("click", () => {
@@ -100,7 +62,7 @@ $$(".tabbtn").forEach(b => b.addEventListener("click", () => {
   const pg = b.dataset.page;
   if (pg === "home") { refreshHome(); renderWhitelist(true); }
   if (pg === "sub") refreshSub();
-  if (pg === "me") { renderLog(); }
+  if (pg === "me") { renderLog(); try { refreshSecureHeal(); } catch (e) {} }
 }));
 
 /* ══════════ 首页：守护状态 ══════════ */
@@ -148,7 +110,6 @@ function refreshHome() {
   }
   renderHero(running, enabledInSettings, masterOn);
   refreshBattery(running);
-  try { refreshSecureHeal(); } catch (e) {}
 }
 
 function renderHero(running, enabledInSettings, masterOn) {
@@ -332,7 +293,10 @@ setInterval(() => {
   } catch (e) {}
 }, 3000);
 
-/* ═══ v5.6.0 持久守护卡片（零打扰持久模式状态展示）═══ */
+/* ═══ v5.8.0 高级卡：免打扰持久模式（原首页卡移入我的→高级）═══
+ * 用户实锤：「整的太复杂还连接电脑」——普通用户路径（一键恢复 + 前台
+ * 看门狗自动拉活）已零系统设置零电脑；ADB 极客玩法降级为高级折叠项，
+ * 首页彻底清爽。文案一行说清，不堆描述。 */
 let shCmd = "";
 function refreshSecureHeal() {
   const card = $("#sh-card");
@@ -345,16 +309,18 @@ function refreshSecureHeal() {
   if (st.granted) {
     chip.className = "chip chip-green";
     chip.textContent = "已授权";
-    $("#sh-desc").textContent = "持久模式生效：无障碍被吊销将自动写回登记重绑（零系统设置 · 零 10 秒警告）";
+    $("#sh-desc").textContent = "生效中：无障碍被吊销自动写回重绑";
     $("#sh-how").style.display = "none";
+    $("#btn-sh-copy").style.display = "none";
   } else {
     chip.className = "chip";
     chip.textContent = "未授权";
-    $("#sh-desc").textContent = "一次 ADB 授权后：升级/清理后台吊销无障碍时自动写回登记重绑，不再进系统设置、不看 10 秒警告";
+    $("#sh-desc").textContent = "可选极客玩法，普通用户无需理会";
     const how = $("#sh-how");
     how.style.display = "";
     shCmd = st.cmd || "";
-    how.textContent = "电脑连接手机执行一次：" + shCmd + "（仅需一次，永久生效；商店安装的应用拿不到此权限）";
+    how.textContent = "需电脑执行一次：" + shCmd;
+    $("#btn-sh-copy").style.display = "";
   }
 }
 $("#btn-sh-copy").addEventListener("click", () => {
@@ -362,7 +328,7 @@ $("#btn-sh-copy").addEventListener("click", () => {
   try {
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(shCmd);
-      toast("授权命令已复制，电脑连接手机执行一次即可");
+      toast("命令已复制，电脑连手机执行一次即可");
       return;
     }
   } catch (e) {}
@@ -373,7 +339,7 @@ $("#btn-sh-copy").addEventListener("click", () => {
     ta.select();
     document.execCommand("copy");
     document.body.removeChild(ta);
-    toast("授权命令已复制，电脑连接手机执行一次即可");
+    toast("命令已复制，电脑连手机执行一次即可");
   } catch (e) {
     toast("复制失败，请长按卡片手动复制命令");
   }
@@ -394,11 +360,11 @@ $("#btn-battery").addEventListener("click", () => {
   toast("请在系统设置中操作");
 });
 
-/* ══════════ v5.2.0 保活体检（issue#56：防清理后台/覆盖安装吊销无障碍）══════════
- * 把「防吊销」做进 UI：三项自动检测（服务绑定/通知权限/电池白名单）+
- * 品牌自适应厂商项（自启动/省电策略直达——HyperOS 清理后台吊销登记的
- * 两大诱因；近 5 年全品牌）。厂商项无法自动读取（厂商不开放查询 API），
- * 标记「需手动确认」并提供一键直达。 */
+/* ══════════ v5.8.0 保活体检（防呆简化版）══════════
+ * 用户实锤：「保活体验太多描述一大串，优化怎么简单怎么来」——
+ * 一行状态 + 只列待处理项（每项一键直达）：
+ *  · 全部通过 → 一行绿字「✓ 全部通过，防护稳了」，零列表零描述；
+ *  · 有待处理 → 只列待处理项，标签+一个「去设置」按钮，别的什么都不说。 */
 let kaItemsCache = null;
 function renderKeepAlive() {
   if (!HAS_BRIDGE) return;
@@ -412,61 +378,52 @@ function renderKeepAlive() {
   if (!d) {
     try { d = JSON.parse(AndroidApp.keepAliveItems()); kaItemsCache = d; } catch (e) { d = null; }
   }
-  const rows = [];
-  rows.push({ label: "服务绑定", ok: running, desc: running ? "防护引擎在线" : "点上方「一键恢复/开启服务」", action: null });
-  rows.push({ label: "通知权限", ok: notif, desc: notif ? "恢复提醒可送达" : "断连提醒收不到", action: notif ? null : "notif" });
-  rows.push({ label: "电池白名单", ok: batt, desc: batt ? "厂商省电策略不限制" : "防省电策略杀服务", action: batt ? null : "battery" });
+  const pend = [];
+  if (!running) pend.push({ label: "服务绑定", desc: "点「一键恢复」即可", action: null });
+  if (!notif) pend.push({ label: "通知权限", desc: "恢复提醒收不到", action: "notif" });
+  if (!batt) pend.push({ label: "电池白名单", desc: "省电策略可能杀服务", action: "battery" });
   if (d && d.items && d.items.length) {
-    d.items.forEach((it) => {
-      rows.push({ label: it.label, ok: null, desc: it.desc, action: "oem:" + it.id, manual: true });
-    });
+    d.items.forEach((it) => pend.push({ label: it.label, desc: "厂商设置，去确认一下", action: "oem:" + it.id, manual: true }));
   }
   const list = $("#ka-list");
-  if (!list) return;
-  list.innerHTML = "";
-  rows.forEach((r) => {
-    const row = document.createElement("div");
-    row.className = "ka-row";
-    const dot = document.createElement("span");
-    dot.className = "ka-dot " + (r.ok === true ? "ok" : r.ok === false ? "warn" : "manual");
-    const info = document.createElement("div");
-    info.className = "ka-info";
-    const name = document.createElement("div");
-    name.className = "ka-name";
-    name.textContent = r.label + (r.manual ? "（需手动确认）" : "");
-    const desc = document.createElement("div");
-    desc.className = "ka-desc";
-    desc.textContent = r.desc;
-    info.appendChild(name);
-    info.appendChild(desc);
-    row.appendChild(dot);
-    row.appendChild(info);
-    if (r.action) {
-      const btn = document.createElement("button");
-      btn.className = "link-btn";
-      btn.textContent = "去设置";
-      btn.addEventListener("click", () => {
-        if (r.action === "notif") { try { AndroidApp.openNotifSettings(); } catch (e) {} }
-        else if (r.action === "battery") { try { AndroidApp.requestBatteryWhitelist(); } catch (e) {} }
-        else if (r.action && r.action.indexOf("oem:") === 0) {
-          try { AndroidApp.openKeepAliveTarget(r.action.slice(4)); } catch (e) {}
-        }
-      });
-      row.appendChild(btn);
-    } else {
-      row.appendChild(document.createElement("span"));
-    }
-    list.appendChild(row);
-  });
-  const pending = rows.filter((r) => r.ok !== true).length;
   const chip = $("#ka-chip");
-  if (chip) {
-    chip.textContent = pending === 0 ? "全部通过" : pending + " 项待处理";
-    chip.className = "chip " + (pending === 0 ? "ka-chip-ok" : "ka-chip-warn");
-  }
-  const sub = $("#ka-sub");
-  if (sub && d && d.familyLabel && d.family !== "generic") {
-    sub.textContent = d.familyLabel + "：完成自启动/省电配置，清理后台/升级不掉防护";
+  if (!pend.length) {
+    list.innerHTML = '<div class="ka-ok-line">✓ 全部通过，防护稳了</div>';
+    if (chip) { chip.textContent = "全部通过"; chip.className = "chip ka-chip-ok"; }
+  } else {
+    if (chip) { chip.textContent = pend.length + " 项可加固"; chip.className = "chip ka-chip-warn"; }
+    list.innerHTML = "";
+    pend.forEach((r) => {
+      const row = document.createElement("div");
+      row.className = "ka-row";
+      const info = document.createElement("div");
+      info.className = "ka-info";
+      const name = document.createElement("div");
+      name.className = "ka-name";
+      name.textContent = r.label;
+      const desc = document.createElement("div");
+      desc.className = "ka-desc";
+      desc.textContent = r.desc;
+      info.appendChild(name);
+      info.appendChild(desc);
+      row.appendChild(info);
+      if (r.action) {
+        const btn = document.createElement("button");
+        btn.className = "link-btn";
+        btn.textContent = "去设置";
+        btn.addEventListener("click", () => {
+          if (r.action === "notif") { try { AndroidApp.openNotifSettings(); } catch (e) {} }
+          else if (r.action === "battery") { try { AndroidApp.requestBatteryWhitelist(); } catch (e) {} }
+          else if (r.action && r.action.indexOf("oem:") === 0) {
+            try { AndroidApp.openKeepAliveTarget(r.action.slice(4)); } catch (e) {}
+          }
+        });
+        row.appendChild(btn);
+      } else {
+        row.appendChild(document.createElement("span"));
+      }
+      list.appendChild(row);
+    });
   }
   card.style.display = "";
 }
@@ -549,7 +506,8 @@ $("#wl-input").addEventListener("keydown", (e) => {
 /* v5.6.0：旧默认源 @gkd-kit/subscription（已归档停更）下架；
  * 快速填入换成 Lin-arm 社区事实标准订阅（jsdelivr CDN 国内可达）；
  * 订阅市场卡片一键导入活跃维护源（subRecommend 注册表）。 */
-const SUB_EXAMPLE = "https://cdn.jsdelivr.net/gh/Lin-arm/GKD_subscription@main/dist/gkd.json5";
+/* v5.8.0：推荐订阅按钮已随市场防呆版移除；示例链接保留注释态（Lin-arm 源已在市场一键导入）
+const SUB_EXAMPLE_UNUSED = "https://cdn.jsdelivr.net/gh/Lin-arm/GKD_subscription@main/dist/gkd.json5"; */
 let subCbSeq = 0;
 
 function subCall(method, ...args) {
@@ -571,12 +529,12 @@ function subCall(method, ...args) {
 }
 
 function refreshSub() {
+  renderSubMarket(); /* v5.8.0：市场先行渲染（浏览器预览走兜底三源清单） */
   if (!HAS_BRIDGE) {
     $("#sub-builtin-apps").textContent = "21 款";
     $("#sub-builtin-rules").textContent = "21 条";
     return;
   }
-  renderSubMarket();
   let sub = null;
   try { sub = JSON.parse(AndroidApp.subState()); } catch (e) {}
   if (!sub) return;
@@ -619,13 +577,26 @@ $("#btn-sub-import").addEventListener("click", async () => {
   refreshSub();
 });
 
-$("#btn-sub-example").addEventListener("click", () => {
-  $("#sub-url").value = SUB_EXAMPLE;
-  toast("已填入 Lin-arm 社区订阅（日更维护）");
-});
-
-/* ═══ v5.6.0 订阅市场（活跃维护源一键导入）═══ */
+/* ═══ v5.8.0 订阅市场（防呆版）：点一下整行即导入 ═══
+ * 用户实锤：「点击订阅就直接导入进来，把仓库按钮去掉，再把底部更多
+ * 订阅去掉，App 内尽量避免跳转操作，只保留 3-5 个活跃且 star 多的」：
+ *  · 只留 3 个高星活跃源（Lin-arm ⭐7.4k / ganlinte ⭐935 /
+ *    MengNianxiaoyao ⭐496——gkd-subscription 话题按星数前三）；
+ *  · 整行即按钮：点一下直接导入，右侧状态位显示「导入中… → 已导入 ✓」；
+ *  · 零跳转：无仓库按钮、无底部链接、无 openUrl。 */
 let subMarketData = [];
+/* 浏览器预览兜底（无桥环境渲染同一份 3 源清单） */
+const MARKET_FALLBACK = [
+  { name: "GKD 订阅（id667）", owner: "Lin-arm", badge: "日更",
+    desc: "⭐7.4k · 社区事实标准", idx: 0,
+    url: "https://cdn.jsdelivr.net/gh/Lin-arm/GKD_subscription@main/dist/gkd.json5" },
+  { name: "ganlin 的 GKD 订阅", owner: "ganlinte", badge: "周更",
+    desc: "⭐935 · 610 款应用", idx: 1,
+    url: "https://cdn.jsdelivr.net/gh/ganlinte/GKD-subscription@main/dist/ganlin_gkd.json5" },
+  { name: "小年侠订阅", owner: "MengNianxiaoyao", badge: "活跃",
+    desc: "⭐496 · 持续维护", idx: 2,
+    url: "https://cdn.jsdelivr.net/gh/MengNianxiaoyao/gkd-subscription@main/dist/gkd.json5" },
+];
 function renderSubMarket() {
   const box = $("#sub-market");
   if (!box) return;
@@ -633,61 +604,45 @@ function renderSubMarket() {
   if (HAS_BRIDGE && !list.length) {
     try { list = subMarketData = JSON.parse(AndroidApp.subRecommend() || "[]"); } catch (e) {}
   }
+  if (!HAS_BRIDGE && (!list || !list.length)) list = MARKET_FALLBACK;
   if (!list || !list.length) {
     box.innerHTML = '<div class="sub-note">订阅市场不可用（请更新到最新版）</div>';
     return;
   }
-  box.innerHTML = list.map(s =>
-    '<div class="market-item">'
+  box.innerHTML = list.map((s, i) =>
+    '<button class="market-item market-tap" type="button" data-sub-import="' + i + '"'
+    + ' aria-label="一键导入订阅 ' + esc(s.name) + '">'
     + '<div class="market-info">'
-    + '<div class="market-name">' + esc(s.name) + ' <span class="market-badge">' + esc(s.badge) + '</span></div>'
-    + '<div class="market-desc">' + esc(s.desc) + ' · by ' + esc(s.owner) + '</div>'
+    + '<div class="market-name">' + esc(s.name) + '</div>'
+    + '<div class="market-desc">' + esc(s.desc) + '</div>'
     + '</div>'
-    + '<div class="market-acts">'
-    + '<button class="btn btn-primary btn-sm" data-sub-import="' + s.idx + '">导入</button>'
-    + '<button class="btn btn-ghost btn-sm" data-sub-repo="' + s.idx + '">仓库</button>'
-    + '</div></div>').join("");
-  box.querySelectorAll("[data-sub-import]").forEach(btn => {
-    btn.addEventListener("click", async () => {
-      const s = list[+btn.dataset.subImport];
-      if (!s) return;
-      const box2 = $("#sub-result");
-      box2.className = "fb-result"; box2.textContent = "正在拉取「" + s.name + "」（失败自动换镜像）…";
-      $("#sub-url").value = s.url;
-      const r = await subCall("subSetUrl", s.url);
-      if (r.ok) {
-        box2.className = "fb-result ok";
-        box2.textContent = "已导入「" + (r.name || s.name) + "」：" + (r.apps || 0) + " 款应用 · " + (r.rules || 0) + " 条规则";
-      } else {
-        box2.className = "fb-result err"; box2.textContent = r.error || "导入失败";
-      }
-      refreshSub();
-    });
-  });
-  box.querySelectorAll("[data-sub-repo]").forEach(btn => {
-    btn.addEventListener("click", () => {
-      const s = list[+btn.dataset.subRepo];
-      if (!s || !HAS_BRIDGE) return;
-      try { AndroidApp.openUrl(s.repo); } catch (e) {}
-    });
+    + '<span class="market-go" data-sub-state="' + i + '">导入</span>'
+    + '</button>').join("");
+  box.querySelectorAll("[data-sub-import]").forEach((btn) => {
+    btn.addEventListener("click", () => { void importMarketSub(+btn.dataset.subImport, list); });
   });
 }
-
-/* v5.6.0 市场底部链接：话题列表 + subscription-template 构建指引 */
-(function bindSubLinks() {
-  const t = $("#link-sub-topics");
-  if (t) t.addEventListener("click", (ev) => {
-    ev.preventDefault();
-    if (HAS_BRIDGE) { try { AndroidApp.openUrl("https://github.com/topics/gkd-subscription"); } catch (e) {} }
-    else window.open("https://github.com/topics/gkd-subscription", "_blank");
-  });
-  const m = $("#link-sub-template");
-  if (m) m.addEventListener("click", (ev) => {
-    ev.preventDefault();
-    if (HAS_BRIDGE) { try { AndroidApp.openUrl("https://github.com/gkd-kit/subscription-template"); } catch (e) {} }
-    else window.open("https://github.com/gkd-kit/subscription-template", "_blank");
-  });
-})();
+async function importMarketSub(idx, list) {
+  const s = list[idx];
+  if (!s) return;
+  const stateEl = $('#sub-market [data-sub-state="' + idx + '"]');
+  if (stateEl) stateEl.textContent = "导入中…";
+  $("#sub-url").value = s.url;
+  if (!HAS_BRIDGE) {
+    if (stateEl) stateEl.textContent = "已导入 ✓";
+    toast("已导入「" + s.name + "」（浏览器演示环境）");
+    return;
+  }
+  const r = await subCall("subSetUrl", s.url);
+  if (r.ok) {
+    if (stateEl) stateEl.textContent = "已导入 ✓";
+    toast("已导入「" + (r.name || s.name) + "」：" + (r.apps || 0) + " 款应用");
+  } else {
+    if (stateEl) stateEl.textContent = "再点重试";
+    toast(r.error || "导入失败，再点一下重试");
+  }
+  refreshSub();
+}
 
 $("#btn-sub-clear").addEventListener("click", async () => {
   $("#sub-url").value = "";
@@ -958,13 +913,20 @@ function engineProfile() {
 }
 
 /* ══════════ 我的：日志 ══════════ */
-function renderLog() {
+function renderLog(force) {
   const st = getRealState();
   const log = (st.log || []).slice().reverse();
   $("#real-log").innerHTML = log.length
     ? log.map(l => "<div>" + esc(l.msg || "") + "</div>").join("")
     : '<div class="empty">暂无日志</div>';
 }
+/* v5.8.0：日志刷新按钮（用户实锤：日志上传按钮旁边加一个刷新）——
+ * 重读服务内存快照（kvGet("state") 走 snapshotState 实时态） */
+$("#btn-refresh-log").addEventListener("click", () => {
+  renderLog(true);
+  toast("日志已刷新");
+  try { refreshSecureHeal(); } catch (e) {}
+});
 
 /* ══════════ v5.5.0 日志上传强反馈 ══════════
  * 三重成功反馈（避免用户不确定是否提交成功）：
@@ -995,48 +957,12 @@ function resetUploadBtn(btn) {
   btn.disabled = false;
 }
 
-/* 三重反馈之二：顶部醒目成功横幅 */
-let uploadBannerTimer = null;
-function showUploadBanner(number, url) {
-  let b = $("#upload-success-banner");
-  if (!b) {
-    b = document.createElement("div");
-    b.id = "upload-success-banner";
-    b.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:120;display:flex;align-items:center;gap:10px;"
-      + "background:linear-gradient(90deg,#0c2015,#123d26);color:#fff;padding:12px 16px;"
-      + "box-shadow:0 4px 18px rgba(6,40,23,.45);transform:translateY(-110%);"
-      + "transition:transform .35s cubic-bezier(.22,1,.36,1);"
-      + "padding-top:calc(12px + env(safe-area-inset-top));";
-    b.innerHTML =
-      '<span style="flex:0 0 22px;width:22px;height:22px;border-radius:50%;background:#10B981;'
-      + 'display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;">✓</span>'
-      + '<span style="flex:1;min-width:0;font-size:13.5px;line-height:1.45">'
-      + '<b>上传成功，感谢反馈</b><br>'
-      + '<span style="opacity:.85;font-size:12px">日志已提交 GitHub Issue，将直接成为下一版迭代的修复依据</span></span>'
-      + '<button data-act="link" style="flex:0 0 auto;background:#10B981;border:0;color:#fff;'
-      + 'border-radius:999px;padding:7px 14px;font-size:12.5px;font-weight:600">查看</button>'
-      + '<button data-act="close" aria-label="关闭" style="flex:0 0 auto;background:none;border:0;'
-      + 'color:#fff;opacity:.7;font-size:18px;line-height:1;padding:4px 6px">×</button>';
-    document.body.appendChild(b);
-    b.addEventListener("click", (ev) => {
-      const act = ev.target.getAttribute && ev.target.getAttribute("data-act");
-      if (act === "close") hideUploadBanner();
-      if (act === "link" && url) openUrl(url);
-    });
-  }
-  b.querySelector('[data-act="link"]').style.display = url ? "" : "none";
-  requestAnimationFrame(() => { b.style.transform = "translateY(0)"; });
-  if (uploadBannerTimer) clearTimeout(uploadBannerTimer);
-  uploadBannerTimer = setTimeout(hideUploadBanner, 8000);
-}
-function hideUploadBanner() {
-  const b = $("#upload-success-banner");
-  if (b) b.style.transform = "translateY(-110%)";
-  if (uploadBannerTimer) { clearTimeout(uploadBannerTimer); uploadBannerTimer = null; }
-}
+/* v5.8.0：顶部成功横幅已移除（用户实锤：上传成功后顶部不要再出弹窗——
+ * 只要一个确认弹窗就够用了，防呆单一反馈通道）。 */
 
 /* 三重反馈之一：全屏弹窗确认 */
-function showUploadDoneModal(number, url) {
+/* v5.8.0 唯一确认弹窗：一个 ✓、一行结果、一个「好的」——零跳转零其他反馈 */
+function showUploadDoneModal(number) {
   closeModal();
   const wrap = document.createElement("div");
   wrap.id = "upload-done-modal";
@@ -1048,17 +974,13 @@ function showUploadDoneModal(number, url) {
     + '<div style="width:56px;height:56px;margin:0 auto 12px;border-radius:50%;background:#10B981;'
     + 'display:flex;align-items:center;justify-content:center;font-size:28px;color:#fff;font-weight:700">✓</div>'
     + '<div style="font-size:17px;font-weight:700;color:#0c2015">上传成功，感谢反馈</div>'
-    + '<div style="font-size:13px;color:#5b6b60;margin:8px 0 2px">日志已提交 GitHub Issue #' + esc(number) + '</div>'
-    + '<div style="font-size:12px;color:#8a978d;margin-bottom:14px">四类数据（版本 / 设备 / 拦截日志 / 异常堆栈）已脱敏上传</div>'
-    + (url ? '<button data-act="link" style="width:100%;margin-bottom:8px;border:0;border-radius:10px;'
-      + 'background:#10B981;color:#fff;font-size:14px;font-weight:600;padding:11px 0">在 GitHub 查看</button>' : "")
-    + '<button data-act="close" style="width:100%;border:0;border-radius:10px;background:#eef2ef;'
-    + 'color:#0c2015;font-size:14px;font-weight:600;padding:11px 0">好的</button></div>';
+    + '<div style="font-size:13px;color:#5b6b60;margin:8px 0 14px">日志已提交 GitHub Issue #' + esc(number) + '</div>'
+    + '<button data-act="close" style="width:100%;border:0;border-radius:10px;background:#10B981;'
+    + 'color:#fff;font-size:14px;font-weight:600;padding:11px 0">好的</button></div>';
   document.body.appendChild(wrap);
   wrap.addEventListener("click", (ev) => {
     const act = ev.target.getAttribute && ev.target.getAttribute("data-act");
     if (act === "close" || ev.target === wrap) closeModal();
-    if (act === "link" && url) { closeModal(); openUrl(url); }
   });
 }
 function closeModal() {
@@ -1066,15 +988,15 @@ function closeModal() {
   if (m) m.remove();
 }
 
-/* 三重反馈之三：系统通知（独立 upload 通道；无权限时静默降级，前两重已足够） */
+/* v5.8.0：系统通知仅保留失败路径（成功已有唯一确认弹窗——单一反馈通道防呆；
+ * 失败通知在用户离开 App 时仍可召回，是罕见场景兜底） */
 function notifyUploadResult(ok, number) {
-  if (!HAS_BRIDGE) return;
+  if (!HAS_BRIDGE || ok) return;
   try {
     AndroidApp.postNotify(
-      ok ? "日志上传成功" : "日志上传失败",
-      ok ? "感谢反馈！日志已提交 GitHub Issue #" + number + "，将成为下一版迭代的修复依据"
-         : "本次上传未完成，可回到「我的 → 引擎日志」重试",
-      ok);
+      "日志上传失败",
+      "本次上传未完成，可回到「我的 → 引擎日志」重试",
+      false);
   } catch (e) {}
 }
 
@@ -1104,7 +1026,6 @@ async function doUploadLog() {
   const btn = $("#btn-upload-log");
   if (!HAS_BRIDGE) { box.className = "fb-result err"; box.textContent = "仅 APK 内可上传（浏览器预览请用 Web 端学习中心）"; return; }
 
-  hideUploadBanner();
   closeModal();
   box.className = "fb-result";
   box.textContent = "";
@@ -1142,12 +1063,10 @@ async function doUploadLog() {
   if (res && res.ok) {
     box.className = "fb-result ok";
     box.textContent = "已上传 Issue #" + res.number;
-    showUploadDoneModal(res.number, res.url);      // ① 弹窗确认
-    showUploadBanner(res.number, res.url);          // ② 顶部横幅
-    notifyUploadResult(true, res.number);           // ③ 系统通知
+    showUploadDoneModal(res.number);               // 唯一反馈：一个确认弹窗（v5.8.0）
   } else {
     showUploadFail(box, res && res.error);          // 明确原因 + 重试按钮
-    notifyUploadResult(false, 0);
+    notifyUploadResult(false, 0);                  // 失败通知保留（罕见场景兜底）
   }
 }
 

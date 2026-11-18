@@ -507,7 +507,7 @@ public final class Subscription {
             "{\n"
             + "  id: 20260510,\n"
             + "  name: '内置规则库',\n"
-            + "  version: 8,\n"
+            + "  version: 9,\n"
             + "  apps: [\n"
             + app("com.zhihu.android", "知乎",
                     "[id=\"com.zhihu.android:id/btn_skip\"]", "[vid=\"btn_skip\"][visible=true]")

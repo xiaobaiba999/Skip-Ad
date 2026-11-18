@@ -109,6 +109,21 @@ public final class RuleEngine {
             { "com.lianjia.beike", "跳过广告" },             // 贝壳找房
             { "com.cubic.autohome", "跳过" },               // 汽车之家
             { "com.hupu.games", "跳过" },                    // 虎扑
+            /* v5.8.0 扫描日志三轮激进（用户实锤：好多广告没有命中——大胆激进
+             * 一点）：分应用表 +10 款高频国产 App（未命中诊断日志实锤：
+             * 快手/搜狐视频/闲鱼/酷安/虎牙/斗鱼/百度网盘/WiFi万能钥匙/链家/
+             * 抖音主线包的开屏跳过文案只走全局层，部分窗口无 SDK 指纹，
+             * 深树候选轮换常被预算卡住；分应用精确等值零误点面） */
+            { "com.smile.gifmaker", "跳过广告", "跳过" },      // 快手
+            { "com.sohu.sohuvideo", "跳过广告", "跳过" },      // 搜狐视频
+            { "com.taobao.idlefish", "跳过" },                  // 闲鱼
+            { "com.coolapk.market", "跳过" },                   // 酷安
+            { "com.duowan.kiwi", "跳过" },                      // 虎牙直播
+            { "air.tv.douyu", "跳过" },                          // 斗鱼
+            { "com.baidu.netdisk", "跳过广告", "跳过" },        // 百度网盘
+            { "com.snda.wifilocating", "跳过" },               // WiFi万能钥匙
+            { "com.homelink.android", "跳过广告" },             // 链家
+            { "com.ss.android.ugc.aweme", "跳过广告", "跳过" }, // 抖音主线
     };
     /* v5.6.0 三件套之补：分应用表并行小写副本（类加载期一次构建；
      * 原写法每匹配一行 row[j].toLowerCase() 都分配新串——热路径高频） */
@@ -138,6 +153,10 @@ public final class RuleEngine {
             /* v5.7.0 激进化扩充（扫描日志：视频类 App 开屏「跳过片头/
              * 跳过视频」整词独立标签——旧库未收，walk 分类不进真候选） */
             "跳过视频", "跳过片头", "跳過視頻",
+            /* v5.8.0 三轮激进（扫描日志：合规敏感 App 普遍以「推广」代
+             * 「广告」作整词标签——旧库未收零命中；电商/资讯/网盘类
+             * 开屏高频，补收推广族 + 繁体同步） */
+            "跳过推广", "关闭推广", "跳過片頭", "跳過推廣",
     };
     static final java.util.HashSet<String> TEXT_EXACT_SET =
             new java.util.HashSet<String>(java.util.Arrays.asList(TEXT_EXACT));

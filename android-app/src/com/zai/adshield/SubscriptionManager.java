@@ -118,27 +118,23 @@ public final class SubscriptionManager {
      *   （subscription-template 构建，与内置规则库同源同步）
      * 所有 URL 全部 jsdelivr CDN（国内可达）+ 仓库可溯源；导入前可预览
      * 仓库主页。建议用户从市场一键导入，不再粘贴死链。 */
+    /* v5.8.0 防呆版（用户实锤：订阅市场只保留 3-5 个活跃且 star 多的订阅）：
+     * 6→3——只留 gkd-subscription 话题星数前三且当日活跃的源：
+     *  · Lin-arm/GKD_subscription（⭐7382 · 日更）——社区事实标准
+     *  · ganlinte/GKD-subscription（⭐935 · 610 款 APP/1389 规则组）
+     *  · MengNianxiaoyao/gkd-subscription（⭐496）
+     * （本仓库官方订阅保留在自定义链接路径，市场只做高星精选） */
     static final String[][] RECOMMENDED_SUBS = {
-            {"Skip-Ad 官方订阅", "xiaobaiba999",
-                    "https://cdn.jsdelivr.net/gh/xiaobaiba999/skip-ad-subscription@main/dist/gkd.json5",
-                    "本仓库自维护（subscription-template 构建，与内置规则库同步）", "自维护"},
             {"id667 的 GKD 订阅", "Lin-arm",
                     "https://cdn.jsdelivr.net/gh/Lin-arm/GKD_subscription@main/dist/gkd.json5",
-                    "⭐7382 · 日更——gkd-subscription 社区事实标准", "日更"},
+                    "⭐7.4k · 日更——社区事实标准", "日更"},
             {"ganlin 的 GKD 订阅", "ganlinte",
                     "https://cdn.jsdelivr.net/gh/ganlinte/GKD-subscription@main/dist/ganlin_gkd.json5",
-                    "⭐935 · 610 款 APP/1389 规则组", "周更"},
+                    "⭐935 · 610 款应用", "周更"},
             {"小年侠订阅", "MengNianxiaoyao",
                     "https://cdn.jsdelivr.net/gh/MengNianxiaoyao/gkd-subscription@main/dist/gkd.json5",
                     "⭐496 · 持续维护", "活跃"},
-            {"GK-Lemon-D 轻量精选", "LenorEric",
-                    "https://cdn.jsdelivr.net/gh/LenorEric/GK-Lemon-D@main/dist/GK-LEMON-D.json5",
-                    "轻量精选集，低性能机型友好", "活跃"},
-            {"Ling033 规则集", "cjy0812",
-                    "https://cdn.jsdelivr.net/gh/cjy0812/Ling033_GKD_Rules@main/dist/gkd.json5",
-                    "新兴活跃维护规则集", "活跃"},
     };
-
     /** 订阅市场 JSON（页顶卡片渲染用；无 Android 依赖纯拼装） */
     public static String recommendJson() {
         StringBuilder b = new StringBuilder(1024);
