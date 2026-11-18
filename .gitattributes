@@ -1,14 +1,36 @@
-# Linguist 语言构成净化（v5.6.0）：
-# 产品语言 = Java（引擎）+ JavaScript（WebView 壳 UI）+ TypeScript（规则台/CI 脚本）
-# 其余为数据、测试报告、构建产物、下载产物——标记 vendored/generated，不计入语言栏
-tests/** -diff linguist-vendored
-docs/test-reports/** -diff linguist-generated
-android-app/build-tests/** -diff linguist-generated
-android-app/dist/** -diff linguist-generated
-download/** -diff linguist-generated
-data/** -diff linguist-generated
-agent-ctx/** -diff linguist-generated
-tool-results/** -diff linguist-generated
-upload/** -diff linguist-generated
-mini-services/** -diff linguist-vendored
-examples/** -diff linguist-vendored
+# ═══ 仓库语言统计治理（v5.6.0 · docs/LANGUAGE-STRATEGY.md §五）═══
+# 原则：GitHub 语言栏只展示「产品本体」——
+#   · Java     = Android 引擎（android-app/src + tests）
+#   · TypeScript = Web 规则台（src/）
+#   · JavaScript = App 壳 UI（android-app/assets/www）
+#   · CSS/HTML = 壳 UI 样式与页面
+# 一次性工具、生成物、归档不计入统计。
+
+# ── 运维/CI 脚本（不进任何发布物）──
+scripts/** linguist-vendored
+.zscripts/** linguist-vendored
+agent-ctx/** linguist-vendored
+examples/** linguist-vendored
+tests/** linguist-vendored
+
+# ── 文档归档 ──
+docs/** linguist-documentation
+download/** linguist-documentation
+
+# ── 生成物/构建产物/二进制归档 ──
+tool-results/** linguist-generated
+data/** linguist-generated
+db/** linguist-generated
+dist/** linguist-generated
+android-app/dist/** linguist-generated
+android-app/build/** linguist-generated
+android-app/build-tests/** linguist-generated
+*.apk linguist-generated
+*.idsig linguist-generated
+*.db linguist-generated
+*.keystore linguist-generated
+bun.lock linguist-generated
+mini-services/** linguist-vendored
+
+# ── 上传/临时产物（合并侧新增）──
+upload/** linguist-generated

@@ -1,0 +1,55 @@
+{
+  "meta": {
+    "runs": 9,
+    "aggregation": "throughput/latency=min-of-9 (噪声下界), boot/compile/rss=median",
+    "jvm": "OpenJDK 21.0.13",
+    "kotlin": "2.0.21 (K2)",
+    "node": "24.22.3 (V8)",
+    "python": "3.12.16 CPython",
+    "tree_nodes": 48,
+    "rules": {
+      "app_rows": 28,
+      "text_exact": 19,
+      "gkd_selectors": 24
+    },
+    "protocol": "MATCH: cold1000 → warmup2000 → steady20000 ×(linear=引擎现状, optimized=哈希索引+预编译正则)"
+  },
+  "languages": {
+    "java": {
+      "name": "Java 8 字节码 (ECJ · OpenJDK 21)",
+      "boot_ms": 55.4,
+      "compile_us_per_set": 214,
+      "match_linear_first1000_ns": 45754,
+      "match_linear_ns": 4747.8,
+      "match_optimized_ns": 968.2,
+      "rss_mb": 90.4
+    },
+    "kotlin": {
+      "name": "Kotlin 2.0.21 (JVM 1.8 目标)",
+      "boot_ms": 77.9,
+      "compile_us_per_set": 289,
+      "match_linear_first1000_ns": 45971,
+      "match_linear_ns": 5306.4,
+      "match_optimized_ns": 903.7,
+      "rss_mb": 94.7
+    },
+    "js": {
+      "name": "JavaScript (Node 24 · V8 = WebView 代理)",
+      "boot_ms": 31.5,
+      "compile_us_per_set": 61,
+      "match_linear_first1000_ns": 2919,
+      "match_linear_ns": 1107.8,
+      "match_optimized_ns": 484.4,
+      "rss_mb": 58.6
+    },
+    "python": {
+      "name": "Python 3.12 (CPython)",
+      "boot_ms": 30.2,
+      "compile_us_per_set": 119,
+      "match_linear_first1000_ns": 6854,
+      "match_linear_ns": 9494.1,
+      "match_optimized_ns": 5575.4,
+      "rss_mb": 12.9
+    }
+  }
+}

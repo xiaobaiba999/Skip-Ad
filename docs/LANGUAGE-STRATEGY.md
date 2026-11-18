@@ -49,3 +49,18 @@
 | 壳 UI（`assets/www`） | JS | V8 启动最快、无桥开销 |
 | 规则台/CI/发布脚本 | TypeScript | 与 GKD 订阅生态同构 |
 | 数据/报告 | JSON/JSON5 | GKD 兼容格式 |
+
+## 五、复现
+
+```bash
+# 基准（四语言 9 轮，输出 JSON + 汇总表）
+bash scripts/bench-language/run_bench.sh
+
+# 引擎回归（1048 断言 · 含 BrandMatrix50Test 5×10 机型矩阵）
+bash android-app/run-tests.sh
+
+# APK 构建（296KB · VC 50600）
+cd android-app && ./build.sh 50600 5.6.0 dist/adshield-v5.6.0.apk
+```
+
+原始数据：`scripts/bench-language/results/bench_results.json`（含每轮原始 JSONL）。
