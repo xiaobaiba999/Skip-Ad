@@ -507,7 +507,7 @@ public final class Subscription {
             "{\n"
             + "  id: 20260510,\n"
             + "  name: '内置规则库',\n"
-            + "  version: 7,\n"
+            + "  version: 8,\n"
             + "  apps: [\n"
             + app("com.zhihu.android", "知乎",
                     "[id=\"com.zhihu.android:id/btn_skip\"]", "[vid=\"btn_skip\"][visible=true]")
@@ -808,6 +808,23 @@ public final class Subscription {
             + appSplash("com.dp.android.elong", "艺龙旅行", null,
                     new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"}, null, 1200)
             + appSplash("com.netease.newsreader.activity", "网易新闻", null,
+                    new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"}, null, 1200)
+            /* ═══ v5.7.0 扫描日志继续激进化（用户二轮实锤：可以大胆激进
+             * 一点）═══ 114 → 120 款：补齐电商/社区/旅行/房产类高频
+             * 开屏（与主引擎分应用表同源对齐——主引擎新增的 12 款中
+             * 苏宁/什么值得买/贝壳/虎扑/安居客/途牛此前未入内置订阅）；
+             * 全局通用 vid 兜底两档保持。 */
+            + appSplash("com.suning.mobile.ebuy", "苏宁易购", null,
+                    new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"}, null, 1200)
+            + appSplash("com.smzdm.client.android", "什么值得买", null,
+                    new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"}, null, 1200)
+            + appSplash("com.lianjia.beike", "贝壳找房", null,
+                    new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"}, null, 1200)
+            + appSplash("com.hupu.games", "虎扑", null,
+                    new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"}, null, 1200)
+            + appSplash("com.anjuke.android", "安居客", null,
+                    new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"}, null, 1200)
+            + appSplash("com.tuniu.app.ui", "途牛旅游", null,
                     new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"}, null, 1200)
             // 全局：穿山甲/优量汇等 SDK 跳过键的通用 vid 形态
             + app("*", "全局通用",

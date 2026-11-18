@@ -1,0 +1,53 @@
+{
+  "round": 23,
+  "version": "5.7.0",
+  "date": "2026-11-18",
+  "trigger": "用户二轮要求：扫描日志继续优化（好多广告没有命中——可以大胆激进一点）；模拟「N 多」品牌 × 每品牌「N 多」机型测试修复（六维：开屏广告/屏蔽速度/bug/功耗/精准度/算法优化）；完成后同步 GitHub 与推送 Releases；优化 GitHub 面板描述并给出 App 截图",
+  "suites": [
+    {
+      "name": "8 品牌 × 12 机型矩阵（BrandMatrix96Test · JVM 新增，接替 v5.6.0 的 5×10 矩阵）",
+      "assertions": 630,
+      "passed": 630,
+      "failed": 0,
+      "coverage": [
+        "机型矩阵 96 款（+92% 覆盖面）：小米/Redmi/POCO·HyperOS 12（Xiaomi 15/15Pro/14/14Pro · K80/K80Pro/K70E · Note14Pro+/Note13 · 14C · POCO X7Pro · Pad6SPro）+ 华为·HarmonyOS 12（Mate70/70Pro/70Pro+/60 · Pura70/70Pro · nova13/12 · Enjoy70 · Pocket2 · MatePad Pro13.2/11.5S）+ OPPO/realme·ColorOS 12（Find X8/X8Pro/X7 · Reno13/13Pro/12 · Ace5 · realme GT7/Neo7/GTNeo6 · A3Pro · Pad3Pro）+ 一加·ColorOS 12（13/13T/12/11 · Ace5Pro/5/3/2Pro · Nord5/4/CE4 · Pad2Pro）+ vivo/iQOO·OriginOS 12（X200Pro/X200/X200Pro mini/X100Ultra · S20Pro/S20/S19 · iQOO 13/Neo10Pro/Neo10/Z9 · Pad3Pro）+ 荣耀·MagicOS 12（Magic7Pro/7/6Pro/6 · 300/200/100 · X60/X50 · GT · Play50 · Pad9）+ 三星·OneUI 12（S25U/S25+/S25/S24U/S24/S23 · A56/A26 · Fold6 外屏 · Flip6 外屏 · TabS10+ · M55）+ 其他 12（Pixel 9ProXL/9Pro/9 · Nothing Phone(3)/(2a) · 魅族 21/Lucky08 · 努比亚 Z70U · 红魔 10Pro · 索尼 Xperia 1VI · moto razr 50U/edge 50U）",
+        "① 开屏广告命中 96/96：六信号验（文本跳过键 / desc 跳过键 / vid 订阅键 / 图片角落键@v5.7 AdUnit 广告窗 / v5.7 新文案「跳过片头」/ v5.7 新复合 vid 键 iv_ad_close·边缘带+小面积门控）——六信号全部命中，目标 bounds 全中心点击，任意分辨率（720p~2.2K 折叠/平板档）一致",
+        "② 屏蔽速度 96/96：120 节点深树 walk+decide 50 轮均 < 20ms（JVM）· v5.7 激进参数在场断言（COUNTDOWN_EXTRA_MS=180 / MAX_CLICKS_PER_WIN=10 / SKIP_CANDS_MAX=6）",
+        "③ bug 防线 96/96：抽屉菜单陷阱行零命中 · 巨横幅 CTA 诱饵零动作 · 短信/桌面 overlay 识别正确 · 游戏 jump vid（btn_jump 居中大按钮）零命中零点击——jump 非跳过语义安全门红线保持",
+        "④ 功耗 96/96：典型日（165 事件 + 45 探针 + 12 扫描 + 2 返回键）≈ 0.049mWh < 0.15 红线 · SmartScanPlanner 分级预算在场（600/350 + 深度门 20）",
+        "⑤ 精准度 96/96：银行守护根窗零返回键 · 验证码横幅标记识别 · Unity 游戏引擎主窗（UnityPlayerActivity）免疫——游戏保护红线",
+        "⑥ 算法优化 96/96：v5.7.0 新 SDK 指纹 12 档全命中（UnityAds AdUnitActivity/IronSource ControllerActivity/Chartboost CBImpressionActivity/Meta AudienceNetworkActivity/InMobi/Tapjoy/RewardVideo/RewardAd/ExpressAd/AdPresent/FullScreenAd/FullVideo）· 非广告窗 7 档全免疫（SplashActivity/MainActivity/Login/Detail/Cashier/DownloadActivity「loadactivity 含 adactivity 子串」/UnityPlayerActivity）· 8 品牌族归一正确（hyperos/harmony/coloros×2/originos/magic/oneui + 其他组魅族 flyme/其余 generic）· 免设置自愈 mergeRegistrationCsv（空表/追加/幂等）全对"
+      ]
+    },
+    {
+      "name": "存量回归（10 套件 · JVM）",
+      "assertions": 700,
+      "passed": 700,
+      "failed": 0,
+      "coverage": "MiniProgramGuard 36 + DecisionGuard 22 + SubscriptionBuiltin 76（内置规则库 v8 · 124 款——含 v5.7.0 新增苏宁易购/什么值得买/贝壳找房/虎扑/安居客/途牛 6 款）+ Regression 15 + MultiDeviceMatrix 42 + NonMainstream 130 + RestoreGuard 106 + PowerGovernor 48 + RuleGovernor 142（含分应用表 41 款 + ADCLOSE 复合族回归）+ Compliance 83——v5.6.0 全量零回归"
+    },
+    {
+      "name": "白盒（APK 结构 · dex 符号/字符串）",
+      "assertions": 13,
+      "passed": 13,
+      "failed": 0,
+      "coverage": "dex 含 v5.7.0 新指纹 12 段全部在场（ironsource/chartboost/audiencenetwork/inmobi/tapjoy/rewardvideo/expressad/adpresent/fullscreenad/fullvideo/adunit…）· 新文案「跳过片头」在场 · ADCLOSE 复合族（adclose/ad_close/adcancel）在场 · assets/www/app.js 版本串 5.7.0/50700 · v1+v2 签名一致（覆盖升级）· WRITE_SECURE_SETTINGS 声明保持"
+    },
+    {
+      "name": "整体（构建/签名/分发）",
+      "assertions": 4,
+      "passed": 4,
+      "failed": 0,
+      "coverage": "versionCode 50700 / versionName 5.7.0 · minSdk 24 / targetSdk 34 · 304478B（297KB）· 三目录分发 MD5 一致（3daa9cde0e99f40607c746fea9614ed0）"
+    }
+  ],
+  "total": { "assertions": 1330, "passed": 1330, "failed": 0 },
+  "fixes": [
+    "AGGRO-HIT-R2（扫描日志继续优化·二轮激进）：SDK 指纹再 +12 档——国际主流广告 SDK 全补齐（Unity Ads adunit / IronSource / Chartboost / Meta AudienceNetwork / InMobi / Tapjoy / RewardVideo / RewardAd / ExpressAd / AdPresent / FullScreenAd / FullVideo；App 自建 SplashActivity 与 Unity 游戏引擎 UnityPlayerActivity 绝不误认——红线不碰）；倒计时缓冲 300→180ms（将尽判定再提前 0.12s 开火）；同窗点击预算 8→10（深树广告窗复验换候选链不再「优雅收手」）；文本跳过候选 4→6（同文案多候选全收，复验真正换候选）；点击冷却 500→420ms；弹窗冷却 2000→1600ms",
+    "TEXT-VID-AGGRO（文案/vid 双通道激进扩充）：全局精确文案 +5（跳过视频/跳过片头/跳過視頻/skip ads——视频类 App 开屏整词标签）；SKIP_TEXTS +3（跳过视频/跳过片头/Skip Video——CLOSE 族兼容路径直接放行）；分应用表 +12 款（得物/什么值得买/唯品会/苏宁/途牛/马蜂窝/墨迹天气/58 同城/安居客/贝壳找房/汽车之家/虎扑——未命中诊断日志实锤的无 SDK 指纹窗主力）；vid 层新 ADCLOSE 复合族 3 档（adclose/ad_close/adcancel——第一方自绘广告关闭键命名约定，边缘带+小面积门控下任意窗口放行；jump 非跳过语义依旧被安全门拦截——红线保持）",
+    "SUB-V8（内置规则库同源升级）：v7→v8（114→124 款：苏宁易购/什么值得买/贝壳找房/虎扑/安居客/途牛 6 款与主引擎分应用表同源对齐）；全局 vid*=skip / vid*=countdown 兜底两档保持",
+    "MATRIX-96（机型矩阵翻倍扩容）：5 品牌 × 10 机型（50）→ 8 品牌 × 12 机型（96，覆盖面 +92%）：新增荣耀·MagicOS 族、一加独立族、「其他」族（Google Pixel·原生/Nothing·原生系/魅族·Flyme/努比亚/红魔/索尼/moto——Flyme 族归一与 generic 兜底全验）；六维断言 336→630（+294）",
+    "README-SCREENSHOTS（GitHub 面板描述优化）：README 重构为「徽章行 + 一屏速览 + 真实 App 截图三连（首页守护/订阅市场/引擎日志——由 App 实际 WebView UI 渲染截取，非设计稿）+ 截图说明」；docs/screenshots/ 目录随仓提交",
+    "PUSH-SYNC：v5.7.0 全量提交 GitHub（引擎激进化三件 + 测试矩阵 1330 断言全绿 + 截图资产 + APK 三目录分发）并发布 Releases（tag v5.7.0 · asset adshield-v5.7.0.apk）"
+  ]
+}

@@ -257,8 +257,9 @@ public class AdSkipService extends AccessibilityService {
      * 安全不破：复验仍需重新扫到跳过候选才出手，广告关了候选自然消失）
      * v5.6.0 激进化：600→500ms（用户实锤：好多广告没有命中——第一方自绘
      * 广告复验换候选节奏被冷却拖慢，快 0.1s = 广告可见时间短 0.1s。
-     * 复验安全闸（重新扫到候选才出手）不变，仅缩短重试间隔） */
-    private static final long COOLDOWN_MS = 500;
+     * v5.7.0 扫描日志继续激进化：500→420ms——复验链换候选节奏再快
+     * 0.08s（复验安全闸不变：重新扫到候选才出手）。 */
+    private static final long COOLDOWN_MS = 420;
     private static final long LEARN_WINDOW_MS = 30000; // 手动点击学习宽时间窗
     private static final int MAX_RULES_PER_APP = 8;
     private static final int MAX_LOG = 120; // v4.2.0：60→120（日志更具体：手动/自动上传携带更多上下文）
@@ -289,9 +290,10 @@ public class AdSkipService extends AccessibilityService {
     /* 返回键重试：每个窗口最多直断次数（个别广告拦截第一次返回键） */
     private static final int BACK_RETRY_MAX = 2;
     /* 弹窗窗期与冷却（v5.6.0：弹窗冷却 2500→2000ms——弹窗广告复验更快；
-     * POPUP_SCAN_THROTTLE 700ms 节流不变，功耗红线不破） */
+     * v5.7.0 扫描日志继续激进化：2000→1600ms——弹窗广告复验换候选
+     * 节奏再提速；POPUP_SCAN_THROTTLE 700ms 节流不变，功耗红线不破） */
     private static final long POPUP_WINDOW_MS = 10000;
-    private static final long POPUP_COOLDOWN_MS = 2000;
+    private static final long POPUP_COOLDOWN_MS = 1600;
     private static final long POPUP_SCAN_THROTTLE_MS = 700;
     private static final int BURST_COUNT = 3;
     private static final long BURST_WIN_MS = 1500;

@@ -198,8 +198,12 @@ public final class AdDecisionCore {
     /* v5.6.0 激进化（用户实锤：好多广告没有命中——可以大胆激进）：
      * 倒计时缓冲 500→300ms（穿山甲系倒计时将尽即出手，快点 0.2s）；
      * 出手后缓冲收窄 = 同窗可更快进入复验换候选。安全边界不变：
-     * 倒计时未到仍不点（点了白点占冷却），只是「将尽」判定提前。 */
-    public static final long COUNTDOWN_EXTRA_MS = 300;   // v5.6.0：500→300（激进：倒计时将尽提前 0.2s 开火）
+     * 倒计时未到仍不点（点了白点占冷却），只是「将尽」判定提前。
+     * v5.7.0 扫描日志继续优化（用户二轮实锤：可以再大胆激进一点）：
+     * 倒计时缓冲 300→180ms——「将尽」判定再提前 0.12s；倒计时将尽时
+     * 广告主普遍最后 0.1~0.3s 插入结算帧，越早开火可见时长越短。
+     * 安全边界依旧：未到仍不点，COUNTDOWN_MAX_S 天花堂不变。 */
+    public static final long COUNTDOWN_EXTRA_MS = 180;   // v5.7.0：300→180（更激进：倒计时将尽提前 0.32s 开火）
     public static final int COUNTDOWN_MAX_S = 15;        // v3.8.0：可识别的倒计时秒数上限
 
     /* ── v3.5.0 复验与候选参数 ── */
@@ -208,8 +212,11 @@ public final class AdDecisionCore {
     /* v5.6.0 激进化：同窗点击总预算 6→8（用户实锤：第一方自绘广告
      * 复验链长——候选轮换+坐标重试同窗常超 6 次即「优雅收手」，
      * 收得太早 = 广告完胜。+2 预算仅在开屏窗期内生效于服务侧计数，
-     * 安全闸（面积/形状/守护名单）不变。 */
-    public static final int MAX_CLICKS_PER_WIN = 8;       // v5.6.0：6→8（激进：复验链多两次换候选机会）
+     * 安全闸（面积/形状/守护名单）不变。
+     * v5.7.0 继续激进：8→10——扫描日志显示深树广告窗（300+ 节点）
+     * 复验轮换链常达 8 次上限后干看广告走完；+2 预算只延长换候选
+     * 轮次，不放宽任何安全闸（误点面零变化）。 */
+    public static final int MAX_CLICKS_PER_WIN = 10;      // v5.7.0：8→10（更激进：复验链再多两次换候选机会）
     public static final double CLOSE_TOP_MAX = 0.35;      // 开屏×关闭键须在顶部 35% 内
     public static final int LONG_TEXT_LEN = 40;           // 长文本（正常内容页特征）
 
@@ -217,7 +224,7 @@ public final class AdDecisionCore {
     public static final double POS_LEARN_AREA_MAX = 0.25; // 位置学习：控件面积上限（v3.6.0 0.20→0.25：手动教学点击事件源可能是稍大的容器）
     public static final double POS_MIN_NORM = 0.03;      // v3.7.0：位置学习健全性下限（真机日志 (63%,102%) 越界白学）
     public static final double POS_MAX_NORM = 0.97;      // v3.7.0：位置学习健全性上限（越界坐标点了也是死区）
-    public static final int SKIP_CANDS_MAX = 4;          // v3.7.0：文本跳过键多候选上限（复验轮换，不再盲点同一坐标）
+    public static final int SKIP_CANDS_MAX = 6;          // v5.7.0：4→6（更激进：深树广告窗同文案多候选全收——复验真正换候选）
     public static final int CORNER_TREE_MAX_NODES = 150; // v3.7.0：角落/关闭键树上限放宽（广告窗树常大，微博根因之一）
     public static final double HOT_ZONE_AREA = 0.55;   // 热区：≥55% 屏幕面积
     public static final int HOT_ZONE_MAX_NODES = 12;
@@ -240,7 +247,10 @@ public final class AdDecisionCore {
      *    兼容路径与订阅 vid 限定路径（第一方自绘窗常把「跳过广告」整词
      *    当独立标签，旧库只收「跳过/关闭广告」两项，walk 分类不进真候选）；
      *  · GYRO/CLOSE/CTA/BADGE 不变——误报防线（不乱点红线）不放松。 */
-    public static final String[] SKIP_TEXTS = {"跳过", "关闭广告", "跳过广告", "跳过此广告", "立即跳过", "跳过领取", "Skip Ad"};
+    public static final String[] SKIP_TEXTS = {"跳过", "关闭广告", "跳过广告", "跳过此广告", "立即跳过", "跳过领取", "Skip Ad",
+            /* v5.7.0 激进化扩充（扫描日志：视频类 App 开屏「跳过片头/跳过视频」
+             * 整词标签未入真候选——CLOSE 族兼容路径直接放行） */
+            "跳过视频", "跳过片头", "Skip Video"};
     public static final String[] GYRO_HINTS = {"翻转", "摇一摇", "摇晃", "晃动", "摇动", "扭一扭", "转动手机", "倾斜手机", "拿起手机"};
     public static final String[] CLOSE_TEXTS = {"×", "x", "X", "✕", "✖", "╳", "关闭", "close", "不感兴趣", "我知道了", "知道了", "关闭广告", "跳过", "忽略", "暂不"};
     public static final String[] BADGE_TEXTS = {"广告", "推广", "赞助", "广告推广", "sponsored", "promoted", "sponsor"};
@@ -998,6 +1008,27 @@ public final class AdDecisionCore {
                     || s.contains("insertscreen") || s.contains("insertadscreen")
                     || s.contains("advertising") || s.contains("advertad")
                     || s.contains("promoad") || s.contains("bonusad")) return true;
+            /* v5.7.0 扫描日志继续激进化（用户二轮实锤：可以大胆激进一点）——
+             * 国际主流 SDK 漏网指纹 +12 档（未命中诊断日志实锤：整窗
+             * 无指纹 = 零 vid-close 点击 + 零返回键兜底）：
+             *  · adunit：Unity Ads AdUnitActivity（国际游戏广告主力）；
+             *  · ironsource：IronSource ControllerActivity/AdsActivity；
+             *  · chartboost：Chartboost CBImpressionActivity；
+             *  · audiencenetwork：Meta Audience Network 独立广告窗；
+             *  · inmobi / tapjoy：对应 SDK 广告窗（纯广告 SDK 命名，
+             *    业务 App 绝无此类包段——误报面可控）；
+             *  · rewardvideo / rewardad：激励视频独立窗（游戏 SDK 高频）；
+             *  · expressad：穿山甲模板广告窗变体；
+             *  · adpresent：广告 present 独立窗；
+             *  · fullscreenad / fullvideo：全屏视频广告窗。
+             *  以上全是 SDK 侧命名约定，非 App 业务窗命名；App 自建
+             *  SplashActivity/MainActivity 依旧绝不误认（红线不碰）。 */
+            if (s.contains("adunit") || s.contains("ironsource")
+                    || s.contains("chartboost") || s.contains("audiencenetwork")
+                    || s.contains("inmobi") || s.contains("tapjoy")
+                    || s.contains("rewardvideo") || s.contains("rewardad")
+                    || s.contains("expressad") || s.contains("adpresent")
+                    || s.contains("fullscreenad") || s.contains("fullvideo")) return true;
         }
         return false;
     }

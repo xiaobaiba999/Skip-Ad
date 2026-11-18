@@ -3,6 +3,15 @@
 > 首页只保留当前版本要点；全部历史版本详情在本页归档。
 > 发布物（APK/报告/文档）见 [Releases](https://github.com/xiaobaiba999/Skip-Ad/releases) 与 `docs/test-reports/`。
 
+## v5.7.0（2026-11-18）—— 扫描日志二轮激进 · 8×12 机型矩阵 · GitHub 面板截图
+
+- **命中再激进化（扫描日志继续优化·用户二轮实锤）**：SDK 指纹 **+12 档**（Unity Ads `AdUnitActivity` / IronSource / Chartboost `CBImpressionActivity` / Meta `AudienceNetworkActivity` / InMobi / Tapjoy / `RewardVideo` / `RewardAd` / `ExpressAd` / `AdPresent` / `FullScreenAd` / `FullVideo`——国际 SDK 漏网主力；App 自建 `SplashActivity` 与 Unity 游戏引擎 `UnityPlayerActivity` 绝不误认）；倒计时缓冲 300→**180ms**；同窗点击预算 8→**10**；文本跳过候选 4→**6**；点击冷却 500→**420ms**；弹窗冷却 2000→**1600ms**
+- **文案/vid 双通道扩充**：全局精确文案 +5（`跳过视频`/`跳过片头`/`跳過視頻`/`skip ads`——视频类 App 开屏整词标签）；分应用表 +12 款（得物/什么值得买/唯品会/苏宁/途牛/马蜂窝/墨迹天气/58 同城/安居客/贝壳找房/汽车之家/虎扑）；vid 层新 **ADCLOSE 复合族** 3 档（`adclose`/`ad_close`/`adcancel`——第一方自绘广告关闭键命名约定，边缘带 + 小面积门控下任意窗口放行；`jump` 非跳过语义依旧被安全门拦截，红线保持）
+- **内置规则库 v7→v8**：114→**124 款**（苏宁易购/什么值得买/贝壳找房/虎扑/安居客/途牛 6 款与主引擎分应用表同源对齐）
+- **8 品牌 × 12 机型矩阵（BrandMatrix96Test · 630 断言）**：50→**96 机型**（+92% 覆盖面——新增荣耀·MagicOS 族、一加独立族、「其他」族 Pixel/Nothing/魅族/努比亚/红魔/索尼/moto）；六维全 96/96（开屏命中六信号/屏蔽速度/bug 四陷阱/功耗/精准度/算法优化）；全仓 **1330 项 JVM 断言全绿**（+282）
+- **GitHub 面板描述优化**：README 重构（徽章行 + 一屏速览 + **真实 App 截图三连**——`docs/screenshots/`，App 实际 WebView UI 渲染截取，非设计稿）
+- 工程化：APK 297KB · VC 50700 · 三目录分发（MD5 `3daa9cde0e99f40607c746fea9614ed0`）
+
 ## v5.6.0（2026-11-18）—— 命中激进化 · 订阅市场 · 10 秒警告终局 · 5×10 机型矩阵 · 语言定版
 
 - **命中激进化（好多广告没有命中·一刀切断）**：SDK 指纹 +8 档（穿山甲 `UnionSplashActivity` / 优量汇-AdMob `Interstitial` / `InsertScreen` / `Advertising` / `PromoAd` / `BonusAd`——整窗无指纹=零点击零返回兜底的漏网主力，同时 App 自建 `SplashActivity` 绝不误认）；倒计时缓冲 500→300ms；同窗点击预算 6→8；点击冷却 600→500ms；弹窗冷却 2500→2000ms；SKIP 文案库扩充；内置规则库 v6→v7（102→114 款 + 全局 `vid*="skip"` / `vid*="countdown"` 兜底两档）

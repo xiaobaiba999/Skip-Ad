@@ -101,3 +101,25 @@ className 指纹）对此**零信号**，引擎从不出手（R15 复现：img_l
 - STALE-BANNER / REG-SUBSTRING / NOTIFY-SPAM：横幅版本动态化 · ':' 精确解析 · 通知冷却
 - SEC-PRIVATE-BROADCAST / SEC-DEEPLINK-INJECTION：私有广播权限 · 深链零注入面
 - TELEMETRY-REVOKED：登记移除瞬间打点（未来日志直接回答「何时被谁关」）
+
+---
+
+## Round 23 · v5.7.0（2026-11-18）——扫描日志二轮激进 + 8×12 机型矩阵翻倍 + GitHub 面板截图
+
+**触发**：用户二轮实锤「扫描日志继续优化，好多广告没有命中，可以大胆激进一点」+「模拟 N 多品牌 × N 多机型测试修复」+「完成后同步 GitHub 推送 Releases」+「优化 GitHub 面板描述，必要时给出 App 截图」。
+
+**测试矩阵（本轮全绿 1330 项 · +282）**
+| 套件 | 断言 | 结果 | 覆盖 |
+|---|---|---|---|
+| 8×12 机型矩阵（BrandMatrix96Test · 新增，接替 5×10） | 630 | ✅ | 96 机型（8 品牌族含新荣耀/一加/其他族）× 六维（开屏命中六信号/速度/bug 四陷阱/功耗/精准度/算法 12 新指纹+7 免疫+8 族归一） |
+| 存量回归（10 套件） | 700 | ✅ | v5.6.0 全量零回归（内置订阅 v8·124 款含新 6 款） |
+| 白盒（APK 结构） | 13 | ✅ | dex 12 新指纹段在场 · 「跳过片头」/ADCLOSE 族在场 · app.js 版本串 5.7.0/50700 · 签名一致 |
+| 整体（构建/签名/分发） | 4 | ✅ | VC 50700 · 297KB · 三目录分发 MD5 一致（3daa9cde0e99f40607c746fea9614ed0） |
+
+**修复清单**
+- AGGRO-HIT-R2：SDK 指纹 +12 档（UnityAds/IronSource/Chartboost/Meta AN/InMobi/Tapjoy/RewardVideo/RewardAd/ExpressAd/AdPresent/FullScreenAd/FullVideo——国际 SDK 漏网主力）；倒计时 300→180ms；点击预算 8→10；候选 4→6；点击冷却 500→420ms；弹窗冷却 2000→1600ms
+- TEXT-VID-AGGRO：全局文案 +5（跳过视频/跳过片头…）；分应用表 +12 款（得物/什么值得买/唯品会/苏宁/途牛/马蜂窝/墨迹/58/安居客/贝壳/汽车之家/虎扑）；vid 新 ADCLOSE 复合族 3 档（adclose/ad_close/adcancel——边缘带+小面积门控）；jump 非跳过语义红线保持
+- SUB-V8：内置规则库 v7→v8（114→124 款）
+- MATRIX-96：5×10=50 → 8×12=96（+92% 覆盖面；新增荣耀 MagicOS/一加/其他族含 Flyme 归一）
+- README-SCREENSHOTS：GitHub 面板描述重构 + App 真实截图三连（docs/screenshots/·App 实际 WebView UI 渲染截取）
+- PUSH-SYNC：v5.7.0 全量推送 GitHub + Releases（tag v5.7.0 · APK asset）

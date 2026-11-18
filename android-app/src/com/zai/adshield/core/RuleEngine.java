@@ -93,6 +93,22 @@ public final class RuleEngine {
             { "com.taobao.trip", "跳过" },
             { "com.autonavi.minimap", "跳过" },
             { "com.sdu.didi.psnger", "跳过" },
+            /* v5.7.0 扫描日志继续激进化（用户实锤：可以大胆激进一点）——
+             * 分应用表 +12 款高频国产 App（未命中诊断日志实锤：这些
+             * App 的开屏跳过文案只走全局精确层，窗口命名无 SDK 指纹，
+             * 整窗零候选 → 干看广告走完；分应用精确等值零误点面） */
+            { "com.shizhuang.duapp", "跳过" },            // 得物
+            { "com.smzdm.client.android", "跳过" },        // 什么值得买
+            { "com.achievo.vipshop", "跳过" },             // 唯品会
+            { "com.suning.mobile.ebuy", "跳过广告", "跳过" }, // 苏宁
+            { "com.tuniu.app.ui", "跳过" },                 // 途牛
+            { "com.mfw.roadbook", "跳过" },                // 马蜂窝
+            { "com.moji.mjweather", "跳过广告", "跳过" },    // 墨迹天气
+            { "com.wuba", "跳过" },                         // 58同城
+            { "com.anjuke.android", "跳过" },               // 安居客
+            { "com.lianjia.beike", "跳过广告" },             // 贝壳找房
+            { "com.cubic.autohome", "跳过" },               // 汽车之家
+            { "com.hupu.games", "跳过" },                    // 虎扑
     };
     /* v5.6.0 三件套之补：分应用表并行小写副本（类加载期一次构建；
      * 原写法每匹配一行 row[j].toLowerCase() 都分配新串——热路径高频） */
@@ -117,8 +133,11 @@ public final class RuleEngine {
             "跳过", "跳过广告", "跳过此广告", "跳过这个广告", "关闭广告", "关闭此广告",
             "点击跳过", "上滑跳过", "跳过提示", "立即跳过",
             "跳过 ad", "跳过ad",
-            "skip", "skip ad", "skipad", "skip this ad",
+            "skip", "skip ad", "skipad", "skip this ad", "skip ads",
             "跳過", "跳過廣告", "跳過此廣告",
+            /* v5.7.0 激进化扩充（扫描日志：视频类 App 开屏「跳过片头/
+             * 跳过视频」整词独立标签——旧库未收，walk 分类不进真候选） */
+            "跳过视频", "跳过片头", "跳過視頻",
     };
     static final java.util.HashSet<String> TEXT_EXACT_SET =
             new java.util.HashSet<String>(java.util.Arrays.asList(TEXT_EXACT));
@@ -153,9 +172,13 @@ public final class RuleEngine {
 
     /* ── 第4层：vid 关键段 ──
        SKIP 族 + 倒计时控件：任意窗口；
-       CLOSE 族（close/exit/dismiss）：仅 SDK 广告窗/学习窗 + 屏幕边缘带 */
+       CLOSE 族（close/exit/dismiss）：仅 SDK 广告窗/学习窗 + 屏幕边缘带；
+       v5.7.0 ADCLOSE 复合族（adclose/ad_close/adcancel）：边缘带 + 小面积
+       门控下任意窗口放行——第一方自绘广告的关闭键命名约定
+       （iv_ad_close / btn_ad_close），广告语义在命名里，误点面可控 */
     static final String[] VID_SKIP_KEYS = { "skip" };
     static final String[] VID_CLOSE_KEYS = { "close", "exit", "dismiss" };
+    static final String[] VID_AD_CLOSE_KEYS = { "adclose", "ad_close", "adcancel" };
 
     /* ═══ v5.5.0 模块二：第5层场景规则（新四大广告场景）═══
      *
@@ -400,6 +423,15 @@ public final class RuleEngine {
             if (s.contains("count") && s.contains("down") && !s.contains("download")) {
                 return build("global_vid", "vid:" + vid, b, node, ctx);
             }
+            /* v5.7.0 ADCLOSE 复合族：边缘带 + 小面积门控下任意窗口放行
+             *（广告关闭语义直接写进命名——btn_ad_close / iv_adclose 类
+             * 第一方自绘广告关闭键，非广告窗的普通控件绝无此命名） */
+            if (b != null && edgeZone(b, ctx)
+                    && areaRatio(b, ctx) <= AdDecisionCore.SKIP_AREA_MAX) {
+                for (String k : VID_AD_CLOSE_KEYS) {
+                    if (v.contains(k)) return build("global_vid", "vid:" + vid, b, node, ctx);
+                }
+            }
             /* ═══ v5.5.0 5b 视频前贴 vid 键：preroll/pre_roll/front_ad
              * 任意窗口放行（这些 key 只存在于前贴广告容器，无误触面） */
             if (ctx.videoApp) {
@@ -506,7 +538,7 @@ public final class RuleEngine {
                 + " · v5.5.0 场景层：更新弹窗否定" + UPDATE_NEGATIVE.length
                 + "+肯定信号" + UPDATE_POSITIVE.length
                 + " · 视频前贴 " + VIDEO_APP_PKGS.length + " 款"
-                + " · 悬浮球/半屏插屏 vid 扩展";
+                + " · v5.7.0 ADCLOSE 复合族/" + VID_AD_CLOSE_KEYS.length + " 档(边缘带+小面积门控)";
     }
 
     static double areaRatio(int[] b, Ctx ctx) {
