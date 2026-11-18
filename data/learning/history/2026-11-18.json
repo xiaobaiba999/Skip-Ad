@@ -1,15 +1,15 @@
 {
   "meta": {
     "version": "3.1.0",
-    "generatedAt": "2026-11-18T03:24:10.135Z",
+    "generatedAt": "2026-11-18T03:25:21.168Z",
     "timezone": "Asia/Shanghai",
     "purpose": "学习中心夜间自动同步——为后续版本迭代提供规则与画像参考"
   },
   "stats": {
-    "totalBlocks": 7,
+    "totalBlocks": 11,
     "totalMisses": 0,
     "guardBlocks": 1,
-    "avgLatencyMs": 128,
+    "avgLatencyMs": 95,
     "successRate": 1
   },
   "learnedRules": [
@@ -19,14 +19,24 @@
       "adType": "splash",
       "action": "chain_block",
       "pattern": "首次拦截即沉淀广告指纹（容器签名 + viewId + 出现时机）→ 下次启动 P0 预拦截，广告未及呈现",
-      "confidence": 0.784,
-      "hitCount": 1,
+      "confidence": 0.788,
+      "hitCount": 2,
       "enabled": true
     },
     {
       "appName": "极选商城",
       "appCategory": "电商",
       "adType": "splash",
+      "action": "preempt_block",
+      "pattern": "首次拦截即沉淀广告指纹（容器签名 + viewId + 出现时机）→ 下次启动 P0 预拦截，广告未及呈现",
+      "confidence": 0.788,
+      "hitCount": 2,
+      "enabled": true
+    },
+    {
+      "appName": "邻里团购",
+      "appCategory": "生活",
+      "adType": "popup",
       "action": "preempt_block",
       "pattern": "首次拦截即沉淀广告指纹（容器签名 + viewId + 出现时机）→ 下次启动 P0 预拦截，广告未及呈现",
       "confidence": 0.784,
@@ -67,16 +77,22 @@
   "habitProfile": {
     "perApp": [
       {
-        "appName": "极选商城",
-        "category": "电商",
-        "count": 2,
-        "avgMs": 39
-      },
-      {
         "appName": "喜马拉雅",
         "category": "音频",
+        "count": 3,
+        "avgMs": 239
+      },
+      {
+        "appName": "极选商城",
+        "category": "电商",
+        "count": 3,
+        "avgMs": 37
+      },
+      {
+        "appName": "邻里团购",
+        "category": "生活",
         "count": 2,
-        "avgMs": 341
+        "avgMs": 43
       },
       {
         "appName": "政务通",
@@ -109,7 +125,7 @@
       0,
       0,
       6,
-      1,
+      5,
       0,
       0,
       0,
@@ -124,8 +140,9 @@
       0
     ],
     "scenarioDistribution": {
-      "guard": 1,
-      "normal": 6
+      "normal": 9,
+      "popup": 1,
+      "guard": 1
     }
   },
   "hotPresetRules": [
@@ -155,6 +172,11 @@
       "hitCount": 1
     },
     {
+      "appName": "邻里团购",
+      "pattern": "邻里团购：viewId 精确定位跳过控件（无障碍快照）",
+      "hitCount": 1
+    },
+    {
       "appName": "喜马拉雅",
       "pattern": "喜马拉雅专案 v2：无倒计时 + 右上角「跳过广告」+ 图内假「跳过」热区 + 底部「翻转手机，跳转详情页或第三方应用」陀螺仪诱导 + 链式二跳 → 极速链 0ms 首扫直配「跳过广告」；0.8s 无真跳过键返回键直断；v3.12.0 起二跳已发起后不再回弹；次启预拦截",
       "hitCount": 1
@@ -163,14 +185,49 @@
       "appName": "喜马拉雅",
       "pattern": "喜马拉雅专案 v3：SDK 广告窗零文本（文案烧在图里）+ 无倒计时 + 翻转手机 900ms 即跳 + 浏览器二跳 → className 指纹 500ms 直断（抢在翻转前）；30s 后首页覆盖层弹窗内容突发检测关闭；次启预拦截 0ms 可见（v3.12.0：二跳已发起后不再回弹）",
       "hitCount": 1
-    },
-    {
-      "appName": "喜马拉雅",
-      "pattern": "喜马拉雅专案 v4：第一方图片开屏（WelComeActivity 自建广告渲染，零文本零类名信号）+ 翻转手机 900ms 即跳 → 角落图片跳过键 650ms 手势点击抢在翻转前（R16 验证 659ms < 900ms）；30s 覆盖层弹窗内容突发检测关闭；次启预拦截 0ms 可见（v3.12.0：二跳已发起后不再回弹）",
-      "hitCount": 1
     }
   ],
   "recentEvents": [
+    {
+      "id": "cmwlk622f0005u8b0wawn0rou",
+      "ts": 1794972309495,
+      "appName": "邻里团购",
+      "action": "preempt_block",
+      "adType": "popup",
+      "latencyMs": 35,
+      "success": true,
+      "scenario": "normal"
+    },
+    {
+      "id": "cmwlk5m340003u8b0mif61yan",
+      "ts": 1794972288784,
+      "appName": "邻里团购",
+      "action": "popup_close",
+      "adType": "popup",
+      "latencyMs": 50,
+      "success": true,
+      "scenario": "popup"
+    },
+    {
+      "id": "cmwlk59fa0002u8b0btd6agvu",
+      "ts": 1794972272374,
+      "appName": "喜马拉雅",
+      "action": "preempt_block",
+      "adType": "splash",
+      "latencyMs": 35,
+      "success": true,
+      "scenario": "normal"
+    },
+    {
+      "id": "cmwlk4vyx0001u8b0em6gtusd",
+      "ts": 1794972254938,
+      "appName": "极选商城",
+      "action": "preempt_block",
+      "adType": "splash",
+      "latencyMs": 35,
+      "success": true,
+      "scenario": "normal"
+    },
     {
       "id": "cmwlhehvg0008u8xbmn09x96s",
       "ts": 1794967664381,
@@ -208,36 +265,6 @@
       "action": "instant_skip",
       "adType": "splash",
       "latencyMs": 42,
-      "success": true,
-      "scenario": "normal"
-    },
-    {
-      "id": "cmwlhdeso0002u8xbc3uyyptp",
-      "ts": 1794967613736,
-      "appName": "喜马拉雅",
-      "action": "instant_skip",
-      "adType": "splash",
-      "latencyMs": 42,
-      "success": true,
-      "scenario": "normal"
-    },
-    {
-      "id": "cmwlhdes20000u8xb77kh6vx6",
-      "ts": 1794967613714,
-      "appName": "极选商城",
-      "action": "instant_skip",
-      "adType": "splash",
-      "latencyMs": 42,
-      "success": true,
-      "scenario": "normal"
-    },
-    {
-      "id": "cmwk54m0g000wrluev1u10xv1",
-      "ts": 1794886581616,
-      "appName": "喜马拉雅",
-      "action": "instant_skip",
-      "adType": "splash",
-      "latencyMs": 639,
       "success": true,
       "scenario": "normal"
     }
