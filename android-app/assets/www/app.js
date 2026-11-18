@@ -732,10 +732,16 @@ function engineProfile() {
     if (sub.remoteOk) subLine += " · 远程「" + (sub.remoteName || "") + "」" + (sub.remoteApps || 0) + " 款/" + (sub.remoteRules || 0) + " 条（命中 " + (sub.remoteHits || 0) + "）";
   } catch (e) { subLine += "内置"; }
   lines.push(subLine);
-  // 能耗画像
+  // 能耗画像（v5.3.0：探针/省电档案/位置学习拦截维度）
   try {
     const en = JSON.parse(AndroidApp.energyStats());
-    if (en && en.ok) lines.push("- 能耗画像（本次开机）：事件 " + en.events + " · 扫描 " + en.scans + " · 手势估算 " + en.microWh + "µWh");
+    if (en && en.ok) {
+      let el = "- 能耗画像（本次开机）：事件 " + en.events + " · 探针 " + (en.probes || 0) + " · 扫描 " + en.scans;
+      if (en.profileSkips) el += "（省电档案跳过 " + en.profileSkips + " 窗）";
+      el += " · 手势估算 " + en.microWh + "µWh";
+      lines.push(el);
+      if (en.posDropped) lines.push("- 位置学习验证：拦截误学 " + en.posDropped + " 次（点击后 1.5s 窗口未关 = 普通点击）");
+    }
   } catch (e) {}
   // 引擎日志：最近 16 条（带时间戳）
   const log = (st.log || []).slice(-16).map(l => "  - [" + fmtTs(l.t || 0) + "] " + (l.msg || ""));
