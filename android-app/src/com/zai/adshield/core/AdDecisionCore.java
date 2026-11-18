@@ -337,6 +337,12 @@ public final class AdDecisionCore {
         public int x;           // tap_point 坐标
         public int y;
         public String reason = "";
+        /* v5.5.1（issue#64 实锤）：规则命中文案——gestureOnly 命中（无可点
+         * 祖先，d.node=null）时动作边界自检的语义依据。此前规则引擎已按
+         * 「跳过广告」文案验证语义，但 label 未随 Decision 传递 → 边界自检
+         * 拿到空串 → 语义断言误杀（微博漏拦截元凶）。语义放行面零扩张：
+         * 文案本身必须仍是跳过/关闭族才可能通过。 */
+        public String label = "";
 
         public static Decision none() {
             return new Decision();
@@ -893,6 +899,20 @@ public final class AdDecisionCore {
     public static boolean postSkipQuiet(long adClosedAt, long now) {
         return adClosedAt > 0 && now - adClosedAt < POST_SKIP_QUIET_MS;
     }
+
+    /** v5.5.1（issue#56/#57/#64 实锤）：候选样本「中心在屏内」判定。
+     *  日志实锤的越界样本：播放列表@(16%,150%)、vid:checkbox@(187%,17%)、
+     *  返回@(110%,9%)——弹窗/对话框 bounds 被裁剪或坐标系差异导致中心
+     *  超出屏幕，对补规则零价值还误导（越界点位点了也不在屏上）。
+     *  容差 2%：贴边控件（x=100% 的右缘贴边键）不算越界。
+     *  纯函数：服务侧 collectSamples 过滤 + JVM 单测共用。 */
+    public static boolean sampleOnScreen(double cxPct, double cyPct) {
+        return cxPct >= -SAMPLE_TOLERANCE && cxPct <= 100 + SAMPLE_TOLERANCE
+                && cyPct >= -SAMPLE_TOLERANCE && cyPct <= 100 + SAMPLE_TOLERANCE;
+    }
+
+    /** 样本越界容差（百分比，贴边键不算越界） */
+    public static final double SAMPLE_TOLERANCE = 2.0;
 
     /** v5.1.0：扫描画像是否存在「可出手候选」（零候选退避判定用）。
      *  角落候选须过 L4 广告形态确认门才算数——school.app 实锤：校徽页

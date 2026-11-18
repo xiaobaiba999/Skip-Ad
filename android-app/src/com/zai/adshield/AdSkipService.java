@@ -1834,16 +1834,23 @@ public class AdSkipService extends AccessibilityService {
         }
     }
 
-    /* ═══ v5.5.0 模块四：动作边界拦截日志（节流：同包 10s 一条，防刷屏）═══ */
+    /* ═══ v5.5.0 模块四：动作边界拦截日志（节流：同包 10s 一条，防刷屏）═══
+     *  v5.5.1（issue#64 实锤）：按失败层打点 + 目标签要——旧文案「语义或
+     *  越界」两可含糊，微博误杀案定位花了一整轮日志分析；新日志直接
+     *  回答「哪层拒绝、拒绝的是什么」。 */
     private final java.util.HashMap<String, Long> boundaryLogAt = new java.util.HashMap<String, Long>();
 
-    private void boundaryGuardLog(String pkg, String reason) {
+    private void boundaryGuardLog(String pkg, String reason, int layer, String target) {
         long now = System.currentTimeMillis();
         Long last = boundaryLogAt.get(pkg);
         if (last != null && now - last < 10_000L) return;
         boundaryLogAt.put(pkg, now);
-        appendLog("🚧 动作边界自检拦截（" + shortPkg(pkg) + " · " + reasonZh(reason)
-                + "）：目标非跳过/关闭语义或越界 → 放弃（宁可漏拦绝不误触）");
+        String tgt = target == null ? "" : target.trim();
+        if (tgt.length() > 12) tgt = tgt.substring(0, 12) + "…";
+        appendLog("🚧 动作边界自检拦截（" + shortPkg(pkg) + " · " + reasonZh(reason) + "）："
+                + com.zai.adshield.core.ComplianceGuard.boundaryLayerName(layer)
+                + (tgt.length() > 0 ? " · 目标「" + tgt + "」" : "")
+                + " → 放弃（宁可漏拦绝不误触）");
     }
 
     /** v5.3.0 探针哨兵：CLEAN 档案窗口的零 DFS 检查（李跳跳核心路径）。
@@ -2370,6 +2377,11 @@ public class AdSkipService extends AccessibilityService {
                             rd.node = hit.gestureOnly ? null : hit.clickNode;
                             rd.bounds = hit.tapBounds;
                             rd.reason = "rule_" + hit.appId;
+                            /* v5.5.1（issue#64 微博误杀根治）：命中文案随 Decision
+                             * 传递——gestureOnly（无可点祖先，微博图片跳过键常态）
+                             * 时边界自检拿不到空 label，凭规则已验证的「跳过广告」
+                             * 文案通过语义断言（非跳过文案依旧一票否决，零放行面） */
+                            rd.label = hit.label;
                             if (execute(pkg, rd, null, ctx, clickCoolOK, now)) return; // 命中即熔断
                             acted = true; // 冷却/让路暂未出手，但场景已确认
                         } else {
@@ -2481,7 +2493,15 @@ public class AdSkipService extends AccessibilityService {
      * v5.1.0 双降噪：① 跳过后静默期（复验通过 2.2s 内）不记——首页内容
      * 落定期的扫描是噪声（waimaiii 实锤：复验通过同一秒记了一条 79 节点
      * 未命中）；② 微树（≤5 节点）不记——加载占位窗（school.app 实锤：
-     * 「树 4 节点 · FrameLayout」连环刷屏），无任何诊断价值。 */
+     * 「树 4 节点 · FrameLayout」连环刷屏），无任何诊断价值。
+     * v5.5.1（issue#62/#64 实锤）第三重降噪——同包 8s 节流：
+     *  Dialog/底部面板弹出动画期窗口类名高频抖动（FrameLayout↔MainActivity
+     *  往返），每次窗口事件都重置 winStart → pkg|winStart 去重失效 →
+     *  ting.android 2 秒内 4 条「开屏未命中」（播放列表样本 ×4）、
+     *  downloads.ui 同秒 2 条。节流保留爆发首条诊断（不同窗口实例的
+     *  语义没丢——首条样本已足够补规则），其余静默。 */
+    private final java.util.HashMap<String, Long> missThrottleAt = new java.util.HashMap<String, Long>();
+
     private void logScanMiss(String pkg, AccessibilityNodeInfo[] roots, ScanFind f,
                              long now, long winStart, boolean popup) {
         try {
@@ -2493,6 +2513,12 @@ public class AdSkipService extends AccessibilityService {
             String key = pkg + "|" + winStart;
             Long last = missLogAt.get(key);
             if (last != null) return;
+            /* v5.5.1 同包 8s 节流：窗口类名抖动期 winStart 每抖一次换新键，
+             * 逐窗去重对抖动无效——包级节流才能挡住 2 秒 4 条的爆发 */
+            Long lastPkg = missThrottleAt.get(pkg);
+            if (lastPkg != null && now - lastPkg.longValue() < 8_000L) return;
+            missThrottleAt.put(pkg, now);
+            if (missThrottleAt.size() > 32) missThrottleAt.clear(); // 防膨胀
             missLogAt.put(key, now);
             if (missLogAt.size() > 64) missLogAt.clear(); // 防膨胀
             // 弹窗路径且无画像（未走到 walk）：不记（弹窗识别本就门控严格）
@@ -2513,16 +2539,23 @@ public class AdSkipService extends AccessibilityService {
         }
     }
 
-    /** 收集树内可点小控件样本（≤4 条：label@(x%,y%)，供补规则用） */
+    /** 收集树内可点小控件样本（≤4 条：label@(x%,y%)，供补规则用）
+     *  v5.5.1 双净化（issue#56/#57/#64 实锤）：
+     *  ① 越界中心剔除——样本坐标须过 sampleOnScreen（±2% 容差）：
+     *    「播放列表@(16%,150%)」「vid:checkbox@(187%,17%)」类越界点位
+     *    是弹窗 bounds 被裁剪/坐标系差异的误导产物，补规则点位不在屏上；
+     *  ② label+坐标签名去重——支付宝日志「关闭@(93%,9%) / 关闭@(93%,9%)」
+     *    双胞胎占掉 1/4 样本额度，去重后同额度覆盖更多不同控件。 */
     private String collectNodeSamples(AccessibilityNodeInfo root) {
         if (root == null || screenWidth <= 0 || screenHeight <= 0) return "";
         StringBuilder sb = new StringBuilder(96);
         int[] budget = {120};
-        collectSamples(new NodeAdapter(root), budget, sb);
+        java.util.HashSet<String> seen = new java.util.HashSet<String>();
+        collectSamples(new NodeAdapter(root), budget, sb, seen);
         return sb.toString();
     }
 
-    private void collectSamples(NodeView node, int[] budget, StringBuilder out) {
+    private void collectSamples(NodeView node, int[] budget, StringBuilder out, java.util.HashSet<String> seen) {
         if (node == null || budget[0] <= 0 || countSep(out) >= 4) return;
         budget[0]--;
         try {
@@ -2535,15 +2568,24 @@ public class AdSkipService extends AccessibilityService {
                 String label = text.length() > 0 ? text : (desc.length() > 0 ? desc : vid);
                 boolean small = area <= 0.12 && (b[2] - b[0]) <= screenWidth * 0.6;
                 if (label.length() > 0 && small && node.visible() && node.clickable()) {
-                    if (out.length() > 0) out.append(" / ");
-                    out.append(clip(label, 12)).append("@(")
-                            .append(Math.round((b[0] + b[2]) / 2.0 / screenWidth * 100)).append("%,")
-                            .append(Math.round((b[1] + b[3]) / 2.0 / screenHeight * 100)).append("%)");
+                    int cxPct = (int) Math.round((b[0] + b[2]) / 2.0 / screenWidth * 100);
+                    int cyPct = (int) Math.round((b[1] + b[3]) / 2.0 / screenHeight * 100);
+                    /* v5.5.1 ①：越界中心不采（纯函数 sampleOnScreen，JVM 可测） */
+                    if (AdDecisionCore.sampleOnScreen(cxPct, cyPct)) {
+                        /* v5.5.1 ②：label+坐标签名去重 */
+                        String sig = clip(label, 12) + "@" + cxPct + "," + cyPct;
+                        if (!seen.contains(sig)) {
+                            seen.add(sig);
+                            if (out.length() > 0) out.append(" / ");
+                            out.append(clip(label, 12)).append("@(")
+                                    .append(cxPct).append("%,").append(cyPct).append("%)");
+                        }
+                    }
                 }
             }
             int n = node.childCount();
             for (int i = 0; i < n && countSep(out) < 4; i++) {
-                collectSamples(node.child(i), budget, out);
+                collectSamples(node.child(i), budget, out, seen);
             }
         } catch (Throwable ignored) {
         }
@@ -2765,7 +2807,11 @@ public class AdSkipService extends AccessibilityService {
          * 仅代点原生跳过控件：语义（跳过/关闭/否定侧）+场景（零扫描
          * 场景绝不出手）+形态（≤35% 屏）三重断言；学习位置（用户手动
          * 教过=用户意图）豁免语义断言，但场景/形态仍查。任一不过=
-         * 放弃（宁可漏拦绝不误触——误触率只降不升红线的最后一道闸）。 */
+         * 放弃（宁可漏拦绝不误触——误触率只降不升红线的最后一道闸）。
+         * v5.5.1：① d.node 为空（gestureOnly 规则命中）或控件零文本时，
+         * 语义依据回落到 Decision.label（规则引擎已验证的命中文案）——
+         * issue#64 微博「内嵌规则·分应用文案命中被自检拦截」误杀根治；
+         * ② 拒绝时按层打点（场景/语义/形态）+ 目标签要，日志可直接诊断。 */
         if (d.action.equals(AdDecisionCore.A_CLICK_BOUNDS) || d.action.equals(AdDecisionCore.A_CLOSE)
                 || d.action.equals(AdDecisionCore.A_TAP_POINT)) {
             String bl = "", bv = "";
@@ -2779,10 +2825,16 @@ public class AdSkipService extends AccessibilityService {
                 }
             } catch (Throwable ignored) {
             }
+            /* v5.5.1：gestureOnly 回落——控件文本与 vid 双空时用规则命中文案
+             * （语义依据换源，绝不放宽：文案仍须跳过/关闭族才通过断言） */
+            if ((bl.length() == 0 && bv.length() == 0) && d.label != null && d.label.trim().length() > 0) {
+                bl = d.label.trim();
+            }
             boolean userTaught = "learned_pos".equals(d.reason) || d.reason.startsWith("learned");
-            if (!com.zai.adshield.core.ComplianceGuard.actionBoundaryOk(
-                    bl, bv, bb2, screenWidth, screenHeight, pkg, winClassOf(pkg), userTaught)) {
-                boundaryGuardLog(pkg, d.reason);
+            int bnd = com.zai.adshield.core.ComplianceGuard.boundaryCheck(
+                    bl, bv, bb2, screenWidth, screenHeight, pkg, winClassOf(pkg), userTaught);
+            if (bnd != com.zai.adshield.core.ComplianceGuard.BND_OK) {
+                boundaryGuardLog(pkg, d.reason, bnd, bl.length() > 0 ? bl : bv);
                 return false;
             }
         }

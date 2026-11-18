@@ -128,6 +128,12 @@ public final class ComplianceGuard {
      * 既有（AdDecisionCore/isSmsOverlayPkg/isCameraPkg/验证码横幅/支付页
      * 文案/白名单/聊天主界面）之外，新增四类——系统设置页 / 输入法窗口 /
      * 锁屏 / 密码框窗口。这些场景【绝不扫描、绝不点击、绝不学习】。
+     *
+     * v5.5.1（issue#64 实锤）增补：系统下载管理设置页（com.android.providers.
+     * downloads.ui —— 日志里 9 秒被整窗扫描 4 次 + 位置学习误触发，它有
+     * 「.ui」通用尾段，.settings/systemui/securitycenter 匹配全部漏网）
+     * 与系统文件选择器（documentsui · SAF）——纯系统 UI 宿主绝不承载
+     * 广告，扫描是纯功耗、点击是纯风险面（选择器的保存/取消按钮）。
      */
     public static boolean isZeroScanScenario(String pkg, String cls) {
         if (pkg == null) return false;
@@ -135,6 +141,10 @@ public final class ComplianceGuard {
         /* 系统设置页（含厂商设置壳）：设置里的开关/条目绝不被代点 */
         if (p.equals("com.android.settings") || p.endsWith(".settings")
                 || p.contains("securitycenter") || p.contains("systemui")) {
+            return true;
+        }
+        /* v5.5.1：系统下载管理/文件选择器（issue#64 实锤漏网族） */
+        if (p.contains("providers.downloads") || p.contains("documentsui")) {
             return true;
         }
         /* 输入法窗口：候选词/键盘按键绝不被代点（Gboard/搜狗/百度输入法等） */
@@ -156,11 +166,33 @@ public final class ComplianceGuard {
         return false;
     }
 
+    /* ───────── 动作边界自检失败层（v5.5.1 可诊断化） ───────── */
+    /** 失败层码（issue#64 实锤：旧日志只说「语义或越界」，无法定位是哪层拒绝） */
+    public static final int BND_OK = 0;          // 全部通过
+    public static final int BND_FAIL_SCENARIO = 1; // 场景断言（零扫描/相机/守护）
+    public static final int BND_FAIL_SEMANTIC = 2; // 语义断言（非跳过/关闭方向）
+    public static final int BND_FAIL_FORM = 3;      // 形态断言（面积越界/无 bounds）
+
+    /** 失败层中文名（诊断日志用） */
+    public static String boundaryLayerName(int layer) {
+        switch (layer) {
+            case BND_OK: return "通过";
+            case BND_FAIL_SCENARIO: return "场景断言（零扫描/相机/守护名单）";
+            case BND_FAIL_SEMANTIC: return "语义断言（非跳过/关闭方向）";
+            case BND_FAIL_FORM: return "形态断言（面积越界/无bounds）";
+            default: return "未知";
+        }
+    }
+
     /**
      * 动作边界自检（execute 前最后闸，模块四红线「仅代点原生跳过控件」）：
      *  ① 语义断言：目标 label/vid 必须是跳过/关闭语义（跳过族/close 族/
      *     更新弹窗否定侧——全部是「拒绝/关闭」方向，绝不代点「确认/同意/
      *     立即」方向）；userTaught（用户手动教过的位置=用户意图）豁免；
+     *     v5.5.1（issue#64 实锤）：gestureOnly 规则命中（无可点祖先，仅有
+     *     手势坐标）时 label 由规则命中标签传入——规则引擎已按「跳过广告」
+     *     文案验证过语义，此处只是把语义依据从「控件文本」换到「命中文案」，
+     *     绝不新增任何放行面（非跳过文案依旧一票否决）；
      *  ② 场景断言：当前不在零扫描场景（系统设置/输入法/锁屏/密码框/
      *     短信/相机/守护名单）；
      *  ③ 形态断言：目标面积在合理区间（≤35% 屏，CTA 巨按钮绝不中）。
@@ -169,11 +201,23 @@ public final class ComplianceGuard {
     public static boolean actionBoundaryOk(String label, String vid, int[] bounds,
                                            int screenW, int screenH,
                                            String pkg, String cls, boolean userTaught) {
+        return boundaryCheck(label, vid, bounds, screenW, screenH, pkg, cls, userTaught) == BND_OK;
+    }
+
+    /**
+     * v5.5.1 可诊断版边界自检：返回失败层码（BND_*）。
+     * 服务侧 execute 调用后按层码打点——「🚧 动作边界自检拦截」日志
+     * 从此能直接回答「哪层拒绝、拒绝的是什么」（issue#64 微博误杀
+     * 根因正是旧日志含糊无法定位）。
+     */
+    public static int boundaryCheck(String label, String vid, int[] bounds,
+                                    int screenW, int screenH,
+                                    String pkg, String cls, boolean userTaught) {
         /* ② 场景断言（先行：零扫描场景里连语义都免谈） */
-        if (isZeroScanScenario(pkg, cls)) return false;
-        if (AdDecisionCore.isSmsOverlayPkg(pkg) || AdDecisionCore.isCameraPkg(pkg)) return false;
-        if (AdDecisionCore.isCameraClass(cls)) return false;
-        if (AdDecisionCore.isGuardPkg(pkg)) return false;
+        if (isZeroScanScenario(pkg, cls)) return BND_FAIL_SCENARIO;
+        if (AdDecisionCore.isSmsOverlayPkg(pkg) || AdDecisionCore.isCameraPkg(pkg)) return BND_FAIL_SCENARIO;
+        if (AdDecisionCore.isCameraClass(cls)) return BND_FAIL_SCENARIO;
+        if (AdDecisionCore.isGuardPkg(pkg)) return BND_FAIL_SCENARIO;
         /* ① 语义断言（用户教过的位置豁免——用户意图优先） */
         if (!userTaught) {
             String s = label == null ? "" : label.trim().toLowerCase();
@@ -183,12 +227,13 @@ public final class ComplianceGuard {
                     || v.contains("skip") || v.contains("close") || v.contains("dismiss")
                     || v.contains("exit") || v.contains("preroll")
                     || s.contains("关闭") || s.contains("close") || s.contains("×");
-            if (!skipSemantics) return false;
+            if (!skipSemantics) return BND_FAIL_SEMANTIC;
         }
         /* ③ 形态断言 */
-        if (bounds == null || bounds.length < 4) return false;
+        if (bounds == null || bounds.length < 4) return BND_FAIL_FORM;
         double area = areaRatioAdaptive(bounds, screenW, screenH);
-        return area > 0 && area <= AdDecisionCore.SKIP_AREA_MAX;
+        if (area <= 0 || area > AdDecisionCore.SKIP_AREA_MAX) return BND_FAIL_FORM;
+        return BND_OK;
     }
 
     /**

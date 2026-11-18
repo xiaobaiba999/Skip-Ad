@@ -46,7 +46,12 @@ local-*
 *.log
 dev.log
 dev.out.log
-test
+# v5.5.1（修复 v5.5.0 遗留）：裸 `test` 模式把 android-app/tests/com/zai/adshield/test/
+# 测试包整目录静默吞掉——v5.5.0 发版声明「RuleGovernorTest 77 + ComplianceGuardTest 47
+# 断言全绿」但两文件从未入库，git add 静默跳过即是此因（run-tests.sh 在新克隆环境必红）。
+# 收敛为仅忽略根级 test 临时目录，显式放行 android-app/tests 测试源码。
+/test
+!android-app/tests/
 prompt
 
 server.log

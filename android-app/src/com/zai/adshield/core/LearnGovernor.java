@@ -155,6 +155,10 @@ public final class LearnGovernor {
      * 命中 → generalized=true，可跨应用复用（学习效率数量级提升）。
      * 清单与 AdSkipService SDK 窗口指纹同源（穿山甲/优量汇/快手/百青藤
      * 四大主流 + 通用 Dialog/Popup 骨架——官方指纹已验证的强信号）。
+     * v5.5.1 同源对齐：注释一直声称「与 SDK 窗口指纹同源」，但
+     * isAdActivityClass 认的家族段（qq.e.ads/gms.ads/bytedance.sdk/kwad/
+     * admob 等）在这里并不认识——GDT 类窗（com.qq.e.ads.LandingPageActivity）
+     * 学到规则却拿不到泛化标记 → 白等 72h 新生期。补齐家族段，两表真正同源。
      */
     public static boolean sdkGeneralize(String windowClass) {
         if (windowClass == null) return false;
@@ -169,6 +173,9 @@ public final class LearnGovernor {
                 "ksad", "ks_splash", "ks_reward",                      // 快手
                 "csj_splash", "csjad", "baidumobads",                  // 百青藤/百度
                 "splashadactivity", "adactivity", "ad.landingpage",    // 通用广告落地页
+                /* v5.5.1 同源对齐：isAdActivityClass 认的家族段（此前漏网） */
+                "qq.e.ads", "gms.ads", "bytedance.sdk", "kwad", "admob",
+                "miui.zeus", "doubleclick", "unionad",
         };
         for (String seg : sdkSegs) {
             if (c.contains(seg)) return true;
