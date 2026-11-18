@@ -156,6 +156,17 @@ public final class SubscriptionManager {
         return null;
     }
 
+    /** v5.3.0：订阅（内置或启用的远程）是否覆盖该应用的专属规则——
+     *  宿主窗档案的省电梯子选择用（覆盖 → 低频档 {0,700}，否则纯探针哨兵）。
+     *  只读 volatile 快照，扫描热路径零锁。 */
+    public static boolean coversPkg(String pkg) {
+        if (pkg == null || pkg.length() == 0) return false;
+        Subscription builtin = builtinSub;
+        if (builtin != null && builtin.covers(pkg)) return true;
+        Subscription remote = remoteEnabled ? remoteSub : null;
+        return remote != null && remote.covers(pkg);
+    }
+
     public static boolean hasRules() {
         return remoteSub != null || builtinSub != null;
     }
