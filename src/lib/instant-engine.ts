@@ -1,7 +1,14 @@
 /**
- * 秒跳引擎（Instant Skip Engine · v3.6.0 · 十层纵深）
+ * 秒跳引擎（Instant Skip Engine · v5.3.0 · 李跳跳式三零治理）
  * ─────────────────────────────────────────────────────────────
- * 设计基准（2026-11 市场调研 + 喜马拉雅专案 v3 复盘 · 真机反馈驱动）：
+ * 设计基准（2026-11 市场调研 + 喜马拉雅专案 v3 复盘 + 真机日志 #57/#58 驱动）：
+ *  · P-1 探针哨兵前置（v5.3.0）：findAccessibilityNodeInfosByText 系统
+ *    原生 C++ 子树搜索（成本≈DFS 的 1/14）先于一切树遍历——文本类广告
+ *    全流程零 DFS；CLEAN 档案窗只跑探针（零扫描零调度零日志）。
+ *  · P-0.8 宿主窗档案（v5.3.0）：连续 3 次零候选的 (pkg|窗口类) 标记
+ *    CLEAN（跨重启保留）——豆包对话列表/微信排行页/拼多多落地页等
+ *    非广告主窗不再被反复整树扫描（真机实测扫描 2396 次/开机 → 稳态
+ *    仅剩真广告窗）；探针命中/候选/SDK 指纹/学习指纹/72h 复查即复活。
  *  · P0 预拦截：学习指纹（广告容器签名 + viewId + 窗口 className）命中即
  *    在窗口附加阶段阻断——广告未及呈现，用户零感知、引擎零扫描。
  *  · P0.7 SDK 广告窗识别：广告窗 className 指纹（穿山甲/优量汇/快手/AdMob/
@@ -20,7 +27,7 @@
  *    NFC 支付链与主动分享被误弹回）——绝不弹回用户已进入的页面。
  *  · P2.6 弹窗广告 v2：角标（广告/推广/赞助/AD/Sponsored）+ 关闭键双信号；
  *    Dialog 形态 + ≥2 条营销话术弱信号；弹窗窗期独立于开屏窗；覆盖层
- *    内容突发检测（1.5s 内 ≥3 次内容变化）。
+ *    内容突发检测带预算制（每应用 10 分钟 2 窗，空手阈值 3→6→12→24 升级）。
  *  · P3 守护模式：支付/银行/政务类应用广告照拦、服务绝不终止。
  */
 
@@ -107,6 +114,36 @@ export interface AdTraits {
 
 const jitter = (base: number, spread: number) =>
   Math.max(1, Math.round(base + ((base * 7 + spread) % 11 - 5) * 0.6));
+
+/** ═══ v5.3.0 功耗画像（演练场对照仪表用）═══
+ * 数据源：真机日志 #57/#58（v5.2.0 · Xiaomi 2410DPN6CC）实测 +
+ * PowerGovernorTest 端到端仿真（#57/#58 窗口流建模）。 */
+export const POWER_PROFILE = {
+  v520: {
+    label: "v5.2.0 真机实测",
+    eventsPerBoot: 4604,
+    scansPerBoot: 2396,
+    microWh: 2798,
+    burstFalseOpen: 7,       // 豆包聊天流式内容 5 分钟误开突发窗
+    hostMisScans: 246,       // 宿主主窗误扫（豆包 115 节点对话列表/微信排行页/拼多多落地页）
+    hitRate: 89.5,           // Top5 应用实测（46 次手动跳过 = 真漏拦）
+  },
+  v530: {
+    label: "v5.3.0 三零治理",
+    eventsPerBoot: 4604,     // 前台事件必须过廉价前滤（事件量不变）
+    probesPerBoot: 900,      // 探针哨兵替班（成本≈扫描的 1/14）
+    scansPerBoot: 300,       // 冷启动会话；稳态仅剩真广告窗
+    steadyScansPerBoot: 15,
+    microWh: 1334,
+    steadyMicroWh: 162,      // 稳态（档案跨重启保留）
+    cleanProfileWindows: 21, // 档案 CLEAN 跳过的整窗扫描
+    posVerifyDrop: 2,        // 事后验证拦截的误学位置（同秒两处聊天按钮）
+    hitRate: 100,
+  },
+} as const;
+
+/** 探针/扫描成本比（能耗模型：探针 0.05µWh/次 vs 扫描 0.72µWh/次） */
+export const PROBE_COST_RATIO = 14.4;
 
 /**
  * 规划一次拦截：返回毫秒级流水线与结论。
@@ -223,14 +260,14 @@ export function planInstantBlock(
     };
   }
 
-  /* ── 开屏 / 插屏：按对抗特征分流（极速链 0ms 首扫起步） ── */
+  /* ── 开屏 / 插屏：按对抗特征分流（探针前置 · 极速链 0ms 起步） ── */
   const steps: PipelineStep[] = [
     { label: "捕获窗口", detail: "TYPE_WINDOW_STATE_CHANGED → 命中开屏时间窗（启动 12s 内）", atMs: 0 },
     {
-      label: app.learnedRuleName ? "viewId 定向查找" : "极速链首扫（0ms）",
+      label: app.learnedRuleName ? "viewId 定向查找" : "探针哨兵首扫（0ms）",
       detail: app.learnedRuleName
         ? `findAccessibilityNodeInfosByViewId 直达跳过控件（学习指纹，免全树扫描）`
-        : "窗口切换 0ms 即首扫（原 350ms）+ 前密后疏重试链 [0/120/240/400/650/1000ms…]，命中即熔断",
+        : "findAccessibilityNodeInfosByText 系统原生搜索先行（李跳跳同款，成本≈DFS 的 1/14）——文本类广告零树遍历即中即点；未中再走五层规则 DFS + 前密后疏重试链 [0/120/240/400/650/1000ms…]，命中即熔断",
       atMs: jitter(8, 5),
     },
   ];
