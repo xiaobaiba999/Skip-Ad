@@ -845,7 +845,9 @@ public class MainActivity extends Activity {
             return Downloader.progress(a);
         }
 
-        /** v3.2.0 能耗画像：本次开机累计（事件/扫描/返回键 + 弹窗战果） */
+        /** v3.2.0 能耗画像：本次开机累计（事件/扫描/返回键 + 弹窗战果）
+         *  v5.3.0：新增探针/省电档案/突发窗计数；估算模型换用 PowerGovernor
+         *  （探针 0.05µWh/次 ≈ 扫描成本的 1/14） */
         @JavascriptInterface
         public String energyStats() {
             AdSkipService s = AdSkipService.instance;
@@ -854,11 +856,17 @@ public class MainActivity extends Activity {
                 if (s != null) {
                     out.put("ok", true);
                     out.put("events", s.energyEvents);
+                    out.put("probes", s.energyProbes);
                     out.put("scans", s.energyScans);
+                    out.put("profileSkips", s.energyProfileSkips);
+                    out.put("bursts", s.energyBursts);
                     out.put("backs", s.energyBacks);
                     out.put("popup", s.popupBlocks);
-                    // 近似模型：0.22µWh/事件 + 0.72µWh/扫描 + 0.9µWh/返回键
-                    double microWh = s.energyEvents * 0.22 + s.energyScans * 0.72 + s.energyBacks * 0.9;
+                    out.put("posVerified", s.posLearnVerified);
+                    out.put("posDropped", s.posLearnDropped);
+                    // 近似模型：0.22µWh/事件 + 0.05µWh/探针 + 0.72µWh/扫描 + 0.9µWh/返回键
+                    double microWh = com.zai.adshield.core.PowerGovernor.microWh(
+                            s.energyEvents, s.energyProbes, s.energyScans, s.energyBacks);
                     out.put("microWh", Math.round(microWh * 10) / 10.0);
                 } else {
                     out.put("ok", false);
