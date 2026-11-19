@@ -145,7 +145,7 @@ public final class SubscriptionManager {
         if (loaded) return;
         try {
             builtinSub = Subscription.parse(Subscription.BUILTIN_JSON5, 0, 0);
-        } catch (Exception e) {
+        } catch (Throwable e) { // v7.3.0：catch Throwable（深度上限外再兜 Error——任何形态都不许崩服务）
             builtinSub = null;
         }
         try {
@@ -157,8 +157,9 @@ public final class SubscriptionManager {
             if (cached != null && cached.length() > 0) {
                 remoteSub = Subscription.parse(cached, 1, 1000);
             }
-        } catch (Exception e) {
-            lastError = "load: " + e.getMessage();
+        } catch (Throwable e) { // v7.3.0：同上（旧 catch(Exception) 接不住 Error——坏缓存丢弃，绝不影响服务启动）
+            remoteSub = null;
+            lastError = "load: " + safeMsg(e);
         }
         loaded = true;
     }
@@ -306,7 +307,7 @@ public final class SubscriptionManager {
          *  ③ 快照导入后 1h 心跳自动重拉最新版。
          * 进度回调实时上报「正在切换镜像 X/Y · host」。 */
         java.util.List<String> variants = com.zai.adshield.core.SubMirrors.variants(url);
-        Exception lastEx = null;
+        Throwable lastEx = null;
         for (int i = 0; i < variants.size(); i++) {
             if (progress != null) {
                 try {
@@ -317,7 +318,7 @@ public final class SubscriptionManager {
             }
             try {
                 return fetchOne(ctx, variants.get(i), url, sp);
-            } catch (Exception e) {
+            } catch (Throwable e) { // v7.3.0：catch Throwable（StackOverflowError 类已由 Json5 深度上限拦下，此处再兜底防穿透）
                 lastEx = e;
             }
         }
@@ -327,11 +328,11 @@ public final class SubscriptionManager {
         if (asset != null) {
             try {
                 return fetchSnapshot(ctx, asset, url, sp);
-            } catch (Exception e) {
+            } catch (Throwable e) {
                 lastEx = e;
             }
         }
-        String raw = lastEx == null ? "网络失败" : (lastEx.getMessage() == null ? "网络失败" : lastEx.getMessage());
+        String raw = lastEx == null ? "网络失败" : safeMsg(lastEx);
         lastError = raw;
         String msg = humanizeNetError(raw);
         String hint = variants.size() > 1
@@ -463,6 +464,13 @@ public final class SubscriptionManager {
         }
         b.append("}");
         return b.toString();
+    }
+
+    /** 错误消息安全化（null 消息时给类名，不打印敏感内容） */
+    static String safeMsg(Throwable t) {
+        String m = t.getMessage();
+        if (m == null || m.length() == 0) return t.getClass().getSimpleName();
+        return m.length() > 120 ? m.substring(0, 120) : m;
     }
 
     static String jsonStr(String s) {

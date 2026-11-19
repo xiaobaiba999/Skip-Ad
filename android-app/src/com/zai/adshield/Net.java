@@ -106,12 +106,23 @@ public final class Net {
      *  下快速失败快速切镜像（订阅 JSON5 通常 <2MB，12s 足够），最坏等待链
      *  总时长不膨胀；UA 改浏览器风格（部分代理站拦非浏览器 UA）。 */
     private static String[] http(String method, String url, String token, String body) throws Exception {
+        return http(method, url, token, body, false);
+    }
+
+    /** v7.3.0 noRedirect：GitHub API 通道禁自动重定向——api.github.com 正常
+     *  永不 3xx；出现 3xx 只可能是被劫持/代理注入。禁跟随并按错误处理，
+     *  响应体只能来自原始连接（防「重定向投毒更新元数据」）。订阅拉取
+     *  通道（httpGetRaw → SubMirrors 八通道链）保持自动跟随（镜像站存在
+     *  合法重定向）。 */
+    private static String[] http(String method, String url, String token, String body, boolean noRedirect)
+            throws Exception {
         HttpURLConnection c = null;
         try {
             c = (HttpURLConnection) new URL(url).openConnection();
             c.setConnectTimeout(7000);
             c.setReadTimeout(12000);
             c.setRequestMethod(method);
+            if (noRedirect) c.setInstanceFollowRedirects(false);
             boolean githubApi = url.contains("api.github.com");
             c.setRequestProperty("Accept", githubApi
                     ? "application/vnd.github+json" : "text/plain,application/json,*/*");
@@ -136,12 +147,22 @@ public final class Net {
         }
     }
 
+    /** v7.3.0 安全：响应体硬上限 4MB（防超大/无限 body 内存 DoS——订阅拉取与
+     *  API 响应全覆盖；GitHub Release JSON ≤ 64KB、订阅 JSON5 ≤ 2MB 量级） */
+    private static final int MAX_BODY_BYTES = 4 * 1024 * 1024;
+
     private static String readAll(InputStream in) throws Exception {
         if (in == null) return "";
         ByteArrayOutputStream bo = new ByteArrayOutputStream();
         byte[] buf = new byte[8192];
         int n;
-        while ((n = in.read(buf)) > 0) bo.write(buf, 0, n);
+        while ((n = in.read(buf)) > 0) {
+            bo.write(buf, 0, n);
+            if (bo.size() > MAX_BODY_BYTES) {
+                try { in.close(); } catch (Exception ignored) { }
+                throw new IllegalStateException("响应体超过 4MB 上限（已中断连接）");
+            }
+        }
         try { in.close(); } catch (Exception ignored) { }
         return new String(bo.toByteArray(), StandardCharsets.UTF_8);
     }
@@ -187,7 +208,7 @@ public final class Net {
             JSONObject payload = new JSONObject();
             payload.put("title", title);
             payload.put("body", body);
-            String[] r = http("POST", API + "/issues", token, payload.toString());
+            String[] r = http("POST", API + "/issues", token, payload.toString(), true);
             int code = Integer.parseInt(r[0]);
             if (code >= 200 && code < 300) {
                 JSONObject d = new JSONObject(r[1]);
@@ -219,7 +240,7 @@ public final class Net {
         // 通道 1/2：/releases/latest，带令牌重试两次（间隔 800ms）
         for (int attempt = 1; attempt <= 2; attempt++) {
             try {
-                String[] r = http("GET", API + "/releases/latest", token, null);
+                String[] r = http("GET", API + "/releases/latest", token, null, true);
                 int code = Integer.parseInt(r[0]);
                 if (code == 404 && attempt == 1) {
                     sleep(800); // 间歇性 404：稍候重试一次再下结论
@@ -243,7 +264,7 @@ public final class Net {
         }
         // 通道 3：/releases 列表回退（latest 语义不可用时取最新非预发布项）
         try {
-            String[] r = http("GET", API + "/releases?per_page=8", token, null);
+            String[] r = http("GET", API + "/releases?per_page=8", token, null, true);
             int code = Integer.parseInt(r[0]);
             if (code >= 200 && code < 300) {
                 org.json.JSONArray arr = new org.json.JSONArray(r[1]);
@@ -266,7 +287,11 @@ public final class Net {
 
     /** 解析单个 Release JSON → 页面可用结构（含镜像通道列表）。
      *  v7.0.0：headlines[] 新版功能标题预解析（core.ReleaseNotes 纯函数——
-     *  检查更新发现新版本时页内直接渲染 ≤5 条带序号功能描述，JS 零解析）。 */
+     *  检查更新发现新版本时页内直接渲染 ≤5 条带序号功能描述，JS 零解析）。
+     *  v7.3.0 安全：提取 asset 的 digest（GitHub API 官方 SHA-256，
+     *  "sha256:hex" 格式）与 size（字节）——经 HTTPS api.github.com 获取，
+     *  交由 Downloader 安装前校验 APK 完整性（镜像代理被投毒/共享盘换包
+     *  的 TOCTOU 全部由这道哈希闸拦下）。 */
     private static String parseRelease(String body) throws Exception {
         JSONObject d = new JSONObject(body);
         JSONObject out = new JSONObject();
@@ -287,6 +312,8 @@ public final class Net {
         String apkUrl = "";
         String apkFileName = "adshield.apk";
         double apkMB = 0;
+        long apkSize = 0;
+        String apkDigest = "";
         JSONArray assets = d.optJSONArray("assets");
         if (assets != null) {
             for (int i = 0; i < assets.length(); i++) {
@@ -294,7 +321,9 @@ public final class Net {
                 if (a != null && a.optString("name", "").endsWith(".apk")) {
                     apkUrl = a.optString("browser_download_url", "");
                     apkFileName = a.optString("name", "adshield.apk");
-                    apkMB = a.optLong("size", 0) / 1048576.0;
+                    apkSize = a.optLong("size", 0);
+                    apkMB = apkSize / 1048576.0;
+                    apkDigest = a.optString("digest", "");
                     break;
                 }
             }
@@ -302,6 +331,8 @@ public final class Net {
         out.put("apkUrl", apkUrl);
         out.put("apkFileName", apkFileName);
         out.put("apkMB", Math.round(apkMB * 100) / 100.0);
+        out.put("apkSize", apkSize);
+        out.put("apkDigest", apkDigest);
         // v3.3.0 镜像通道：直连失败时逐个切换（ghfast / gh-proxy 公共加速）
         JSONArray mirrors = new JSONArray();
         if (apkUrl.length() > 0) {

@@ -988,9 +988,26 @@ public final class AdDecisionCore {
 
     /* ═════════ SDK 广告窗指纹（className 分段精确匹配） ═════════ */
 
+    /* v7.3.0 算法：结果缓存——isAdActivityClass 调用点极高频（每个
+     * WINDOW_STATE_CHANGED · 每轮 tryScan · 每个退避/链路判定），而窗口
+     * 类名集合高度有限（几十个）；缓存后每类名只算一次（原每调用
+     * toLowerCase + split("[.$]") 隐式正则编译）。上限 512 封顶重置。 */
+    private static final java.util.HashMap<String, Boolean> AD_CLS_CACHE = new java.util.HashMap<>(64);
+
     public static boolean isAdActivityClass(String cls) {
         if (cls == null || cls.length() < 6) return false;
-        String c = cls.toLowerCase();
+        synchronized (AD_CLS_CACHE) {
+            Boolean hit = AD_CLS_CACHE.get(cls);
+            if (hit != null) return hit.booleanValue();
+            boolean r = isAdActivityClassScan(cls);
+            if (AD_CLS_CACHE.size() > 512) AD_CLS_CACHE.clear();
+            AD_CLS_CACHE.put(cls, Boolean.valueOf(r));
+            return r;
+        }
+    }
+
+    private static boolean isAdActivityClassScan(String cls) {
+        String c = RuleEngine.lowerAscii(cls);
         if (c.contains("qq.e.ads") || c.contains("gms.ads") || c.contains("bytedance.sdk")
                 || c.contains(".ad.activity") || c.contains(".ads.activity")
                 || c.contains("baidu.mobads") || c.contains("csjad") || c.contains("unionad")
@@ -1153,7 +1170,7 @@ public final class AdDecisionCore {
         if (matchesSkip(text) || isCloseText(text)) return true;
         if (matchesSkip(desc) || isCloseText(desc)) return true;
         if (viewId != null) {
-            String v = viewId.toLowerCase();
+            String v = lowerAscii(viewId);
             if (v.contains("skip") || v.contains("close") || v.contains("dismiss")
                     || v.contains("btn_close") || v.contains("ib_close")) return true;
         }
@@ -1185,6 +1202,50 @@ public final class AdDecisionCore {
             // 更严不会误伤；「跳过领礼包」「跳过抢购」类诱饵标签绝不代点
             "抢购", "秒杀", "礼包", "优惠", "补贴", "立减", "低价", "充值",
     };
+
+    /* ═══ v7.3.0 安全：支付/资金词黑名单（订阅规则注入防线）═══
+     * 订阅规则能让引擎点击任意命中的控件——恶意/被劫持订阅源可定向
+     * 点击「确认支付/立即付款/确认订单」类按钮（规则名伪装「跳过」+
+     * activityIds 限定支付页即可绕过旧文本门）。真跳过键文案数学上
+     * 不含任何资金词，只紧不松；与 INDUCE_WORDS 一起构成订阅目标的
+     * 双重否决（见 Subscription.dfsMulti）。 */
+    public static final String[] PAYMENT_WORDS = {
+            "支付", "付款", "支付密码", "付款码", "收银", "转账", "充值",
+            "确认订单", "提交订单", "立即购买", "马上购买", "确认购买",
+            "去支付", "去付款", "借款", "还款", "刷脸", "免密",
+    };
+
+    /** v7.3.0：支付/资金词否决（订阅目标文本/描述含任一词 → 绝不代点） */
+    public static boolean hasPaymentWord(String s) {
+        if (s == null || s.length() == 0) return false;
+        for (String w : PAYMENT_WORDS) {
+            if (s.contains(w)) return true;
+        }
+        return false;
+    }
+
+    /* ═══ v7.3.0 算法：ASCII 快路径小写归一（零分配 +土耳其语 locale 根治）═══
+     * 无 A-Z 时原串直接返回（类名/vid/文案 90% 命中零分配）；有 A-Z 时
+     * 单次字符数组改写。与 toLowerCase() 的差异仅限非 ASCII 大小写字
+     * （如土耳其 İ）——关键词表全部 ASCII/CJK，匹配语义零变化；顺带
+     * 根治「无 Locale 的 toLowerCase 在 tr-TR 设备把 SKIP 写成 skıp」
+     * 导致整层精确匹配丢失的 locale bug。 */
+    static String lowerAscii(String s) {
+        if (s == null || s.length() == 0) return s == null ? "" : s;
+        int n = s.length();
+        for (int i = 0; i < n; i++) {
+            char c = s.charAt(i);
+            if (c >= 'A' && c <= 'Z') {
+                char[] a = s.toCharArray();
+                for (int j = i; j < n; j++) {
+                    char d = a[j];
+                    if (d >= 'A' && d <= 'Z') a[j] = (char) (d + 32);
+                }
+                return new String(a);
+            }
+        }
+        return s;
+    }
 
     /** v3.13.0：验证码横幅文案标记——树内任一节点命中即视为验证码/通知横幅，
      *  该窗口绝不扫描、绝不点击、绝不学习（银行/支付登录页同理放行，本就无广告可跳）。
@@ -1334,7 +1395,7 @@ public final class AdDecisionCore {
 
     public static boolean matchesSkip(String s) {
         if (s == null) return false;
-        String lower = s.toLowerCase();
+        String lower = lowerAscii(s);
         if (lower.contains("skip") || lower.contains("跳过")) return true;
         return matchesAny(s, SKIP_TEXTS);
     }
@@ -1342,7 +1403,7 @@ public final class AdDecisionCore {
     public static boolean isCloseText(String s) {
         if (s == null) return false;
         String t = s.trim();
-        String lower = t.toLowerCase();
+        String lower = lowerAscii(t);
         for (String k : CLOSE_TEXTS) {
             if (t.equals(k) || lower.equals(k)) return true;
         }
@@ -1352,7 +1413,7 @@ public final class AdDecisionCore {
     public static boolean isAdBadge(String label) {
         if (label == null) return false;
         String t = label.trim();
-        String lower = t.toLowerCase();
+        String lower = lowerAscii(t);
         if (t.equals("广告") || t.equals("推广") || t.equals("赞助") || t.equals("广告推广")) return true;
         if (lower.equals("ad") || lower.equals("sponsored") || lower.equals("promoted")) return true;
         return t.length() <= 8 && (t.startsWith("广告 ") || t.startsWith("广告·") || t.endsWith(" 广告"));

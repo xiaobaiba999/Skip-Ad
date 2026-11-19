@@ -35,20 +35,18 @@ function mascotImg(size, state, head) {
 
 $("#brand-logo").innerHTML = mascotImg(30, "on", true);
 
-/* ═══ v7.2.0 版本记录（用户实锤：版本记录按序号 1. 2. 3. 4. 描述功能）═══
- * 当前版本 = 1 个标题 + 序号功能行（features 数组逐条渲染）；summary 仅作
- * 兼容兜底（features 用“；”拼接），历史版本全部归档 GitHub Releases。 */
+/* ═══ v7.3.0 版本记录（安全加固 + 算法优化专项：防投毒/防劫持/防注入）═══ */
 const CURRENT_RELEASE = {
-  date: "2026-11-19",
-  title: "信息流广告真机命中根治 + 报告折叠",
+  date: "2026-11-20",
+  title: "安全加固 + 算法优化（防投毒/防劫持/防注入）",
   features: [
-    "朋友圈等信息流广告三病灶根治：armed 直通窗闸、原生文本直查、armed≥1 即出手",
-    "白名单显示全部已安装应用，搜索不区分大小写（中文名/包名双通道）",
-    "卫士使用报告：饼图常驻 + 明细折叠，进入页面自动刷新",
-    "多点误点防线 I：同目标每窗 2 击封顶，耐心预算 6→3",
-    "信息流关闭单独记账，feed 未命中诊断日志随上传",
+    "更新包安装前 SHA-256 逐字节校验：镜像被投毒/下载被换包自动拦截删除",
+    "订阅规则注入防线：支付/诱导词双否决 + 解析深度与体量硬上限",
+    "网络层加固：GitHub API 禁重定向 + 响应体 4MB 上限 + 域名精确白名单",
+    "扫描热路径零分配优化：vid 分段/类名指纹缓存/后缀预计算 + tr-TR 修复",
+    "同目标多点防线 II：指纹表按时间淘汰 + nudge 旁路按人手节奏封死",
   ],
-  summary: "朋友圈等信息流广告三病灶根治：armed 直通窗闸、原生文本直查、armed≥1 即出手；白名单显示全部已安装应用，搜索不区分大小写（中文名/包名双通道）；卫士使用报告：饼图常驻 + 明细折叠，进入页面自动刷新；多点误点防线 I：同目标每窗 2 击封顶，耐心预算 6→3；信息流关闭单独记账，feed 未命中诊断日志随上传",
+  summary: "更新包安装前 SHA-256 逐字节校验（镜像被投毒/下载被换包自动拦截删除）；订阅规则支付/诱导词双否决 + 解析深度与体量硬上限；网络层加固（GitHub API 禁重定向 + 响应体 4MB 上限 + 域名精确白名单）；扫描热路径零分配优化；同目标多点防线 II。",
 };
 
 /* v7.0.0 新版功能描述（规范：≤5 个标题、带序号；检查更新发现新版本时就地渲染）。
@@ -763,7 +761,7 @@ $("#changelog").innerHTML =
 const GH_API = "https://api.github.com/repos/xiaobaiba999/Skip-Ad";
 let ubTimer = null;
 let latestRelease = null;
-let dl = { channels: [], idx: 0, fileName: "", prefix: "ub", lastBytes: -1, lastMoveAt: 0 };
+let dl = { channels: [], idx: 0, fileName: "", digest: "", size: 0, prefix: "page", lastBytes: -1, lastMoveAt: 0 };
 
 function cmpVer(a, b) {
   const pa = String(a).replace(/^v/, "").split("."), pb = String(b).replace(/^v/, "").split(".");
@@ -791,6 +789,8 @@ async function fetchLatest() {
         apkMirrors: apk ? ["https://ghfast.top/" + apk.browser_download_url, "https://gh-proxy.com/" + apk.browser_download_url] : [],
         apkFileName: apk ? apk.name : "adshield.apk",
         apkMB: apk ? Math.round(apk.size / 1048576 * 100) / 100 : 0,
+        apkDigest: apk ? (apk.digest || "") : "", // v7.3.0：GitHub API SHA-256（安装前校验）
+        apkSize: apk ? (apk.size || 0) : 0,
       };
     }
     return { ok: false, error: "GitHub " + r.status };
@@ -800,9 +800,14 @@ async function fetchLatest() {
 function beginChannel() {
   const url = dl.channels[dl.idx];
   try {
-    const r = JSON.parse(AndroidApp.startUpdateDownload(url, dl.fileName));
+    /* v7.3.0 安全：digest/size（GitHub API HTTPS 元数据）随下载任务交给原生侧
+     * ——安装前 Downloader 会流式计算 SHA-256 比对；镜像通道投毒/共享盘换包
+     * 在安装前被拦下并自动删除。 */
+    const r = JSON.parse(AndroidApp.startUpdateDownload(url, dl.fileName, dl.digest, dl.size));
     if (r.ok) {
-      const btn = $("#" + dl.prefix + "-btn");
+      /* v7.3.0 修复：按钮选择器与真实按钮 id 对齐（#page-dl-btn——旧
+       * prefix+"-btn" 永不命中，下载完成后按钮从不翻转「立即安装」） */
+      const btn = $("#" + dl.prefix + "-dl-btn");
       if (btn) { btn.textContent = "下载中…"; btn.disabled = true; }
       const wrap = $("#" + dl.prefix + "-progress-wrap");
       if (wrap) wrap.style.display = "";
@@ -826,7 +831,7 @@ function switchChannel(reason) {
 function startPageDownload(d, prefix) {
   if (!d.apkUrl) { toast("该版本没有 APK 附件"); return; }
   if (!HAS_BRIDGE) { window.open(d.apkUrl, "_blank"); return; }
-  dl = { channels: [d.apkUrl].concat(d.apkMirrors || []), idx: 0, fileName: d.apkFileName || "adshield.apk", prefix, lastBytes: -1, lastMoveAt: Date.now() };
+  dl = { channels: [d.apkUrl].concat(d.apkMirrors || []), idx: 0, fileName: d.apkFileName || "adshield.apk", digest: d.apkDigest || "", size: d.apkSize || 0, prefix, lastBytes: -1, lastMoveAt: Date.now() };
   beginChannel();
 }
 
@@ -847,14 +852,14 @@ function startProgressPoll(prefix) {
       } else if (d.state === "done") {
         clearInterval(ubTimer); ubTimer = null;
         bar.style.width = "100%";
-        txt.textContent = "下载完成，点击安装即覆盖升级";
-        const btn = $("#" + prefix + "-btn");
+        txt.textContent = "下载完成（已验 SHA-256），点击安装即覆盖升级";
+        const btn = $("#" + prefix + "-dl-btn");
         if (btn) { btn.textContent = "立即安装"; btn.disabled = false; btn.dataset.phase = "install"; }
       } else if (d.state === "failed") {
         clearInterval(ubTimer); ubTimer = null;
         if (switchChannel("下载失败")) return;
         txt.textContent = "下载失败，可稍后重试";
-        const btn = $("#" + prefix + "-btn");
+        const btn = $("#" + prefix + "-dl-btn");
         if (btn) { btn.textContent = "重新下载"; btn.disabled = false; btn.dataset.phase = "download"; }
       }
     } catch (e) { clearInterval(ubTimer); ubTimer = null; }

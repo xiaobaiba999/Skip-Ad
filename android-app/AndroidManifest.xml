@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.zai.adshield"
-    android:versionCode="71000"
-    android:versionName="7.1.0">
+    android:versionCode="60200"
+    android:versionName="6.2.0">
 
     <!-- 网络：问题反馈（GitHub Issues）与检查更新（GitHub Releases） -->
     <uses-permission android:name="android.permission.INTERNET" />
@@ -42,8 +42,11 @@
         <package android:name="com.meizu.safe" />
     </queries>
 
+    <!-- v6.3.0 安全：allowBackup=false——订阅缓存(subCache)/订阅 URL/学习状态
+         原随 adb backup / 云迁移带出（及被植入：坏 subCache 可令服务重绑即崩）。
+         本应用数据仅存本机（零账号零云端），备份通道关闭零功能损失。 -->
     <application
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:theme="@style/AppTheme">

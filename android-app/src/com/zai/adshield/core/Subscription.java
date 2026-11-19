@@ -124,6 +124,14 @@ public final class Subscription {
         int version = (int) m.num("version", 0);
         Subscription sub = new Subscription(name, version);
 
+        /* ═══ v7.3.0 安全：解析量上限（防恶意/被劫持订阅源构造超大规则集
+         *  → 内存膨胀/扫描风暴 DoS）：apps ≤ 2000 · 总规则 ≤ 20000。超限直接
+         *  抛 ParseException（订阅导入失败，错误明确可诊断）。 */
+        if (m.raw.get("apps") instanceof List && ((List<?>) m.raw.get("apps")).size() > MAX_APPS) {
+            throw new Json5.ParseException("订阅应用数超过上限 " + MAX_APPS);
+        }
+        int[] total = {0};
+
         /* ═══ v4.3.0 globalGroups：GKD 默认订阅的主力规则住处 ═══
          * 每组 = 对所有应用生效的全局规则（id='*'），组内 apps 数组是
          * 包名排除表（enable:false——这些应用有自己的专属规则）。
@@ -142,7 +150,7 @@ public final class Subscription {
                 long gMatchTime = (long) gm.num("matchTime", 0);
                 int gMax = (int) gm.num("actionMaximum", defActionMaximum);
                 long gInterval = (long) gm.num("actionCd", defActionInterval);
-                appendGroupRules(gm, g, gMax, gInterval, gMatchTime);
+                appendGroupRules(gm, g, gMax, gInterval, gMatchTime, total);
                 if (!g.rules.isEmpty()) sub.apps.add(g);
             }
         }
@@ -159,14 +167,15 @@ public final class Subscription {
                 app.name = am.str("name", appId);
                 List<Object> groups = Json5.asList(am.raw.get("groups"));
                 if (groups != null) {
-                    for (int g = 0; g < groups.size(); g++) {
+                    int gLimit = Math.min(groups.size(), MAX_GROUPS_PER_APP); // v7.3.0 安全：单应用组数上限（超限截断防膨胀）
+                    for (int g = 0; g < gLimit; g++) {
                         Map0 gm = new Map0(Json5.asMap(groups.get(g)));
                         // v4.3.0：组级停用（CSDN「更新弹窗」等默认 enable:false）
                         if (gm.raw.get("enable") != null && !gm.bool("enable", true)) continue;
                         long gMatchTime = (long) gm.num("matchTime", 0);
                         int gMax = (int) gm.num("actionMaximum", defActionMaximum);
                         long gInterval = (long) gm.num("actionCd", defActionInterval);
-                        appendGroupRules(gm, app, gMax, gInterval, gMatchTime);
+                        appendGroupRules(gm, app, gMax, gInterval, gMatchTime, total);
                     }
                 }
                 if (!app.rules.isEmpty()) sub.apps.add(app);
@@ -190,15 +199,30 @@ public final class Subscription {
         return out;
     }
 
-    /** v4.3.0：一组 rules → 编译进 App（组级默认 + 规则级覆盖；preKeys 跳过） */
-    static void appendGroupRules(Map0 gm, App app, int defMax, long defInterval, long defMatchTime) {
+    /** v7.3.0 安全：解析量上限常量（防超大规则集 DoS——详见 parse 处注释） */
+    static final int MAX_APPS = 2000;
+    static final int MAX_GROUPS_PER_APP = 100;
+    static final int MAX_RULES_PER_GROUP = 200;
+    static final int MAX_TOTAL_RULES = 20000;
+    static final int MAX_SELECTORS_PER_RULE = 20;
+
+    /** v4.3.0：一组 rules → 编译进 App（组级默认 + 规则级覆盖；preKeys 跳过）。
+     *  v7.3.0 安全：组内规则数上限 200（超限截断）+ 总规则数上限 20000（超限抛异常拒收）。 */
+    static void appendGroupRules(Map0 gm, App app, int defMax, long defInterval, long defMatchTime, int[] total) {
         String gname = gm.str("name", "规则组");
         List<Object> rules = normalizeRules(gm.raw.get("rules"));
         if (rules == null) return;
-        for (int r = 0; r < rules.size(); r++) {
+        int rLimit = Math.min(rules.size(), MAX_RULES_PER_GROUP);
+        for (int r = 0; r < rLimit; r++) {
+            if (total[0] >= MAX_TOTAL_RULES) {
+                throw new Json5.ParseException("订阅总规则数超过上限 " + MAX_TOTAL_RULES);
+            }
             Rule compiled = compileRule(Json5.asMap(rules.get(r)),
                     gname + "-" + (r + 1), defMax, defInterval, defMatchTime);
-            if (compiled != null) app.rules.add(compiled);
+            if (compiled != null) {
+                app.rules.add(compiled);
+                total[0]++;
+            }
         }
     }
 
@@ -273,7 +297,9 @@ public final class Subscription {
             list = l;
         }
         if (list == null) return;
-        for (int i = 0; i < list.size(); i++) {
+        // v7.3.0 安全：单规则选择器数上限 20（超限截断）
+        int limit = Math.min(list.size(), MAX_SELECTORS_PER_RULE);
+        for (int i = 0; i < limit; i++) {
             if (!(list.get(i) instanceof String)) continue;
             try {
                 out.add(GkdSelector.compile((String) list.get(i)));
@@ -390,6 +416,14 @@ public final class Subscription {
             NodeView t = walkRule(c.rule, node, x);
             if (t == null) continue;
             if (!safeTarget(t, ctx)) continue;
+            /* ═══ v7.3.0 安全：营销诱导词 + 支付资金词双否决（订阅目标注入
+             *  防线——对全部规则生效，不再限于全局组/无 activityIds 规则）。
+             *  背景：恶意/被劫持订阅源可用 activityIds 限定支付页 + 规则名伪装
+             *  「跳过」定向点击「确认支付」类按钮——真跳过键文案数学上不含
+             *  任何诱导/资金词，只紧不松；与既有安全闸（可见+面积+形态门）
+             *  叠加，宁漏勿误红线保持。 ═══ */
+            if (AdDecisionCore.hasInducementWord(t.text()) || AdDecisionCore.hasInducementWord(t.desc())) continue;
+            if (AdDecisionCore.hasPaymentWord(t.text()) || AdDecisionCore.hasPaymentWord(t.desc())) continue;
             // 无 activityIds 限定的任意界面规则：目标必须是跳过/关闭形态；
             // v4.3.0 例外：结构规则（关系算子链精确锁定容器层级）——零文本
             // 图片跳过键（CSDN @View <3 FL < [vid="fl_third_ad"]）凭结构锚定过门

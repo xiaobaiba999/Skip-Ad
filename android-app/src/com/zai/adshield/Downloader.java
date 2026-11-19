@@ -9,6 +9,9 @@ import android.os.Environment;
 
 import org.json.JSONObject;
 
+import java.io.InputStream;
+import java.security.MessageDigest;
+
 /**
  * 应用内更新下载器（v3.0.0 · 零第三方依赖）
  * ─────────────────────────────────────────────
@@ -25,31 +28,41 @@ public final class Downloader {
     private static final String KEY_DL_ID = "dl_id";
     private static final String KEY_DL_URL = "dl_url";
     private static final String KEY_DL_FILE = "dl_file";
+    /* v6.3.0 安全：安装前完整性校验的期望值（与下载任务一起持久化）。
+     * digest = GitHub API asset.digest（"sha256:hex"，HTTPS 获取）；
+     * sizeBytes = asset.size——与下载任务同源同存，防错位。 */
+    private static final String KEY_DL_SHA = "dl_sha";
+    private static final String KEY_DL_SIZE = "dl_size";
 
     private Downloader() {
     }
 
     /* ───────── 启动下载 ───────── */
 
+    /** 兼容入口（无校验元数据）——v6.3.0 起新链路一律带 digest/size。 */
+    public static String start(Context ctx, String url, String fileName) {
+        return start(ctx, url, fileName, "", 0);
+    }
+
     /**
      * 用系统 DownloadManager 下载更新 APK（页内下载，不跳转浏览器）。
+     * v6.3.0 安全：digest/size 为 GitHub API（HTTPS）给出的期望值，
+     * 安装前由 {@link #install} 逐字节校验（SHA-256 优先，缺失时回退字节数）。
      * @return {ok:true, id} 或 {ok:false, error}
      */
-    public static String start(Context ctx, String url, String fileName) {
+    public static String start(Context ctx, String url, String fileName, String digest, long sizeBytes) {
         try {
             if (url == null || url.length() < 8) return err("下载链接无效");
             /* ═══ v4.5.0 安全：下载源白名单 + 文件名净化 ═══
              * startUpdateDownload 是 JS 桥暴露面——恶意页面（若能突破 WebView
              * URL 白名单）可把系统下载器当任意文件下载器。仅允许 https 且
-             * 域名限本仓库发布通道（github.com / githubusercontent.com /
-             * ghfast.top 镜像）；文件名仅 [A-Za-z0-9._-]（防路径穿越）。 */
+             * 域名限本仓库发布通道；文件名仅 [A-Za-z0-9._-]（防路径穿越）。
+             * v6.3.0 加固：域名从 contains 子串改为 URL 解析后的 host 精确/
+             * 后缀匹配——"https://github.com.evil.com/x.apk"、
+             * "https://attacker.com/fwd?to=github.com" 类构造 URL 全部拒绝。 */
             String u = url.trim();
             if (!u.startsWith("https://")) return err("下载链接必须为 https");
-            String low = u.toLowerCase();
-            boolean hostOk = low.contains("github.com")
-                    || low.contains("githubusercontent.com")
-                    || low.contains("ghfast.top");
-            if (!hostOk) return err("下载链接不在允许的发布通道内");
+            if (!hostAllowed(u)) return err("下载链接不在允许的发布通道内");
             String fn = fileName == null ? "adshield.apk"
                     : fileName.replaceAll("[^A-Za-z0-9._-]", "_");
             if (fn.length() > 64) fn = fn.substring(fn.length() - 64);
@@ -85,6 +98,8 @@ public final class Downloader {
                     .putLong(KEY_DL_ID, id)
                     .putString(KEY_DL_URL, url)
                     .putString(KEY_DL_FILE, fileName)
+                    .putString(KEY_DL_SHA, digest == null ? "" : digest)
+                    .putLong(KEY_DL_SIZE, sizeBytes)
                     .apply();
             JSONObject out = ok();
             out.put("id", id);
@@ -167,10 +182,15 @@ public final class Downloader {
     /**
      * 拉起系统安装器（content:// URI + FLAG_GRANT_READ_URI_PERMISSION）。
      * Android 8+ 安装未知应用：未授权时引导到授权页（返回 {ok:false, needPermission:true}）。
-     */
+     * v6.3.0 安全（更新链完整性闸）：拉起安装器前对下载文件流式计算 SHA-256，
+     * 与 GitHub API（HTTPS 获取）的 asset digest 逐字节比对；digest 缺失时
+     * 回退字节数比对（size 同样来自同一 HTTPS 响应）。不匹配 → 删除下载
+     * 文件、清除任务、拒绝安装并给出明确原因——镜像代理投毒 / 代理劫持
+     * / 公共 Downloads 目录 TOCTOU 换包全部由这道闸拦下。 */
     public static String install(Context ctx) {
         try {
-            long id = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong(KEY_DL_ID, -1);
+            android.content.SharedPreferences sp = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+            long id = sp.getLong(KEY_DL_ID, -1);
             if (id <= 0) return err("尚无下载完成的更新");
             DownloadManager dm = (DownloadManager) ctx.getSystemService(Context.DOWNLOAD_SERVICE);
             if (dm == null) return err("系统下载服务不可用");
@@ -178,6 +198,21 @@ public final class Downloader {
             if (st == null || st[0] != DownloadManager.STATUS_SUCCESSFUL) return err("下载尚未完成");
             Uri uri = dm.getUriForDownloadedFile(id);
             if (uri == null) return err("取不到下载文件，可从系统下载通知栏安装");
+
+            /* ═══ v6.3.0 完整性校验（安装前最后一道）═══
+             * 期望值与下载任务同源同存（启动下载时写入）：
+             *  · digest 存在 → SHA-256 全量比对（流式读取，8KB 缓冲）；
+             *  · digest 缺失 → 字节数比对（弱校验，正常 Release 必有 digest）。
+             * 校验失败 → dm.remove(id) 删文件 + 清 prefs + 拒绝安装。 */
+            String expectSha = sp.getString(KEY_DL_SHA, "");
+            long expectSize = sp.getLong(KEY_DL_SIZE, 0);
+            String verify = verifyDownloadedFile(ctx, uri, expectSha, expectSize);
+            if (verify != null) {
+                try { dm.remove(id); } catch (Exception ignored) { }
+                sp.edit().remove(KEY_DL_ID).remove(KEY_DL_URL).remove(KEY_DL_FILE)
+                        .remove(KEY_DL_SHA).remove(KEY_DL_SIZE).apply();
+                return err("安装包校验失败（" + verify + "）已删除，请重新下载");
+            }
 
             // Android 8+「安装未知应用」授权
             if (android.os.Build.VERSION.SDK_INT >= 26 && !ctx.getPackageManager().canRequestPackageInstalls()) {
@@ -208,6 +243,76 @@ public final class Downloader {
                 ctx.startActivity(it);
             }
         } catch (Exception ignored) {
+        }
+    }
+
+    /* ═══ v6.3.0 安全工具 ═══ */
+
+    /**
+     * 发布通道 host 白名单（URL 解析后的 host 精确/后缀匹配）。
+     * 允许：github.com · *.github.com · githubusercontent.com 及子域 ·
+     * ghfast.top · gh-proxy.com（v3.3.0 镜像通道）。
+     * 拒绝一切构造绕过：userinfo 混淆、子串注入、尾点 FQDN。 */
+    static boolean hostAllowed(String u) {
+        try {
+            java.net.URL url = new java.net.URL(u);
+            String scheme = url.getProtocol();
+            if (scheme == null || !scheme.equalsIgnoreCase("https")) return false;
+            String host = url.getHost();
+            if (host == null || host.length() == 0) return false;
+            String h = host.toLowerCase(java.util.Locale.ROOT);
+            if (h.endsWith(".")) h = h.substring(0, h.length() - 1); // 尾点 FQDN 混淆
+            return h.equals("github.com") || h.endsWith(".github.com")
+                    || h.equals("githubusercontent.com") || h.endsWith(".githubusercontent.com")
+                    || h.equals("ghfast.top") || h.endsWith(".ghfast.top")
+                    || h.equals("gh-proxy.com") || h.endsWith(".gh-proxy.com");
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /**
+     * 下载文件完整性校验：返回 null = 通过；非 null = 失败原因。
+     * expectSha 为 "sha256:hex"（GitHub API 官方格式）或空；expectSize 为
+     * 期望字节数（0 = 未知）。流式读取（8KB 缓冲）同时计数字节——
+     * SHA-256 与字节数双比对（digest 缺失时字节数比对兜底）。 */
+    static String verifyDownloadedFile(Context ctx, Uri uri, String expectSha, long expectSize) {
+        InputStream in = null;
+        try {
+            in = ctx.getContentResolver().openInputStream(uri);
+            if (in == null) return "无法读取下载文件";
+            MessageDigest md = expectSha != null && expectSha.startsWith("sha256:")
+                    ? MessageDigest.getInstance("SHA-256") : null;
+            byte[] buf = new byte[8192];
+            long total = 0;
+            int n;
+            while ((n = in.read(buf)) > 0) {
+                if (md != null) md.update(buf, 0, n);
+                total += n;
+            }
+            if (expectSize > 0 && total != expectSize) {
+                return "大小不符（实际 " + total + " ≠ 发布 " + expectSize + " 字节）";
+            }
+            if (md != null) {
+                byte[] d = md.digest();
+                StringBuilder sb = new StringBuilder(d.length * 2);
+                for (int i = 0; i < d.length; i++) {
+                    String hx = Integer.toHexString(d[i] & 0xFF);
+                    if (hx.length() < 2) sb.append('0');
+                    sb.append(hx);
+                }
+                String actual = "sha256:" + sb.toString();
+                if (!actual.equalsIgnoreCase(expectSha)) {
+                    return "SHA-256 不符";
+                }
+            } else if (expectSize <= 0) {
+                return "缺少校验元数据"; // digest 与 size 双缺：拒绝（正常 Release 必有 digest）
+            }
+            return null; // 校验通过
+        } catch (Exception e) {
+            return "读取失败：" + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
+        } finally {
+            if (in != null) try { in.close(); } catch (Exception ignored) { }
         }
     }
 

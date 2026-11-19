@@ -27,8 +27,15 @@ public final class Json5 {
         }
     }
 
+    /* v6.3.0 安全：嵌套深度硬上限——恶意订阅用 "[[[[…万层]]]]" 深度嵌套
+     * 可把递归下降解析器打入 StackOverflowError（Error 不是 Exception，
+     * 拉取侧 catch(Exception) 接不住，服务重绑即崩——无障碍掉线 DoS）。
+     * 订阅语义最深处（app{groups[{rules[...]}]}）约 6 层，64 层留足余量。 */
+    static final int MAX_DEPTH = 64;
+
     private final String s;
     private int i = 0;
+    private int depth = 0;
 
     private Json5(String s) {
         this.s = s;
@@ -90,6 +97,16 @@ public final class Json5 {
     }
 
     private Map<String, Object> object() {
+        if (depth >= MAX_DEPTH) throw new ParseException("nesting too deep (" + depth + ")");
+        depth++;
+        try {
+            return objectBody();
+        } finally {
+            depth--;
+        }
+    }
+
+    private Map<String, Object> objectBody() {
         Map<String, Object> m = new LinkedHashMap<String, Object>();
         i++; // {
         ws();
@@ -137,6 +154,16 @@ public final class Json5 {
     }
 
     private List<Object> array() {
+        if (depth >= MAX_DEPTH) throw new ParseException("nesting too deep (" + depth + ")");
+        depth++;
+        try {
+            return arrayBody();
+        } finally {
+            depth--;
+        }
+    }
+
+    private List<Object> arrayBody() {
         List<Object> l = new ArrayList<Object>();
         i++; // [
         ws();

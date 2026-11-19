@@ -1773,7 +1773,7 @@ public class AdSkipService extends AccessibilityService {
 
     private boolean isDialogClass(String cls) {
         if (cls == null) return false;
-        String c = cls.toLowerCase();
+        String c = com.zai.adshield.core.RuleEngine.lowerAscii(cls); // v7.3.0 算法：零分配归一（热点：每窗口事件）
         return c.contains("dialog") || c.contains("popup");
     }
 
@@ -3119,10 +3119,12 @@ public class AdSkipService extends AccessibilityService {
                 if (wins != null) {
                     for (AccessibilityWindowInfo w : wins) {
                         if (out.size() >= MAX_WINDOWS_SCAN) break;
-                        CharSequence wp = w == null ? null : w.getRoot() == null ? null : w.getRoot().getPackageName();
+                        // v7.3.0 算法：getRoot 单次缓存（旧版判空+取包名+再取 root
+                        // 共三次跨进程序调用——窗口收集是每轮扫描的 binder 大户）
+                        AccessibilityNodeInfo r0 = w == null ? null : w.getRoot();
+                        CharSequence wp = r0 == null ? null : r0.getPackageName();
                         if (wp != null && pkg.contentEquals(wp)) {
-                            AccessibilityNodeInfo r = w.getRoot();
-                            if (r != null) out.add(r);
+                            out.add(r0);
                         }
                     }
                 }
@@ -3164,8 +3166,13 @@ public class AdSkipService extends AccessibilityService {
             } catch (Throwable ignored) {
             }
             /* v5.5.1：gestureOnly 回落——控件文本与 vid 双空时用规则命中文案
-             * （语义依据换源，绝不放宽：文案仍须跳过/关闭族才通过断言） */
-            if ((bl.length() == 0 && bv.length() == 0) && d.label != null && d.label.trim().length() > 0) {
+             * （语义依据换源，绝不放宽：文案仍须跳过/关闭族才通过断言）。
+             * v7.3.0 安全收紧：回落仅对【主引擎/决策核心/学习位置】命中生效
+             * ——其 label 是引擎已验证的真实命中文案（跳过/关闭族）；订阅命中
+             * （rule_sub_gkd* 三变体）的 label 是规则名（订阅源可控文本，伪装
+             * 「跳过」的恶意规则名不再能作为语义证据——零文本零 vid 目标一律拒点）。 */
+            if ((bl.length() == 0 && bv.length() == 0) && d.label != null && d.label.trim().length() > 0
+                    && (d.reason == null || !d.reason.startsWith("rule_sub_gkd"))) {
                 bl = d.label.trim();
             }
             boolean userTaught = "learned_pos".equals(d.reason) || d.reason.startsWith("learned");
@@ -3243,6 +3250,18 @@ public class AdSkipService extends AccessibilityService {
         }
         if (d.action.equals(AdDecisionCore.A_CLICK_BOUNDS) || d.action.equals(AdDecisionCore.A_CLOSE)) {
             if (!clickCoolOK) return false;
+            /* ═══ v7.3.0 多点防线 II（nudge 补扫旁路封死）：出手节奏 = 人手耐心 ═══
+             * 原冷却仅 300ms（COOLDOWN_MS）——nudge 补扫 80ms 节流只挡扫描频次，
+             * 广告动画/进度条密集内容事件仍可 ~300ms 连发换候选出手（H 静默
+             * 600ms 只拦首击后第一枪），与 v6.0.0 人手复验节奏（首击 500ms →
+             * 1.4/2.4/3.6/5.2/7.0s 渐进放缓）直接矛盾。冷却改
+             * max(300ms, verifyDelayMs(attempts))：nudge 补扫与复验扫描同一
+             * 节奏出手——同窗连发从源头断流；scheduleVerifyScan 的复验针时刻
+             * 恰好在门槛上，照常放行。 */
+            Long lcGap = lastClickAt.get(pkg);
+            int attemptsPre = triesOfClick(pkg);
+            if (lcGap != null && now - lcGap
+                    < Math.max(COOLDOWN_MS, HumanTap.verifyDelayMs(attemptsPre))) return false;
             /* v6.1.0 F/H 多点防线（用户实锤：点击已生效但广告跳转动画期
              * 复验看到「按钮还在」再点一次=用户肉眼的多点；机器连发也是
              * 反自动化 SDK 触点检测的直接特征）：
@@ -3274,7 +3293,25 @@ public class AdSkipService extends AccessibilityService {
                     firedTargetCount.put(targetKey, prevCnt == null ? 1 : prevCnt + 1);
                 }
                 lastGestureOkAt.put(pkg, now);
-                if (firedTargetAt.size() > 256) firedTargetAt.clear(); // 防膨胀：跨窗清理为主，超限整体兑底
+                /* v7.3.0 多点防线 II：超限改按时间淘汰最旧 128 条（原整体 clear
+                 * 会瞬间失忆——同窗刚点过的目标指纹丢失 → 1.6s 静默防线与防线 I
+                 * 击数计数失配 → 对同目标补一枪的多点观感；逐条淘汰则防线记忆
+                 * 完整保留；击数表 firedTargetCount 同步只保留存活键）。 */
+                if (firedTargetAt.size() > 256) {
+                    try {
+                        java.util.ArrayList<java.util.Map.Entry<String, Long>> es =
+                                new java.util.ArrayList<>(firedTargetAt.entrySet());
+                        es.sort((p, q) -> Long.compare(p.getValue(), q.getValue()));
+                        for (int k = 0; k < es.size() - 128; k++) {
+                            String deadKey = es.get(k).getKey();
+                            firedTargetAt.remove(deadKey);
+                            firedTargetCount.remove(deadKey);
+                        }
+                    } catch (Throwable ignored) {
+                        firedTargetAt.clear(); // 排序异常兑底：绝不无限膨胀
+                        firedTargetCount.clear();
+                    }
+                }
                 /* v6.0.0 人手复验节奏（替代 v4.4.0 的 450/900 双针机器枪）
                  * ——首击后 500ms 扫一眼（人手 300~500ms 补刀节奏不变），
                  * 第 2/3/4/5/6 击后 1.4s/2.4s/3.6s/5.2s/7.0s 渐进放缓：
@@ -3313,6 +3350,11 @@ public class AdSkipService extends AccessibilityService {
             if (!clickCoolOK) return false;
             boolean isLearned = "learned_pos".equals(d.reason);
             int tapAttempts = triesOfClick(pkg); // v6.0.0：人手节奏基数（学习位置直点同熙）
+            /* v7.3.0 多点防线 II：同 CLICK_BOUNDS 分支——人手耐心节奏对学习位置
+             * 直点同样生效（nudge 旁路 ~300ms 连发一并封死）。 */
+            Long lcGap2 = lastClickAt.get(pkg);
+            if (lcGap2 != null && now - lcGap2
+                    < Math.max(COOLDOWN_MS, HumanTap.verifyDelayMs(tapAttempts))) return false;
             /* v6.1.0 F/H 多点防线（学习位置直点同熙：同指纹静默 + 结果静默） */
             String targetKey = HumanTap.sameTargetKey(pkg, d.x, d.y, d.reason,
                     HumanTap.dupTolPx(screenDensity));

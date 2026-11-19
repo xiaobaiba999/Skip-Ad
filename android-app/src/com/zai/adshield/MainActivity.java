@@ -401,6 +401,12 @@ public class MainActivity extends Activity {
         public void kvSet(String key, String value) {
             // v4.5.0 安全：value 长度上限（防 prefs 膨胀/DoS；正常页面状态远小于此）
             if (value != null && value.length() > 262144) return;
+            /* v7.3.0 安全：key 白名单——JS 侧（app.js store.set）合法写入的键
+             * 只有 "state"（页面状态/战绩/开关）。其余键（subUrl、subCache、
+             * dl 系列与 autoLogAt 等）是服务/订阅/下载链路的持久化字段：一旦
+             * 前端出现注入（XSS），「kvSet 写 subCache 恶意规则」即可让服务
+             * 重启时静默加载被投毒的自动点击规则——白名单把这个通道焊死。 */
+            if (!"state".equals(key)) return;
             SharedPreferences.Editor e = a.getSharedPreferences("adshield", Context.MODE_PRIVATE).edit();
             if (value == null) e.remove(key);
             else e.putString(key, value);
@@ -1005,9 +1011,11 @@ public class MainActivity extends Activity {
 
         /* ───── 应用内更新：页内下载 → 进度 → 安装（不跳浏览器） ───── */
 
+        /** v7.3.0 安全：digest/size 从 GitHub API（HTTPS）元数据透传给
+         *  Downloader——安装前 SHA-256 完整性校验的期望值。 */
         @JavascriptInterface
-        public String startUpdateDownload(String url, String fileName) {
-            return Downloader.start(a, url, fileName);
+        public String startUpdateDownload(String url, String fileName, String digest, long sizeBytes) {
+            return Downloader.start(a, url, fileName, digest, sizeBytes);
         }
 
         @JavascriptInterface
@@ -1062,15 +1070,16 @@ public class MainActivity extends Activity {
 
         /** 用系统浏览器打开链接（仅开源仓库等只读入口；更新下载不走这里）。
          *  v4.5.0 安全：仅允许 http/https（拒绝 file/intent/javascript 等
-         *  危险 scheme 经出桥透传），且仅限本仓库/GitHub 域名。 */
+         *  危险 scheme 经出桥透传），且仅限本仓库/GitHub 域名。
+         *  v7.3.0 加固：仅 https + URL 解析后 host 精确/后缀匹配（
+         *  "https://github.com.evil.com/" 类构造 URL 拒绝）。 */
         @JavascriptInterface
         public void openUrl(String url) {
             try {
                 if (url == null) return;
                 String u = url.trim();
-                if (!u.startsWith("https://") && !u.startsWith("http://")) return;
-                String low = u.toLowerCase();
-                if (!low.contains("github.com") && !low.contains("xiaobaiba999")) return;
+                if (!u.startsWith("https://")) return;
+                if (!Downloader.hostAllowed(u)) return;
                 Intent it = new Intent(Intent.ACTION_VIEW, Uri.parse(u));
                 it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 a.startActivity(it);

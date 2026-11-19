@@ -64,13 +64,18 @@ public final class GkdSelector {
 
     static final int V_STR = 0, V_INT = 1, V_BOOL = 2, V_NULL = 3;
 
-    /** 单个布尔表达式：attr op 字面量（v4.3.0 支持 attr.length 长度比较） */
+    /** 单个布尔表达式：attr op 字面量（v4.3.0 支持 attr.length 长度比较）。
+     *  v6.3.0 算法：后缀常量预计算（svDot/svColon/svSlash 在编译期一次构造，
+     *  匹配期零拼接零分配——原 testName/testId 每节点每规则拼新串）。 */
     static final class Cond {
         String attr;
         String lenAttr; // v4.3.0：attr.length 形式（text.length<10）——对基础属性字符串取长度比较
         String op;
         int vType = V_NULL;
         String sv;
+        String svDot;    // v6.3.0："." + sv（编译期预计算）
+        String svColon;  // v6.3.0：":" + sv
+        String svSlash;  // v6.3.0："/" + sv
         long iv;
         boolean bv;
         Pattern rx; // ~= 预编译
@@ -112,11 +117,11 @@ public final class GkdSelector {
             if ("=".equals(op)) {
                 // GKD 语义：短名 ≡ 等值 或 以 .短名 结尾
                 if (sv.indexOf('.') >= 0) return cls.equals(sv);
-                return cls.equals(sv) || cls.endsWith("." + sv);
+                return cls.equals(sv) || cls.endsWith(svDot);
             }
             if ("!=".equals(op)) {
                 if (sv.indexOf('.') >= 0) return !cls.equals(sv);
-                return !cls.equals(sv) && !cls.endsWith("." + sv);
+                return !cls.equals(sv) && !cls.endsWith(svDot);
             }
             return testStr(cls);
         }
@@ -125,7 +130,7 @@ public final class GkdSelector {
             String id = nz(fullId);
             if ("=".equals(op)) {
                 if (sv.indexOf(':') >= 0) return id.equals(sv);   // 全名 com.x:id/y
-                return vidOf(id).equals(sv) || id.endsWith(":" + sv) || id.endsWith("/" + sv);
+                return vidOf(id).equals(sv) || id.endsWith(svColon) || id.endsWith(svSlash);
             }
             if ("!=".equals(op)) return !testId(fullId);
             return testStr(id);
@@ -381,6 +386,10 @@ public final class GkdSelector {
         if (s == null) throw new ParseException("null selector");
         String t = s.trim();
         if (t.length() == 0) throw new ParseException("empty selector");
+        /* v6.3.0 安全：选择器长度上限 256——防恶意订阅用超长选择器构造
+         *  解析风暴/内存膨胀（真选择器远短于此；超限抛 ParseException →
+         *  addSelectors 捕获后仅跳过该选择器，其余照常加载）。 */
+        if (t.length() > 256) throw new ParseException("selector too long: " + t.length());
         GkdSelector g = new GkdSelector(s);
         // 顶层按 || 拆分（尊重引号与方括号）
         List<String> parts = splitTop(t, "||");
@@ -727,6 +736,12 @@ public final class GkdSelector {
             } catch (PatternSyntaxException e) {
                 throw new ParseException("bad regex: " + c.sv);
             }
+        }
+        // v6.3.0 算法：后缀常量预计算（匹配期零拼接分配）
+        if (c.sv != null) {
+            c.svDot = "." + c.sv;
+            c.svColon = ":" + c.sv;
+            c.svSlash = "/" + c.sv;
         }
         return c;
     }

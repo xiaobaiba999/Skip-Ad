@@ -3,6 +3,16 @@
 > 首页只保留当前版本要点；全部历史版本详情在本页归档。
 > 发布物（APK/报告/文档）见 [Releases](https://github.com/xiaobaiba999/Skip-Ad/releases) 与 `docs/test-reports/`。
 
+## v7.3.0（2026-11-20）—— 安全加固 + 算法优化（防投毒 · 防劫持 · 防注入）
+
+- **更新链 SHA-256 完整性校验（用户指令：完善安全性修复，避免遭到他人攻击）**：GitHub API（HTTPS）asset digest/size 随下载任务同源同存 → 安装前流式计算 SHA-256 逐字节比对（digest 缺失回退字节数比对，双缺拒装）→ 不符自动删文件清任务报错——镜像代理投毒 / 公共 Downloads 目录 TOCTOU 换包 / API 元数据注入全部拦下；GitHub API 三通道禁自动重定向（3xx 只可能是劫持）；响应体 4MB 硬上限
+- **订阅规则注入防线**：支付资金词（19 词）+ 营销诱导词双否决对全部规则生效（此前带 activityIds 的专属规则存在绕过口——恶意订阅可定向代点「确认支付」类按钮）；订阅命中规则的「规则名」不再能作为终闸语义证据（零文本零 vid 目标一律拒点）
+- **解析器 DoS 硬闸**：Json5 嵌套深度 ≤64（深嵌套 StackOverflowError 根治——Error 不被 catch(Exception) 接住，服务重绑即崩的无障碍掉线 DoS）；订阅体量上限（apps ≤2000 · 总规则 ≤20000 · 组 ≤100/应用 · 规则 ≤200/组 · 选择器 ≤20/条 · 选择器长度 ≤256）；拉取/加载链 catch Throwable
+- **网络与桥面加固**：下载源/外链域名 contains 子串 → URL 解析 host 精确/后缀白名单（`github.com.evil.com` 类构造全拒）；kvSet key 白名单（XSS 若出现也无法写 subCache 投毒）；openUrl 仅 https + 精确 host；allowBackup=false
+- **算法优化（扫描热路径零分配化）**：matchVid 手写分段扫描（旧 `split("[.$]")` 每叶子节点隐式正则编译）· isAdActivityClass 结果缓存（512 封顶）· GkdSelector 后缀常量预计算 · lowerAscii ASCII 快路径（零分配 + tr-TR locale 下 "SKIP→skıp" 整层丢失根治）· collectRoots getRoot 单次缓存
+- **多点防线 II + 既有 bug**：出手冷却改 max(300ms, 人手复验节奏)（nudge 补扫旁路 ~300ms 换候选连发封死）；firedTargetAt 超限改按时间淘汰（原整体 clear 致防线失忆可对同目标补枪）；下载完成后「立即安装」按钮翻转的既有 bug 修复
+- 工程化：**17 套件 4077 项 JVM 断言全绿保持**（安全重写全部 byte-for-byte 语义等价）；APK 824KB · VC 73000（>72000 覆盖安装即升级）· MD5 `1577bc2aa220c3fec6af0533930f382a` · SHA-256 `3905dc45a62693dd549604e0a916af4934a90717ce814e36d0f6a5fe1e42c973` 三目录分发；GitHub tag v7.3.0 + Release + 仓库描述与 README 面板同步（免责声明新增安全边界披露段）· 实录见 [OPTIMIZATION-v7.3.0.md](OPTIMIZATION-v7.3.0.md)
+
 ## v7.2.0（2026-11-19）—— 信息流广告真机命中根治（李跳跳方法论）+ 白名单全量应用列表 + 报告饼图折叠 + 多点防线 I
 
 - **信息流广告「全都没拦截」四处死因根治（用户实锤：app 内穿插的广告全都没拦截——参考李跳跳实现逻辑）**：v7.1.0 单测全绿但真机零命中的四处病灶——① `clearTapGuards` 在窗切换清 feedArmed（P1 拉起的关闭菜单本身就是 Dialog 新窗，armed 一进菜单即死·最直接死因）② sns 窗门 + 12s 开屏窗闸对菜单窗双杀 ③ 300 节点预算制 DFS 够不到朋友圈大树深层卡片的角标 ④ P2「强特征≥1 且总数≥2」双闸在真机单项菜单（如仅「不感兴趣」）上零命中——全部根治：**armed 直通窗闸**（P2 只认 armed + 中性项精确等值 + 扩展动作排除 + 形态闸；窗闸 12s→2.5s）；**李跳跳方法论主路径**（`findAccessibilityNodeInfosByText` 原生直查全树·预算无关，候选逐个过语义+形态闸——宁漏勿误红线不变，DFS 兜底保持）；**armed≥1 即出手**（armed 期绝不回落 P1——角标连点顺手根治）；收编真机文案「屏蔽此推广/减少此类广告」；feed 关闭单独记账 `stats.feed`（不虚增 auto）；feed 未命中 30s 节流诊断日志随一日三次上传（「全没拦截」类反馈日志可区分「窗内无角标」与「角标文案未收编」）

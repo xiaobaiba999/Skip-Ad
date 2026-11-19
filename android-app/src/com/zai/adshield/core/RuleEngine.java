@@ -433,7 +433,7 @@ public final class RuleEngine {
 
     /** 文本规则匹配（第0/1/2/3层）。v4.5.0 public：服务侧原生文本探针复用 */
     public static Hit matchText(String label, int[] b, NodeView node, Ctx ctx) {
-        String low = label.toLowerCase();
+        String low = lowerAscii(label); // v7.3.0 算法：零分配归一（tr-TR locale 根治）
 
         /* 第0层：分应用精确（不受长度上限约束；v5.6.0 并行小写表零分配；
          * v7.1.0 预筛 memo：ctx.appTextRules 已预筛时零全表扫描——服务侧
@@ -479,10 +479,23 @@ public final class RuleEngine {
     public static Hit matchVid(NodeView node, int[] b, Ctx ctx) {
         String vid = node.viewId();
         if (vid == null || vid.length() < 4) return null;
-        String v = vid.toLowerCase();
-        String[] seg = v.split("[.$]");
-        for (String s : seg) {
-            if (s.length() < 3) continue;
+        /* v7.3.0 算法：旧 v.split("[.$]") 对每个零文本叶子节点隐式编译正则
+         *  Pattern + 分配 String[]（深树一轮数百次）——改手写分段扫描（字符级
+         *  切段，零正则零数组分配），语义与 split 完全等价：段边界仍为 '.'/'$'，
+         *  段内 contains 逐段判定；lowerAscii 归一同样零分配。 */
+        String v = lowerAscii(vid);
+        int vn = v.length();
+        int segSt = 0;
+        for (int i = 0; i <= vn; i++) {
+            if (i == vn) {
+                if (i - segSt < 3) break;
+            } else {
+                char ch = v.charAt(i);
+                if (ch != '.' && ch != '$') continue;
+                if (i - segSt < 3) { segSt = i + 1; continue; }
+            }
+            String s = v.substring(segSt, i);
+            segSt = i + 1;
             /* skip 族（任意窗口）+ 倒计时控件 */
             for (String k : VID_SKIP_KEYS) {
                 if (s.contains(k)) return build("global_vid", "vid:" + vid, b, node, ctx);
@@ -616,5 +629,25 @@ public final class RuleEngine {
 
     static String nz(String s) {
         return s == null ? "" : s.trim();
+    }
+
+    /** v7.3.0 算法：ASCII 快路径小写归一（与 AdDecisionCore.lowerAscii 同源；
+     *  零分配 + tr-TR locale 根治，详见 AdDecisionCore 注释）。
+     *  public：服务侧（AdSkipService.isDialogClass 等热路径）跨包复用。 */
+    public static String lowerAscii(String s) {
+        if (s == null || s.length() == 0) return s == null ? "" : s;
+        int n = s.length();
+        for (int i = 0; i < n; i++) {
+            char c = s.charAt(i);
+            if (c >= 'A' && c <= 'Z') {
+                char[] a = s.toCharArray();
+                for (int j = i; j < n; j++) {
+                    char d = a[j];
+                    if (d >= 'A' && d <= 'Z') a[j] = (char) (d + 32);
+                }
+                return new String(a);
+            }
+        }
+        return s;
     }
 }
