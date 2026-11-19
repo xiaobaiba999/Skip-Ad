@@ -44,6 +44,49 @@ public final class TestHost {
         if (failed > 0) System.exit(1);
     }
 
+    /* ══ v6.0.0 真实密度配对表：设备几何（w,h）→ 该档设备真实出货密度域 ══
+     * 1:1 模拟「人在不同设备上操作」= 几何 × 该档真实密度：720p 遗留机
+     * 真实密度 1.0~2.0（无 xxxhdpi——720p×4.0 组合在真实世界不存在）；
+     * QHD 旗舰真实 3.5~4.0；折叠内屏 ~2.0~2.6；分屏半窗承袭宿主密度。
+     * 全 7 档密度的压力交叉（含不真实组合）由各矩阵的条件契约覆盖
+     * （可刺→必须安全落点；亚指腹 dp 短边 <12dp→必须拒点）。 */
+    private static final Object[][] DENSITY_MAP = {
+            {720, 1650, new float[]{1.5f, 2.0f}},          // 720p 直板（Redmi 14C：hdpi~xhdpi）
+            {1080, 2400, new float[]{2.0f, 2.6f, 3.0f}},  // 1080p 主流（xhdpi~xxhdpi）
+            {1080, 2412, new float[]{2.0f, 2.6f, 3.0f}},  // 1080p 高（Nothing Phone）
+            {1220, 2712, new float[]{2.6f, 3.0f, 3.5f}},  // 1220p（POCO：~460ppi）
+            {1440, 3200, new float[]{3.5f, 4.0f}},         // 1440p QHD 旗舰（~560ppi）
+            {1260, 2844, new float[]{3.0f, 3.5f}},         // 1260p 19.5:9（Mate 70 Pro）
+            {1080, 1920, new float[]{2.6f, 3.0f}},         // 16:9 遗留旗舰（420~480dpi）
+            {720, 1280, new float[]{1.0f, 1.5f, 2.0f}},   // 16:9 极旧机（mdpi~xhdpi）
+            {1080, 2316, new float[]{2.6f, 3.0f}},         // 折叠外屏窄 21.3:9
+            {720, 1632, new float[]{1.5f, 2.0f}},          // 折叠外屏超窄 22.5:9（Flip）
+            {1812, 2176, new float[]{2.0f, 2.6f}},         // 折叠内屏近方 1:1.2
+            {2208, 2480, new float[]{2.0f, 2.6f}},          // 折叠内屏 1.11:1（Pocket）
+            {1872, 2148, new float[]{2.0f, 2.6f}},         // 折叠内屏大 1.15:1（Mate X6）
+            {1600, 2560, new float[]{2.0f, 2.6f}},         // 平板 16:10（Y700）
+            {1752, 2800, new float[]{2.0f, 2.6f}},         // 平板 3:2 偏长（Tab S10+）
+            {2048, 2732, new float[]{2.0f, 2.6f}},         // 平板大 4:3（iPad 系对标）
+            {1080, 1200, new float[]{2.0f, 2.6f, 3.0f}},   // 分屏半窗竖（承袭宿主 1080p 机）
+            {540, 2400, new float[]{2.0f, 2.6f, 3.0f}},    // 分屏半窗横（承袭宿主 1080p 机）
+            {1080, 2280, new float[]{2.0f, 2.6f, 3.0f}},   // 刘海大缺 19:9
+            {1080, 2340, new float[]{2.0f, 2.6f, 3.0f}},   // 挖孔屏 20:9（Galaxy A）
+            {1344, 2992, new float[]{3.5f, 4.0f}},         // 超宽 QHD 20:9（Pixel Pro XL）
+            {1080, 1080, new float[]{2.0f, 2.6f}},          // 正方形态（折叠展开）
+            {1080, 2520, new float[]{2.6f, 3.0f}},          // 超长 21:9（Xperia）
+            {2400, 1080, new float[]{2.0f, 2.6f, 3.0f}},    // 横屏形态（平板/旋转）
+    };
+
+    /** 设备几何（w,h）→ 该档设备真实出货密度域；未知几何保守回退 {2.0}。 */
+    public static float[] realDensities(int w, int h) {
+        for (Object[] row : DENSITY_MAP) {
+            if ((Integer) row[0] == w && (Integer) row[1] == h) {
+                return (float[]) row[2];
+            }
+        }
+        return new float[]{2.0f};
+    }
+
     /** 模拟控件节点（测试用 NodeView 实现）。 */
     public static final class SimNode implements NodeView {
         public String text = "";

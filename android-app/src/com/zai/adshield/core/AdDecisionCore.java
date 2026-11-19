@@ -221,8 +221,14 @@ public final class AdDecisionCore {
      * 轮次，不放宽任何安全闸（误点面零变化）。
      * v5.8.0 速度压榨：10→12——点击冷却 420→300ms 后轮换节奏本身就快，
      * 预算同步加宽才不会提前「优雅收手」干看广告走完；安全闸
-     * （面积/形状/守护名单）依旧零变化。 */
-    public static final int MAX_CLICKS_PER_WIN = 12;      // v5.8.0：10→12（速度压榨：复验链再多两次换候选机会）
+     * （面积/形状/守护名单）依旧零变化。
+     * v6.0.0 人手耐心模型（用户实锤：部分用户设备开屏跳过时多点/误点
+     * ——1:1 模拟人操作）：12→6。首点未中场景下 12 连点机器枪是「多点」
+     * 的直接观感来源；v6 首击精度已升级（实时 bounds 追踪 + dp 自适应
+     * 安全域 + 人手手势参数），首点命中率大幅提升，重试预算从「机器枪」
+     * 迁回「人的耐心」：6 下内没关就优雅收手等倒计时走完，与
+     * HumanTap.HUMAN_PATIENCE 同源（安全闸依旧零变化）。 */
+    public static final int MAX_CLICKS_PER_WIN = 6;       // v6.0.0：12→6（1:1 人手耐心——多点级联根治）
     public static final double CLOSE_TOP_MAX = 0.35;      // 开屏×关闭键须在顶部 35% 内
     public static final int LONG_TEXT_LEN = 40;           // 长文本（正常内容页特征）
 
@@ -1062,6 +1068,16 @@ public final class AdDecisionCore {
              *  两段均为纯广告 SDK 侧命名约定，业务 App 窗口绝无此命名
              *  ——误报面可控；游戏/下载/登录红线对照进测试断言。 */
             if (s.contains("ksad") || s.contains("csj_")) return true;
+            /* v6.0.0 五轮激进（用户实锤：扫描日志继续优化——大胆激进）：
+             *  · mobads——百度联盟 Baidu Mob Ads 广告窗命名段
+             *    （com.baidu.mobads.sdk.* 家族）；
+             *  · sigmob——Sigmob 聚合广告 SDK 窗（com.sigmob.* 命名族）；
+             *  · adcolony——AdColony 国际视频广告 SDK 窗；
+             *  · vungle——Liftoff Vungle 国际激励视频 SDK 窗。
+             *  四段均为纯广告 SDK 侧命名约定，业务 App 窗口绝无此命名
+             *  ——误报面可控；游戏/下载/登录红线对照进测试断言。 */
+            if (s.contains("mobads") || s.contains("sigmob")
+                    || s.contains("adcolony") || s.contains("vungle")) return true;
         }
         return false;
     }

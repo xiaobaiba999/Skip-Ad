@@ -4,6 +4,7 @@ import com.zai.adshield.core.AdDecisionCore;
 import com.zai.adshield.core.AdDecisionCore.Ctx;
 import com.zai.adshield.core.AdDecisionCore.Decision;
 import com.zai.adshield.core.AdDecisionCore.ScanFind;
+import com.zai.adshield.core.HumanTap;
 import com.zai.adshield.core.TapPoint;
 import com.zai.adshield.test.TestHost.SimNode;
 
@@ -13,7 +14,7 @@ import com.zai.adshield.test.TestHost.SimNode;
  *
  * <p>矩阵：24 类真实设备几何（主流直板 720p~1440p · 16:9 遗留 · 折叠
  * 外屏窄幅/Flip 超窄/内屏近方 · 平板 3:2·4:3 · 分屏半窗横竖 · 刘海/
- * 挖孔 · 超宽 QHD · 正方形态 · 超长 21:9 · 横屏）× 每类 9 场景：</p>
+ * 挖孔 · 超宽 QHD · 正方形态 · 超长 21:9 · 横屏）× 每类 12 场景：</p>
  *
  * <ol>
  * <li>S1 半裁剪标签：跳过键右半被父容器裁掉 → 触点必落在【可见左半】
@@ -34,7 +35,14 @@ import com.zai.adshield.test.TestHost.SimNode;
  * <li>S8 超宽扁标签（长横幅状跳过条）：触点纵向恒居中带（40%~60% 高度
  *   带），绝不贴上下边（水波纹/圆角高危带）；</li>
  * <li>S9 引擎全链路：标准开屏树 walk→decide 出手 → tapRect+pick 落点
- *   在跳过键可见 bounds 内（决策触点在任意设备几何上安全）。</li>
+ *   在跳过键可见 bounds 内（决策触点在任意设备几何上安全）；</li>
+ * <li>S10 v6.0.0 dp 自适应安全域（条件契约）：真实密度配对上典型跳过
+ *   键必可刺且落点在域内、内缩随密度收紧；全 7 档压力（含真实世界
+ *   不存在的 720p×xxxhdpi 组合）→ 可刺（dp 短边 ≥12dp）必须安全 ·
+ *   亚指腹（<12dp）必须拒点（盲刺拒绝=防误触，与 S11 契约一致）；</li>
+ * <li>S11 v6.0.0 密度收紧防线：高密度小缝拒点（盲刺防线随密度收紧）；</li>
+ * <li>S12 v6.0.0 人手抖动不出界（条件契约）：可刺档上落点 ±2px 九向
+ *   抖动仍在跳过键可见域内；亚指腹档拒点（无落点→无抖动）。</li>
  * </ol>
  *
  * <p>另附 6 项单元级断言（intersect 基础几何 · pick 非法输入 ·
@@ -237,6 +245,97 @@ public final class TapPointMatrixTest {
             TestHost.check(s9Ok, "S9 引擎全链路 " + name + "（决策→触点安全）");
             if (s9Ok) ok++;
 
+            /* S10 v6.0.0 dp 自适应安全域（条件契约）：真实密度配对上典型
+             * 跳过键【必须可刺】且落点在域内、内缩随密度收紧；全 7 档压力
+             *（含真实世界不存在的 720p×xxxhdpi 组合）→ 可刺（dp 短边 ≥12dp
+             * 盲刺阈）必须安全落点 · 亚指腹（<12dp）必须拒点 null——盲刺
+             * 拒绝=防误触正确行为（与 S11 契约一致，绝不首刺亚指腹键）。 */
+            float[] densities = {1.0f, 1.5f, 2.0f, 2.6f, 3.0f, 3.5f, 4.0f};
+            boolean s10Ok = true;
+            int[] rectS10 = TapPoint.tapRect(skipBtn, skipBtn.bounds(), winFull);
+            if (rectS10 == null) {
+                s10Ok = false;
+            } else {
+                int rw = rectS10[2] - rectS10[0], rh = rectS10[3] - rectS10[1];
+                for (float density : densities) {
+                    boolean tappable = rw >= HumanTap.minSidePx(density)
+                            && rh >= HumanTap.minSidePx(density);
+                    for (int a = 0; a < TapPoint.ROTATION_SLOTS; a++) {
+                        int[] pt = TapPoint.pickDp(rectS10, a, density);
+                        if (!tappable) {
+                            if (pt != null) s10Ok = false; // 亚指腹必须拒点
+                            continue;
+                        }
+                        if (pt == null) {
+                            s10Ok = false;
+                            break;
+                        }
+                        boolean inside = pt[0] >= rectS10[0] && pt[0] <= rectS10[2]
+                                && pt[1] >= rectS10[1] && pt[1] <= rectS10[3];
+                        int inX = Math.min(HumanTap.edgeInsetPx(density), rw / 4);
+                        int inY = Math.min(HumanTap.edgeInsetPx(density), rh / 4);
+                        boolean inset = (pt[0] - rectS10[0]) >= inX - 1 && (rectS10[2] - pt[0]) >= inX - 1
+                                && (pt[1] - rectS10[1]) >= inY - 1 && (rectS10[3] - pt[1]) >= inY - 1;
+                        if (!inside || !inset) {
+                            s10Ok = false;
+                        }
+                    }
+                    if (!s10Ok) break;
+                }
+                // 真实密度配对反查：该几何档真实出货密度上，典型跳过键恒可刺
+                //（物理 ≥12dp——真实设备上不拒点）
+                for (float rd : TestHost.realDensities(w, h)) {
+                    if (!(rw >= HumanTap.minSidePx(rd) && rh >= HumanTap.minSidePx(rd))) {
+                        s10Ok = false;
+                    }
+                }
+            }
+            TestHost.check(s10Ok, "S10 dp 自适应安全域 " + name + "（真实密度必可刺 · 7 档压力条件契约：可刺→安全 · 亚指腹→拒点）");
+            if (s10Ok) ok++;
+
+            /* S11 v6.0.0 密度收紧防线：高密度小缝拒点（盲刺防线随密度收紧） */
+            int[] sliverHi = {(int) (w * 0.86), (int) (h * 0.03), (int) (w * 0.86) + 14, (int) (h * 0.03) + 60};
+            boolean s11Ok = TapPoint.pickDp(sliverHi, 0, 1.0f) != null   // 14px：密度 1 可点
+                    && TapPoint.pickDp(sliverHi, 0, 3.0f) == null;       // 14px < 36px(12dp×3)：高密度拒点
+            TestHost.check(s11Ok, "S11 高密度收紧 " + name + "（14px 缝：低密度可点 · 高密度拒点）");
+            if (s11Ok) ok++;
+
+            /* S12 v6.0.0 人手抖动不出界（条件契约）：可刺档上落点 ±2px 九向
+             * 抖动仍在跳过键可见域内；亚指腹档拒点（无落点→无抖动→绝不出
+             * 目标面）。 */
+            boolean s12Ok = true;
+            int[] rect12 = TapPoint.tapRect(skipBtn, skipBtn.bounds(), winFull);
+            if (rect12 == null) {
+                s12Ok = false;
+            } else {
+                int rw12 = rect12[2] - rect12[0], rh12 = rect12[3] - rect12[1];
+                for (float density : densities) {
+                    boolean tappable = rw12 >= HumanTap.minSidePx(density)
+                            && rh12 >= HumanTap.minSidePx(density);
+                    for (int a = 0; a < TapPoint.ROTATION_SLOTS; a++) {
+                        int[] pt = TapPoint.pickDp(rect12, a, density);
+                        if (!tappable) {
+                            if (pt != null) s12Ok = false; // 亚指腹档拒点
+                            continue;
+                        }
+                        if (pt == null) {
+                            s12Ok = false;
+                            break;
+                        }
+                        for (int jx = -HumanTap.JITTER_ABS; jx <= HumanTap.JITTER_ABS && s12Ok; jx++) {
+                            for (int jy = -HumanTap.JITTER_ABS; jy <= HumanTap.JITTER_ABS; jy++) {
+                                int fx = pt[0] + jx, fy = pt[1] + jy;
+                                if (fx < rect12[0] || fx > rect12[2] || fy < rect12[1] || fy > rect12[3]) {
+                                    s12Ok = false;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            TestHost.check(s12Ok, "S12 人手抖动不出界 " + name + "（可刺档 ±2px 九向抖动恒在域内 · 亚指腹档拒点）");
+            if (s12Ok) ok++;
+
             geoOkTotal += ok;
         }
 
@@ -284,12 +383,12 @@ public final class TapPointMatrixTest {
         boolean u6 = deepVis != null && deepVis[2] == 100 && deepVis[3] == 100;
         TestHost.check(u6, "U6 深链防炸（70 层 > 64 限·保守截断不异常）");
 
-        /* ══ 总检（24 几何 × 9 场景 = 216 + 6 单元）══ */
+        /* ══ 总检（24 几何 × 12 场景 = 288 + 6 单元）══ */
         TestHost.suite("矩阵总检");
-        TestHost.check(geoOkTotal == GEOM.length * 9,
-                "九场景全绿 " + geoOkTotal + "/" + (GEOM.length * 9));
-        System.out.println("  设备自适应触点矩阵: " + geoOkTotal + "/" + (GEOM.length * 9)
-                + "（24 类几何 × 9 场景）+ 6 单元级全绿");
+        TestHost.check(geoOkTotal == GEOM.length * 12,
+                "十二场景全绿 " + geoOkTotal + "/" + (GEOM.length * 12));
+        System.out.println("  设备自适应触点矩阵: " + geoOkTotal + "/" + (GEOM.length * 12)
+                + "（24 类几何 × 12 场景）+ 6 单元级全绿");
 
         TestHost.done();
     }

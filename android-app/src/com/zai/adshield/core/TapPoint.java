@@ -32,6 +32,10 @@ import com.zai.adshield.core.AdDecisionCore.NodeView;
  *
  * 全部纯函数：服务侧仅做 AccessibilityNodeInfo→NodeView / 窗口 bounds
  * 数组的搬运；TapPointMatrixTest 对 ~24 类设备几何逐一断言。
+ * v6.0.0：pick 增设 pickDp 密度自适应重载——安全域常量从固定 px 迁到
+ * dp（HumanTap.dpPx 按设备 density 缩放），160dpi 与 480dpi 行为归一
+ * （「设备类型、分辨率原因」的触点安全域漂移根治；density=1.0 与
+ * 旧 pick 完全一致=兼容基线）。
  */
 public final class TapPoint {
 
@@ -124,11 +128,23 @@ public final class TapPoint {
      * </ul>
      */
     public static int[] pick(int[] rect, int attempt) {
+        return pickDp(rect, attempt, 1f);
+    }
+
+    /**
+     * v6.0.0 密度自适应选点：与 {@link #pick(int[], int)} 同一算法，但
+     * 安全域（可见缝最小边 / 边缘内缩）按设备 density 以 dp 缩放——
+     * 低密度设备不再过严拒点（「无点」），高密度设备不再贴死区（误触后
+     * 复验=「多点」）。density 经 HumanTap.clampDensity 钳制到 [1,4]。
+     * density=1.0 时与旧 pick 逐字节一致（兼容基线）。
+     */
+    public static int[] pickDp(int[] rect, int attempt, float density) {
         if (rect == null || rect.length < 4) return null;
         int l = rect[0], t = rect[1], r = rect[2], b = rect[3];
         if (r <= l || b <= t) return null;
         int w = r - l, h = b - t;
-        if (w < MIN_VISIBLE_SIDE || h < MIN_VISIBLE_SIDE) return null; // 盲刺拒绝
+        int minSide = HumanTap.minSidePx(density);
+        if (w < minSide || h < minSide) return null; // 盲刺拒绝
         int cx = l + w / 2, cy = t + h / 2;
         /* 复验象限轮换：slot 1=左上象限中心, 2=右上, 3=左下, 4=右下
          *（象限中心=子矩形中心，非贴角点——任意 ≥2×MIN 的矩形上都安全）
@@ -144,9 +160,11 @@ public final class TapPoint {
             if (!tall) cx += dx * (w / 4);
             if (!flat) cy += dy * (h / 4);
         }
-        /* 边缘内缩钳制（小矩形内缩自动收窄到 w/4，中心恒合法） */
-        int inX = Math.min(EDGE_INSET, w / 4);
-        int inY = Math.min(EDGE_INSET, h / 4);
+        /* 边缘内缩钳制（小矩形内缩自动收窄到 w/4，中心恒合法）
+         * v6.0.0：内缩基值按设备密度 dp 缩放（HumanTap.edgeInsetPx） */
+        int edge = HumanTap.edgeInsetPx(density);
+        int inX = Math.min(edge, w / 4);
+        int inY = Math.min(edge, h / 4);
         cx = Math.max(l + inX, Math.min(r - inX, cx));
         cy = Math.max(t + inY, Math.min(b - inY, cy));
         if (cx < 0 || cy < 0) return null; // 负坐标防御（异常 bounds）

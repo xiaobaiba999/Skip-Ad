@@ -26,6 +26,7 @@ import com.zai.adshield.core.AdDecisionCore.Ctx;
 import com.zai.adshield.core.AdDecisionCore.Decision;
 import com.zai.adshield.core.AdDecisionCore.NodeView;
 import com.zai.adshield.core.AdDecisionCore.ScanFind;
+import com.zai.adshield.core.HumanTap;
 import com.zai.adshield.core.MiniProgramGuard;
 import com.zai.adshield.core.PowerGovernor;
 import com.zai.adshield.core.RestoreGuard;
@@ -542,6 +543,14 @@ public class AdSkipService extends AccessibilityService {
 
     private int screenWidth;
     private int screenHeight;
+    /* v6.0.0 1:1 人手模拟：设备像素密度（dp 自适应触点安全域——安全域常量
+     * 从固定 px 迁 dp：160dpi 与 480dpi 行为归一，「分辨率原因」的触点
+     * 漂移根治；onServiceConnected 时从 DisplayMetrics 缓存，热路径零 IPC） */
+    private volatile float screenDensity = 1f;
+    /* v6.0.0 触点轨迹：同窗已出手触点（同一坐标 ±8dp 内绝不重复盲刺——
+     * 「多点」根治；窗口切换清空与 clickTries 同步）。key=pkg，
+     * value=本窗已出手触点列表） */
+    private final java.util.HashMap<String, java.util.ArrayList<int[]>> tapTrail = new java.util.HashMap<>();
 
     /** 状态快照（含缓存）：Bridge 读 state 走这里，UI 永远拿最新内存态 */
     public static String snapshotState(Context ctx) {
@@ -853,6 +862,11 @@ public class AdSkipService extends AccessibilityService {
         bound = true; // v4.4.0：真实绑定态
         screenWidth = getResources().getDisplayMetrics().widthPixels;
         screenHeight = getResources().getDisplayMetrics().heightPixels;
+        try {
+            screenDensity = getResources().getDisplayMetrics().density;
+        } catch (Throwable t) {
+            screenDensity = 1f;
+        }
         // v4.4.0 息屏缓存：SCREEN_ON/OFF 广播维护 volatile 标记，替代热路径上
         // 每事件一次的 PowerManager.isInteractive binder IPC（issue#40 能耗画像
         // 实锤 4602 事件 = 4602 次 IPC；广播零开销，屏幕翻转秒级同步）
@@ -1512,6 +1526,7 @@ public class AdSkipService extends AccessibilityService {
                 if (entering) rootWinCls.put(pkg, cls); // v3.6.0：记录入口窗
                 backTries.put(pkg, 0);
                 clickTries.put(pkg, 0); // v3.5.0：新窗重置复验计数
+                clearTapTrail(pkg); // v6.0.0：新窗清空触点轨迹（同坐标去重只在同窗内生效）
                 cdLastN.remove(pkg);   // v3.8.0：新窗重置倒计时锚点
                 cdAnchorAt.remove(pkg);
                 cdWaitUntil.remove(pkg);
@@ -1794,6 +1809,21 @@ public class AdSkipService extends AccessibilityService {
                 return new int[]{r.left, r.top, r.right, r.bottom};
             } catch (Exception e) {
                 return null;
+            }
+        }
+
+        /**
+         * v6.0.0 1:1 人眼追踪：出手前刷新节点实时状态（bounds/可见性）。
+         * 扫描时刻捕获的几何到手势真正落屏有 40~300ms 延迟——广告按钮
+         * 入场缩放/位移动画后按「它曾在哪」点击=点空 → 复验 → 多点级联。
+         * refresh() 后 bounds()/visible() 读到的就是【现在】的几何——
+         * 人眼看到哪就点到哪。失败/已失效 → false（回退决策时几何）。
+         */
+        public boolean refreshLive() {
+            try {
+                return n != null && n.refresh();
+            } catch (Throwable t) {
+                return false;
             }
         }
 
@@ -2718,6 +2748,7 @@ public class AdSkipService extends AccessibilityService {
             if (!ff.isSheet) continue;
             // ① 广告已关铁证：复验直接通过，停用换候选重试
             clickTries.put(pkg, 0);
+            clearTapTrail(pkg); // v6.0.0：同步清空触点轨迹
             winClsLearned.remove(pkg);
             // v4.5.0：反馈面板在场 = 广告已关，本窗固定扫描档全部取消
             //（issue#43-44 实锤：面板收起后 12s 开屏窗仍活着，扫描链继续
@@ -2995,11 +3026,12 @@ public class AdSkipService extends AccessibilityService {
                 lastAutoClickAt = now;
                 clickTries.put(pkg, attempts + 1);
                 skipAt.put(pkg, now); // v3.14.0：记录引擎出手时刻（跳过后反馈弹窗门控用）
-                /* v4.4.0 快速复验：点击后 450ms / 900ms 两针精确补扫——
-                 * 「点了没反应」场景下人手 300~500ms 就补第二刀，引擎此前
-                 * 要等 1.2s+ 的固定档（慢于人工实锤）；冷却同步 900→600ms */
-                scheduleVerifyScan(pkg, 450);
-                scheduleVerifyScan(pkg, 900);
+                /* v6.0.0 人手复验节奏（替代 v4.4.0 的 450/900 双针机器枪）
+                 * ——首击后 500ms 扫一眼（人手 300~500ms 补刀节奏不变），
+                 * 第 2/3/4/5/6 击后 1.4s/2.4s/3.6s/5.2s/7.0s 渐进放缓：
+                 * 人会越等越慢，机器枪不会——首击失败设备上双针/连针是
+                 * 用户看到「多点」的直接观感来源。 */
+                scheduleVerifyScan(pkg, HumanTap.verifyDelayMs(attempts));
                 if (d.action.equals(AdDecisionCore.A_CLOSE) && f != null) {
                     popupBlocks++;
                     lastPopupAt.put(pkg, now);
@@ -3010,10 +3042,10 @@ public class AdSkipService extends AccessibilityService {
                 } else {
                     if (attempts == 0) {
                         appendLog("⚡ 已点击跳过（" + shortPkg(pkg) + "）：" + reasonZh(d.reason)
-                                + "（" + (lastGesture ? "手势真实触点" : "无障碍代点兜底") + "）→ 450ms 快速复验，未关将换候选重试");
+                                + "（" + (lastGesture ? "真实触点·1:1 人手" : "无障碍代点兜底") + "）→ " + HumanTap.verifyDelayMs(attempts) + "ms 后复验，未关将换候选重试");
                     } else {
                         appendLog("🔁 复验未关闭 → 第 " + (attempts + 1) + " 次出手（" + shortPkg(pkg) + "）："
-                                + reasonZh(d.reason) + "（手势真实触点·换第 " + (attempts + 1) + " 个候选，不再盲点同一坐标）");
+                                + reasonZh(d.reason) + "（真实触点·1:1 人手·换第 " + (attempts + 1) + " 个候选，同坐标绝不重复盲刺）");
                     }
                     bumpStat(pkg, "auto");
                 }
@@ -3026,21 +3058,24 @@ public class AdSkipService extends AccessibilityService {
         if (d.action.equals(AdDecisionCore.A_TAP_POINT)) {
             if (!clickCoolOK) return false;
             boolean isLearned = "learned_pos".equals(d.reason);
+            int tapAttempts = triesOfClick(pkg); // v6.0.0：人手节奏基数（学习位置直点同熙）
             if (gestureTap(d.x, d.y)) {
                 lastClickAt.put(pkg, now);
                 lastAutoClickPkg = pkg;
                 lastAutoClickAt = now;
-                clickTries.put(pkg, triesOfClick(pkg) + 1);
+                clickTries.put(pkg, tapAttempts + 1);
                 skipAt.put(pkg, now); // v3.14.0：记录引擎出手时刻（学习位置直点也是跳过出手）
                 energyGestures++;
-                scheduleVerifyScan(pkg, 450); // v4.4.0 快速复验（学习位置直点同理）
+                scheduleVerifyScan(pkg, HumanTap.verifyDelayMs(tapAttempts)); // v6.0.0 人手复验节奏（学习位置直点同熙）
                 if (isLearned) {
                     appendLog("🎯 学习位置点击（" + shortPkg(pkg) + "）：你手动教过的位置指纹 ("
-                            + d.x + "," + d.y + ")（手势真实触点·相对你的屏幕渲染）→ 0.9s 后复验");
+                            + d.x + "," + d.y + ")（真实触点·1:1 人手·相对你的屏幕渲染）→ "
+                            + HumanTap.verifyDelayMs(tapAttempts) + "ms 后复验");
                     bumpPosRule(pkg);
                 } else {
                     // v3.9.0：coord_fallback 已移除（绝不盲点固定坐标），此分支仅防御性保留
-                    appendLog("🎯 位置点击（" + shortPkg(pkg) + "）：(" + d.x + "," + d.y + ") → 0.9s 后复验");
+                    appendLog("🎯 位置点击（" + shortPkg(pkg) + "）：(" + d.x + "," + d.y + ") → "
+                            + HumanTap.verifyDelayMs(tapAttempts) + "ms 后复验");
                 }
                 bumpStat(pkg, "auto");
                 return true; // 不熔断：交由复验扫描确认
@@ -3068,10 +3103,11 @@ public class AdSkipService extends AccessibilityService {
     private boolean clickNode(Decision d) {
         lastGesture = false;
         if (d.bounds != null) {
-            int[] pt = adaptiveTapPoint(d); // v5.9.0：可见交集+窗口钳制+安全选点
+            int[] pt = adaptiveTapPoint(d); // v6.0.0：实时bounds+dp自适应安全域+轨迹去重
             if (pt != null && gestureTap(pt[0], pt[1])) {
                 lastGesture = true;
                 energyGestures++;
+                recordTapTrail(pt[0], pt[1]); // v6.0.0：同坐标绝不重复盲刺（「多点」根治）
                 return true;
             }
         }
@@ -3090,13 +3126,32 @@ public class AdSkipService extends AccessibilityService {
      *  当前值——同候选复验换象限点，不再盲点同一坐标=「多点」根治） */
     private int clickAttemptNow = 0;
 
-    /** v5.9.0 设备自适应触点：Decision → 安全触点 {x,y}；null=拒发手势。
-     *  L1 标签∩祖先可见链（TapPoint.tapRect·node 为可点祖先时=标签须在其
-     *  可见区内）→ L2 标签∩节点自身窗口 bounds（分屏/折叠另半区/窗口已
-     *  切换拒点）→ L3 TapPoint.pick（中心+象限轮换+内缩+过小拒点）。 */
+    /**
+     * v6.0.0 设备自适应触点：Decision → 安全触点 {x,y}；null=拒发手势。
+     * 三重升级（用户实锤：设备类型/分辨率原因→多点或误点；1:1 人操作）。
+     *  ① 实时几何追踪：出手前 refreshLive() 刷新节点【现在】的 bounds
+     *    （入场缩放/位移动画后旧坐标=点空→复验→多点级联的根因之一）；
+     *  ② L1 可见交集（含刷新后的可见性）+ L2 节点窗口钷制（不变）；
+     *  ③ L3 pickDp dp 自适应安全域（HumanTap 密度归一——固定 px 常量在
+     *    160dpi/480dpi 上行为漂移的根治）+ 触点轨迹去重（同坐标 ±8dp
+     *    内绝不重复盲刺，换象限轮换而非原地连点）。 */
     private int[] adaptiveTapPoint(Decision d) {
+        /* ① 实时几何：节点存活且刷新成功 → 用【现在】的 bounds */
+        int[] labelBounds = d.bounds;
+        if (d.node instanceof NodeAdapter) {
+            try {
+                NodeAdapter na = (NodeAdapter) d.node;
+                if (na.refreshLive()) {
+                    int[] fresh = na.bounds();
+                    if (fresh != null && fresh[2] - fresh[0] > 0 && fresh[3] - fresh[1] > 0) {
+                        labelBounds = fresh;
+                    }
+                }
+            } catch (Throwable ignored) {
+            }
+        }
         int[] win = nodeWindowBounds(d.node);
-        int[] rect = TapPoint.tapRect(d.node, d.bounds, win);
+        int[] rect = TapPoint.tapRect(d.node, labelBounds, win);
         if (rect == null) {
             // 日志口径：拒发原因可诊断（同包 10s 节流）
             Long last = overlayLogAt.get(lastGesturePkg == null ? "" : lastGesturePkg);
@@ -3108,7 +3163,39 @@ public class AdSkipService extends AccessibilityService {
             }
             return null;
         }
-        return TapPoint.pick(rect, clickAttemptNow);
+        /* ②+③：dp 自适应选点 + 轨迹去重轮换 */
+        String tp = lastGesturePkg == null ? "" : lastGesturePkg;
+        java.util.ArrayList<int[]> trail = tapTrail.get(tp);
+        int tol = HumanTap.dupTolPx(screenDensity);
+        for (int k = 0; k < TapPoint.ROTATION_SLOTS; k++) {
+            int[] pt = TapPoint.pickDp(rect, clickAttemptNow + k, screenDensity);
+            if (pt == null) continue;
+            if (HumanTap.isDupPoint(trail, pt[0], pt[1], tol)) continue; // 同坐标已刺过：换象限
+            return pt;
+        }
+        // 全轮换档位均已刺过/非法：拒点（换下一候选，绝不原地连点）
+        return null;
+    }
+
+    /** v6.0.0 触点轨迹登记（clickNode 手势出手成功后调用；窗口切换时清空）。
+     *  上限 24 点防超长窗口内存膨胀；包数上限 64 防长会话内存泄漏
+     *  （轨迹是同窗去重优化数据，超限整体重置=安全降级，代价仅为
+     *  下一窗首轮换重新起算——防护性收敛，功耗画像零恶化）。 */
+    private void recordTapTrail(int x, int y) {
+        if (tapTrail.size() > 64) tapTrail.clear(); // 长会话防护：包数封顶整体重置
+        String tp = lastGesturePkg == null ? "" : lastGesturePkg;
+        java.util.ArrayList<int[]> trail = tapTrail.get(tp);
+        if (trail == null) {
+            trail = new java.util.ArrayList<>();
+            tapTrail.put(tp, trail);
+        }
+        trail.add(new int[]{x, y});
+        if (trail.size() > 24) trail.remove(0);
+    }
+
+    /** v6.0.0：新窗开启——触点轨迹随 clickTries 同步清零（同包） */
+    private void clearTapTrail(String pkg) {
+        tapTrail.remove(pkg);
     }
 
     /** v5.9.0：标签所属窗口 bounds——取节点自身窗口（node.getWindow()，
@@ -3176,13 +3263,20 @@ public class AdSkipService extends AccessibilityService {
      *  v3.7.0 根因修复（issue#10：「已点击跳过×4 无效果」）：
      *   ① 路径非零长度——单点路径（只有 moveTo）在部分 ROM 上不触发点击
      *    （业界验证：需 lineTo 形成真实触点轨迹）；
-     *   ② 起始延迟 40ms——给前一帧渲染/事件处理留时间，立即派发易被丢弃；
-     *   ③ 坐标边界钳制——越界坐标（学习位置/旧指纹）直接被系统丢弃；
-     *   ④ 结果回调——被系统取消不再静默（诊断日志供下轮迭代）。
-     *   ⑤ 前提：accessibility_service_config 已补 canPerformGestures=true
-     *    （v3.6.0 及之前【缺失】——手势从未真正触达屏幕，喜马拉雅复验重试
-     *    全部无效的头号根因）
-     *   ⑥ 触点时长 60→110ms——更接近真人触点（80-150ms），防 SDK 触点时长校验 */
+     *   ② 坐标边界钳制——越界坐标（学习位置/旧指纹）直接被系统丢弃；
+     *   ③ 结果回调——被系统取消不再静默（诊断日志供下轮迭代）。
+     *   ④ 前提：accessibility_service_config 已补 canPerformGestures=true。
+     *  ══ v6.0.0 1:1 人手模拟（用户实锤：设备类型/分辨率原因→多点、误点）═══
+     *   v3.7~v5.9 的触点签名是「固定 40ms 起始延迟 + 固定 110ms 时长 +
+     *   完美水平 1px 轨迹」的千次一模一样机器人指纹——反自动化广告 SDK
+     *   触点检测会无声吞掉这种点（点了没反应→复验→机器枪多点级联）。
+     *   HumanTap.tapSpec 每次出手生成人手域参数：
+     *    · 起始延迟 26~56ms（真人抬指→落指反应散布，替代固定 40ms）；
+     *    · 触点时长 95~160ms（首击轻点域 / 重试更用力域，替代固定 110ms）；
+     *    · ±2px 微抖轨迹（真人手指落点散布；远小于安全内缩域，绝不出
+     *      目标面；轨迹带 1px 微斜——完美水平线也是机器人指纹）；
+     *    · 覆盖层 Z 序判定用【抖动后】的最终触点（判的就是落屏点）；
+     *    · 抖动后坐标越界回退/钳制（边界防线不因抖动而破）。 */
     private boolean gestureTap(int x, int y) {
         try {
             // v3.13.0 息屏熔断（纵深防御）：息屏时绝无可见广告，真实触点只会
@@ -3191,26 +3285,41 @@ public class AdSkipService extends AccessibilityService {
             if (x <= 0 || y <= 0) return false;
             if (screenWidth > 0 && x >= screenWidth) x = screenWidth - 2; // 边界钳制
             if (screenHeight > 0 && y >= screenHeight) y = screenHeight - 2;
-            // v3.13.0 验证码横幅防护③ → v5.9.0 设备差异误触防线泛化：
-            // 触点被 Z 序更高窗口（状态栏/heads-up 横幅/输入法/悬浮球/他应用
-            // overlay/折叠任务栏）覆盖时拒发手势——真实触点会被覆盖物截走
-            //（点掉验证码横幅·键盘上乱打字·误触他应用悬浮窗的事故路径）。
-            // 拒发后 clickNode 自动降级 performAction 代点（走无障碍通道不
-            // 经屏幕坐标，绝不碰覆盖物），学习位置点择机重试
-            if (pointCoveredByUpperOverlay(x, y)) {
+            // v6.0.0 人手域参数（种子=实时钟——每次出手都不同=真人散布）
+            int[] spec = HumanTap.tapSpec(humanSeed(), clickAttemptNow);
+            int sx = x + spec[2], sy = y + spec[3];
+            // 抖动越界防御：负坐标/出屏回退原点，贴边钳制
+            if (sx <= 0 || sy <= 0 || (screenWidth > 0 && sx >= screenWidth - 1)
+                    || (screenHeight > 0 && sy >= screenHeight - 1)) {
+                sx = x;
+                sy = y;
+            }
+            // v3.13.0 验证码横幅防护③ → v5.9.0 设备差异误触防线泛化 →
+            // v6.0.0 判定对象=抖动后的最终落点：触点被 Z 序更高窗口（状态栏/
+            // heads-up 横幅/输入法/悬浮球/他应用 overlay/折叠任务栏）覆盖时
+            // 拒发手势——真实触点会被覆盖物截走（点掉验证码横幅·键盘上乱打
+            // 字·误触他应用悬浮窗的事故路径）。拒发后 clickNode 自动降级
+            // performAction 代点（走无障碍通道不经屏幕坐标，绝不碰覆盖物）。
+            if (pointCoveredByUpperOverlay(sx, sy)) {
                 overlayGuardLog(lastGesturePkg, System.currentTimeMillis());
                 return false;
             }
             Path p = new Path();
-            p.moveTo(x, y);
-            p.lineTo(x + 1, y); // 非零长度路径：单点路径部分 ROM 不触发点击
+            p.moveTo(sx, sy);
+            p.lineTo(sx + 2, sy + 1 + (spec[3] & 1)); // 非零长度微斜轨迹（真人微动）
             GestureDescription gd = new GestureDescription.Builder()
-                    .addStroke(new GestureDescription.StrokeDescription(p, 40, 110))
+                    .addStroke(new GestureDescription.StrokeDescription(p, spec[0], spec[1]))
                     .build();
             return dispatchGesture(gd, new TapGestureCallback(lastGesturePkg), null);
         } catch (Throwable t) {
             return false;
         }
+    }
+
+    /** v6.0.0 人手种子：实时钟混合（每次出手参数都不同=真人散布；tapSpec
+     *  自身纯函数——测试侧用固定种子可精确复现）。 */
+    private long humanSeed() {
+        return System.nanoTime() ^ (System.currentTimeMillis() << 21) ^ 0x5DEECE66DL;
     }
 
     /** 手势诊断用包名（gestureTap 调用前由 execute 设置） */

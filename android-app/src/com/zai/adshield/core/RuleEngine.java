@@ -134,6 +134,16 @@ public final class RuleEngine {
             { "com.quark.browser", "跳过" },                    // 夸克浏览器
             { "com.youdao.dict", "跳过广告", "跳过" },          // 有道词典
             { "com.jingyao.easybike", "跳过广告", "跳过" },    // 哈啰出行
+            /* v6.0.0 五轮激进（用户实锤：扫描日志继续优化——大胆激进）：
+             * 社交/长视频/音乐类高频 App 开屏未命中实锤：微博/腾讯视频/
+             * 优酷/爱奇艺/芒果TV/酷我音乐的跳过文案只走全局层，分应用
+             * 精确等值零误点面。 */
+            { "com.sina.weibo", "跳过广告", "跳过" },          // 微博
+            { "com.tencent.qqlive", "跳过广告", "跳过" },      // 腾讯视频
+            { "com.youku.phone", "跳过广告", "跳过" },          // 优酷视频
+            { "com.qiyi.video", "跳过广告", "跳过" },            // 爱奇艺
+            { "com.hunantv.imgo.activity", "跳过广告", "跳过" }, // 芒果TV
+            { "com.kuwo.player", "跳过广告", "跳过" },          // 酷我音乐
     };
     /* v5.6.0 三件套之补：分应用表并行小写副本（类加载期一次构建；
      * 原写法每匹配一行 row[j].toLowerCase() 都分配新串——热路径高频） */

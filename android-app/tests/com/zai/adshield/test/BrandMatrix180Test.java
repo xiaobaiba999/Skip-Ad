@@ -4,39 +4,45 @@ import com.zai.adshield.core.AdDecisionCore;
 import com.zai.adshield.core.AdDecisionCore.Ctx;
 import com.zai.adshield.core.AdDecisionCore.Decision;
 import com.zai.adshield.core.AdDecisionCore.ScanFind;
+import com.zai.adshield.core.HumanTap;
 import com.zai.adshield.core.PowerGovernor;
 import com.zai.adshield.core.RestoreGuard;
 import com.zai.adshield.core.RuleEngine;
 import com.zai.adshield.core.RuleEngine.Hit;
 import com.zai.adshield.core.Subscription;
+import com.zai.adshield.core.TapPoint;
 import com.zai.adshield.test.TestHost.SimNode;
 
 /**
- * 11 品牌 × 15 机型全维度矩阵测试（v5.9.0 · 用户四轮要求：模拟「N 多」品牌
- * 机型测试修复；含 app 开屏广告测试、屏蔽速度测试、bug 测试、功耗测试、
- * 精准度测试、算法优化测试）。
+ * 12 品牌 × 15 机型全维度矩阵测试（v6.0.0 · 用户五轮要求：1:1 模拟人在不同
+ * 设备上操作使用卫士 + 模拟「N 多」品牌机型测试修复；含 app 开屏广告测试、
+ * 屏蔽速度测试、bug 测试、功耗测试、精准度测试、算法优化测试）。
  *
  * 矩阵（v5.6.0 5×10=50 → v5.7.0 8×12=96 → v5.8.0 10×15=150 →
- * v5.9.0 11×15=165 · 新增传音 Tecno/Infinix/itel·HiOS/XOS 族）：
+ * v5.9.0 11×15=165 → v6.0.0 12×15=180 · 新增摩托罗拉独立族 razr/edge/G/E）：
  *  Xiaomi/Redmi/POCO·HyperOS + Huawei·HarmonyOS + OPPO/realme·ColorOS +
  *  一加·ColorOS + vivo/iQOO·OriginOS + 荣耀·MagicOS + Samsung·OneUI +
  *  魅族·Flyme + 中兴/努比亚/红魔·MyOS + 传音 Tecno/Infinix/itel·HiOS/XOS +
- *  其他（Pixel/Nothing/索尼/moto）= 165 机型。分辨率取真实规格（水滴/挖孔/直屏/折叠
- * 外屏主流档），引擎全 bounds 触点经 TapPoint 四层防线（v5.9 设备自适应
- * 触点）——任意分辨率目标面安全落点（误触零容忍）。
+ *  摩托罗拉·HelloUI（razr 折叠外屏/edge/X50 Ultra/G/E 全系）+
+ *  其他（Pixel/Nothing/索尼/联想）= 180 机型。分辨率取真实规格（水滴/挖孔/直屏/折叠
+ * 外屏主流档），引擎全 bounds 触点经 TapPoint 四层防线 + v6.0.0 dp 自适应
+ * 安全域（密度=w/360 钳制——任意分辨率目标面安全落点，误触零容忍）。
  *
  * 每机型六维（对应报告六列）：
  *  ① 开屏广告命中（六信号：文本键/desc 键/vid 订阅键/图片角落键/
  *    v5.8「跳过推广」新文案/v5.8 iv_ad_close 复合 vid 键——≥5 过）
- *  ② 屏蔽速度（JVM walk+decide 120 节点树 < 20ms · v5.8 速度压榨参数在场：
- *    COUNTDOWN_EXTRA_MS=120 / MAX_CLICKS_PER_WIN=12 / SKIP_CANDS_MAX=8）
+ *  ①′ 1:1 人手触点安全（dp 自适应密度下五轮换点全落在跳过键可见域内）
+ *  ② 屏蔽速度（JVM walk+decide 120 节点树 < 20ms · v6 人手引擎参数在场：
+ *    COUNTDOWN_EXTRA_MS=120 / MAX_CLICKS_PER_WIN=6 / SKIP_CANDS_MAX=8 ·
+ *    HumanTap 人手域参数/复验节奏/耐心预算全在场）
  *  ③ bug 测试（菜单陷阱行/巨横幅/验证码横幅/游戏 jump vid 四陷阱零动作）
  *  ④ 功耗测试（典型日 45 启动 + 120 后台事件 < 0.15mWh · 分级预算在场）
  *  ⑤ 精准度测试（银行守护零返回键 · 验证码标记 · Unity 游戏引擎窗免疫）
- *  ⑥ 算法优化测试（v5.9 新指纹 ksad/csj_ 全命中 · 非广告窗 7 档全免疫
- *    · 11 品牌族归一正确 · 免设置自愈合并纯函数正确）
+ *  ⑥ 算法优化测试（v6.0 新指纹 mobads/sigmob/adcolony/vungle 全命中 ·
+ *    非广告窗 7 档全免疫 · 12 品牌族归一正确 · 免设置自愈合并纯函数正确 ·
+ *    分应用五轮表六款新 App 全命中）
  */
-public final class BrandMatrix165Test {
+public final class BrandMatrix180Test {
 
     static final String[][] XIAOMI = {
             {"Xiaomi 15 Ultra", "1440", "3200"},
@@ -197,16 +203,35 @@ public final class BrandMatrix165Test {
             {"Pixel 9 Pro XL", "1344", "2992", "Google"},
             {"Pixel 9 Pro", "1280", "2856", "Google"},
             {"Pixel 9", "1080", "2424", "Google"},
+            {"Pixel 9a", "1080", "2424", "Google"},
             {"Nothing Phone (3)", "1080", "2412", "Nothing"},
             {"Nothing Phone (3a)", "1080", "2412", "Nothing"},
-            {"Nothing Phone (2a)", "1080", "2400", "Nothing"},
+            {"Nothing Phone (1)", "1080", "2400", "Nothing"},
             {"索尼 Xperia 1 VI", "1080", "2340", "Sony"},
             {"索尼 Xperia 5 VI", "1080", "2340", "Sony"},
-            {"moto razr 60 Ultra 外屏", "1272", "2688", "motorola"},
-            {"moto razr 50 Ultra", "1080", "2400", "motorola"},
-            {"motorola edge 60 Pro", "1220", "2712", "motorola"},
-            {"motorola edge 50 Ultra", "1220", "2712", "motorola"},
+            {"索尼 Xperia 10 VI", "1080", "2400", "Sony"},
             {"联想拯救者 Y700 二代", "1600", "2560", "Lenovo"},
+            {"联想 Tab P12", "1840", "2944", "Lenovo"},
+            {"联想 ThinkPhone", "1260", "2800", "Lenovo"},
+    };
+    /* v6.0.0 新增独立族：摩托罗拉·HelloUI（razr 折叠外屏/edge 直板/
+     * X50 Ultra/G 系/E 系——北美/拉美真实大市场，此前 4 款混在其他组） */
+    static final String[][] MOTOROLA = {
+            {"moto razr 60 Ultra 外屏", "1272", "2688"},
+            {"moto razr 60", "1080", "2400"},
+            {"moto razr 50 Ultra", "1080", "2400"},
+            {"moto razr 50", "1080", "2400"},
+            {"moto razr 40 Ultra", "1272", "2688"},
+            {"motorola edge 60 Pro", "1220", "2712"},
+            {"motorola edge 50 Ultra", "1220", "2712"},
+            {"motorola edge 50", "1080", "2400"},
+            {"motorola edge 40", "1080", "2400"},
+            {"moto X50 Ultra", "1260", "2800"},
+            {"moto G85", "1080", "2400"},
+            {"moto G75", "1080", "2400"},
+            {"moto G55", "1080", "2400"},
+            {"moto G35", "720", "1612"},
+            {"moto E15", "720", "1612"},
     };
     static final String[][] TRANSSION = {
             {"Tecno Camon 40 Premier", "1260", "2780"},
@@ -226,7 +251,7 @@ public final class BrandMatrix165Test {
             {"itel P70", "720", "1612"},
     };
     static final String[][][] BRANDS = {
-            XIAOMI, HUAWEI, OPPO, ONEPLUS, VIVO, HONOR, SAMSUNG, MEIZU, ZTE, TRANSSION, OTHERS,
+            XIAOMI, HUAWEI, OPPO, ONEPLUS, VIVO, HONOR, SAMSUNG, MEIZU, ZTE, TRANSSION, MOTOROLA, OTHERS,
     };
     static final String[] BRAND_NAMES = {
             "小米/Redmi/POCO·HyperOS",
@@ -239,7 +264,8 @@ public final class BrandMatrix165Test {
             "魅族·Flyme",
             "中兴/努比亚/红魔·MyOS",
             "传音 Tecno/Infinix/itel·HiOS/XOS",
-            "其他·Pixel/Nothing/索尼/moto",
+            "摩托罗拉·HelloUI",
+            "其他·Pixel/Nothing/索尼/联想",
     };
     static final String[] BRAND_MANUFACTURERS = {
             "Xiaomi",
@@ -252,6 +278,7 @@ public final class BrandMatrix165Test {
             "meizu",
             "ZTE",
             "Transsion",
+            "motorola",
             null,
     };
     static final String[] EXPECTED_FAMILIES = {
@@ -264,12 +291,17 @@ public final class BrandMatrix165Test {
             RestoreGuard.FAMILY_ONEUI,
             RestoreGuard.FAMILY_FLYME,
             null, // generic（中兴族/传音族/其他组）
-            null, // generic（中兴族/传音族/其他组）
-            null, // generic（中兴族/传音族/其他组）
+            null, // generic（摩托罗拉族/其他组）
+            null, // generic（中兴族/传音族/摩托罗拉族/其他组）
+            null, // generic（中兴族/传音族/摩托罗拉族/其他组）
     };
 
-    /* ══ v5.8.0/v5.9.0 新增 SDK 指纹（激进化）vs 非广告窗对照 ══ */
+    /* ══ v5.8.0/v5.9.0/v6.0.0 新增 SDK 指纹（激进化）vs 非广告窗对照 ══ */
     static final String[] NEW_FINGERPRINTS = {
+            "com.baidu.mobads.sdk.api.MobAdActivity",          // 百度联盟 Mob Ads（v6.0 新增）
+            "com.sigmob.sdk.common.AdActivity",                // Sigmob 聚合（v6.0 新增）
+            "com.adcolony.sdk.AdColonyAdActivity",             // AdColony 国际视频（v6.0 新增）
+            "com.vungle.sdk.VungleAdActivity",                  // Vungle 激励视频（v6.0 新增）
             "com.ksad.splash.KSSplashActivity",                // 快手 KSAdSDK（v5.9 新增）
             "com.bytedance.csj_splash.CSJSplashActivity",     // 穿山甲联盟复合族（v5.9 新增）
             "com.mbridge.mintegral.ads.MBActivity",          // Mintegral（v5.8 新增）
@@ -394,6 +426,35 @@ public final class BrandMatrix165Test {
                 TestHost.check(hitOk >= 5, "① 开屏命中 " + model + "（" + hitOk + "/6 信号）");
                 if (hitOk >= 5) hitN++;
 
+                /* ①′ v6.0.0 1:1 人手触点安全：dp 自适应密度（=w/360 钳制）下
+                 * 五轮换点全落在跳过键可见域内，且距边 ≥ 内缩（密度缩放后） */
+                float density = Math.min(4f, Math.max(1f, w / 360f));
+                int[] sbRect = TapPoint.tapRect(skipBtn, skipBtn.bounds(), new int[]{0, 0, w, h});
+                boolean tapSafe = false;
+                int rotationSafeN = 0;
+                if (sbRect != null) {
+                    tapSafe = true;
+                    for (int att = 0; att < TapPoint.ROTATION_SLOTS; att++) {
+                        int[] pt = TapPoint.pickDp(sbRect, att, density);
+                        if (pt == null) { tapSafe = false; break; }
+                        boolean inside = pt[0] >= sbRect[0] && pt[0] <= sbRect[2]
+                                && pt[1] >= sbRect[1] && pt[1] <= sbRect[3];
+                        int rw = sbRect[2] - sbRect[0], rh = sbRect[3] - sbRect[1];
+                        int inX = Math.min(HumanTap.edgeInsetPx(density), rw / 4);
+                        int inY = Math.min(HumanTap.edgeInsetPx(density), rh / 4);
+                        boolean insetOk = (pt[0] - sbRect[0]) >= inX - 1 && (sbRect[2] - pt[0]) >= inX - 1
+                                && (pt[1] - sbRect[1]) >= inY - 1 && (sbRect[3] - pt[1]) >= inY - 1;
+                        // ①′a 人手抖动±2px 后仍在域内（tapSpec 抖动不出目标面）
+                        boolean jitterSafe = (pt[0] - sbRect[0]) >= HumanTap.JITTER_ABS
+                                && (sbRect[2] - pt[0]) >= HumanTap.JITTER_ABS
+                                && (pt[1] - sbRect[1]) >= HumanTap.JITTER_ABS
+                                && (sbRect[3] - pt[1]) >= HumanTap.JITTER_ABS;
+                        if (!inside || !insetOk || !jitterSafe) { tapSafe = false; break; }
+                        rotationSafeN++;
+                    }
+                }
+                TestHost.check(tapSafe, "①′ 人手触点安全 " + model + "（密度 " + density + " · 五轮换点全在可见域 · 抖动±" + HumanTap.JITTER_ABS + "px 不出界）");
+
                 /* ② 屏蔽速度（120 节点树 · walk+decide · v5.7 激进参数在场） */
                 SimNode bigTree = buildDeepTree(w, h, 120);
                 Ctx tCtx = ctx(pkg, "com.matrix.SplashActivity", w, h);
@@ -406,9 +467,11 @@ public final class BrandMatrix165Test {
                 long perDecisionMs = (System.nanoTime() - t0) / 1000L / rounds / 1000L;
                 boolean speedOk = perDecisionMs < 20
                         && AdDecisionCore.COUNTDOWN_EXTRA_MS == 120
-                        && AdDecisionCore.MAX_CLICKS_PER_WIN == 12
-                        && AdDecisionCore.SKIP_CANDS_MAX == 8;
-                TestHost.check(speedOk, "② 屏蔽速度 " + model + "（" + perDecisionMs + "ms/决策 · 速度压榨参数在场）");
+                        && AdDecisionCore.MAX_CLICKS_PER_WIN == HumanTap.HUMAN_PATIENCE
+                        && AdDecisionCore.MAX_CLICKS_PER_WIN == 6
+                        && AdDecisionCore.SKIP_CANDS_MAX == 8
+                        && humanEngineInPlace(model);
+                TestHost.check(speedOk, "② 屏蔽速度 " + model + "（" + perDecisionMs + "ms/决策 · v6 人手引擎参数在场）");
                 if (speedOk) speedN++;
 
                 /* ③ bug 测试（菜单陷阱 / 巨横幅 / 验证码横幅 / 游戏 jump vid） */
@@ -483,7 +546,7 @@ public final class BrandMatrix165Test {
                 TestHost.check(precOk == 3, "⑤ 精准度 " + model + "（守护零返回键/验证码标记/游戏窗免疫 " + precOk + "/3）");
                 if (precOk == 3) precN++;
 
-                /* ⑥ 算法优化（v5.8 新指纹命中 · 非广告窗免疫 · 品牌族归一 · 自愈合并） */
+                /* ⑥ 算法优化（v6 新指纹 · 非广告窗免疫 · 品牌族归一 · 自愈合并 · 五轮分应用） */
                 int algoOk = 0;
                 int newFpHit = 0;
                 for (String cls : NEW_FINGERPRINTS) {
@@ -511,10 +574,24 @@ public final class BrandMatrix165Test {
                 String merged3 = RestoreGuard.mergeRegistrationCsv(flat, flat);
                 if ("com.other.a/.Svc:com.zai.adshield/com.zai.adshield.AdSkipService".equals(merged1)
                         && flat.equals(merged2) && flat.equals(merged3)) algoOk++;
-                TestHost.check(algoOk == 4, "⑥ 算法优化 " + model + "（新指纹 " + newFpHit + "/" + NEW_FINGERPRINTS.length
+                // v6.0.0 分应用五轮表：微博/腾讯视频/优酷/爱奇艺/芒果TV/酷我音乐
+                // 六款新 App 的「跳过广告」精确等值全命中（未命中→干看广告）
+                int fifthRoundAppHit = 0;
+                for (String fp : FIFTH_ROUND_APPS) {
+                    SimNode fTree = new SimNode();
+                    fTree.boundsArr = new int[]{0, 0, w, h};
+                    SimNode fBtn = new SimNode("跳过广告", (int) (w * 0.86), (int) (h * 0.03),
+                            (int) (w * 0.97), (int) (h * 0.065));
+                    fBtn.clickable = true;
+                    fTree.add(fBtn);
+                    Ctx fCtx = ctx(fp, "com.matrix.SplashActivity", w, h);
+                    if (!RuleEngine.matchAll(fTree, fCtx, 4).isEmpty()) fifthRoundAppHit++;
+                }
+                if (fifthRoundAppHit == FIFTH_ROUND_APPS.length) algoOk++;
+                TestHost.check(algoOk == 5, "⑥ 算法优化 " + model + "（新指纹 " + newFpHit + "/" + NEW_FINGERPRINTS.length
                         + " · 非广告窗免疫 " + (NON_AD_CLASSES.length - nonAdHit) + "/" + NON_AD_CLASSES.length
-                        + " · 族归一 " + (famOk ? "✓" : "✗") + " · 自愈合并 ✓）");
-                if (algoOk == 4) algoN++;
+                        + " · 族归一 " + (famOk ? "✓" : "✗") + " · 自愈合并 ✓ · 五轮分应用 " + fifthRoundAppHit + "/" + FIFTH_ROUND_APPS.length + "）");
+                if (algoOk == 5) algoN++;
             }
 
             TestHost.suite("品牌汇总 " + BRAND_NAMES[bi]);
@@ -532,16 +609,16 @@ public final class BrandMatrix165Test {
             brandAlgoTotal += algoN;
         }
 
-        /* ══ 矩阵总检（11×15=165 · 六维全 165/165）══ */
-        TestHost.suite("矩阵总检（11 品牌 × 15 机型）");
-        TestHost.check(brandHitTotal == 165, "开屏命中总 " + brandHitTotal + "/165");
-        TestHost.check(brandSpeedTotal == 165, "屏蔽速度总 " + brandSpeedTotal + "/165");
-        TestHost.check(brandBugTotal == 165, "bug 防线总 " + brandBugTotal + "/165");
-        TestHost.check(brandPowerTotal == 165, "功耗总 " + brandPowerTotal + "/165");
-        TestHost.check(brandPrecTotal == 165, "精准度总 " + brandPrecTotal + "/165");
-        TestHost.check(brandAlgoTotal == 165, "算法优化总 " + brandAlgoTotal + "/165");
+        /* ══ 矩阵总检（12×15=180 · 六维全 180/180）══ */
+        TestHost.suite("矩阵总检（12 品牌 × 15 机型）");
+        TestHost.check(brandHitTotal == 180, "开屏命中总 " + brandHitTotal + "/180");
+        TestHost.check(brandSpeedTotal == 180, "屏蔽速度总 " + brandSpeedTotal + "/180");
+        TestHost.check(brandBugTotal == 180, "bug 防线总 " + brandBugTotal + "/180");
+        TestHost.check(brandPowerTotal == 180, "功耗总 " + brandPowerTotal + "/180");
+        TestHost.check(brandPrecTotal == 180, "精准度总 " + brandPrecTotal + "/180");
+        TestHost.check(brandAlgoTotal == 180, "算法优化总 " + brandAlgoTotal + "/180");
         System.out.println("  矩阵: " + brandHitTotal + "/" + brandSpeedTotal + "/" + brandBugTotal
-                + "/" + brandPowerTotal + "/" + brandPrecTotal + "/" + brandAlgoTotal + "（六维各 /165）");
+                + "/" + brandPowerTotal + "/" + brandPrecTotal + "/" + brandAlgoTotal + "（六维各 /180）");
 
         TestHost.done();
     }
@@ -551,6 +628,48 @@ public final class BrandMatrix165Test {
         return com.zai.adshield.core.SmartScanPlanner.BUDGET_FULL == 600
                 && com.zai.adshield.core.SmartScanPlanner.BUDGET_LIGHT == 350
                 && com.zai.adshield.core.SmartScanPlanner.DEPTH_LIGHT == 20;
+    }
+
+    /** v6.0.0 分应用五轮表六款新 App（RuleEngine 分应用精确层命中面） */
+    static final String[] FIFTH_ROUND_APPS = {
+            "com.sina.weibo",             // 微博
+            "com.tencent.qqlive",        // 腾讯视频
+            "com.youku.phone",           // 优酷视频
+            "com.qiyi.video",             // 爱奇艺
+            "com.hunantv.imgo.activity",  // 芒果TV
+            "com.kuwo.player",            // 酷我音乐
+    };
+
+    /** v6.0.0 1:1 人手引擎参数在场（HumanTap 域参数/复验节奏/耐心预算/
+     *  dp 密度归一/轨迹去重容差——五要素全在场且在真人域） */
+    static boolean humanEngineInPlace(String model) {
+        boolean ok = HumanTap.DELAY_MIN == 26 && HumanTap.DELAY_SPAN == 31
+                && HumanTap.DUR_FIRST_MIN == 95 && HumanTap.DUR_FIRST_SPAN == 36
+                && HumanTap.DUR_RETRY_MIN == 115 && HumanTap.DUR_RETRY_SPAN == 46
+                && HumanTap.JITTER_ABS == 2
+                && HumanTap.HUMAN_PATIENCE == 6
+                && HumanTap.MIN_SIDE_DP == 12 && HumanTap.EDGE_INSET_DP == 6
+                && HumanTap.DUP_TOL_DP == 8
+                && HumanTap.verifyDelayMs(0) == 500L
+                && HumanTap.verifyDelayMs(1) == 1400L
+                && HumanTap.verifyDelayMs(5) == 7000L
+                && HumanTap.verifyDelayMs(99) == 7000L
+                && HumanTap.minSidePx(1f) == 12 && HumanTap.minSidePx(2f) == 24
+                && HumanTap.minSidePx(3.5f) == 42
+                && HumanTap.edgeInsetPx(1f) == 6 && HumanTap.edgeInsetPx(3f) == 18
+                && HumanTap.dupTolPx(1f) == 8 && HumanTap.dupTolPx(2.5f) == 20
+                && HumanTap.clampDensity(0.5f) == 1f && HumanTap.clampDensity(9f) == 4f;
+        // tapSpec 域断言：首击/重试时长都在真人域，抖动不出 ±2px
+        for (int attempt = 0; attempt <= 3; attempt++) {
+            int[] s = HumanTap.tapSpec(0x1234ABCDL + model.hashCode(), attempt);
+            boolean inRange = s[0] >= HumanTap.DELAY_MIN && s[0] < HumanTap.DELAY_MIN + HumanTap.DELAY_SPAN;
+            int durMin = attempt <= 0 ? HumanTap.DUR_FIRST_MIN : HumanTap.DUR_RETRY_MIN;
+            int durSpan = attempt <= 0 ? HumanTap.DUR_FIRST_SPAN : HumanTap.DUR_RETRY_SPAN;
+            inRange = inRange && s[1] >= durMin && s[1] < durMin + durSpan;
+            inRange = inRange && Math.abs(s[2]) <= HumanTap.JITTER_ABS && Math.abs(s[3]) <= HumanTap.JITTER_ABS;
+            if (!inRange) return false;
+        }
+        return ok;
     }
 
     /** 生成 n 节点深树（速度测试用：容器嵌套 + 兄弟铺开） */
