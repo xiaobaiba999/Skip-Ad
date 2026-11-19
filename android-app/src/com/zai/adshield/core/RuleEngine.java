@@ -576,6 +576,47 @@ public final class RuleEngine {
         return cx >= ctx.screenW - ctx.screenW / 4;       // 右缘带（centerX ≥75% 宽）
     }
 
+    /* ═══ v7.5.0 窗级兄弟倒计时（规则路径：「跳过」文案无数字的穿山甲族）═══
+     * 倒计时数字与「跳过」分属两个节点时 parseCountdown(label)=0——首击
+     * 立即出手白点，3 击耐心预算烧完 → 干看广告走完（用户十四轮实锤
+     * 「好多其他 app 的开屏都跳不了」头号死因之一）。只收独立数字小形态
+     *（standaloneCountdownSeconds：3/5s/3秒）且在倒计时区（顶 35%/底 25%）
+     * 或距命中的跳过键 |Δcy|≤25% 屏高——返回最大秒数（0=无有效倒计时）。 */
+    public static int windowCountdownHint(NodeView root, Ctx ctx, int[] nearBounds) {
+        if (root == null) return 0;
+        int[] budget = {200};
+        int[] out = {0};
+        cdHint(root, 0, budget, out, ctx, nearBounds);
+        return out[0];
+    }
+
+    private static void cdHint(NodeView node, int depth, int[] budget, int[] out, Ctx ctx, int[] near) {
+        if (node == null || depth > 32 || budget[0] <= 0) return;
+        budget[0]--;
+        try {
+            String text = nz(node.text());
+            String desc = nz(node.desc());
+            String label = text.length() > 0 ? text : desc;
+            if (label.length() > 0 && label.length() <= AdDecisionCore.CD_STANDALONE_MAX_CHARS) {
+                int v = AdDecisionCore.standaloneCountdownSeconds(label);
+                if (v > out[0]) {
+                    int[] b = node.bounds();
+                    // 形态未知/不可见：保守不计（宁漏勿误——数字不到区不门控）
+                    if (b != null && node.visible()
+                            && (AdDecisionCore.inCountdownZone(b, ctx)
+                                || AdDecisionCore.nearY(b, near, ctx))) {
+                        out[0] = v;
+                    }
+                }
+            }
+            int n = node.childCount();
+            for (int i = 0; i < n; i++) {
+                cdHint(node.child(i), depth + 1, budget, out, ctx, near);
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
     /** 定信度命中（全树优先立即返回）：精确 / 分应用 / vid */
     static boolean isDefinitive(String appId) {
         return "global_exact".equals(appId) || "app_exact".equals(appId)

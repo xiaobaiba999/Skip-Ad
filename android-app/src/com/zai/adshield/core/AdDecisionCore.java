@@ -251,6 +251,23 @@ public final class AdDecisionCore {
        「热区/广告角标/SDK 窗/学习窗/节点≤60」五选一——普通主页的角落图标
        （设置齿轮/客服入口）节点树大且无广告信号，绝不误点（不乱点红线） */
     public static final int CORNER_CONFIRM_NODES = 60;
+    /* ══ v7.5.0 位置解耦（用户十四轮实锤：「不是每次每个按钮都是一个位置」）══
+     * 中部边带（左/右缘 · 任意高度）：部分应用跳过键在右侧中部——旧角落
+     * 几何只认顶 14%/底 18% 两带，中部图片跳过键零收集。中部边带候选
+     * 仅强广告形态（热区/角标/SDK窗/学习窗）下可出手，树极简兕底不适用
+     *（FAB/普通悬浮钮误点防线——宁漏勿误红线）。 */
+    public static final double MIDEDGE_MIN_PX = 24;   // 中部边带控件最小像素（与角落同源）
+    /* ══ v7.5.0 倒计时解耦（用户十四轮实锤：「开屏按钮跳过不是每个都带倒计时」）══
+     * 兄弟节点倒计时：穿山甲族「跳过」文案与倒计时数字分属两个节点——
+     * parseCountdown(label)=0 → 首击立即出手（白点）+ 3 击耐心预算烧完
+     * → 干看广告走完（并窗内无候选→未命中日志都没有）。独立数字小形态
+     *（3/5s/3秒）在倒计时区或命中键近旁 → 并入 f.countdownN 门控。 */
+    public static final int CD_STANDALONE_MAX_CHARS = 4; // 独立倒计时文案字符上限
+    public static final int CD_DIGIT_CAP = 6;         // 独立数字候选收集上限
+    public static final double CD_ZONE_TOP_MAX = 0.35;   // 倒计时数字区：顶部 35% 内
+    public static final double CD_ZONE_BOTTOM_MIN = 0.75; // 倒计时数字区：底部 25% 内
+    public static final double CD_NEAR_Y_MAX = 0.25;      // 独立数字与跳过键近旁：|Δcy| ≤25% 屏高
+    public static final long COUNTDOWN_FAKE_MS = 1600;    // v4.3.0 假倒计时（数字 1.6s 未变）——v7.5.0 纯函数化
 
     /* ── 文案特征库（与 2026-11 市场调研同步）──
      * v5.6.0 激进化扩充（用户实锤：好多广告没有命中）：
@@ -297,10 +314,19 @@ public final class AdDecisionCore {
 
     /* ───────── 扫描结果 ───────── */
 
-    /** 角落候选（v3.5.0 多候选：点击复验失败换下一个候选点） */
+    /** 角落候选（v3.5.0 多候选：点击复验失败换下一个候选点）
+     *  v7.5.0 strongOnly：中部边带候选（非顶/底角落带）——仅强广告形态
+     *（热区/角标/SDK窗/学习窗）下可出手，树极简兕底不适用。 */
     public static final class CornerCand {
         public NodeView clickNode;  // performAction 目标（可点祖先或自身）
         public int[] tapBounds;     // 手势点击边界（原小控件，点得更准）
+        public boolean strongOnly; // v7.5.0：中部边带候选（需强广告形态确认）
+    }
+
+    /** v7.5.0 独立倒计时数字候选（兄弟节点倒计时——walk 后并入门控） */
+    public static final class CdDigit {
+        public int seconds;
+        public int[] bounds;
     }
 
     /** v3.7.0 文本跳过键候选（广告图内常嵌假「跳过」文本，复验轮换点） */
@@ -335,6 +361,7 @@ public final class AdDecisionCore {
         public boolean hotZone;        // 全屏大热区
         public boolean longText;       // 存在长文本（>40 字，正常内容页特征，v3.5.0）
         public final java.util.ArrayList<CornerCand> corners = new java.util.ArrayList<CornerCand>(); // 角落候选（v3.5.0 多候选）
+        public final java.util.ArrayList<CdDigit> cdDigits = new java.util.ArrayList<CdDigit>(); // v7.5.0 独立倒计时数字（walk 后并入门控）
         public boolean dialogForm;     // 根节点 Dialog/Popup 形态
     }
 
@@ -420,7 +447,32 @@ public final class AdDecisionCore {
             });
         } catch (Throwable ignored) {
         }
+        /* v7.5.0 兄弟节点倒计时并入：独立数字在倒计时区（顶 35%/底 25%）
+         * 或任一跳过候选近旁（|Δcy|≤25% 屏高）→ 计入 f.countdownN（服务侧
+         * 门控到「倒计时将尽」再出手——首击不再白点烧耐心预算）。 */
+        resolveCdDigits(f, ctx);
         return f;
+    }
+
+    /** v7.5.0：独立倒计时数字解析（倒计时区或跳过候选近旁才计入）。 */
+    static void resolveCdDigits(ScanFind f, Ctx ctx) {
+        if (f.cdDigits.isEmpty() || ctx.screenH <= 0) return;
+        for (int i = 0; i < f.cdDigits.size(); i++) {
+            CdDigit d = f.cdDigits.get(i);
+            if (d.seconds > f.countdownN && (inCountdownZone(d.bounds, ctx) || nearAnySkip(d.bounds, f, ctx))) {
+                f.countdownN = d.seconds;
+            }
+        }
+    }
+
+    static boolean nearAnySkip(int[] b, ScanFind f, Ctx ctx) {
+        for (int i = 0; i < f.skipCands.size(); i++) {
+            if (nearY(b, f.skipCands.get(i).tapBounds, ctx)) return true;
+        }
+        for (int i = 0; i < f.fakeCands.size(); i++) {
+            if (nearY(b, f.fakeCands.get(i).tapBounds, ctx)) return true;
+        }
+        return false;
     }
 
     private static void visit(NodeView node, int depth, int[] budget, ScanFind f, Ctx ctx) {
@@ -519,6 +571,15 @@ public final class AdDecisionCore {
                     f.badgeLabel = label;
                 } else if (label.length() <= 14 && matchesAny(label, CTA_TEXTS)) {
                     f.ctaCount++;
+                } else if (label.length() <= CD_STANDALONE_MAX_CHARS && vis && b != null
+                        && standaloneCountdownSeconds(label) > 0
+                        && f.cdDigits.size() < CD_DIGIT_CAP) {
+                    // v7.5.0 独立倒计时数字（兄弟节点）：入候选列表，walk 尾部
+                    // 按倒计时区/跳过键近旁门控并入 f.countdownN
+                    CdDigit d = new CdDigit();
+                    d.seconds = standaloneCountdownSeconds(label);
+                    d.bounds = b;
+                    f.cdDigits.add(d);
                 }
             } else if (b != null && vis && node.childCount() == 0 && isVidSkip(node)) {
                 // v3.8.0：viewId 跳过键（GKD 全局规则同款）：vid 含 skip（穿山甲 tt_splash_skip_btn /
@@ -552,16 +613,20 @@ public final class AdDecisionCore {
                 }
                 int cd = parseCountdown(node.viewId());
                 if (cd > f.countdownN) f.countdownN = cd;
-            } else if (b != null && vis && f.corners.size() < MAX_CORNERS && isCornerControl(b, ctx)
+            } else if (b != null && vis && f.corners.size() < MAX_CORNERS
+                    && (isCornerControl(b, ctx) || isMidEdgeControl(b, ctx))
                     && !hasCornerChild(node, ctx)) {
                 // 【v3.5.0】角落无字小可点控件（多候选）：疑似图片跳过键
-                // （微博/喜马拉雅第一方开屏）；自身不可点时向上找可点祖先；
+                //（微博/喜马拉雅第一方开屏）；自身不可点时向上找可点祖先；
                 // 若还有更小的角落子控件则让位（子控件坐标点得更准）
+                //【v7.5.0】中部边带候选（strongOnly）：左/右缘任意高度的
+                // 无字小可点控件——仅强广告形态下出手（L4 逐候选门控）
                 NodeView click = clickable ? node : resolveClickable(node, 4);
                 if (click != null) {
                     CornerCand c = new CornerCand();
                     c.clickNode = click;
                     c.tapBounds = b;
+                    c.strongOnly = !isCornerControl(b, ctx);
                     f.corners.add(c);
                 }
             }
@@ -612,6 +677,21 @@ public final class AdDecisionCore {
         return rightEdge || leftEdge;
     }
 
+    /** v7.5.0 中部边带控件：左/右缘（≥72%/≤28% 宽）任意高度的无字小可点
+     *  控件（尺寸门与角落同源：24px~35% 宽 × 20% 高）。已过角落几何的
+     *  （顶/底带）不算中部——strongOnly 分层门控据此分流。 */
+    static boolean isMidEdgeControl(int[] b, Ctx ctx) {
+        if (b == null || ctx.screenW <= 0 || ctx.screenH <= 0) return false;
+        if (isCornerControl(b, ctx)) return false; // 角落带归角落（原门控）
+        int w = b[2] - b[0];
+        int h = b[3] - b[1];
+        if (w < MIDEDGE_MIN_PX || h < MIDEDGE_MIN_PX) return false;
+        if (w > ctx.screenW * 0.35 || h > ctx.screenH * 0.20) return false;
+        boolean rightEdge = b[2] >= ctx.screenW * CORNER_RIGHT_MIN;
+        boolean leftEdge = b[0] <= ctx.screenW * CORNER_LEFT_MAX;
+        return rightEdge || leftEdge;
+    }
+
     /** 向上找可点击祖先（最多 4 层） */
     static NodeView resolveClickable(NodeView node, int maxUp) {
         NodeView cur = node;
@@ -655,6 +735,14 @@ public final class AdDecisionCore {
         return isCornerControl(b, c);
     }
 
+    /** v7.5.0：是否中部边带形态控件（左/右缘任意高度——服务侧学习与测试用）。 */
+    public static boolean midEdgeLike(int[] b, int screenW, int screenH) {
+        Ctx c = new Ctx();
+        c.screenW = screenW;
+        c.screenH = screenH;
+        return isMidEdgeControl(b, c);
+    }
+
     /**
      * v3.6.0 学习形状判定（比扫描用的 isCornerControl 更宽）：
      * 手动点击教学时，跳过键可能是——
@@ -666,6 +754,12 @@ public final class AdDecisionCore {
     public static boolean learnableSkipShape(int[] b, int screenW, int screenH) {
         if (b == null || screenW <= 0 || screenH <= 0) return false;
         if (cornerLike(b, screenW, screenH)) return true;
+        // v7.5.0 中部边带（左/右缘任意高度）：图片跳过键在右侧中部（用户
+        // 实锤「不是每次每个按钮都是一个位置」）——手势候选可学习可代点
+        Ctx c = new Ctx();
+        c.screenW = screenW;
+        c.screenH = screenH;
+        if (isMidEdgeControl(b, c)) return true;
         int cy = (b[1] + b[3]) / 2;
         boolean topArea = cy <= screenH * 0.25;
         boolean bottomArea = cy >= screenH * 0.80;
@@ -800,6 +894,13 @@ public final class AdDecisionCore {
             // L1.6 开屏×关闭键（v3.5.0）：顶部小关闭键 + 广告形态树（非长文本内容页）
             //     v3.7.0 树上限放宽（CORNER_TREE_MAX_NODES）：广告窗树常大，
             //     40 节点上限把真关闭键挡在门外（微博根因之一）
+            //     v7.5.0 前置 L1.5（角标在场关闭键）：角标替换「顶部 35%」成为
+            //     第二证据——插屏×常在右下/中部，旧 L1.6 位置闸把它们全灭
+            if (f.foundClose && f.closeBounds != null && f.adBadge && !f.longText
+                    && (isAdLikeLoose(f) || ctx.sdkAdWin || ctx.learnedCls)
+                    && ctx.elapsedMs >= SPLASH_CLOSE_MS) {
+                return click(f.closeNode, f.closeBounds, "badge_close");
+            }
             if (f.foundClose && f.closeBounds != null && !f.longText
                     && (isAdLikeLoose(f) || ctx.sdkAdWin || ctx.learnedCls)
                     && inTopArea(f.closeBounds, ctx)
@@ -822,10 +923,21 @@ public final class AdDecisionCore {
                     // v3.9.0 广告形态确认门（不乱点红线）：角落无字控件必须
                     // 同时具备广告信号（热区/角标/SDK 窗/学习窗）或树极简
                     //（≤60 节点）才出手——普通主页角落图标绝不误点
+                    // v7.5.0 中部边带候选（strongOnly）：树极简兕底不适用——
+                    // 仅强广告形态（热区/角标/SDK窗/学习窗）可出手（FAB 防线）。
+                    // 逐候选分层门控：从第 clickAttempts 个起取首个过闸的候选
+                    //（无 strongOnly 候选时与旧「第 N 击第 N 候选」逐字等价）
                     && (f.hotZone || f.adBadge || ctx.sdkAdWin || ctx.learnedCls
                         || f.nodeCount <= CORNER_CONFIRM_NODES)) {
-                CornerCand c = f.corners.get(ctx.clickAttempts);
-                return click(null, c.tapBounds, "corner_image_skip");
+                boolean strongAdForm = f.hotZone || f.adBadge || ctx.sdkAdWin || ctx.learnedCls;
+                for (int ci = ctx.clickAttempts; ci < f.corners.size(); ci++) {
+                    CornerCand c = f.corners.get(ci);
+                    boolean tierOk = !c.strongOnly || strongAdForm;
+                    boolean gateOk = strongAdForm || f.nodeCount <= CORNER_CONFIRM_NODES;
+                    if (tierOk && gateOk) {
+                        return click(null, c.tapBounds, "corner_image_skip");
+                    }
+                }
             }
             // L2 SDK / 学习 className 窗口指纹 → 返回键直断
             //    SDK 广告窗是独立 Activity，返回回到应用内页——根窗口也安全。
@@ -1398,6 +1510,64 @@ public final class AdDecisionCore {
         String lower = lowerAscii(s);
         if (lower.contains("skip") || lower.contains("跳过")) return true;
         return matchesAny(s, SKIP_TEXTS);
+    }
+
+    /* ═══ v7.5.0 倒计时门控纯函数（服务侧 countdownWait 全次门控消费）═══
+     * 旧病灶：countdownWait 只在 clickAttempts>=1 才门控——首击永远立即
+     * 出手：穿山甲族倒计时未到=白点（还占冷却烧耐心预算），且落进广告
+     * 热区的无效触点可能被计为广告点击。纯函数化后第 0 击起就门控，
+     * 装饰数字逃生（1.6s 未跳）对任何击数都放行（含窗内早见晚点场景）。 */
+
+    /** 门控到期时刻：锚点 + N 秒 - 将尽提前量（COUNTDOWN_EXTRA_MS）。 */
+    public static long countdownUntil(int cdN, long anchorAt) {
+        return anchorAt + cdN * 1000L - COUNTDOWN_EXTRA_MS;
+    }
+
+    /** 装饰数字判定：锚点 1.6s 未刷新（真倒计时每秒跳一次重置锚点）。 */
+    public static boolean decorativeCountdown(long anchorAt, long now) {
+        return now - anchorAt > COUNTDOWN_FAKE_MS;
+    }
+
+    /** 门控判定（第 0 击起全次生效）：cdN>0 且未到将尽时刻且非装饰数字。 */
+    public static boolean gateCountdown(int cdN, long anchorAt, long now) {
+        if (cdN <= 0) return false;
+        if (decorativeCountdown(anchorAt, now)) return false;
+        return now < countdownUntil(cdN, anchorAt);
+    }
+
+    /** v7.5.0 独立倒计时数字解析：「3」「5s」「3秒」「5 S」「12秒」→ 3/5/3/5/12；
+     *  非独立数字形态（含其它字符/超 COUNTDOWN_MAX_S/前置 0）一律 0。 */
+    public static int standaloneCountdownSeconds(String label) {
+        if (label == null) return 0;
+        String t = label.trim();
+        int n = t.length();
+        if (n < 1 || n > CD_STANDALONE_MAX_CHARS) return 0;
+        int i = 0, v = 0, digits = 0;
+        while (i < n && t.charAt(i) >= '0' && t.charAt(i) <= '9') {
+            v = v * 10 + (t.charAt(i) - '0');
+            digits++;
+            i++;
+        }
+        if (digits == 0 || digits > 2) return 0;
+        if (v < 1 || v > COUNTDOWN_MAX_S) return 0;
+        if (i == n) return v; // 纯数字「3」
+        String tail = t.substring(i).trim(); // 单位尾（s/S/秒）——其余字符一律拒
+        if (tail.equals("s") || tail.equals("S") || tail.equals("秒")) return v;
+        return 0;
+    }
+
+    /** v7.5.0 倒计时数字区：顶部 35% 或底部 25%（跳过键常驻地）。 */
+    static boolean inCountdownZone(int[] b, Ctx ctx) {
+        if (b == null || ctx.screenH <= 0) return false;
+        int cy = (b[1] + b[3]) / 2;
+        return cy <= ctx.screenH * CD_ZONE_TOP_MAX || cy >= ctx.screenH * CD_ZONE_BOTTOM_MIN;
+    }
+
+    /** v7.5.0 近旁判定：两控件 |Δcy| ≤ 25% 屏高（同排/同卡铁证）。 */
+    static boolean nearY(int[] a, int[] b, Ctx ctx) {
+        if (a == null || b == null || ctx.screenH <= 0) return false;
+        int cya = (a[1] + a[3]) / 2, cyb = (b[1] + b[3]) / 2;
+        return Math.abs(cya - cyb) <= ctx.screenH * CD_NEAR_Y_MAX;
     }
 
     public static boolean isCloseText(String s) {

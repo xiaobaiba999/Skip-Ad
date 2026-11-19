@@ -4,6 +4,10 @@
 # v5.5.0：新增 RuleGovernorTest（三源合并/学习治理/分级扫描/新四大场景）套件。
 # v7.1.0：新增 FeedAdGuardTest（信息流广告卫士移植回归）+ RuleOrderTest（规则使用顺序治理）
 #  + BrandFocus286Test → BrandFocus308Test（11 组×28=308 机型·八维含信息流广告维）。
+# v7.5.0：新增 InterstitialGuardTest（插屏卫士·用户十四轮实锤「几乎都带有广告两个字」
+#  ——名单外 App 插入广告角标+关闭钮真值表/九品牌 1:1 缩放/相册反例零出手）
+#  + SplashCountdownTest（兄弟节点倒计时/门控第 0 击起全次生效/中部边带图片跳过键
+#  /L1.5 角标在场关闭——用户实锤「不是每个都带倒计时·不是每次每个按钮都是一个位置」）。
 set -e
 set -o pipefail
 
@@ -36,7 +40,7 @@ echo "    编译产出: $OUT/classes"
 echo "==> [2/3] 运行测试套件"
 TOTAL_PASS=0
 TOTAL_FAIL=0
-for SUITE in MiniProgramGuardTest DecisionGuardTest SubscriptionBuiltinTest RegressionCoreTest MultiDeviceMatrixTest NonMainstreamAppTest RestoreGuardTest PowerGovernorTest RuleGovernorTest ComplianceGuardTest TapPointMatrixTest HumanTapMatrixTest BrandFocus308Test ReleaseNotesTest SubMirrorTest FeedAdGuardTest RuleOrderTest; do
+for SUITE in MiniProgramGuardTest DecisionGuardTest SubscriptionBuiltinTest RegressionCoreTest MultiDeviceMatrixTest NonMainstreamAppTest RestoreGuardTest PowerGovernorTest RuleGovernorTest ComplianceGuardTest TapPointMatrixTest HumanTapMatrixTest BrandFocus308Test ReleaseNotesTest SubMirrorTest FeedAdGuardTest RuleOrderTest InterstitialGuardTest SplashCountdownTest; do
   echo ""
   echo "══ $SUITE ══"
   if java -cp "$OUT/classes" "com.zai.adshield.test.$SUITE" | tee "$OUT/$SUITE.log"; then

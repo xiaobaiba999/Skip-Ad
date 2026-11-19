@@ -1,0 +1,83 @@
+{
+  "round": 36,
+  "version": "7.5.0",
+  "date": "2026-11-19",
+  "theme": "开屏倒计时/位置解耦 + 插屏卫士（名单外 App 插入广告主动关闭）——第十四轮用户实锤三组死因全部根治",
+  "user_directives": [
+    "依旧不行，还有好多其他app的开屏都跳不了",
+    "开屏按钮跳过不是每个都带倒计时，不是每次每个按钮都是一个位置",
+    "app内的插入的广告也是，它们几乎都带有广告两个字",
+    "扫描日志继续实现继续优化",
+    "完成过后同步github和推送releases（历史置顶指令保持）"
+  ],
+  "root_causes": {
+    "cause_1_sibling_countdown": "倒计时数字与「跳过」文案分属两个节点（穿山甲族常态）——parseCountdown(label)=0 → 首击立即出手白点，MAX_CLICKS_PER_WIN=3 耐心预算烧完（5s 倒计时三击 0ms/1.6s/3.2s 全白点）→ 优雅收手干看广告走完",
+    "cause_2_gate_first_click": "countdownWait 只在 clickAttempts>=1 才门控——首击永远立即出手（白点还占冷却烧耐心预算，且落进广告热区的无效触点可能被计为广告点击）",
+    "cause_3_mid_edge_blind": "图片跳过键（无字小可点控件）在左/右缘中部——旧角落几何只认顶 14%/底 18% 两带，中部零收集（用户原话「不是每次每个按钮都是一个位置」）",
+    "cause_4_interstitial_zero_coverage": "名单外 App 的插入广告零覆盖：信息流两段式只在 20 款名单内、开屏阶梯 12s 窗外零动作、弹窗路径只认 Dialog 窗类——宿主窗内插层三路全漏"
+  },
+  "fixes": {
+    "sibling_countdown": {
+      "walk_path": "visit 收集独立数字候选（standaloneCountdownSeconds：3/5s/3秒 纯数字小形态）→ ScanFind.cdDigits（≤6 条）→ resolveCdDigits（倒计时区顶 35%/底 25% 或跳过候选近旁 |Δcy|≤25% 屏高）→ 并入 f.countdownN",
+      "rule_path": "RuleEngine.windowCountdownHint（200 节点预算 DFS + 命中键近旁过滤）——cdHit==0 时补查",
+      "gate_from_zeroth_click": "countdownWait 纯函数化（countdownUntil/decorativeCountdown/gateCountdown）从第 0 击起全次门控；装饰数字逃生（锚点 1.6s 未刷新）对任何击数放行"
+    },
+    "mid_edge_candidates": {
+      "geometry": "isMidEdgeControl：贴左/右缘（≥72%/≤28% 宽）任意高度 · 24px~35% 宽 × 20% 高（尺寸门与角落同源）；已过角落几何的归角落",
+      "strongOnly_gate": "CornerCand.strongOnly 分层门控：中部候选仅强广告形态（热区/角标/SDK 窗/学习窗）可出手——树极简 ≤60 兜底不适用（FAB 误点防线）；L4 逐候选分层（无中部候选时与旧语义逐字等价）",
+      "learnable": "learnableSkipShape 同步收编中部边带（手势候选可学习可代点）"
+    },
+    "interstitial_guard": {
+      "module": "InterstitialGuard（纯 Java 零 Android 依赖 · JVM 可单测）",
+      "gate_0": "角标在场必过（FeedAdGuard.isDisclosureBadge 语义+形态）——用户实锤「几乎都带有广告两个字」；角标不在场绝不出手；角标自身绝不点击",
+      "gate_1": "INTER_CLOSE_WORDS 精确等值（数组序即优先级：× 家族 > 关闭族 > 跳过族 > 知道了族）；营销词/拉丁 X/「不感兴趣」全拒",
+      "gate_2": "关闭钮形态 ≤30% 屏宽 × ≤12% 屏高（广告主体几何兜底）",
+      "gate_3": "与角标 |Δcy|≤35% 屏高近旁 或 顶带/底带带位",
+      "gate_4": "可滚动窗拒（信息流两段式领地——服务侧 walk 判定传入）",
+      "wiring": "maybeInterstitialScan：窗切换 + 内容变化双钩子 · 2.5s 包级节流 · feed 名单 20 款排除 · armed 让路 · execute() 全防线复用（用户让路/耐心/多点/人手手势/通用终闸）；记账 stats.feed 档",
+      "methodology": "李跳跳方法论：findAccessibilityNodeInfosByText 原生直查（预算无关——深树插层也查到）+ 候选逐闸判定"
+    },
+    "l15_badge_close": "决策阶梯 L1.5（角标在场关闭）：foundClose + adBadge + 广告形态树 → 任意位置出手（reason=badge_close）——旧 L1.6 顶部 35% 位置闸把插屏右下/中部 × 全灭；无角标时 L1.6 原语义保持",
+    "scan_log_loop": "logInterMiss 插屏未命中诊断（30s 包级节流）：带窗类 + 角标词命中样本（被闸也照登）——随一日三次自动日志上传",
+    "probe_skip": "nativeTextProbe 第三探针「skip」——英文 Skip 键先到先点（matchText 全套规则+形状门照常验）"
+  },
+  "tests": {
+    "total": "4253/4253 全绿（19 套件）",
+    "delta": "+135（InterstitialGuardTest 83 + SplashCountdownTest 52——全部对位本轮死因，无凑数断言）",
+    "suites": {
+      "BrandFocus308Test": 2868, "TapPointMatrixTest": 295, "NonMainstreamAppTest": 130,
+      "RuleGovernorTest": 142, "RestoreGuardTest": 106, "ComplianceGuardTest": 83,
+      "SubscriptionBuiltinTest": 76, "FeedAdGuardTest": 131, "RuleOrderTest": 39,
+      "PowerGovernorTest": 48, "MiniProgramGuardTest": 36, "SubMirrorTest": 35,
+      "ReleaseNotesTest": 30, "MultiDeviceMatrixTest": 42, "HumanTapMatrixTest": 20,
+      "DecisionGuardTest": 22, "RegressionCoreTest": 15,
+      "InterstitialGuardTest": 83, "SplashCountdownTest": 52
+    },
+    "interstitial_guard_test": "S1 关闭词语义 25 / S2 词优先级 5 / S3 形态 6 / S4 近旁带位 6 / S5 决策真值表 12 / S6 常量 7 / S7 九品牌分辨率 1:1 缩放 18（OPPO/vivo/小米/三星/华为/荣耀/红米/一加/iQOO 逐机型 + 无角标反例零出手）/ S8 真机插屏文案重建 4（新闻插屏点×不点 CTA · 游戏过关点跳过 · 半屏插卡点关闭 · 相册反例零出手）",
+    "splash_countdown_test": "S1 独立数字解析 16 / S2 门控纯函数 9（第 0 击门控·到期开闸·装饰逃生）/ S3 中部边带几何 8 / S4 walk 兄弟倒计时 6 / S5 窗级提示 4 / S6 L1.5 角标关闭 5 / S7 strongOnly 分层 4",
+    "regression": "既有 17 套件 4118 项零改动全绿保持（中部边带候选在无候选场景与旧语义逐字等价由 S7 断言）"
+  },
+  "apk": {
+    "size_bytes": 849462,
+    "size_kb": 832,
+    "versionCode": 75000,
+    "versionName": "7.5.0",
+    "md5": "4cfd2d7ecf008a05ccb39ae8df5e9049",
+    "sha256": "f34d8eec63cd4025b39e7737aa8bdc57c67bc87a48176377f3d472c74aed4268",
+    "minSdk": 24,
+    "targetSdk": 34
+  },
+  "red_lines": [
+    "插屏卫士只点关闭钮自身 bounds——绝不广告主体、绝不角标（角标只作在场证据）",
+    "中部边带候选仅强广告形态可出手（FAB/悬浮钮防线）——树极简兜底不适用",
+    "可滚动窗插屏路零参与（信息流两段式领地）；feed 名单 20 款排除",
+    "L1.5 角标关闭须广告形态树（无滚动/无输入框/非长文本）",
+    "execute() 全防线复用：用户让路/耐心预算/F·H 多点防线/通用边界终闸",
+    "零扫描场景上游过滤保持（设置/输入法/锁屏/密码/短信/相机/守护/小程序/聊天主界面）"
+  ],
+  "release": {
+    "tag": "v7.5.0",
+    "distribution": "android-app/dist · 仓库 dist · GitHub Release asset 三目录",
+    "sync": "git push + tag + Release（带校验表）+ 仓库描述 + README 面板 + Next.js 面板（my-project）"
+  }
+}
