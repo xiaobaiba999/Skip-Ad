@@ -1,0 +1,93 @@
+{
+  "round": 35,
+  "version": "7.4.0",
+  "date": "2026-11-19",
+  "theme": "信息流广告主动关闭三路真机根治（P0 面板直通 · P1X 卡片直关 · 空闲巡检）——第十三轮 7 截图 + 引擎日志 #79/#80/#81 双源证据链",
+  "user_directives": [
+    "其他app内的广告还是主动关闭不了，你可以看图",
+    "再根据扫描日志进行这个功能的实现",
+    "app内穿插的广告全都没拦截，关于这一块的实现可以参考李跳跳的实现逻辑",
+    "功能实习完成后进入测试环境全方位测试，再根据测试修改不足",
+    "不要每次为了测试而测试，不要做没有意义的测试",
+    "完成过后同步giuhub和推送releases。优化github面板描述"
+  ],
+  "evidence_chain": {
+    "screenshots": "7 张真机截图（20:15~20:17）：截图1/4/5/6/7 微信朋友圈小鹏汽车广告（原因面板：关闭该广告的原因 + 直接关闭 + 5 原因行；角标「广告∨」）；截图2/3 ZOL 讨论区卡片广告（今日推荐/来自广告推荐 + × 直关钮；反馈菜单：无法关闭/不感兴趣/举报广告/点击复制广告ID）",
+    "engine_logs": "GitHub issues #79/#80（v7.2.0 · Xiaomi 2410DPN6CC，与截图同分钟手动上传）：#79 20:15:23 候选样本实锤原因面板节点在树（直接关闭@(79%,46%) 等）；全程零「🛡 P1」行=角标识别真机零开火；#80 20:16:55 用户手动点 market「关闭」实锤（引擎本该先点）；#81 v6.0.0 Redmi 副机对照",
+    "pkg_evidence": "market = com.xiaomi.market 小米应用商店（日志 shortPkg 实锤）；ZOL = com.zol.android（截图 VLM 实锤 + GKD 订阅快照同包名）"
+  },
+  "root_causes": {
+    "cause_1_missing_word": "中性项表缺「直接关闭」——微信「关闭该广告的原因」面板主按钮就是「直接关闭」，旧表根本没有这词=面板拉起了也永远收不掉（「全都没拦截」直接死因之一）",
+    "cause_2_p1_zero_fire_and_idle_blind": "日志全程零 P1 行（角标识别真机零开火）；且 maybeFeedScan 只挂 TYPE_WINDOW_CONTENT_CHANGED——用户停下刷屏盯着广告看时零事件=零扫描（广告静止在屏 2 分钟引擎全程盲）",
+    "cause_3_app_not_listed": "market（com.xiaomi.market）/ZOL（com.zol.android）不在 18 款名单内——名单门把这两款 App 的信息流扫描整个关掉，卡片「×/关闭」直关钮只能用户手动点（日志实锤：用户点了，引擎只学到位置）"
+  },
+  "fix_p0_panel_close": {
+    "action": "feed_p0_panel_close",
+    "word": "「直接关闭」置顶收编（NEUTRAL_CLOSE_ITEMS 首位·数组序即优先级）；面板标题「关闭该广告的原因/关闭此广告的原因」精确等值 + 原因族「相关广告/相同素材/类似产品」contains 证据",
+    "gate": "覆盖窗门（Dialog/FrameLayout 类——cls.contains(Activity)||endsWith(UI)||contains(Window) 判整窗）+ 90s 信息流上下文窗（P0_FEED_CTX_MS=90000·lastFeedWinAt 按包记账）；微信聊天主界面零扫描红线保持",
+    "no_p1_dependency": "不依赖 P1 开火——角标识别失败也收得掉（P0 的存在价值）；armed 时主按钮单独即可，非 armed 须面板证据；证据节点无形态闸（标题是全宽行）",
+    "yield_exemption": "userYield 让路红线唯一豁免（P0）——用户手拉面板正是「广告关不掉只能手动关」的求救信号，代点主按钮与用户意图同向；其余路径让路一条不少"
+  },
+  "fix_p1x_card_close": {
+    "action": "feed_p1x_close",
+    "close_words": "×/✕/✖/╳/⨯/关闭（精确等值——拉丁 X 不收）",
+    "three_gates": "①直关词精确等值+小形态（≤35%屏宽×≤8%屏高）②同窗广告上下文证据（来自广告推荐/广告推荐/赞助 contains 或合法披露角标在场）③同行近距门（|Δy|≤30% 屏高 P1X_NEAR_Y_MAX=0.30）",
+    "counterexample_guarded": "#80 20:16:46 PhotoViewV16 相册关闭钮反例：零广告上下文 → 零出手（无上下文绝不裸点「关闭」）",
+    "final_gate": "ComplianceGuard.feedBoundaryCheck 语义面收编 isCloseIconWord（上游三重闸已守，终闸只验形态）"
+  },
+  "fix_feed_patrol": {
+    "constant": "FEED_PATROL_MS=2500",
+    "root_cause": "feed 扫描只由 content-changed 拉起——用户停下刷屏时零事件零扫描",
+    "impl": "自复挂 Runnable：进信息流窗即拉起（state-changed 亦挂 maybeFeedScan 入窗即生效），每 2.5s 一扫走完整闸链与 1.2s 节流；离窗/切包/masterOn 关/服务销毁即自停（onDestroy 拆链）；巡检未命中诊断降频 5 分钟一条（事件未命中保持 30s——不刷屏）"
+  },
+  "feed_apps_18_to_20": {
+    "added": "com.zol.android（截图2/3 实锤：讨论区信息流卡片广告）+ com.xiaomi.market（日志#80 实锤：用户手动点「关闭」的推广卡）",
+    "discipline": "有真机证据才扩名单——不做无证据的名单扩张（「不要做没有意义的测试」同款纪律）"
+  },
+  "scan_log_diagnosis_upgrade": {
+    "miss_log": "未命中日志带窗类 + 角标词命中样本（label@(cx%,cy%) 前两个——被闸也照登）+ 巡检来源标注",
+    "purpose": "「根据扫描日志进行功能的实现」的数据闭环——下轮上传日志直接读到真机角标形态，区分「窗内无角标词命中」与「命中被闸（形态/语义）」"
+  },
+  "tests": {
+    "strategy": "用户指令：功能完成后全方位测试、根据测试修改不足、不做无意义的测试——全部对准真机证据在场证明（截图文案逐字树重建）",
+    "suite_updates": "FeedAdGuardTest 90→131（+41）：S10 P0 面板直通真值表 10（标题+主按钮+原因行/armed 单独/裸直接关闭无证据拒/原因族放行/只标题拒/巨横幅拒/null 安全/isPanelTitleWord/isCloseIconWord）；S11 P1X 真值表 11（ZOL × +来自广告推荐同行直关/market 关闭+广告推荐/相册反例零出手/合法角标作证据/大容器形态拒/远距同行近距拒/null 安全/6 直关词契约/3 上下文词契约/不可见拒/× 非中性项分工）；S12 真机截图文案逐字重建 12（微信原因面板 8 节点逐字 P0 直通+tapBounds==主按钮自身+armed P2 直接关闭置顶+原因行越权闸；ZOL 推荐卡 P1X 直点×（CTA 混入不中）+P1 路零命中；ZOL 反馈菜单 armed P2 只收不感兴趣+无法关闭/举报广告/复制广告ID 绝不代点；微信「广告∨」角标 P1 命中；三路分工全绿总检）；S1 名单 22（zol/market 实名断言）；S5 直接关闭置顶 15；S7 常量 11（FEED_PATROL_MS/P0_FEED_CTX_MS/P1X_NEAR_Y_MAX 契约）",
+    "brand_focus_dim7": "BrandFocus308Test ⑦ 信息流广告维 4→6 项（逐机型几何 1:1 缩放）：e) P0 面板（标题全宽行+直接关闭主按钮+原因族行）tapBounds==主按钮自身；f) P1X 卡片（来自广告推荐披露行+× 同排）直点即关+相册关闭钮反例同机拒收——308 机型 × 6 项全过",
+    "total": "17 套件 4118 项 JVM 断言全绿（+41）· 308 机型八维各 308/308（⑦ 维 6 项全过）"
+  },
+  "suites": {
+    "MiniProgramGuardTest": 36,
+    "DecisionGuardTest": 22,
+    "SubscriptionBuiltinTest": 76,
+    "RegressionCoreTest": 15,
+    "MultiDeviceMatrixTest": 42,
+    "NonMainstreamAppTest": 130,
+    "RestoreGuardTest": 106,
+    "PowerGovernorTest": 48,
+    "RuleGovernorTest": 142,
+    "ComplianceGuardTest": 83,
+    "TapPointMatrixTest": 295,
+    "HumanTapMatrixTest": 20,
+    "BrandFocus308Test": 2868,
+    "ReleaseNotesTest": 30,
+    "SubMirrorTest": 35,
+    "FeedAdGuardTest": 131,
+    "RuleOrderTest": 39
+  },
+  "build": {
+    "versionCode": 74000,
+    "versionName": "7.4.0",
+    "apk": "dist/adshield-v7.4.0.apk",
+    "size_bytes": 845366,
+    "size_kb": 828,
+    "md5": "de9bfb0d5ef18ac548bb6b4ae6a25247",
+    "sha256": "aa795321e3969a7099abf7b4a50c5e42b54a043429d07f38c2f762e768ad52d4",
+    "signature": "同 keystore（AdShield）v1+v2 签名——任何历史版本覆盖安装即升级（授权/学习数据/白名单/已导入订阅全部保留）",
+    "minSdk_targetSdk": "24 / 34"
+  },
+  "sync": {
+    "github": "tag v7.4.0 + Release（正文规范：1 标题 1 段落 + 5 条带序号功能）+ 仓库 description + README 面板（v7.4.0 主题）",
+    "in_app": "CURRENT_RELEASE v7.4.0：1 标题 + 5 条序号行（微信面板直通/卡片直关/空闲巡检/诊断增强/名单 20 款）",
+    "docs": "OPTIMIZATION-v7.4.0.md + CHANGELOG + 本报告",
+    "digest_check": "APK SHA-256 与 GitHub API asset digest 端到端核对一致（v7.3.0 安装前校验链的发布侧基准闭环保持）"
+  }
+}

@@ -250,7 +250,12 @@ public final class ComplianceGuard {
         if (AdDecisionCore.isCameraClass(cls)) return BND_FAIL_SCENARIO;
         if (AdDecisionCore.isGuardPkg(pkg)) return BND_FAIL_SCENARIO;
         String t = label == null ? "" : label.trim();
-        if (!FeedAdGuard.isNeutralCloseItem(t) && !FeedAdGuard.isDisclosureBadge(t, bounds, screenW, screenH)) {
+        /* v7.4.0：P1X 直关钮词（× 家族/关闭——精确等值）进入 feed 终闸语义面：
+         * P1X 决策上游已过「广告上下文 + 同行近距」双闸（decideP1XFromCandidates
+         * 宁漏勿误三重闸），此处终闸只验形态（面积 ≤35% 屏）——绝不新增任何
+         * 非 feed_ 路径的放行面。 */
+        if (!FeedAdGuard.isNeutralCloseItem(t) && !FeedAdGuard.isDisclosureBadge(t, bounds, screenW, screenH)
+                && !FeedAdGuard.isCloseIconWord(t)) {
             return BND_FAIL_SEMANTIC;
         }
         if (bounds == null || bounds.length < 4) return BND_FAIL_FORM;

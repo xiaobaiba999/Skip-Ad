@@ -802,16 +802,21 @@ public final class BrandFocus308Test {
                         + " · 族归一 " + (famOk ? "✓" : "✗") + " · 自愈合并 ✓ · 五轮分应用 " + fifthRoundAppHit + "/" + FIFTH_ROUND_APPS.length + "）");
                 if (algoOk == 5) algoN++;
 
-                /* ⑦ v7.1.0 信息流广告维（FeedAdGuard 移植回归）：朋友圈就业广告类
-                 * App 内广告两段式——角标/菜单几何按机型分辨率 1:1 缩放（1080×2400
-                 * 基准坐标按 w/h 比例映射到 720p~2K+ 全几何档），4 项全过：
+                /* ⑦ v7.1.0 信息流广告维（FeedAdGuard 移植回归；v7.4.0 六项全过）：
+                 * 朋友圈就业广告类 App 内广告两段式——角标/菜单/面板/卡片几何按
+                 * 机型分辨率 1:1 缩放（1080×2400 基准坐标按 w/h 比例映射到 720p~
+                 * 2K+ 全几何档），6 项全过：
                  *  a) P1 披露角标识别：非 null·action=feed_p1_badge·label=就业·
                  *     tapBounds 逐元素==角标自身（绝不广告主体）；
                  *  b) 广告主体大容器拒收：正确角标词「广告」+巨容器（100% 宽）面
                  *     积门拒 + 正常内容流零命中（宁漏勿误）；
                  *  c) P2 armed 收菜单（v7.2.0：armed≥1 即出手）+优先级最高项
                  *     「关闭该广告」+tapBounds==该项自身；
-                 *  d) P2 非 armed 零对抗（用户自己长按的菜单绝不对抗）。 */
+                 *  d) P2 非 armed 零对抗（用户自己长按的菜单绝不对抗）；
+                 *  e) v7.4.0 P0 面板直通（微信「关闭该广告的原因」逐字形态）：
+                 *     标题全宽行证据 + 「直接关闭」主按钮 tapBounds==自身；
+                 *  f) v7.4.0 P1X 卡片直关（market/ZOL「来自广告推荐」逐字形态）：
+                 *     × 直关钮 + 同行披露上下文命中 + 相册关闭钮反例零动作。 */
                 int feedOk = 0;
                 // 朋友圈广告树（几何 1:1 缩放：root → 广告主体大容器 → 内嵌披露角标）
                 SimNode feedTree = new SimNode();
@@ -852,8 +857,50 @@ public final class BrandFocus308Test {
                         && fp2.tapBounds[0] == mX0 && fp2.tapBounds[1] == r0Y
                         && fp2.tapBounds[2] == mX1 && fp2.tapBounds[3] == r0Y + rowH) feedOk++;
                 if (FeedAdGuard.decideP2(feedMenuTree, w, h, false) == null) feedOk++;
-                TestHost.check(feedOk == 4, "⑦ 信息流广告 " + model + "（" + os + " · 角标/菜单几何 1:1 缩放 · P1 角标+主体拒收+P2 armed≥1+非 armed 零对抗 " + feedOk + "/4）");
-                if (feedOk == 4) feedN++;
+                /* e) v7.4.0 P0 面板直通：微信「关闭该广告的原因」面板（标题全宽行
+                 *    + 直接关闭主按钮 + 原因族行——真机 #79 20:15:23 逐字形态）几
+                 *    何 1:1 缩放——标题全宽行【无形态闸】（证据节点），主按钮小形态。 */
+                java.util.ArrayList<com.zai.adshield.core.AdDecisionCore.NodeView> p0Panel =
+                        new java.util.ArrayList<>();
+                p0Panel.add(new SimNode("关闭该广告的原因", (int) (w * 0.18), (int) (h * 0.31),
+                        (int) (w * 0.66), (int) (h * 0.33)));
+                int btnX0 = (int) (w * 0.72), btnY0 = (int) (h * 0.46);
+                int btnX1 = btnX0 + (int) (w * 0.26), btnY1 = btnY0 + (int) (h * 0.025);
+                p0Panel.add(new SimNode("直接关闭", btnX0, btnY0, btnX1, btnY1));
+                p0Panel.add(new SimNode("汽车厂商相关广告", (int) (w * 0.2), (int) (h * 0.54),
+                        (int) (w * 0.66), (int) (h * 0.55)));
+                p0Panel.add(new SimNode("重复收到相同素材", (int) (w * 0.2), (int) (h * 0.555),
+                        (int) (w * 0.66), (int) (h * 0.565)));
+                FeedAdGuard.FeedDecision fp0 = FeedAdGuard.decideP0FromCandidates(p0Panel, w, h, false);
+                if (fp0 != null && FeedAdGuard.ACTION_P0_PANEL_CLOSE.equals(fp0.action)
+                        && "直接关闭".equals(fp0.label) && fp0.tapBounds != null
+                        && fp0.tapBounds[0] == btnX0 && fp0.tapBounds[1] == btnY0
+                        && fp0.tapBounds[2] == btnX1 && fp0.tapBounds[3] == btnY1) feedOk++;
+                /* f) v7.4.0 P1X 卡片直关：market/ZOL「来自广告推荐」卡片（卡片头
+                 *    披露行 + 右上角 × 直关钮同排——截图2 逐字形态）几何 1:1 缩放；
+                 *    相册关闭钮反例（无广告上下文）同机拒收。 */
+                java.util.ArrayList<com.zai.adshield.core.AdDecisionCore.NodeView> card =
+                        new java.util.ArrayList<>();
+                card.add(new SimNode("来自广告推荐", (int) (w * 0.05), (int) (h * 0.29),
+                        (int) (w * 0.28), (int) (h * 0.302)));
+                java.util.ArrayList<com.zai.adshield.core.AdDecisionCore.NodeView> xbtn =
+                        new java.util.ArrayList<>();
+                int xX0 = (int) (w * 0.925), xY0 = (int) (h * 0.29);
+                int xX1 = xX0 + Math.max(1, (int) (w * 0.055)), xY1 = xY0 + (int) (h * 0.025);
+                xbtn.add(new SimNode("×", xX0, xY0, xX1, xY1));
+                FeedAdGuard.FeedDecision fx = FeedAdGuard.decideP1XFromCandidates(xbtn, card, w, h);
+                java.util.ArrayList<com.zai.adshield.core.AdDecisionCore.NodeView> albumCtx =
+                        new java.util.ArrayList<>();
+                albumCtx.add(new SimNode("图片第1张共9张", (int) (w * 0.05), (int) (h * 0.12),
+                        (int) (w * 0.6), (int) (h * 0.135)));
+                boolean p1xOk = fx != null && FeedAdGuard.ACTION_P1X_CLOSE.equals(fx.action)
+                        && "×".equals(fx.label) && fx.tapBounds != null
+                        && fx.tapBounds[0] == xX0 && fx.tapBounds[1] == xY0
+                        && fx.tapBounds[2] == xX1 && fx.tapBounds[3] == xY1
+                        && FeedAdGuard.decideP1XFromCandidates(xbtn, albumCtx, w, h) == null;
+                if (p1xOk) feedOk++;
+                TestHost.check(feedOk == 6, "⑦ 信息流广告 " + model + "（" + os + " · 角标/菜单/面板/卡片几何 1:1 缩放 · P1 角标+主体拒收+P2 armed≥1+非 armed 零对抗+P0 面板直通+P1X 卡片直关 " + feedOk + "/6）");
+                if (feedOk == 6) feedN++;
             }
 
             TestHost.suite("品牌汇总 " + BRAND_NAMES[bi]);

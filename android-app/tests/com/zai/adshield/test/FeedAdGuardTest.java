@@ -10,13 +10,22 @@ import com.zai.adshield.test.TestHost.SimNode;
  *  ① armed 直通（P1 拉起的菜单是 Dialog 新窗，窗类被覆盖——P2 只认 armed）
  *  ② 候选式快搜（李跳跳方法论：原生 findByText 直查，预算无关）
  *  ③ P2 armed≥1 即出手（真机微信菜单常只露 1 个中性项）。
+ * v7.4.0 十三轮真机实锤（7 张截图 + 引擎日志 #79/#80/#81）三路根治扩容：
+ *  ④ 「直接关闭」置顶收编（微信「关闭该广告的原因」面板主按钮真机在树——
+ *     日志 #79 20:15:23 候选样本直接实锤）；
+ *  ⑤ P0 面板直通（面板特征在场即点主按钮——P1 角标识别失败也收得掉）；
+ *  ⑥ P1X 卡片直关（market/ZOL「来自广告推荐」卡片角「×/关闭」直关钮 +
+ *     广告上下文闸 + 同行近距闸——日志 #80 20:16:55 用户手动点「关闭」实锤）；
+ *  ⑦ 名单 18→20 款（+ZOL 中关村在线 +小米应用商店——两轮真机实锤）。
  * 与 MiniProgramGuard 同规约（纯 Java 零 Android 依赖，ECJ -1.8 编译 JVM 运行）。
  * ─────────────────────────────────────────────────────────────
- * 恰好 90 项断言（check/checkEq 总调用数）：
- *  S1 名单门（20）/ S2 微信窗级门（6）/ S3 P1 角标语义闸①（12）/
- *  S4 P1 面积闸②（8）/ S5 P2 中性项闸③（12）/ S6 两段式决策（12）/
- *  S7 常量在场（8）/ S8 预算闸与 1:1 人手角标触点（6）/
- *  S9 v7.2.0 候选式快搜（6）。
+ * 恰好 131 项断言（check/checkEq 总调用数）：
+ *  S1 名单门（22）/ S2 微信窗级门（6）/ S3 P1 角标语义闸①（12）/
+ *  S4 P1 面积闸②（8）/ S5 P2 中性项闸③（15）/ S6 两段式决策（12）/
+ *  S7 常量在场（11）/ S8 预算闸与 1:1 人手角标触点（6）/
+ *  S9 v7.2.0 候选式快搜（6）/
+ *  S10 v7.4.0 P0 面板直通真值表（10）/ S11 v7.4.0 P1X 卡片直关真值表（11）/
+ *  S12 v7.4.0 真机截图文案重建（截图1/2/3/6 逐字树）（12）。
  * 标准屏 1080×2400；角标 bounds 示例 {990,300,1120,380}（宽 130 高 80
  * ——满足 ≤35% 屏宽 × ≤8% 屏高）。
  */
@@ -26,7 +35,7 @@ public final class FeedAdGuardTest {
         int[] badge = new int[]{990, 300, 1120, 380}; // 宽 130 高 80（角标形态示例）
 
         /* ════ S1 名单门（20 项）════ */
-        TestHost.suite("FeedAdGuard · S1 名单门（18 款信息流 App）");
+        TestHost.suite("FeedAdGuard · S1 名单门（v7.4.0 20 款信息流 App）");
         String[] apps = new String[]{
                 "com.tencent.mm", "com.sina.weibo", "com.ss.android.article.news",
                 "com.ss.android.ugc.aweme", "com.smile.gifmaker", "com.xingin.xhs",
@@ -34,11 +43,13 @@ public final class FeedAdGuardTest {
                 "com.UCMobile", "com.tencent.mtt", "com.tencent.news",
                 "com.netease.newsreader", "com.sina.news", "com.quark.browser",
                 "com.snda.wifilocating", "com.hupu.games", "com.cubic.autohome",
+                "com.zol.android", "com.xiaomi.market",
         };
         String[] names = new String[]{
                 "微信", "微博", "今日头条", "抖音", "快手", "小红书", "哔哩哔哩", "知乎",
                 "百度", "UC 浏览器", "QQ 浏览器", "腾讯新闻", "网易新闻", "新浪新闻",
                 "夸克浏览器", "WiFi 万能钥匙", "虎扑", "汽车之家",
+                "v7.4.0 中关村在线（截图2/3 实锤）", "v7.4.0 小米应用商店（日志#80 实锤）",
         };
         for (int i = 0; i < apps.length; i++) {
             TestHost.check(FeedAdGuard.isFeedApp(apps[i]),
@@ -108,7 +119,7 @@ public final class FeedAdGuardTest {
         TestHost.check(!FeedAdGuard.isDisclosureBadge("广告", new int[]{100, 100, 100, 180}, 1080, 2400),
                 "宽 0 空矩形拒");
 
-        /* ════ S5 P2 中性项闸③（12 项）════ */
+        /* ════ S5 P2 中性项闸③（15 项 · v7.4.0 直接关闭置顶）════ */
         TestHost.suite("FeedAdGuard · S5 P2 中性关闭项闸（精确等值；扩展动作绝不代点）");
         TestHost.check(FeedAdGuard.isNeutralCloseItem("关闭该广告"), "中性项「关闭该广告」");
         TestHost.check(FeedAdGuard.isNeutralCloseItem("关闭此广告"), "中性项「关闭此广告」");
@@ -122,6 +133,12 @@ public final class FeedAdGuardTest {
         TestHost.check(!FeedAdGuard.isNeutralCloseItem("举报"), "扩展动作「举报」绝不代点");
         TestHost.check(!FeedAdGuard.isNeutralCloseItem("反馈"), "扩展动作「反馈」绝不代点");
         TestHost.check(FeedAdGuard.isExtendedActionItem("屏蔽作者"), "isExtendedActionItem 在场（屏蔽作者属扩展表）");
+        TestHost.check(FeedAdGuard.isNeutralCloseItem("直接关闭"),
+                "v7.4.0 中性项「直接关闭」（微信「关闭该广告的原因」面板主按钮真机文案）");
+        TestHost.check(FeedAdGuard.isNeutralCloseItem(" 直接关闭 "),
+                "v7.4.0 中性项「直接关闭」trim 后等值");
+        TestHost.checkEq("直接关闭", FeedAdGuard.neutralCloseWords()[0],
+                "v7.4.0 「直接关闭」优先级置顶（数组序即优先级——真机面板主按钮最先收）");
 
         /* ════ S6 两段式决策（12 项）════ */
         TestHost.suite("FeedAdGuard · S6 两段式决策（P1 点角标 → P2 收菜单）");
@@ -195,7 +212,7 @@ public final class FeedAdGuardTest {
                         && pBanner.tapBounds[2] - pBanner.tapBounds[0] <= 378),
                 "P2 形态闸拒巨横幅（全宽「关闭该广告」CTA 绝不进候选——armed 仅收紧凑中性项）");
 
-        /* ════ S7 常量在场（8 项）════ */
+        /* ════ S7 常量在场（11 项 · v7.4.0 巡检/P0/P1X 常量契约）════ */
         TestHost.suite("FeedAdGuard · S7 常量在场（安全闸参数）");
         TestHost.checkEq(1200L, FeedAdGuard.FEED_SCAN_THROTTLE_MS, "FEED_SCAN_THROTTLE_MS == 1200（1.2s 节流）");
         TestHost.checkEq(350L, FeedAdGuard.P2_SCAN_THROTTLE_MS, "v7.2.0 P2_SCAN_THROTTLE_MS == 350（armed 快节奏复查）");
@@ -204,9 +221,16 @@ public final class FeedAdGuardTest {
         TestHost.check(Math.abs(FeedAdGuard.BADGE_W_MAX - 0.35) < 1e-9, "BADGE_W_MAX == 0.35（≤35% 屏宽）");
         TestHost.check(Math.abs(FeedAdGuard.BADGE_H_MAX - 0.08) < 1e-9, "BADGE_H_MAX == 0.08（≤8% 屏高）");
         TestHost.checkEq(6, FeedAdGuard.BADGE_MAX_CHARS, "BADGE_MAX_CHARS == 6（>6 字必是正文）");
-        TestHost.check(FeedAdGuard.stats() != null && FeedAdGuard.stats().contains("18 款")
-                        && FeedAdGuard.stats().contains("armed≥1即出手"),
-                "stats() 名单 18 款 + v7.2.0 armed≥1 即出手在场");
+        TestHost.check(FeedAdGuard.stats() != null && FeedAdGuard.stats().contains("20 款")
+                        && FeedAdGuard.stats().contains("armed≥1即出手")
+                        && FeedAdGuard.stats().contains("P0 面板直通") && FeedAdGuard.stats().contains("P1X 卡片直关"),
+                "stats() 名单 20 款 + v7.4.0 P0/P1X 在场");
+        TestHost.checkEq(2500L, FeedAdGuard.FEED_PATROL_MS,
+                "v7.4.0 FEED_PATROL_MS == 2500（空闲巡检——事件静默期照扫）");
+        TestHost.checkEq(90000L, FeedAdGuard.P0_FEED_CTX_MS,
+                "v7.4.0 P0_FEED_CTX_MS == 90000（面板直通 90s 信息流上下文窗）");
+        TestHost.check(Math.abs(FeedAdGuard.P1X_NEAR_Y_MAX - 0.30) < 1e-9,
+                "v7.4.0 P1X_NEAR_Y_MAX == 0.30（同行近距门 ≤30% 屏高）");
 
         /* ════ S8 预算闸与 1:1 人手角标触点（6 项）════ */
         TestHost.suite("FeedAdGuard · S8 预算闸与 1:1 人手角标触点");
@@ -302,6 +326,229 @@ public final class FeedAdGuardTest {
         FeedAdGuard.FeedDecision deepHit = FeedAdGuard.decideP1FromCandidates(deepCands, 1080, 2400);
         TestHost.check(deepHit != null && "就业".equals(deepHit.label),
                 "病灶②根治：同深树角标经原生直查候选 → 命中（预算无关——深层卡片也能关）");
+
+        /* ════ S10 v7.4.0 P0 面板直通真值表（9 项）════ */
+        TestHost.suite("FeedAdGuard · S10 P0 面板直通（闸⑤：直接关闭 + 标题/原因族证据）");
+        java.util.ArrayList<com.zai.adshield.core.AdDecisionCore.NodeView> p0a =
+                new java.util.ArrayList<>();
+        p0a.add(new SimNode("关闭该广告的原因", 200, 740, 700, 800));   // 面板标题（精确等值证据）
+        p0a.add(new SimNode("直接关闭", 790, 1090, 1060, 1150));       // 主按钮（真机 #79 @79%,46% 形态）
+        p0a.add(new SimNode("汽车厂商相关广告", 220, 1290, 700, 1350)); // 原因行（原因族 contains 证据）
+        p0a.add(new SimNode("反馈后将优化广告推荐", 220, 810, 700, 860));
+        FeedAdGuard.FeedDecision p0hit = FeedAdGuard.decideP0FromCandidates(p0a, 1080, 2400, false);
+        TestHost.check(p0hit != null && FeedAdGuard.ACTION_P0_PANEL_CLOSE.equals(p0hit.action)
+                        && "直接关闭".equals(p0hit.label) && p0hit.tapBounds[0] == 790,
+                "P0 标题+主按钮+原因行全在场（非 armed）→ 点「直接关闭」收面板");
+        // armed（我们 P1 拉起的面板）→ 主按钮单独即可
+        java.util.ArrayList<com.zai.adshield.core.AdDecisionCore.NodeView> p0b =
+                new java.util.ArrayList<>();
+        p0b.add(new SimNode("直接关闭", 790, 1090, 1060, 1150));
+        FeedAdGuard.FeedDecision p0armed = FeedAdGuard.decideP0FromCandidates(p0b, 1080, 2400, true);
+        TestHost.check(p0armed != null && "直接关闭".equals(p0armed.label),
+                "P0 armed：主按钮单独在场即出手（P1 拉起的面板）");
+        // 非 armed 只有主按钮、无标题/原因族证据 → 拒（宁漏勿误）
+        TestHost.check(FeedAdGuard.decideP0FromCandidates(p0b, 1080, 2400, false) == null,
+                "P0 非 armed 裸「直接关闭」无面板证据 → 拒（普通页面的直接关闭绝不裸点）");
+        // 原因族 contains 证据（无标题）也放行
+        java.util.ArrayList<com.zai.adshield.core.AdDecisionCore.NodeView> p0c =
+                new java.util.ArrayList<>();
+        p0c.add(new SimNode("直接关闭", 790, 1090, 1060, 1150));
+        p0c.add(new SimNode("重复收到相同素材", 220, 1350, 700, 1410));
+        FeedAdGuard.FeedDecision p0reason = FeedAdGuard.decideP0FromCandidates(p0c, 1080, 2400, false);
+        TestHost.check(p0reason != null && "直接关闭".equals(p0reason.label),
+                "P0 原因族 contains 证据（相同素材）在场 → 放行（真机菜单标题缺场常态）");
+        // 只有标题、无主按钮 → null（点了标题也没用）
+        java.util.ArrayList<com.zai.adshield.core.AdDecisionCore.NodeView> p0d =
+                new java.util.ArrayList<>();
+        p0d.add(new SimNode("关闭该广告的原因", 200, 740, 700, 800));
+        TestHost.check(FeedAdGuard.decideP0FromCandidates(p0d, 1080, 2400, false) == null,
+                "P0 只标题无主按钮 → null（标题不是可点目标）");
+        // 巨横幅「直接关闭」CTA（100% 屏宽）→ 形态闸拒
+        java.util.ArrayList<com.zai.adshield.core.AdDecisionCore.NodeView> p0e =
+                new java.util.ArrayList<>();
+        p0e.add(new SimNode("关闭该广告的原因", 200, 740, 700, 800));
+        p0e.add(new SimNode("直接关闭", 0, 1090, 1080, 1150)); // 全宽巨横幅
+        TestHost.check(FeedAdGuard.decideP0FromCandidates(p0e, 1080, 2400, true) == null,
+                "P0 形态闸拒巨横幅「直接关闭」CTA（绝不进面板候选）");
+        TestHost.check(FeedAdGuard.decideP0FromCandidates(null, 1080, 2400, true) == null,
+                "P0 null 候选安全");
+        TestHost.check(FeedAdGuard.isPanelTitleWord("关闭该广告的原因")
+                        && !FeedAdGuard.isPanelTitleWord("关闭广告"),
+                "isPanelTitleWord 精确等值（「关闭广告」短词不是面板标题）");
+        TestHost.check(FeedAdGuard.isCloseIconWord("×") && FeedAdGuard.isCloseIconWord("关闭")
+                        && !FeedAdGuard.isCloseIconWord("X") && !FeedAdGuard.isCloseIconWord("关闭广告"),
+                "isCloseIconWord 精确等值（拉丁 X 不收 · 「关闭广告」非直关词）");
+        TestHost.check(FeedAdGuard.P0_SEARCH_WORDS.length >= 6
+                        && FeedAdGuard.P0_SEARCH_WORDS[0].equals("直接关闭"),
+                "P0_SEARCH_WORDS 直查词表在场（直接关闭置首）");
+
+        /* ════ S11 v7.4.0 P1X 卡片直关真值表（12 项）════ */
+        TestHost.suite("FeedAdGuard · S11 P1X 卡片直关（闸⑥：×/关闭 + 广告上下文 + 同行近距）");
+        // ZOL/market 真机卡片形态（截图2）：卡片头「今日推荐/来自广告推荐」+ 右上角 ×
+        java.util.ArrayList<com.zai.adshield.core.AdDecisionCore.NodeView> zolClose =
+                new java.util.ArrayList<>();
+        zolClose.add(new SimNode("×", 1000, 700, 1060, 760));          // 卡片右上角直关钮
+        java.util.ArrayList<com.zai.adshield.core.AdDecisionCore.NodeView> zolCtx =
+                new java.util.ArrayList<>();
+        zolCtx.add(new SimNode("来自广告推荐", 60, 700, 300, 760));    // 卡片头披露（同行同排）
+        FeedAdGuard.FeedDecision zolHit = FeedAdGuard.decideP1XFromCandidates(zolClose, zolCtx, 1080, 2400);
+        TestHost.check(zolHit != null && FeedAdGuard.ACTION_P1X_CLOSE.equals(zolHit.action)
+                        && "×".equals(zolHit.label) && zolHit.tapBounds[0] == 1000,
+                "P1X ZOL 卡片：× 直关钮 + 来自广告推荐上下文（同行）→ 直点即关");
+        // 「关闭」文案钮（日志 #80 20:16:55 真机实锤形态）
+        java.util.ArrayList<com.zai.adshield.core.AdDecisionCore.NodeView> mkClose =
+                new java.util.ArrayList<>();
+        mkClose.add(new SimNode("关闭", 950, 680, 1060, 760));
+        java.util.ArrayList<com.zai.adshield.core.AdDecisionCore.NodeView> mkCtx =
+                new java.util.ArrayList<>();
+        mkCtx.add(new SimNode("广告推荐", 60, 700, 300, 760));
+        FeedAdGuard.FeedDecision mkHit = FeedAdGuard.decideP1XFromCandidates(mkClose, mkCtx, 1080, 2400);
+        TestHost.check(mkHit != null && "关闭".equals(mkHit.label),
+                "P1X market 卡片：「关闭」钮 + 广告推荐上下文 → 直点即关（#80 实锤场景）");
+        // 无广告上下文 → 绝不裸点（#80 20:16:46 PhotoViewV16 相册关闭钮反例）
+        java.util.ArrayList<com.zai.adshield.core.AdDecisionCore.NodeView> pvClose =
+                new java.util.ArrayList<>();
+        pvClose.add(new SimNode("关闭", 950, 680, 1060, 760));
+        java.util.ArrayList<com.zai.adshield.core.AdDecisionCore.NodeView> pvCtx =
+                new java.util.ArrayList<>();
+        pvCtx.add(new SimNode("图片第1张共9张", 60, 300, 700, 360));    // 相册内容（无广告语义）
+        TestHost.check(FeedAdGuard.decideP1XFromCandidates(pvClose, pvCtx, 1080, 2400) == null,
+                "P1X 无广告上下文绝不裸点「关闭」（相册/普通对话框反例闸）");
+        // 合法披露角标也作上下文证据（角标在场=广告在场）
+        java.util.ArrayList<com.zai.adshield.core.AdDecisionCore.NodeView> badgeCtx =
+                new java.util.ArrayList<>();
+        badgeCtx.add(new SimNode("广告", 60, 700, 130, 760));           // 合法角标（小形态）
+        FeedAdGuard.FeedDecision badgeCtxHit = FeedAdGuard.decideP1XFromCandidates(zolClose, badgeCtx, 1080, 2400);
+        TestHost.check(badgeCtxHit != null && "×".equals(badgeCtxHit.label),
+                "P1X 合法披露角标作上下文证据（角标在场=广告在场）→ 直关");
+        // 巨大容器「×」（广告主体大图）→ 形态闸拒
+        java.util.ArrayList<com.zai.adshield.core.AdDecisionCore.NodeView> bigClose =
+                new java.util.ArrayList<>();
+        bigClose.add(new SimNode("×", 0, 0, 972, 960));
+        TestHost.check(FeedAdGuard.decideP1XFromCandidates(bigClose, zolCtx, 1080, 2400) == null,
+                "P1X 形态闸拒广告主体大容器「×」（绝不点广告本体）");
+        // 同行近距门：上下文在页头（y=4%），× 在页脚（y=90%）→ 远距拒
+        java.util.ArrayList<com.zai.adshield.core.AdDecisionCore.NodeView> farCtx =
+                new java.util.ArrayList<>();
+        farCtx.add(new SimNode("来自广告推荐", 60, 80, 300, 140));
+        java.util.ArrayList<com.zai.adshield.core.AdDecisionCore.NodeView> farClose =
+                new java.util.ArrayList<>();
+        farClose.add(new SimNode("×", 1000, 2140, 1060, 2200));
+        TestHost.check(FeedAdGuard.decideP1XFromCandidates(farClose, farCtx, 1080, 2400) == null,
+                "P1X 同行近距门拒远距「×」（Δy≈86% 屏高——非同卡同排铁证）");
+        // null/空安全
+        TestHost.check(FeedAdGuard.decideP1XFromCandidates(null, zolCtx, 1080, 2400) == null
+                        && FeedAdGuard.decideP1XFromCandidates(zolClose, null, 1080, 2400) == null
+                        && FeedAdGuard.decideP1XFromCandidates(zolClose, zolCtx, 1080, 2400) != null,
+                "P1X null/空候选安全 + 完整路径命中对照");
+        // 直关词族契约
+        boolean closeWordsOk = true;
+        for (String w : FeedAdGuard.CLOSE_ICON_WORDS) {
+            if (!FeedAdGuard.isCloseIconWord(w)) closeWordsOk = false;
+        }
+        TestHost.check(closeWordsOk && FeedAdGuard.CLOSE_ICON_WORDS.length == 6,
+                "CLOSE_ICON_WORDS 6 词全过精确等值闸（× 家族 5 + 关闭）");
+        boolean ctxWordsOk = FeedAdGuard.AD_CONTEXT_WORDS.length == 3
+                && FeedAdGuard.AD_CONTEXT_WORDS[0].equals("来自广告推荐");
+        TestHost.check(ctxWordsOk, "AD_CONTEXT_WORDS 3 词在场（来自广告推荐真机文案置首）");
+        // 不可见直关钮拒
+        SimNode invX = new SimNode("×", 1000, 700, 1060, 760);
+        invX.visible = false;
+        java.util.ArrayList<com.zai.adshield.core.AdDecisionCore.NodeView> invClose =
+                new java.util.ArrayList<>();
+        invClose.add(invX);
+        TestHost.check(FeedAdGuard.decideP1XFromCandidates(invClose, zolCtx, 1080, 2400) == null,
+                "P1X 不可见直关钮拒（visible=false）");
+        // P2 armed 对「×」零动作（× 不是中性项——直关归 P1X，收菜单归 P2）
+        java.util.ArrayList<com.zai.adshield.core.AdDecisionCore.NodeView> xOnly =
+                new java.util.ArrayList<>();
+        xOnly.add(new SimNode("×", 1000, 700, 1060, 760));
+        TestHost.check(FeedAdGuard.decideP2FromCandidates(xOnly, 1080, 2400, true) == null,
+                "「×」不是中性项（P2 零动作——分工：P1X 直关 / P2 收菜单）");
+
+        /* ════ S12 v7.4.0 真机截图文案重建（截图1/2/3/6 逐字树）（15 项）════ */
+        TestHost.suite("FeedAdGuard · S12 真机截图文案重建（微信原因面板 / ZOL 推荐卡 / ZOL 反馈菜单）");
+        // 截图1/6 微信「关闭该广告的原因」面板（候选=原生直查模拟：直接关闭+标题+5 原因行）
+        java.util.ArrayList<com.zai.adshield.core.AdDecisionCore.NodeView> wxPanel =
+                new java.util.ArrayList<>();
+        wxPanel.add(new SimNode("关闭该广告的原因", 200, 740, 700, 800));
+        wxPanel.add(new SimNode("反馈后将优化广告推荐", 220, 810, 700, 860));
+        wxPanel.add(new SimNode("直接关闭", 790, 1090, 1060, 1150));
+        wxPanel.add(new SimNode("汽车厂商相关广告", 220, 1290, 700, 1350));
+        wxPanel.add(new SimNode("不喜欢该品牌", 220, 1350, 700, 1410));
+        wxPanel.add(new SimNode("重复收到相同素材", 220, 1410, 700, 1470));
+        wxPanel.add(new SimNode("其他原因", 220, 1470, 700, 1530));
+        wxPanel.add(new SimNode("不喜欢类似产品", 220, 1530, 700, 1590));
+        FeedAdGuard.FeedDecision wxP0 = FeedAdGuard.decideP0FromCandidates(wxPanel, 1080, 2400, false);
+        TestHost.check(wxP0 != null && FeedAdGuard.ACTION_P0_PANEL_CLOSE.equals(wxP0.action)
+                        && "直接关闭".equals(wxP0.label),
+                "S12 微信面板逐字树（截图1/6）：P0 直通「直接关闭」（P1 角标识别失败也收得掉）");
+        TestHost.check(wxP0 != null && wxP0.tapBounds[0] == 790 && wxP0.tapBounds[1] == 1090,
+                "S12 微信面板：tapBounds==主按钮自身（绝不面板容器/原因行）");
+        // 同面板 armed P2：直接关闭优先级最高（数组序第一）
+        FeedAdGuard.FeedDecision wxP2 = FeedAdGuard.decideP2FromCandidates(wxPanel, 1080, 2400, true);
+        TestHost.check(wxP2 != null && FeedAdGuard.ACTION_P2_CLOSE.equals(wxP2.action)
+                        && "直接关闭".equals(wxP2.label),
+                "S12 微信面板 armed P2：「直接关闭」优先级置顶（v7.4.0 修复——旧表缺此词=收不掉）");
+        // 原因行/副文案绝不在中性项（替用户选原因=越权）
+        TestHost.check(!FeedAdGuard.isNeutralCloseItem("汽车厂商相关广告")
+                        && !FeedAdGuard.isNeutralCloseItem("不喜欢该品牌")
+                        && !FeedAdGuard.isNeutralCloseItem("重复收到相同素材")
+                        && !FeedAdGuard.isNeutralCloseItem("其他原因")
+                        && !FeedAdGuard.isNeutralCloseItem("不喜欢类似产品")
+                        && !FeedAdGuard.isNeutralCloseItem("反馈后将优化广告推荐"),
+                "S12 原因行/副文案绝不代点（替用户选反馈原因=越权）");
+        // 截图2 ZOL 推荐卡（候选=直查模拟：今日推荐/来自广告推荐/×/立即打开 CTA）
+        java.util.ArrayList<com.zai.adshield.core.AdDecisionCore.NodeView> zolCard =
+                new java.util.ArrayList<>();
+        zolCard.add(new SimNode("来自广告推荐", 60, 700, 300, 760));
+        zolCard.add(new SimNode("今日推荐", 60, 640, 220, 700));
+        zolCard.add(new SimNode("×", 1000, 700, 1060, 760));
+        zolCard.add(new SimNode("看书伤眼，不如试一试听书", 60, 800, 900, 860));   // 广告正文（绝不点）
+        zolCard.add(new SimNode("立即打开", 60, 1100, 300, 1160));                  // CTA（绝不点）
+        java.util.ArrayList<com.zai.adshield.core.AdDecisionCore.NodeView> zolCloseC =
+                new java.util.ArrayList<>();
+        zolCloseC.add(new SimNode("×", 1000, 700, 1060, 760));
+        zolCloseC.add(new SimNode("立即打开", 60, 1100, 300, 1160)); // CTA 混进候选也不中（非直关词）
+        FeedAdGuard.FeedDecision zolP1X = FeedAdGuard.decideP1XFromCandidates(zolCloseC, zolCard, 1080, 2400);
+        TestHost.check(zolP1X != null && "×".equals(zolP1X.label) && zolP1X.tapBounds[0] == 1000,
+                "S12 ZOL 推荐卡逐字树（截图2）：P1X 直点「×」（CTA 混入候选不中——非直关词）");
+        TestHost.check(!FeedAdGuard.isCloseIconWord("立即打开") && !FeedAdGuard.isCloseIconWord("看书伤眼"),
+                "S12 广告正文/CTA 绝不是直关词（×/关闭精确等值闸）");
+        // P1 角标路径对 ZOL 卡片：无合法角标（来自广告推荐 6 字 contains 不中）→ null
+        TestHost.check(FeedAdGuard.decideP1FromCandidates(zolCard, 1080, 2400) == null,
+                "S12 ZOL 卡片 P1 路零命中（「来自广告推荐」非精确等值角标——P1X 才是正路）");
+        // 截图3 ZOL 反馈菜单（无法关闭/不感兴趣/举报广告/原因标签/复制广告ID）
+        java.util.ArrayList<com.zai.adshield.core.AdDecisionCore.NodeView> zolMenu =
+                new java.util.ArrayList<>();
+        zolMenu.add(new SimNode("无法关闭", 200, 700, 500, 760));
+        zolMenu.add(new SimNode("不感兴趣", 200, 780, 500, 840));
+        zolMenu.add(new SimNode("举报广告", 200, 860, 500, 920));
+        zolMenu.add(new SimNode("虚假欺诈", 200, 940, 500, 1000));
+        zolMenu.add(new SimNode("点击复制广告ID", 200, 1220, 700, 1280));
+        FeedAdGuard.FeedDecision zolP2 = FeedAdGuard.decideP2FromCandidates(zolMenu, 1080, 2400, true);
+        TestHost.check(zolP2 != null && "不感兴趣".equals(zolP2.label),
+                "S12 ZOL 反馈菜单逐字树（截图3）：armed P2 只收「不感兴趣」");
+        TestHost.check(!FeedAdGuard.isNeutralCloseItem("无法关闭")
+                        && !FeedAdGuard.isNeutralCloseItem("举报广告")
+                        && !FeedAdGuard.isNeutralCloseItem("点击复制广告ID")
+                        && !FeedAdGuard.isNeutralCloseItem("虚假欺诈"),
+                "S12 「无法关闭/举报广告/复制广告ID/原因标签」绝不代点（非中性项）");
+        TestHost.check(FeedAdGuard.isExtendedActionItem("举报广告")
+                        && FeedAdGuard.isExtendedActionItem("点击复制广告ID"),
+                "S12 举报广告/复制广告ID 在扩展动作表（绝不代点闸）");
+        // 微信朋友圈「广告」角标（截图4/5）P1 路命中（候选式）
+        java.util.ArrayList<com.zai.adshield.core.AdDecisionCore.NodeView> wxBadge =
+                new java.util.ArrayList<>();
+        wxBadge.add(new SimNode("小鹏汽车： 12.38万元起", 60, 640, 900, 700));  // 广告正文（噪声）
+        wxBadge.add(new SimNode("广告∨", 990, 640, 1120, 700));                // 真机角标（纯符号尾∨）
+        FeedAdGuard.FeedDecision wxP1 = FeedAdGuard.decideP1FromCandidates(wxBadge, 1080, 2400);
+        TestHost.check(wxP1 != null && FeedAdGuard.ACTION_P1_BADGE.equals(wxP1.action)
+                        && "广告∨".equals(wxP1.label),
+                "S12 微信角标「广告∨」（截图4/5 纯符号尾∨）P1 命中——正文噪声不中");
+        // 三路分工总检：P0 收面板 / P1X 直关卡 / P1角标→P2收菜单；同窗全绿
+        TestHost.check(wxP0 != null && zolP1X != null && wxP1 != null,
+                "S12 三路分工全绿总检（P0 面板直通 + P1X 卡片直关 + P1 角标两段式）");
 
         TestHost.done();
     }

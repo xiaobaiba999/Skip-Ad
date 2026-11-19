@@ -461,6 +461,32 @@ public class AdSkipService extends AccessibilityService {
     /* v7.2.0 feed 未命中诊断（扫描日志上传未命中问题）：30s 节流计数 */
     private long feedMissAt;
     private long feedMisses;
+    /* v7.4.0 P0 面板直通上下文窗：最近一次「信息流窗在场」时刻（按包记账）——
+     * 原因面板是 Dialog/FrameLayout 覆盖窗（isFeedWindow 会拒），P0 直通须
+     * 「90s 内进过信息流窗」上下文才允许直查（微信聊天主界面零扫描红线由
+     * 覆盖窗门 + 上下文窗双闸保持）。 */
+    private final java.util.HashMap<String, Long> lastFeedWinAt = new java.util.HashMap<String, Long>();
+    /* v7.4.0 空闲巡检：用户停下刷屏盯着广告看时 content-changed 零事件 =
+     * 零扫描（日志 #79/#80 实锤：广告静止在屏 2 分钟引擎全程盲）。巡检
+     * Runnable 2.5s 一扫，只在信息流窗在场时存活（离窗/切包/masterOff 即停
+     * ——功耗红线不破：一扫 = 数词 contains 直查，无 DFS）。 */
+    private boolean feedPatrolLive;
+    private String feedPatrolPkg;
+    private String feedPatrolCls;
+    private final Runnable feedPatrol = new Runnable() {
+        @Override
+        public void run() {
+            String p = feedPatrolPkg;
+            if (p == null || !masterOn || !bound || !p.equals(lastFgPkg)
+                    || !com.zai.adshield.core.FeedAdGuard.isFeedWindow(p, winClassOf(p))) {
+                feedPatrolLive = false;
+                feedPatrolPkg = null;
+                return; // 离窗/切包/暂停 → 巡检自停（绝不空转耗电）
+            }
+            maybeFeedScan(p, System.currentTimeMillis(), true);
+            handler.postDelayed(this, com.zai.adshield.core.FeedAdGuard.FEED_PATROL_MS);
+        }
+    };
     /* v7.2.0 多点防线 I：同指纹目标击数（每窗最多 2 击，第 3 击起静默——
      * 与 firedTargetAt 时间静默互斥成双保险） */
     private final java.util.HashMap<String, Integer> firedTargetCount = new java.util.HashMap<String, Integer>();
@@ -1324,6 +1350,9 @@ public class AdSkipService extends AccessibilityService {
     @Override
     public void onDestroy() {
         bound = false; // v4.4.0：销毁即非存活
+        handler.removeCallbacks(feedPatrol); // v7.4.0：巡检链随服务销毁拆除
+        feedPatrolLive = false;
+        feedPatrolPkg = null;
         try {
             if (screenRx != null) unregisterReceiver(screenRx);
         } catch (Throwable ignored) {
@@ -1646,6 +1675,11 @@ public class AdSkipService extends AccessibilityService {
                  * v5.3.0：CLEAN 档案窗跳过内联首扫——bumpScanChain 已排探针
                  * 哨兵，此处再全量扫就把省电档案的意义扫没了。 */
                 if (!profileSuppressScan(pkg, cls)) tryScan(pkg, winAt(pkg), 0);
+                /* v7.4.0：进入信息流窗（state-changed）即拉起 feed 扫描/巡检——
+                 * 只挂在 content-changed 上的旧设计在「用户进朋友圈后静止」时
+                 * 零事件零扫描（日志 #79/#80 实锤死因之一）。此处只做窗级门+
+                 * 节流判定，非信息流窗零成本直接返回。 */
+                maybeFeedScan(pkg, now);
                 break;
             }
             case AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED: {
@@ -2408,11 +2442,28 @@ public class AdSkipService extends AccessibilityService {
      *  · armed 只走 P2（收菜单），绝不再点角标（菜单未及拉起时回落 P1
      *    =角标被连点 = 多点——v7.1.0 隐蔽病灶顺手根治）。 */
     private void maybeFeedScan(String pkg, long now) {
+        maybeFeedScan(pkg, now, false);
+    }
+
+    /** v7.4.0 巡检来源标记：patrol=true 表示本次扫描由 2.5s 空闲巡检拉起
+     *（事件静默期补扫——未命中诊断降频到 5 分钟一条，日志不刷屏）。 */
+    private void maybeFeedScan(String pkg, long now, boolean patrol) {
         if (!masterOn) return;
         boolean armed = pkg.equals(feedArmedPkg)
                 && now - feedArmedAt <= com.zai.adshield.core.FeedAdGuard.P1_ARM_MS;
+        String cls = winClassOf(pkg);
+        if (!armed && com.zai.adshield.core.FeedAdGuard.isFeedWindow(pkg, cls)) {
+            lastFeedWinAt.put(pkg, now);   // P0 上下文窗记账（90s 内进过信息流窗）
+            ensureFeedPatrol(pkg, cls);    // v7.4.0 空闲巡检（事件静默期照扫）
+        }
         if (!armed) {
-            if (!com.zai.adshield.core.FeedAdGuard.isFeedWindow(pkg, winClassOf(pkg))) return; // 名单门+微信 sns 窗门
+            /* ═══ v7.4.0 P0 面板直通 ═══：覆盖窗（Dialog/FrameLayout 类）+
+             * 90s 内进过信息流窗 → 面板特征直查（「直接关闭」+标题/原因族证据
+             * 闸）。真机日志 #79 20:15:23 实锤：用户手拉的原因面板节点就在树中
+             * （直接关闭@(79%,46%)等候选可见），P1 角标识别失败也收得掉——
+             * 「其他 app 内的广告主动关闭不了」的兜底闭环。 */
+            if (p0Eligible(pkg, cls, now) && scanP0(pkg, now)) return;
+            if (!com.zai.adshield.core.FeedAdGuard.isFeedWindow(pkg, cls)) return; // 名单门+微信 sns 窗门
             if (now - winAt(pkg) <= FEED_START_MS) return; // v7.2.0：12s→2.5s（feed 窗非开屏窗）
         }
         long throttle = armed
@@ -2424,6 +2475,7 @@ public class AdSkipService extends AccessibilityService {
         try {
             android.view.accessibility.AccessibilityNodeInfo[] roots = collectRoots(pkg);
             if (roots.length == 0) return;
+            String missSamples = null; // v7.4.0 诊断：角标词命中样本（未过闸也可见）
             for (android.view.accessibility.AccessibilityNodeInfo r : roots) {
                 if (r == null) continue;
                 com.zai.adshield.core.AdDecisionCore.NodeView rootView = new NodeAdapter(r);
@@ -2442,10 +2494,27 @@ public class AdSkipService extends AccessibilityService {
                             cands, screenWidth, screenHeight);
                     if (fd == null) fd = com.zai.adshield.core.FeedAdGuard.decideP1(
                             rootView, screenWidth, screenHeight); // DFS 兜底
+                    if (fd == null) {
+                        /* ═══ v7.4.0 P1X 卡片直关 ═══：角标未中时补一路——
+                         * 「×/关闭」直关钮（精确等值小形态）+ 同窗广告上下文证据
+                         * （来自广告推荐 contains 或合法披露角标）+ 同行近距门。
+                         * 真机日志 #80 20:16:55 实锤：market/ZOL 卡片的「关闭」
+                         * 钮此前只能用户手动点（引擎只学到位置）。 */
+                        java.util.ArrayList<com.zai.adshield.core.AdDecisionCore.NodeView> ctx =
+                                new java.util.ArrayList<>(cands); // 角标候选自带「来自广告推荐」类上下文
+                        ctx.addAll(nativeFindTexts(r, com.zai.adshield.core.FeedAdGuard.AD_CONTEXT_WORDS));
+                        java.util.ArrayList<com.zai.adshield.core.AdDecisionCore.NodeView> closeCands =
+                                nativeFindTexts(r, com.zai.adshield.core.FeedAdGuard.CLOSE_ICON_WORDS);
+                        fd = com.zai.adshield.core.FeedAdGuard.decideP1XFromCandidates(
+                                closeCands, ctx, screenWidth, screenHeight);
+                    }
+                    if (fd == null && missSamples == null) {
+                        missSamples = candSamples(cands); // 角标词命中但被闸的样本（下轮日志直读真机形态）
+                    }
                 }
                 if (fd != null && executeFeed(pkg, fd, now)) return;
             }
-            if (!armed) logFeedMiss(pkg, now); // v7.2.0 未命中诊断（30s 节流）
+            if (!armed) logFeedMiss(pkg, cls, now, patrol, missSamples); // v7.4.0 诊断增强
         } catch (Throwable ignored) {
         }
     }
@@ -2473,14 +2542,96 @@ public class AdSkipService extends AccessibilityService {
         return out;
     }
 
-    /** v7.2.0 feed 未命中诊断（扫描日志上传未命中问题）：feed 名单窗内常规
-     *  扫描零角标 → 30s 节流记一行（随引擎日志上传——用户反馈「全都没拦截」
-     *  时，日志能区分「窗内无角标」与「角标被闸住」）。 */
-    private void logFeedMiss(String pkg, long now) {
-        if (now - feedMissAt < 30000) return;
+    /** v7.4.0 空闲巡检管理：信息流窗在场时启动 2.5s 巡检链（同包同窗幂等
+     *  ——快照变更才重挂；离窗/切包/masterOn 关 → 巡检自停）。 */
+    private void ensureFeedPatrol(String pkg, String cls) {
+        if (!masterOn || !bound) return;
+        if (!com.zai.adshield.core.FeedAdGuard.isFeedWindow(pkg, cls)) return;
+        if (feedPatrolLive && pkg.equals(feedPatrolPkg) && cls.equals(feedPatrolCls)) return;
+        feedPatrolPkg = pkg;
+        feedPatrolCls = cls;
+        handler.removeCallbacks(feedPatrol);
+        handler.postDelayed(feedPatrol, com.zai.adshield.core.FeedAdGuard.FEED_PATROL_MS);
+        feedPatrolLive = true;
+    }
+
+    /** v7.4.0 P0 面板直通资格门：名单 App + 覆盖窗（Dialog/FrameLayout 类——
+     *  非 Activity/UI 整窗）+ 90s 内进过信息流窗（微信聊天主界面零扫描红线
+     *  由覆盖窗门保持：LauncherUI 是整窗，永不开 P0 直查）。 */
+    private boolean p0Eligible(String pkg, String cls, long now) {
+        if (!com.zai.adshield.core.FeedAdGuard.isFeedApp(pkg)) return false;
+        if (cls == null || cls.length() == 0) return false;
+        if (cls.contains("Activity") || cls.endsWith("UI") || cls.contains("Window")) return false; // 整窗 → 非 P0 场
+        Long t = lastFeedWinAt.get(pkg);
+        return t != null && now - t <= com.zai.adshield.core.FeedAdGuard.P0_FEED_CTX_MS;
+    }
+
+    /** v7.4.0 P0 面板直通扫描：面板特征词直查（直接关闭/标题族/原因族）→
+     *  decideP0FromCandidates 语义+形态+证据闸 → 命中即点主按钮收面板。 */
+    private boolean scanP0(String pkg, long now) {
+        try {
+            android.view.accessibility.AccessibilityNodeInfo[] roots = collectRoots(pkg);
+            if (roots.length == 0) return false;
+            for (android.view.accessibility.AccessibilityNodeInfo r : roots) {
+                if (r == null) continue;
+                java.util.ArrayList<com.zai.adshield.core.AdDecisionCore.NodeView> cands =
+                        nativeFindTexts(r, com.zai.adshield.core.FeedAdGuard.P0_SEARCH_WORDS);
+                com.zai.adshield.core.FeedAdGuard.FeedDecision fd =
+                        com.zai.adshield.core.FeedAdGuard.decideP0FromCandidates(
+                                cands, screenWidth, screenHeight, false);
+                if (fd != null && executeFeed(pkg, fd, now)) return true;
+            }
+        } catch (Throwable ignored) {
+        }
+        return false;
+    }
+
+    /** v7.4.0 未命中诊断样本：角标词原生直查命中的前 2 个候选（label@(cx%,cy%)）
+     *  ——被闸也照登，下轮上传日志直接读到真机角标形态（「根据扫描日志进行
+     *  功能实现」的数据闭环）。 */
+    private String candSamples(java.util.ArrayList<com.zai.adshield.core.AdDecisionCore.NodeView> cands) {
+        if (cands == null || cands.isEmpty()) return "";
+        StringBuilder sb = new StringBuilder();
+        int n = 0;
+        int w = screenWidth > 0 ? screenWidth : 1080;
+        int h = screenHeight > 0 ? screenHeight : 2400;
+        for (com.zai.adshield.core.AdDecisionCore.NodeView c : cands) {
+            if (c == null || n >= 2) break;
+            try {
+                String text = c.text();
+                String desc = c.desc();
+                String label = (text != null && text.length() > 0) ? text : desc;
+                if (label == null || label.trim().length() == 0) continue;
+                int[] b = c.bounds();
+                if (b == null || b.length < 4 || b[2] <= b[0] || b[3] <= b[1]) continue;
+                String t = label.trim();
+                if (t.length() > 12) t = t.substring(0, 12) + "…";
+                if (sb.length() > 0) sb.append(" · ");
+                sb.append(t).append("@(").append(Math.round(b[0] * 100.0 / w)).append("%,")
+                        .append(Math.round(b[1] * 100.0 / h)).append("%)");
+                n++;
+            } catch (Throwable ignored) {
+            }
+        }
+        return sb.toString();
+    }
+
+    /** v7.2.0→v7.4.0 feed 未命中诊断：事件来源 30s 节流 / 巡检来源 5 分钟
+     *  节流（巡检常驻期不刷屏）；样本（角标词命中但被闸的候选）随行——
+     *  上传日志直接区分「窗内无角标词命中」与「命中被闸（形态/语义）」。 */
+    private void logFeedMiss(String pkg, String cls, long now, boolean patrol, String samples) {
+        long gap = patrol ? 300000 : 30000;
+        if (now - feedMissAt < gap) return;
         feedMissAt = now;
         feedMisses++;
-        appendLog("🔍 信息流未命中（" + shortPkg(pkg) + "）：本窗无披露角标（正常内容流零命中为基线；如确有广告请把角标文案反馈给规则库）");
+        StringBuilder sb = new StringBuilder("🔍 信息流未命中（").append(shortPkg(pkg));
+        if (cls != null && cls.length() > 0) sb.append(" · ").append(cls);
+        sb.append("）：本窗无披露角标");
+        if (samples != null && samples.length() > 0) {
+            sb.append("（词命中样本：").append(samples).append("——均未过闸）");
+        }
+        sb.append(patrol ? "（空闲巡检）" : "");
+        appendLog(sb.toString());
     }
 
     /** v7.1.0 feed 决策执行：构造 Decision 走既有 execute()（免费获得用户让路/耐心预算/F·H 多点防线/人手手势派发/边界终闸） */
@@ -2504,6 +2655,14 @@ public class AdSkipService extends AccessibilityService {
             if (com.zai.adshield.core.FeedAdGuard.ACTION_P1_BADGE.equals(fd.action)) {
                 feedArmedPkg = pkg; feedArmedAt = now; // P1 出手 → armed 8s（P2 指纹窗）
                 appendLog("🛡 信息流广告 P1（" + shortPkg(pkg) + "）：披露角标「" + fd.label + "」出手 → 等关闭菜单（8s 内）");
+            } else if (com.zai.adshield.core.FeedAdGuard.ACTION_P1X_CLOSE.equals(fd.action)) {
+                feedArmedPkg = pkg; feedArmedAt = now; // v7.4.0：P1X 直关钮出手 → armed（「×」可能拉起反馈菜单，P2 顺手收）
+                bumpStat(pkg, "feed"); // v7.4.0：直关即关——单独记账
+                appendLog("🛡 信息流广告 P1X（" + shortPkg(pkg) + "）：卡片直关钮「" + fd.label + "」出手（广告上下文闸通过）→ 本条广告关闭");
+            } else if (com.zai.adshield.core.FeedAdGuard.ACTION_P0_PANEL_CLOSE.equals(fd.action)) {
+                feedArmedPkg = null; // P0 直通收面板 → 收兵
+                bumpStat(pkg, "feed"); // v7.4.0：面板直通记账
+                appendLog("🛡 信息流广告 P0（" + shortPkg(pkg) + "）：原因面板「直接关闭」直通 → 本条广告关闭");
             } else {
                 feedArmedPkg = null; // P2 完成 → 收兵
                 bumpStat(pkg, "feed"); // v7.2.0：信息流关闭单独记账（不虚增 auto）
@@ -3189,8 +3348,15 @@ public class AdSkipService extends AccessibilityService {
             }
         }
         // v4.2.0 用户意图让路：任何出手（点击/关闭/返回键/学习位置直点）
-        // 前统一校验——用户 4s 内点击过或正浏览自己打开的页面，一律让路
-        if (userYield(pkg, now)) return false;
+        // 前统一校验——用户 4s 内点击过或正浏览自己打开的页面，一律让路。
+        // v7.4.0 唯一豁免：P0 面板直通（feed_p0_panel_close）——用户手拉的
+        // 「关闭该广告的原因」面板正是「广告关不掉只能手动关」的求救信号，
+        // 代点主按钮「直接关闭」与用户意图完全同向（13 轮实锤：用户要的就
+        // 是广告消失）；P1/P1X/P2/其他路径让路红线一条不少。
+        if (!(d.reason != null && com.zai.adshield.core.FeedAdGuard.ACTION_P0_PANEL_CLOSE.equals(d.reason))
+                && userYield(pkg, now)) {
+            return false;
+        }
         String how = d.action + "/" + d.reason;
         lastGesturePkg = pkg; // v3.7.0：手势取消诊断日志用
         // v3.6.0：点击梯子预算——同窗点击 ≥MAX_CLICKS_PER_WIN 即优雅收手
