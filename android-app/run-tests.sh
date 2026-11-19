@@ -8,6 +8,10 @@
 #  ——名单外 App 插入广告角标+关闭钮真值表/九品牌 1:1 缩放/相册反例零出手）
 #  + SplashCountdownTest（兄弟节点倒计时/门控第 0 击起全次生效/中部边带图片跳过键
 #  /L1.5 角标在场关闭——用户实锤「不是每个都带倒计时·不是每次每个按钮都是一个位置」）。
+# v7.6.0：新增 AggressiveModeTest（激进模式·用户十五轮实锤「你可以激进一点暂时先
+#  放弃宁可漏拦绝不误触」——首击零门控时间线/重击 6s 封顶/1:1 人手多点防线时间线
+#  /九品牌触点钳制/决策梯子不变式）+ InterstitialGuardTest 重做为激进版
+#  （广告语境 contains 在场闸/关闭词扩表/interBoundaryCheck 终闸语义面收编）。
 set -e
 set -o pipefail
 
@@ -40,7 +44,7 @@ echo "    编译产出: $OUT/classes"
 echo "==> [2/3] 运行测试套件"
 TOTAL_PASS=0
 TOTAL_FAIL=0
-for SUITE in MiniProgramGuardTest DecisionGuardTest SubscriptionBuiltinTest RegressionCoreTest MultiDeviceMatrixTest NonMainstreamAppTest RestoreGuardTest PowerGovernorTest RuleGovernorTest ComplianceGuardTest TapPointMatrixTest HumanTapMatrixTest BrandFocus308Test ReleaseNotesTest SubMirrorTest FeedAdGuardTest RuleOrderTest InterstitialGuardTest SplashCountdownTest; do
+for SUITE in MiniProgramGuardTest DecisionGuardTest SubscriptionBuiltinTest RegressionCoreTest MultiDeviceMatrixTest NonMainstreamAppTest RestoreGuardTest PowerGovernorTest RuleGovernorTest ComplianceGuardTest TapPointMatrixTest HumanTapMatrixTest BrandFocus308Test ReleaseNotesTest SubMirrorTest FeedAdGuardTest RuleOrderTest InterstitialGuardTest SplashCountdownTest AggressiveModeTest; do
   echo ""
   echo "══ $SUITE ══"
   if java -cp "$OUT/classes" "com.zai.adshield.test.$SUITE" | tee "$OUT/$SUITE.log"; then

@@ -265,6 +265,37 @@ public final class ComplianceGuard {
     }
 
     /**
+     * v7.6.0 插屏决策专用边界终闸（execute 的 inter_close 分支）。
+     * 死因（用户实锤「软件内插入的广告不仅没跳过」）：v7.5.0
+     * INTER_CLOSE_WORDS 收了「知道了/我知道了/残忍离开」等词，但
+     * execute() 走通用 boundaryCheck——「知道了」不含跳过/关闭/skip/
+     * close/× → BND_FAIL_SEMANTIC 一票否决（终闸杀词：词表收了也白收，
+     * 出手永远被最后一道闸打回）。插屏专用终闸：
+     *  · 场景断言与 boundaryCheck 同源（零扫描/短信/相机/守护全拒）；
+     *  · 语义断言换源 InterstitialGuard.isInterstitialCloseWord（决策上游
+     *    已过「广告语境在场 contains + 精确等值 + 形态 ≤30%×≤12%」三闸，
+     *    此处复验词表成员身份——只对 inter_close 路径放行，绝无新增面）；
+     *  · 形态断言（面积 ≤35% 屏）与 boundaryCheck 同源。
+     */
+    public static int interBoundaryCheck(String label, int[] bounds, int screenW, int screenH,
+                                         String pkg, String cls) {
+        if (isZeroScanScenario(pkg, cls)) return BND_FAIL_SCENARIO;
+        if (AdDecisionCore.isSmsOverlayPkg(pkg) || AdDecisionCore.isCameraPkg(pkg)) return BND_FAIL_SCENARIO;
+        if (AdDecisionCore.isCameraClass(cls)) return BND_FAIL_SCENARIO;
+        if (AdDecisionCore.isGuardPkg(pkg)) return BND_FAIL_SCENARIO;
+        String t = label == null ? "" : label.trim();
+        if (!InterstitialGuard.isInterstitialCloseWord(t)) return BND_FAIL_SEMANTIC;
+        if (bounds == null || bounds.length < 4) return BND_FAIL_FORM;
+        /* v7.6.0 纵深防御：决策上游 closeFormOk（≤30%×≤12%）终闸复验——
+         * 通用面积闸（≤35% 屏）拦不住 400×300（4.6% 屏）的宽扁 CTA——
+         * 关闭钮是钮不是横幅，per-dimension 形态闸在这里再拦一道。 */
+        if (!InterstitialGuard.closeFormOk(bounds, screenW, screenH)) return BND_FAIL_FORM;
+        double area = areaRatioAdaptive(bounds, screenW, screenH);
+        if (area <= 0 || area > AdDecisionCore.SKIP_AREA_MAX) return BND_FAIL_FORM;
+        return BND_OK;
+    }
+
+    /**
      * 权限使用审计（模块四）：7 项权限 → 用途/触发时机全量映射。
      * App 内「关于 → 权限使用审计」展示 + 日志上传自动附带。
      * 返回逐行审计报告（纯函数：权限清单与 Manifest 同步维护）。

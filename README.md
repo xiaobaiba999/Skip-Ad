@@ -2,12 +2,12 @@
 
 # Skip-Ad · 开屏卫士
 
-**安卓开屏广告秒跳引擎 —— 露头就跳、弹窗自动关、App 内广告主动关闭（v7.5.0 三路：信息流三路根治 + 插屏卫士名单外全量兜底 + 开屏倒计时/位置解耦——开屏按钮不是每个都带倒计时、不是每次都在同一个位置，插入广告几乎都带「广告」两个字），白名单全量应用列表、1:1 人手模拟触点、更新链 SHA-256 完整性校验**
+**安卓开屏广告秒跳引擎 —— 露头就跳（v7.6.0 激进模式：首击零门控不再等倒计时走完）、弹窗自动关、App 内广告主动关闭（插屏「广告」语境闸 contains 重做 + 关闭词扩表残忍离开/不再看/知道了 + 终闸语义面收编），白名单全量应用列表、1:1 人手模拟触点、更新链 SHA-256 完整性校验**
 
 [![Releases](https://img.shields.io/github/v/release/xiaobaiba999/Skip-Ad?style=flat-square&label=%E6%9C%80%E6%96%B0%E5%8F%91%E5%B8%83)](https://github.com/xiaobaiba999/Skip-Ad/releases/latest)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](#许可)
 [![APK](https://img.shields.io/badge/APK-832KB-orange?style=flat-square)](https://github.com/xiaobaiba999/Skip-Ad/releases/latest)
-[![Tests](https://img.shields.io/badge/JVM%E6%96%AD%E8%A8%80-4253%20%E2%9C%85-brightgreen?style=flat-square)](docs/test-reports/round-36.json)
+[![Tests](https://img.shields.io/badge/JVM%E6%96%AD%E8%A8%80-4314%20%E2%9C%85-brightgreen?style=flat-square)](docs/test-reports/round-37.json)
 [![Matrix](https://img.shields.io/badge/%E6%9C%BA%E5%9E%8B%E7%9F%A9%E9%98%B5-9%E5%93%81%E7%89%8C%E5%8F%8A%E5%AD%90%E5%93%81%E7%89%8C%286%E6%9C%BA%E5%9E%8B-308-blue?style=flat-square)](android-app/tests/com/zai/adshield/test/BrandFocus308Test.java)
 [![HumanTap](https://img.shields.io/badge/1%3A1%E4%BA%BA%E6%89%8B%E6%A8%A1%E6%8B%9F-%E8%AF%AF%E7%82%B9%E5%A4%9A%E7%82%B9%E6%A0%B9%E6%B2%BB-ff7043?style=flat-square)](android-app/tests/com/zai/adshield/test/HumanTapMatrixTest.java)
 [![Topic](https://img.shields.io/badge/topic-gkd--subscription-8e8e8e?style=flat-square)](https://github.com/topics/gkd-subscription)
@@ -28,17 +28,17 @@ Java 引擎 · GKD 订阅生态兼容 · [Releases](https://github.com/xiaobaiba
 | **隐私与安全** | 数据仅存本机；联网仅日志上传（脱敏）与更新检查；零定位/通讯录/存储权限；更新包安装前 SHA-256 逐字节校验（镜像投毒/换包自动拦截）；订阅规则支付/诱导词双否决（注入防线） |
 | **体积** | APK 832KB（含三源离线订阅快照 ~520KB）· 冷启动毫秒级 · 典型日功耗 0.05mWh 级 |
 
-## 当前版本 v7.5.0（2026-11-19）· 开屏倒计时/位置解耦 + 插屏卫士（名单外 App 插入广告主动关闭）
+## 当前版本 v7.6.0（2026-11-19）· 激进模式（开屏露头即点 + 插屏「广告」语境闸重做）
 
-**第十四轮实锤驱动的根治**（用户原话：「依旧不行，还有好多其他 app 的开屏都跳不了。开屏按钮跳过不是每个都带倒计时，不是每次每个按钮都是一个位置。app 内的插入的广告也是，它们几乎都带有广告两个字，扫描日志继续实现继续优化」）：开屏三死因（① 倒计时数字与「跳过」分属两个节点——parseCountdown(label)=0 首击白点烧耐心预算；② 门控只在第 1 击后生效——首击永远提前出手；③ 图片跳过键在左/右缘中部零收集）+ 插屏零覆盖（信息流两段式只在 20 款名单内，名单外 App 的插入广告三路全漏）。versionCode 75000 > 74000，覆盖安装即升级（授权/学习数据/已导入订阅全部保留）。
+**第十五轮实锤驱动的根治**（用户原话：「软件内插入的广告不仅没跳过，其他软件的开屏广告现在有的还跳不了了，或者非常非常慢，你可以激进一点暂时先放弃宁可漏拦绝不误触」）：开屏变慢（v7.5.0 门控从第 0 击起全次生效——所有带倒计时的开屏全等倒计时走完才出手，5s 广告白看 4.9s）+ 插屏闸①过严（精确等值三闸把「广告 · 了解详情」等真机变体全拒）+ 终闸杀词（「知道了」词表收了也被通用终闸一票否决）+ 带位/滚动窗双闸灭中部关闭钮。versionCode 76000 > 75000，覆盖安装即升级（授权/学习数据/已导入订阅全部保留）。
 
-1. **兄弟节点倒计时 + 门控第 0 击起全次生效**：穿山甲族「跳过」文案与倒计时数字分属两节点——独立数字（3/5s/3秒）在倒计时区（顶 35%/底 25%）或命中键近旁（|Δcy|≤25% 屏高）→ 并入门控（walk 与规则路径双接入）；倒计时门控改纯函数 gateCountdown 从第 0 击起生效（旧版首击永远立即出手=白点还占冷却烧耐心预算）；装饰数字逃生（1.6s 未跳）对任何击数都放行
-2. **中部边带图片跳过键（位置解耦）**：用户实锤「不是每次每个按钮都是一个位置」——旧角落几何只认顶 14%/底 18% 两带，左/右缘中部（任意高度）的无字小可点控件零收集；新增中部边带候选（strongOnly 分层门控：仅强广告形态可出手，树极简兜底不适用——FAB/悬浮钮误点防线）；learnableSkipShape 同步收编（手势候选可学习可代点）
-3. **插屏卫士 InterstitialGuard（名单外 App 全量兜底）**：用户实锤「插入的广告几乎都带有广告两个字」——合规披露角标（广告/推广/赞助）是最稳定的通用指纹；角标在场（闸⓪·isDisclosureBadge 语义+形态）+ 关闭钮（闸①× 家族>关闭族>跳过族>知道了族精确等值 + 闸②≤30% 宽×≤12% 高 + 闸③近旁|Δcy|≤35% 或顶/底带位）同场即收（李跳跳方法论：原生直查候选预算无关，深树插层也查到）；可滚动窗拒（闸④——信息流两段式领地）；execute() 既有防线全量复用（用户让路/耐心预算/多点防线/人手手势/通用终闸）
-4. **扫描日志插屏未命中诊断**：「扫描日志继续实现继续优化」的数据闭环——插屏未命中日志（30s 包级节流）带窗类 + 角标词命中样本（被闸也照登，与 feed 未命中同规约），上传日志即可定位缺哪种关闭词
-5. **探针词扩 skip + L1.5 角标在场关闭 + 全仓 4253 项断言全绿**：开屏探针增「skip」（英文 Skip 键先到先点）；决策阶梯新增 L1.5（角标在场+关闭键在场+广告形态树——任意位置出手，旧 L1.6 顶部 35% 闸把插屏右下/中部 × 全灭）；InterstitialGuardTest 83 项 + SplashCountdownTest 52 项新增（19 套件）
+1. **开屏首击零门控**：跳过键露头即点（绝大多数按钮立即可点，0ms 命中）——旧版把所有带倒计时的开屏按住等倒计时走完；首击白点后（attempts≥1）重击才等「将尽」（真倒计时按钮命中时机）；重击等待 6s 封顶（误检大数字不再无限等）；装饰数字逃生（1.6s 未跳）语义保持
+2. **插屏「广告」语境闸 contains 重做**：用户实锤「它们几乎都带有广告两个字」——变体千千万万，contains 一网打尽（≤10 字可见标签；超长正文虽含「广告」也不算语境节点）；语境节点只作在场证据绝不点击；非滚动窗零位置闸、滚动窗近旁铁证（|Δcy|≤35% 同排）可出手——名单外信息流卡片广告关闭钮也收；关闭钮形态闸保持（≤30% 屏宽 × ≤12% 屏高——广告主体几何兜底）
+3. **插屏关闭词扩表 + 终闸语义面收编**：残忍离开/残忍退出/残忍拒绝（游戏插屏标配）/不再看/不看了/暂不需要/不需要/Skip Ad 收编；新 ComplianceGuard.interBoundaryCheck（插屏专用终闸）把「知道了/残忍离开/不再看」收进语义面（旧版通用终闸一票否决——词表收了也白收）；「取消」激进模式下也保持拒收（误点面不可控）
+4. **插屏新窗首扫提速 + 扫描日志双样本**：窗切换即重置包级节流（插层出现当帧就扫）；插屏未命中日志带语境词+关闭词双样本（被闸也照登）——上传日志直接定位「语境不在场」还是「关闭钮被哪道闸拒」（李跳跳方法论原生直查主路径保持）
+5. **多点误点 1:1 仿真 + 全量测试**：首击唯一立即 + 重击等将尽（>1.6s）天然满足 F 同目标静默窗（人手双击下限）；MAX_STRIKES_PER_TARGET=2/MAX_CLICKS_PER_WIN=3/H 600ms 全保持；AggressiveModeTest 42 项（1:1 人手时间线/九品牌触点钳制）+ InterstitialGuardTest 重做 93 项（含死因复现断言）——20 套件 4314 项断言全绿
 
-历史版本全部归档在 [docs/CHANGELOG.md](docs/CHANGELOG.md)；本轮实录：[docs/OPTIMIZATION-v7.5.0.md](docs/OPTIMIZATION-v7.5.0.md)（含完整死因链与插屏卫士设计）。v7.4.0 信息流三路根治（P0 面板直通/P1X 卡片直关/空闲巡检）与 v7.3.0 安全加固全部保持。
+历史版本全部归档在 [docs/CHANGELOG.md](docs/CHANGELOG.md)；本轮实录：[docs/OPTIMIZATION-v7.6.0.md](docs/OPTIMIZATION-v7.6.0.md)（含完整死因链与激进模式设计）。v7.5.0 插屏卫士与开屏倒计时/位置解耦、v7.4.0 信息流三路根治、v7.3.0 安全加固全部保持。
 
 ## App 截图（真实 UI 截取）
 
@@ -98,11 +98,11 @@ android-app/
 - **1:1 人手模拟矩阵**：24 类真实设备几何 × **真实密度配对**（720p 遗留机 1.0~2.0 / QHD 旗舰 3.5~4.0 / 折叠内屏 2.0~2.6——真实世界设备组合）+ 全 7 档压力条件契约（可刺→安全落点 · 亚指腹→拒点）全绿
 - **设备自适应触点矩阵**：24 类真实设备几何 × 12 误触场景全绿；**订阅镜像链与快照归一**（SubMirrorTest 35 项）+ **版本描述规范**（ReleaseNotesTest 30 项）+ **规则使用顺序治理**（RuleOrderTest 39 项）+ **信息流广告卫士**（FeedAdGuardTest 131 项·v7.4 三路根治扩容：P0 面板直通/P1X 卡片直关真值表 + 真机截图文案逐字树重建）
 - 三十五轮自测轨迹见 [docs/test-reports/summary.md](docs/test-reports/summary.md)
-- 每轮报告：`docs/test-reports/round-N.json`（最新：[round-36](docs/test-reports/round-36.json) · 4253 断言全绿）
+- 每轮报告：`docs/test-reports/round-N.json`（最新：[round-37](docs/test-reports/round-37.json) · 4314 断言全绿）
 
 ## 安装
 
-1. [Releases](https://github.com/xiaobaiba999/Skip-Ad/releases/latest) 下载 APK（832KB）直接安装（v7.x 任何版本覆盖安装即升级 v7.5.0——versionCode 75000）；
+1. [Releases](https://github.com/xiaobaiba999/Skip-Ad/releases/latest) 下载 APK（832KB）直接安装（v7.x 任何版本覆盖安装即升级 v7.6.0——versionCode 76000）；
 2. 开启无障碍服务（系统会弹 10 秒安全确认，属正常防诈设计——开启一次后 App 内/通知栏即可控制，绝不再去系统设置）；
 3. 常被清理后台的机型（HyperOS 等）：App 首页「保活体检」只显示待处理项，点「去设置」逐项确认。
 

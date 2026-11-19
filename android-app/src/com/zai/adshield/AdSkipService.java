@@ -472,6 +472,7 @@ public class AdSkipService extends AccessibilityService {
      * 30s 包级诊断节流（扫描日志上传可定位缺哪种关闭词）。 */
     private final java.util.HashMap<String, Long> interScanAt = new java.util.HashMap<String, Long>();
     private final java.util.HashMap<String, Long> interMissAt = new java.util.HashMap<String, Long>();
+    private final java.util.HashMap<String, Long> interWinAt = new java.util.HashMap<String, Long>(); // v7.6.0：新窗提速（窗切换重置节流）
     private long interMisses;
     /* v7.4.0 空闲巡检：用户停下刷屏盯着广告看时 content-changed 零事件 =
      * 零扫描（日志 #79/#80 实锤：广告静止在屏 2 分钟引擎全程盲）。巡检
@@ -2697,7 +2698,9 @@ public class AdSkipService extends AccessibilityService {
      * 免费复用（用户让路/耐心预算/F·H 多点防线/人手手势/通用边界终闸
      * ——×/关闭/跳过族全在「关闭方向」语义面内）。 */
 
-    /** 插屏扫描入口（窗切换 + 内容变化事件驱动，2.5s 包级节流）。 */
+    /** 插屏扫描入口（窗切换 + 内容变化事件驱动，2.5s 包级节流）。
+     *  v7.6.0 新窗提速：窗切换（winAt 变化）即重置节流记录——插层出现当帧
+     *  就扫（旧设计新窗被旧窗的 2.5s 节流卡住，插层快进快出的场景全错过）。 */
     private void maybeInterstitialScan(String pkg, long now) {
         if (!masterOn) return;
         // 聊天主界面/小程序容器零扫描红线（与 feed 同源门）
@@ -2709,6 +2712,14 @@ public class AdSkipService extends AccessibilityService {
         if (com.zai.adshield.core.FeedAdGuard.isFeedWindow(pkg, cls)) return;
         // armed 指纹窗内绝不出手（P2 收菜单优先——与 feed 两段式同语义）
         if (pkg.equals(feedArmedPkg)) return;
+        /* v7.6.0 新窗提速：窗已切（winAt 变化）→ 清节流记录，新窗首扫立即。 */
+        long wAt = winAt(pkg);
+        Long lastWin = interWinAt.get(pkg);
+        if (lastWin == null || lastWin.longValue() != wAt) {
+            interWinAt.put(pkg, wAt);
+            interScanAt.remove(pkg);
+            if (interWinAt.size() > 64) interWinAt.clear(); // 防膨胀
+        }
         Long last = interScanAt.get(pkg);
         if (last != null && now - last < com.zai.adshield.core.InterstitialGuard.INTER_SCAN_THROTTLE_MS) return;
         interScanAt.put(pkg, now);
@@ -2716,12 +2727,12 @@ public class AdSkipService extends AccessibilityService {
         try {
             android.view.accessibility.AccessibilityNodeInfo[] roots = collectRoots(pkg);
             if (roots.length == 0) return;
-            String missSamples = null; // v7.5.0 诊断：角标词命中样本（未过闸也可见）
+            String missSamples = null; // v7.6.0 诊断：语境词+关闭词命中样本（未过闸也可见）
             for (android.view.accessibility.AccessibilityNodeInfo r : roots) {
                 if (r == null) continue;
                 com.zai.adshield.core.AdDecisionCore.NodeView rootView = new NodeAdapter(r);
-                /* 闸④滚动标记（walk 轻量预算——只取 scrollPresent/长文本标记，
-                 * 不做候选收集：候选由原生直查供给（预算无关，深树插层也查到）。 */
+                /* 滚动标记（walk 轻量预算——只取 scrollPresent：滚动窗（信息流
+                 * 卡片）关闭钮须与广告语境节点近旁（|Δcy|≤35% 同排铁证）。 */
                 com.zai.adshield.core.AdDecisionCore.Ctx wctx = new com.zai.adshield.core.AdDecisionCore.Ctx();
                 wctx.screenW = screenWidth;
                 wctx.screenH = screenHeight;
@@ -2730,16 +2741,22 @@ public class AdSkipService extends AccessibilityService {
                 wctx.budgetNodes = 300;
                 com.zai.adshield.core.AdDecisionCore.ScanFind f =
                         com.zai.adshield.core.AdDecisionCore.walk(rootView, wctx);
-                java.util.ArrayList<com.zai.adshield.core.AdDecisionCore.NodeView> badgeCands =
-                        nativeFindTexts(r, com.zai.adshield.core.FeedAdGuard.BADGE_WORDS);
+                java.util.ArrayList<com.zai.adshield.core.AdDecisionCore.NodeView> ctxCands =
+                        nativeFindTexts(r, com.zai.adshield.core.InterstitialGuard.INTER_CONTEXT_WORDS);
                 java.util.ArrayList<com.zai.adshield.core.AdDecisionCore.NodeView> closeCands =
                         nativeFindTexts(r, com.zai.adshield.core.InterstitialGuard.INTER_SEARCH_WORDS);
                 com.zai.adshield.core.FeedAdGuard.FeedDecision fd =
                         com.zai.adshield.core.InterstitialGuard.decideFromCandidates(
-                                badgeCands, closeCands, screenWidth, screenHeight, f.scrollPresent);
+                                ctxCands, closeCands, screenWidth, screenHeight, f.scrollPresent);
                 if (fd != null && executeInterstitial(pkg, fd, now)) return;
-                if (missSamples == null && !badgeCands.isEmpty()) {
-                    missSamples = candSamples(badgeCands); // 角标词命中但被闸的样本
+                if (missSamples == null) {
+                    // v7.6.0：语境词与关闭词命中样本都登（被闸也照登）——上传日志
+                    // 直接定位「语境不在场」还是「关闭钮被哪道闸拒」
+                    String cs = candSamples(ctxCands);
+                    String ks = candSamples(closeCands);
+                    if (cs.length() > 0 || ks.length() > 0) {
+                        missSamples = (cs.length() > 0 ? cs : "无语境词") + " / 关闭钮 " + ks;
+                    }
                 }
             }
             logInterMiss(pkg, cls, now, missSamples);
@@ -2747,8 +2764,9 @@ public class AdSkipService extends AccessibilityService {
         }
     }
 
-    /** v7.5.0 插屏决策执行：构造 Decision 走既有 execute()（通用终闸——×/关闭/
-     *  跳过族全在「关闭方向」语义面内；用户让路/耐心/多点防线/人手手势全复用）。 */
+    /** v7.6.0 插屏决策执行：构造 Decision 走既有 execute()（插屏专用终闸
+     *  interBoundaryCheck——「知道了/残忍离开/不再看」等插屏关闭词的语义面
+     *  收编；用户让路/耐心/多点防线/人手手势全复用）。 */
     private boolean executeInterstitial(String pkg, com.zai.adshield.core.FeedAdGuard.FeedDecision fd, long now) {
         if (fd == null || fd.tapBounds == null || fd.tapBounds.length < 4) return false;
         com.zai.adshield.core.AdDecisionCore.Decision d = new com.zai.adshield.core.AdDecisionCore.Decision();
@@ -2767,12 +2785,14 @@ public class AdSkipService extends AccessibilityService {
         boolean ok = execute(pkg, d, null, ctx, clickCoolOK, now);
         if (ok) {
             bumpStat(pkg, "feed"); // App 内广告关闭口径（与信息流同档——报告饼图第 5 档）
-            appendLog("🛡 插屏广告（" + shortPkg(pkg) + "）：「" + fd.label + "」关闭钮出手（「广告」角标在场闸通过）→ 本条广告关闭");
+            appendLog("🛡 插屏广告（" + shortPkg(pkg) + "）：「" + fd.label + "」关闭钮出手（「广告」语境在场闸通过——v7.6.0 激进模式）→ 本条广告关闭");
         }
         return ok;
     }
 
-    /** v7.5.0 插屏未命中诊断（30s 包级节流——扫描日志上传可定位缺哪种关闭词）。 */
+    /** v7.6.0 插屏未命中诊断（30s 包级节流——扫描日志上传可定位：语境不在场/
+     *  关闭钮被哪道闸拒）。语境词与关闭词命中样本都登（被闸也照登）——
+     *  与 feed 未命中同规约的数据闭环（随一日三次上传）。 */
     private void logInterMiss(String pkg, String cls, long now, String samples) {
         Long last = interMissAt.get(pkg);
         if (last != null && now - last < 30000L) return;
@@ -2781,9 +2801,9 @@ public class AdSkipService extends AccessibilityService {
         interMisses++;
         StringBuilder sb = new StringBuilder("🔍 插屏未命中（").append(shortPkg(pkg));
         if (cls != null && cls.length() > 0) sb.append(" · ").append(shortCls(cls));
-        sb.append("）：角标/关闭钮未同场过闸");
+        sb.append("）：广告语境/关闭钮未同场过闸");
         if (samples != null && samples.length() > 0) {
-            sb.append("（词命中样本：").append(samples).append("——均未过闸）");
+            sb.append("（样本：").append(samples).append("——均未过闸）");
         }
         sb.append(" ——上传日志可帮我们补规则");
         appendLog(sb.toString());
@@ -3330,14 +3350,18 @@ public class AdSkipService extends AccessibilityService {
                 }
                 return false;
             }
-            /* ═══ v7.5.0：门控从第 0 击起全次生效 ═══
-             * 旧病灶（clickAttempts>=1 才门控）：首击永远立即出手——穿山甲族
-             * 倒计时未到=白点（还占冷却烧耐心预算），且落进广告热区的无效
-             * 触点可能被计为广告点击。纯函数 gateCountdown 化后第 0 击起就
-             * 门控到「将尽」，开闸精确针出手即命中（用户实锤「开屏按钮跳过
-             * 不是每个都带倒计时」——有倒计时的门控好、无倒计时的零门控）。 */
-            long until = AdDecisionCore.countdownUntil(cdN, anchorAt);
-            if (AdDecisionCore.gateCountdown(cdN, anchorAt, now)) {
+            /* ═══ v7.6.0 激进模式：门控仅对重击生效（首击零门控）═══
+             * 用户十五轮实锤：「开屏广告现在有的还跳不了了，或者非常
+             * 非常慢」——v7.5.0 第 0 击起全次门控让所有带倒计时的开屏
+             * 全等倒计时走完才出手（5s 广告白看 4.9s），误检数字更是把
+             * 无倒计时按钮按住不动。激进反转（用户原话：宁可漏拦绝不
+             * 误触暂时先放弃）：第 0 击零门控露头即点；首击白点后
+             *（attempts≥1）重击才等「将尽」（真倒计时按钮命中时机），
+             * 且重击等待秒数 6s 封顶（RETRY_GATE_MAX_S——cdN 封顶后才算
+             * 开闸时刻，开闸针不会排到 6s 外）。 */
+            long until = AdDecisionCore.countdownUntil(
+                    AdDecisionCore.cappedRetryCd(cdN), anchorAt);
+            if (AdDecisionCore.gateCountdownAggressive(cdN, anchorAt, now, clickAttempts)) {
                 Long prevGate = cdWaitUntil.put(pkg, until);
                 if (prevGate == null) {
                     appendLog("⏳ 倒计时门控（" + shortPkg(pkg) + "）：跳过键 "
@@ -3468,11 +3492,19 @@ public class AdSkipService extends AccessibilityService {
             boolean userTaught = "learned_pos".equals(d.reason) || d.reason.startsWith("learned");
             /* v7.1.0：feed 决策（reason 前缀 feed_）走 feed 专用终闸——语义断言
              * 换源为 FeedAdGuard 角标/中性项语义（feed 路径只点角标/中性关闭项，
-             * 绝不广告主体）；非 feed 路径 byte-for-byte 保持原终闸不变。 */
+             * 绝不广告主体）；非 feed 路径 byte-for-byte 保持原终闸不变。
+             * v7.6.0：插屏决策（reason=inter_close）走插屏专用终闸——「知道了/
+             * 残忍离开/不再看」等插屏关闭词不含跳过/关闭字面，通用终闸的
+             * 语义断言会把它们一票否决（v7.5.0 终闸杀词死因：词表收了也白收，
+             * 出手永远被最后一道闸打回）。语义换源
+             * InterstitialGuard.isInterstitialCloseWord（决策上游已过广告语境
+             * 在场+形态闸，此处复验词表成员身份——只对 inter_close 放行）。 */
             int bnd = (d.reason != null && d.reason.startsWith("feed_"))
                     ? com.zai.adshield.core.ComplianceGuard.feedBoundaryCheck(bl, bb2, screenWidth, screenHeight, pkg, winClassOf(pkg))
+                    : (com.zai.adshield.core.InterstitialGuard.ACTION_CLOSE.equals(d.reason)
+                    ? com.zai.adshield.core.ComplianceGuard.interBoundaryCheck(bl, bb2, screenWidth, screenHeight, pkg, winClassOf(pkg))
                     : com.zai.adshield.core.ComplianceGuard.boundaryCheck(
-                    bl, bv, bb2, screenWidth, screenHeight, pkg, winClassOf(pkg), userTaught);
+                    bl, bv, bb2, screenWidth, screenHeight, pkg, winClassOf(pkg), userTaught));
             if (bnd != com.zai.adshield.core.ComplianceGuard.BND_OK) {
                 boundaryGuardLog(pkg, d.reason, bnd, bl.length() > 0 ? bl : bv);
                 return false;

@@ -208,6 +208,10 @@ public final class AdDecisionCore {
      * 安全边界依旧：未到仍不点，COUNTDOWN_MAX_S 天花堂不变。 */
     public static final long COUNTDOWN_EXTRA_MS = 120;   // v5.8.0：180→120（速度压榨：倒计时将尽提前 0.38s 开火）
     public static final int COUNTDOWN_MAX_S = 15;        // v3.8.0：可识别的倒计时秒数上限
+    /** v7.6.0 激进模式：重击门控秒数封顶——首击白点后最多再等 6s（真倒
+     *  计时按钮命中时机），误检大数字（「15」）也不再无限等（用户实锤
+     *  「非常非常慢/跳不了了」的兜底闸）。 */
+    public static final int RETRY_GATE_MAX_S = 6;
 
     /* ── v3.5.0 复验与候选参数 ── */
     public static final int MAX_CORNERS = 4;              // 角落候选上限（逐个换着点）
@@ -1512,11 +1516,10 @@ public final class AdDecisionCore {
         return matchesAny(s, SKIP_TEXTS);
     }
 
-    /* ═══ v7.5.0 倒计时门控纯函数（服务侧 countdownWait 全次门控消费）═══
-     * 旧病灶：countdownWait 只在 clickAttempts>=1 才门控——首击永远立即
-     * 出手：穿山甲族倒计时未到=白点（还占冷却烧耐心预算），且落进广告
-     * 热区的无效触点可能被计为广告点击。纯函数化后第 0 击起就门控，
-     * 装饰数字逃生（1.6s 未跳）对任何击数都放行（含窗内早见晚点场景）。 */
+    /* ═══ 倒计时门控纯函数（v7.6.0 激进模式：首击零门控·重击等将尽·6s 封顶）═══
+     * v7.5.0「第 0 击起全次门控」被真机实锤为变慢直接死因（见 gateCountdownAggressive
+     * 注释）——门控仅对重击生效（穿山甲真倒计时按钮的命中时机），装饰数字逃生
+     * （1.6s 未跳）对任何击数放行的语义保持。 */
 
     /** 门控到期时刻：锚点 + N 秒 - 将尽提前量（COUNTDOWN_EXTRA_MS）。 */
     public static long countdownUntil(int cdN, long anchorAt) {
@@ -1528,11 +1531,34 @@ public final class AdDecisionCore {
         return now - anchorAt > COUNTDOWN_FAKE_MS;
     }
 
-    /** 门控判定（第 0 击起全次生效）：cdN>0 且未到将尽时刻且非装饰数字。 */
+    /** 门控判定（v7.6.0 激进模式：仅重击生效——首击零门控立即出手）：
+     *  cdN>0 且未到将尽时刻且非装饰数字。 */
     public static boolean gateCountdown(int cdN, long anchorAt, long now) {
         if (cdN <= 0) return false;
         if (decorativeCountdown(anchorAt, now)) return false;
-        return now < countdownUntil(cdN, anchorAt);
+        return now < countdownUntil(cappedRetryCd(cdN), anchorAt);
+    }
+
+    /* ═══ v7.6.0 激进模式（用户第十五轮实锤原话：「你可以激进一点暂时先
+     * 放弃宁可漏拦绝不误触」「开屏广告现在有的还跳不了了，或者非常非常慢」）
+     * v7.5.0「门控从第 0 击起全次生效」是真机变慢的直接死因——所有带倒
+     * 计时的开屏全等倒计时走完才出手（5s 广告=白看 4.9s）；且
+     * windowCountdownHint 对非倒计时数字（「领取3天」「第3期」类误检）
+     * 的门控让无倒计时按钮也被按住不动 =「跳不了了」。激进模式反转：
+     *  · 第 0 击【零门控】——跳过键露头即点（绝大多数按钮可点，0ms 命中）；
+     *  · 首击白点后（attempts≥1）重击才等「将尽」（真倒计时按钮的命中时机）；
+     *  · 重击等待上限 RETRY_GATE_MAX_MS——误检大数字也不再无限等。═══ */
+
+    /** v7.6.0 激进模式：首击零门控——第 0 击对任何倒计时都立即出手。 */
+    public static boolean gateCountdownAggressive(int cdN, long anchorAt, long now, int clickAttempts) {
+        if (clickAttempts <= 0) return false; // 首击零门控：露头即点
+        return gateCountdown(cdN, anchorAt, now);
+    }
+
+    /** v7.6.0 重击等待上限：门控秒数封顶（误检「15」等大数字不再无限等）。 */
+    public static int cappedRetryCd(int cdN) {
+        if (cdN <= 0) return 0;
+        return Math.min(cdN, RETRY_GATE_MAX_S);
     }
 
     /** v7.5.0 独立倒计时数字解析：「3」「5s」「3秒」「5 S」「12秒」→ 3/5/3/5/12；

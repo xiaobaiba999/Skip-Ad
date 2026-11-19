@@ -1,0 +1,63 @@
+{
+  "round": 37,
+  "version": "7.6.0",
+  "date": "2026-11-19",
+  "theme": "激进模式（开屏露头即点 + 插屏「广告」语境闸重做）——用户十五轮实锤三组死因全部根治",
+  "user_directives": [
+    "软件内插入的广告不仅没跳过，其他软件的开屏广告现在有的还跳不了了，或者非常非常慢",
+    "你可以激进一点暂时先放弃宁可漏拦绝不误触",
+    "扫描日志上传未命中问题，app内穿插的广告全都没拦截，参考李跳跳实现逻辑",
+    "优化内置规则库和订阅市场规则的使用顺序和命中问题，优化底层算法",
+    "部分用户设备开屏广告跳过时因为设备类型、分辨率或者其他原因影响，导致多点，误点，构建真是模拟环境1比1模拟人在不同设备上操作使用卫士解决这个bug",
+    "功能实习完成后进入测试环境全方位测试，不要为了测试而测试，完成过后同步github和推送releases，优化github面板描述"
+  ],
+  "root_causes": {
+    "cause_1_splash_slow_or_stuck": "v7.5.0 门控从第 0 击起全次生效——所有带倒计时的开屏全等倒计时走完才出手（5s 广告白看 4.9s）；误检数字把无倒计时按钮按住不动",
+    "cause_2_badge_gate_too_strict": "插屏闸① isDisclosureBadge 精确等值+符号尾+形态三闸把「广告 · 了解详情」「查看广告详情」等真机变体全拒",
+    "cause_3_final_gate_kills_words": "INTER_CLOSE_WORDS 收了「知道了」但 execute() 走通用 boundaryCheck——不含跳过/关闭/skip/close/× → BND_FAIL_SEMANTIC 一票否决（终闸杀词：词表收了也白收）",
+    "cause_4_band_and_scroll_reject": "插屏 × 常在中部/右下被带位闸全灭；名单外信息流卡片广告在可滚动窗被闸⑤一票否决"
+  },
+  "fixes": {
+    "aggressive_splash": "首击零门控（gateCountdownAggressive：attempts=0 → 立即出手）+ 重击等将尽（真倒计时按钮命中时机）+ cappedRetryCd 6s 封顶（RETRY_GATE_MAX_S，误检大数字兑底）+ 装饰数字逃生语义保持；纯函数化 JVM 可单测",
+    "aggressive_interstitial": "闸① hasAdContextWord contains（广告/推广/赞助 · ≤10 字可见标签——超长正文不算节点）+ 关闭词扩表（残忍离开/不再看/暂不需要/不需要/Skip Ad；取消保持拒收）+ 非滚动窗零位置闸 + 滚动窗近旁铁证（|Δcy|≤35% 同排）+ 形态闸保持（≤30%×≤12%）",
+    "inter_boundary_check": "ComplianceGuard.interBoundaryCheck（插屏专用终闸）：场景断言同源 + 语义换源 isInterstitialCloseWord（知道了/残忍离开/不再看收编——死因③根治）+ 形态双验（closeFormOk per-dimension + 面积 ≤35%）；execute() 按 reason=inter_close 路由分派",
+    "new_window_speedup": "interWinAt 代陀——窗切换即重置包级节流（插层出现当帧就扫，不再被旧窗 2.5s 节流卡住）",
+    "multi_tap_discipline": "激进时序结构 = 多点防线：首击唯一立即（露头即点）· 重击等将尽（>1.6s 天然满足 F 静默窗）· MAX_STRIKES_PER_TARGET=2/MAX_CLICKS_PER_WIN=3/H 600ms/冷却 max(300ms,verifyDelayMs) 全保持；TapPoint L1~L4 + dp 归一 + 九品牌×5槽位×密度矩阵全断言",
+    "scan_log_loop": "logInterMiss 双样本（语境词 + 关闭词命中样本被闸也照登）——上传日志直接区分「语境不在场」还是「关闭钮被哪道闸拒」；随一日三次自动上传",
+    "rule_order_kept": "RuleRouter 市场优先→内置兑底（v7.1.0）与探针前置→五层规则 DFS→订阅两源轮换保持；宋体语义全套防线保持（负面价/验证码/支付/小程序/聊天主界面全拒）"
+  },
+  "tests": {
+    "total": "4314/4314 全绿（20 套件）",
+    "delta": "+61（AggressiveModeTest 42 新增 + InterstitialGuardTest 重做为激进版 93（+10）+ SplashCountdownTest 懿升 61（+9）——全部对位本轮死因，无凑数断言）",
+    "suites": {
+      "BrandFocus308Test": 2868,
+      "TapPointMatrixTest": 295,
+      "NonMainstreamAppTest": 130,
+      "RuleGovernorTest": 142,
+      "RestoreGuardTest": 106,
+      "ComplianceGuardTest": 83,
+      "SubscriptionBuiltinTest": 76,
+      "FeedAdGuardTest": 131,
+      "RuleOrderTest": 39,
+      "InterstitialGuardTest": 93,
+      "SplashCountdownTest": 61,
+      "AggressiveModeTest": 42,
+      "MiniProgramGuardTest": 36,
+      "SubMirrorTest": 35,
+      "HumanTapMatrixTest": 20,
+      "DecisionGuardTest": 22,
+      "MultiDeviceMatrixTest": 42,
+      "PowerGovernorTest": 48,
+      "RegressionCoreTest": 15,
+      "ReleaseNotesTest": 30
+    }
+  },
+  "build": {
+    "apk_bytes": 849462,
+    "version_code": 76000,
+    "version_name": "7.6.0",
+    "md5": "aec9fea95de3790e99f16dfc4ab841ea",
+    "sha256": "d4e66b0e693dcf6083123feeaf7c03678b641b4d6d246eb28d80abd9c64374c6"
+  },
+  "publish": "git push + tag v7.6.0 + publish-v760.mjs（GitHub Release + APK asset digest 核对 + 仓库描述同步）+ README 面板同步"
+}

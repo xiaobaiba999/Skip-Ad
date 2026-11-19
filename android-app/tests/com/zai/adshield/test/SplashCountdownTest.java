@@ -45,17 +45,33 @@ public final class SplashCountdownTest {
         TestHost.checkEq(0, AdDecisionCore.standaloneCountdownSeconds("跳过3"), "「跳过3」→0（带跳过词的走 parseCountdown 老路）");
         TestHost.checkEq(0, AdDecisionCore.standaloneCountdownSeconds(null), "null→0");
 
-        /* ════ S2 门控纯函数（9 项）════ */
-        TestHost.suite("SplashCountdown · S2 门控纯函数（第 0 击起全次生效）");
+        /* ════ S2 门控纯函数（v7.6.0 激进模式：首击零门控·重击等将尽·6s 封顶）════ */
+        TestHost.suite("SplashCountdown · S2 门控纯函数（v7.6.0 激进：首击零门控）");
         TestHost.checkEq(3880L, AdDecisionCore.countdownUntil(3, 1000L), "countdownUntil(3,1000)=1000+3000-120");
         TestHost.check(!AdDecisionCore.decorativeCountdown(1000L, 1001L), "1ms 锚点新鲜非装饰");
         TestHost.check(AdDecisionCore.decorativeCountdown(1000L, 2700L), "1700ms 锚点未刷新=装饰数字");
-        TestHost.check(AdDecisionCore.gateCountdown(3, 1000L, 1000L), "第 0 击·锚点新鲜·未到将尽 → 门控等待");
+        TestHost.check(AdDecisionCore.gateCountdown(3, 1000L, 1000L), "重击门控·锚点新鲜·未到将尽 → 门控等待");
         TestHost.check(AdDecisionCore.gateCountdown(3, 1000L, 1500L), "锚点 500ms 内仍新鲜 → 门控等待（真倒计时每秒跳重置锚点）");
         TestHost.check(!AdDecisionCore.gateCountdown(1, 3000L, 4000L), "到期开闸（锚点 1000ms 新鲜·已到将尽时刻 until=3880）");
         TestHost.check(!AdDecisionCore.gateCountdown(0, 1000L, 1000L), "无倒计时（cdN=0）→ 零门控（用户实锤：不是每个都带倒计时）");
         TestHost.check(!AdDecisionCore.gateCountdown(3, 1000L, 3000L), "锚点 2s 未刷新=装饰数字 → 逃生开闸");
         TestHost.check(!AdDecisionCore.gateCountdown(3, 1000L, 5000L), "陈旧锚点任何时刻 → 开闸出手（装饰逃生兜底）");
+        /* v7.6.0 激进模式新断言 */
+        TestHost.check(!AdDecisionCore.gateCountdownAggressive(3, 1000L, 1000L, 0),
+                "第 0 击·真 3s 倒计时·未到将尽 → 首击零门控立即出手（用户实锤「非常非常慢」根治）");
+        TestHost.check(AdDecisionCore.gateCountdownAggressive(3, 1000L, 1000L, 1),
+                "第 1 击（首击白点后）·未到将尽 → 重击门控等待（真倒计时按钮命中时机）");
+        TestHost.check(AdDecisionCore.gateCountdownAggressive(5, 1000L, 1000L, 2),
+                "第 2 击同样门控（耐心预算内等将尽）");
+        TestHost.check(!AdDecisionCore.gateCountdownAggressive(0, 1000L, 1000L, 1),
+                "无倒计时重击也零门控（cdN=0）");
+        TestHost.checkEq(6, AdDecisionCore.cappedRetryCd(15), "cappedRetryCd(15)=6（15s 大数字封顶 6s——误检兜底）");
+        TestHost.checkEq(3, AdDecisionCore.cappedRetryCd(3), "cappedRetryCd(3)=3（≤6 不动）");
+        TestHost.checkEq(0, AdDecisionCore.cappedRetryCd(0), "cappedRetryCd(0)=0");
+        TestHost.check(AdDecisionCore.gateCountdown(15, 5000L, 5000L),
+                "15s 倒计时·锚点新鲜（数字刚跳）·封顶后 until=5000+5880=10880 → 仍门控但最多等 6s");
+        TestHost.check(!AdDecisionCore.gateCountdown(15, 1000L, 7200L),
+                "15s 倒计时过 6s 封顶（capped until=6880<7200）→ 开闸出手（不再无限等）");
 
         /* ════ S3 中部边带几何（8 项）════ */
         TestHost.suite("SplashCountdown · S3 中部边带几何（左/右缘任意高度）");
