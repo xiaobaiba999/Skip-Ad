@@ -23,7 +23,7 @@ const store = {
 };
 
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "7.1.0"; }
+function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "7.2.0"; }
 function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "71000"; }
 
 /* ══════════ 吉祥物（v4.1.0 全新形象：白机器人小侠 + 绿披风跳跃） ══════════
@@ -35,12 +35,20 @@ function mascotImg(size, state, head) {
 
 $("#brand-logo").innerHTML = mascotImg(30, "on", true);
 
-/* ═══ v7.1.0 版本记录（规范：当前版本 = 1 个标题 + 1 个段落；历史版本
- * 全部归档 GitHub Releases）═══ */
+/* ═══ v7.2.0 版本记录（用户实锤：版本记录按序号 1. 2. 3. 4. 描述功能）═══
+ * 当前版本 = 1 个标题 + 序号功能行（features 数组逐条渲染）；summary 仅作
+ * 兼容兜底（features 用“；”拼接），历史版本全部归档 GitHub Releases。 */
 const CURRENT_RELEASE = {
   date: "2026-11-19",
-  title: "规则顺序治理 + 信息流广告卫士",
-  summary: "订阅两源使用顺序根治（市场规则优先、内置兑底、全局组垫底——命中不再被旧序饿死）；微信朋友圈就业广告等 App 内信息流广告两段式自动关闭（点角标→收菜单，绝不碰广告主体）；分应用规则行预筛提速；白名单支持中文名搜索；新增卫士使用报告；11 组×28=308 机型八维验证。",
+  title: "信息流广告真机命中根治 + 报告折叠",
+  features: [
+    "朋友圈等信息流广告三病灶根治：armed 直通窗闸、原生文本直查、armed≥1 即出手",
+    "白名单显示全部已安装应用，搜索不区分大小写（中文名/包名双通道）",
+    "卫士使用报告：饼图常驻 + 明细折叠，进入页面自动刷新",
+    "多点误点防线 I：同目标每窗 2 击封顶，耐心预算 6→3",
+    "信息流关闭单独记账，feed 未命中诊断日志随上传",
+  ],
+  summary: "朋友圈等信息流广告三病灶根治：armed 直通窗闸、原生文本直查、armed≥1 即出手；白名单显示全部已安装应用，搜索不区分大小写（中文名/包名双通道）；卫士使用报告：饼图常驻 + 明细折叠，进入页面自动刷新；多点误点防线 I：同目标每窗 2 击封顶，耐心预算 6→3；信息流关闭单独记账，feed 未命中诊断日志随上传",
 };
 
 /* v7.0.0 新版功能描述（规范：≤5 个标题、带序号；检查更新发现新版本时就地渲染）。
@@ -101,7 +109,7 @@ $$(".tabbtn").forEach(b => b.addEventListener("click", () => {
   const pg = b.dataset.page;
   if (pg === "home") { refreshHome(); renderWhitelist(true); }
   if (pg === "sub") refreshSub();
-  if (pg === "me") renderLog();
+  if (pg === "me") { renderLog(); renderReport(true); } // v7.2.0：进入我的页静默刷新使用报告（饼图常驻，零 toast）
 }));
 
 /* ══════════ 首页：守护状态 ══════════ */
@@ -427,6 +435,8 @@ bindToggle("toggle-learning", "learning", "习惯学习已开启", "习惯学习
 /* ══════════ v4.3.0 应用白名单 ══════════ */
 let wlCache = null; // {list:Set, known:[{pkg,label}]}
 let wlQuery = "";   // v7.1.0：白名单搜索词（中文名/包名实时过滤）
+let wlSearchTimer = null; // v7.2.0：搜索输入 120ms debounce 定时器
+let wlTotalEl = null;     // v7.2.0：列表上方「共 N 款应用」统计行（动态创建，避免改 index.html 结构）
 
 function loadWhitelist() {
   if (!HAS_BRIDGE) {
@@ -452,15 +462,34 @@ function wlMatch(item, q) {
   return label.indexOf(q) >= 0 || pkg.indexOf(q) >= 0;
 }
 
+/* ═══ v7.2.0 白名单全量应用列表（用户实锤：搜索不到新装/未被拦截过的应用）═══
+ * 后端 whitelistJson 已改为返回全部已安装可启动应用（∪白名单∪战绩，上限 500，
+ * 30s 缓存）；前端配合：列表上方加「共 N 款应用」统计行、去截断、空态改
+ * 「未能读取应用列表」（默认即全量，不再有“暂无记录”态）。 */
+function wlTotalRow() {
+  if (wlTotalEl && wlTotalEl.parentNode) return wlTotalEl;
+  const box = $("#wl-list");
+  if (!box || !box.parentNode) return null;
+  wlTotalEl = document.createElement("div");
+  wlTotalEl.className = "wl-total";
+  box.parentNode.insertBefore(wlTotalEl, box);
+  return wlTotalEl;
+}
+
 function renderWhitelist(force) {
   const box = $("#wl-list");
   if (!box) return;
   if (!wlCache || force) loadWhitelist();
   const wl = wlCache;
   $("#wl-count").textContent = String(wl.list.size);
-  // 白名单里的排前面，其余按字母；v7.1.0：搜索词实时过滤（中文名/包名）
+  // v7.2.0：列表上方统计行——全量基数（known.length，与搜索过滤无关）
+  const knownAll = wl.known || [];
+  const totalRow = wlTotalRow();
+  if (totalRow) totalRow.textContent = "共 " + knownAll.length + " 款应用";
+  // 白名单里的排前面，其余中文序；v7.1.0：搜索词实时过滤（中文名/包名，
+  // 大小写不敏感）；v7.2.0：去 slice 截断，全量展示（上限由后端 500 控制）
   const q = wlQuery.trim().toLowerCase();
-  const known = (wl.known || []).filter(x => wlMatch(x, q)).slice().sort((a, b) => {
+  const known = knownAll.filter(x => wlMatch(x, q)).sort((a, b) => {
     const wa = wl.list.has(a.pkg) ? 0 : 1, wb = wl.list.has(b.pkg) ? 0 : 1;
     if (wa !== wb) return wa - wb;
     return String(a.label).localeCompare(String(b.label), "zh");
@@ -468,7 +497,7 @@ function renderWhitelist(force) {
   if (!known.length) {
     box.innerHTML = q
       ? '<div class="empty">没有匹配「' + esc(wlQuery.trim()) + '」的应用——可尝试中文名或包名关键字</div>'
-      : '<div class="empty">暂无记录——卫士处理过的应用会出现在这里</div>';
+      : '<div class="empty">未能读取应用列表</div>';
     return;
   }
   box.innerHTML = known.map(x => {
@@ -493,11 +522,16 @@ function renderWhitelist(force) {
   });
 }
 
-/* v7.1.0：搜索栏输入即过滤（中文名/包名实时过滤，零按钮防呆） */
+/* v7.1.0：搜索栏输入即过滤（中文名/包名实时过滤，零按钮防呆）；
+ * v7.2.0：输入加 120ms debounce——全量列表渲染量大，逐键直渲会拖慢输入
+ * （wlQuery 在防抖回调里更新，渲染用的始终是最终词） */
 if ($("#wl-search")) {
   $("#wl-search").addEventListener("input", () => {
-    wlQuery = $("#wl-search").value || "";
-    renderWhitelist(false);
+    clearTimeout(wlSearchTimer);
+    wlSearchTimer = setTimeout(() => {
+      wlQuery = $("#wl-search").value || "";
+      renderWhitelist(false);
+    }, 120);
   });
 }
 
@@ -715,12 +749,15 @@ $("#sub-toggle").addEventListener("change", () => {
 $("#me-ver").textContent = "v" + appVer();
 $("#ver-chip").textContent = "v" + appVer();
 
-/* v6.1.0：版本记录言简意赅——1 个标题 + 1 个段落（历史版本归档 GitHub Releases） */
+/* v7.2.0：版本记录按序号 1. 2. 3. 4. 描述功能（用户实锤）——1 个标题 +
+ * 序号功能行逐条渲染（features 数组）；样式复用 log-v/log-d，历史版本归档
+ * GitHub Releases。 */
 $("#changelog").innerHTML =
   '<div class="log-item"><div class="log-v">v' + esc(appVer())
   + ' · ' + esc(CURRENT_RELEASE.date) + '</div>'
   + '<div class="log-d"><b>' + esc(CURRENT_RELEASE.title) + '</b></div>'
-  + '<div class="log-d">' + esc(CURRENT_RELEASE.summary) + '</div>'
+  + (CURRENT_RELEASE.features || []).map((f, i) =>
+      '<div class="log-d">' + (i + 1) + ". " + esc(f) + '</div>').join("")
   + '</div>';
 
 const GH_API = "https://api.github.com/repos/xiaobaiba999/Skip-Ad";
@@ -1103,20 +1140,41 @@ async function doUploadLog() {
 
 $("#btn-upload-log").addEventListener("click", () => { void doUploadLog(); });
 
-/* ══════════ v7.1.0 卫士使用报告（我的页一键生成）══════════
+/* ══════════ v7.1.0 卫士使用报告 · v7.2.0 饼图常驻 + 明细折叠 ══════════
+ * （用户实锤：报告生成后太长看着难受——顶部拦截分布饼图常驻 + 五段明细
+ *  默认收起，点标题行展开/收起；进入「我的」页时自动静默刷新）
  * 数据全部来自本机（状态快照/订阅状态/能耗画像/设备信息），零上传零联网：
- *  · 拦截战绩：秒跳 / 弹窗关闭 / 返回键 / 反馈面板收起 / 手动样本
- *  · 订阅两源命中：市场（用户导入·日更）与内置（APK 快照）分别记账——
- *    v7.1.0 使用顺序治理后两源各贡献候选，命中数可直接对比
- *  · 应用战绩 Top5 / 能耗画像（本次开机）/ 设备画像
+ *  · 饼图：纯 CSS conic-gradient 甜甜圈（绿色系五档，取自 style.css 既有
+ *    色板），五类计数：开屏秒跳 / 信息流关闭 / 弹窗关闭 / 返回键 / 反馈面板
+ *    收起；全 0 时灰色整环 +「暂无拦截记录」；旁边图例（色块 + 名称 + 次数）
+ *  · 折叠明细：拦截战绩（累计）/ 订阅两源命中 / 应用战绩 Top5 / 能耗画像 /
+ *    设备画像（行格式沿用 reportLine；数据源桥调用原样保留，能耗/Top5
+ *    仍按有无数据出现）
+ *  · feed（信息流关闭）单独记账，stats 缺字段时按 0 兜底
  * 浏览器预览（无桥）渲染演示数据。 */
 function reportLine(k, v) {
   return '<div class="rp-line">' + esc(k) + "：" + esc(v) + "</div>";
 }
 
-function renderReport() {
+/* v7.2.0 折叠段：<div class="rp-fold"><div class="rp-fold-hd">标题 + 箭头</div>
+ * <div class="rp-fold-bd">行…</div></div>——默认收起，点标题行切换 .open */
+function reportFold(title, bodyLines) {
+  return '<div class="rp-fold">'
+    + '<div class="rp-fold-hd"><span class="rp-fold-tt">' + esc(title) + '</span>'
+    + '<span class="rp-fold-arrow"></span></div>'
+    + '<div class="rp-fold-bd">' + bodyLines.join("") + '</div>'
+    + '</div>';
+}
+
+/* v7.2.0 饼图配色：只用绿色系五档（深绿/中绿/翠绿/浅绿/灰绿，均取自
+ * style.css 既有色板 --brand-deep/--brand/#10B981/#34D399/#C8DCCF），
+ * 顺序与 segs 一一对应；空态（全 0）用中性灰 #CBD5D1 整环。 */
+const RP_PIE_COLORS = ["#047857", "#059669", "#10B981", "#34D399", "#C8DCCF"];
+
+/* refresh：v7.2.0 刷新语义——进入我的页/点「刷新报告」均传 true；
+ * 函数内零 toast（提示一律由调用方决定），每次全量重渲染（折叠态回默认收起）。 */
+function renderReport(refresh) {
   const box = $("#report-body");
-  const btn = $("#btn-report");
   if (!box) return;
   let st = { stats: {} }, sub = { builtinApps: 0, builtinRules: 0, remoteHits: 0, builtinHits: 0 };
   let en = null, dev = {};
@@ -1126,13 +1184,15 @@ function renderReport() {
     try { en = JSON.parse(AndroidApp.energyStats()); } catch (e) {}
     try { dev = JSON.parse(AndroidApp.deviceInfo()); } catch (e) {}
   } else {
-    // 浏览器演示数据（无桥环境——面板与真实 APK 内数据结构完全一致）
-    st = { stats: { auto: 128, popup: 36, back: 9, feedback: 14, manual: 21, byApp: {
+    // 浏览器演示数据（无桥环境——面板与真实 APK 内数据结构完全一致；
+    // v7.2.0：stats 加 feed: 23，byApp 加一条带 feed 的应用（信息流单独记账））
+    st = { stats: { auto: 128, feed: 23, popup: 36, back: 9, feedback: 14, manual: 21, byApp: {
       "com.ss.android.ugc.aweme": { auto: 41, popup: 12 },
       "com.xingin.xhs": { auto: 27 },
       "tv.danmaku.bili": { auto: 19, popup: 8 },
       "com.tencent.qqmusic": { auto: 15 },
       "com.zhihu.android": { auto: 11 },
+      "com.tencent.mm": { feed: 12 },
     } } };
     sub = { builtinApps: 21, builtinRules: 21, remoteOk: true, remoteName: "id667 的 GKD 订阅",
       remoteApps: 610, remoteRules: 828, remoteHits: 47, builtinHits: 12 };
@@ -1140,18 +1200,57 @@ function renderReport() {
     dev = { brand: "Xiaomi", model: "小米 17 Pro", os: "HyperOS 3", sdk: 35 };
   }
   const s = st.stats || {};
+  // 饼图数据：五类拦截计数（feed 缺字段 → 0 兜底）
+  const segs = [
+    { k: "开屏秒跳", n: s.auto || 0 },
+    { k: "信息流关闭", n: s.feed || 0 },
+    { k: "弹窗关闭", n: s.popup || 0 },
+    { k: "返回键温和关闭", n: s.back || 0 },
+    { k: "反馈面板收起", n: s.feedback || 0 },
+  ];
+  const total = segs.reduce((a, x) => a + x.n, 0);
+  let pieStyle = "background:#CBD5D1", pieNum = "0", pieLbl = "暂无拦截记录"; // 全 0：灰色整环
+  if (total > 0) {
+    // 各段角度 = count/total*360（JS 里算好角度串拼进 style，纯字符串拼接）
+    const stops = [];
+    let acc = 0;
+    for (let i = 0; i < segs.length; i++) {
+      if (!segs[i].n) continue;
+      const from = acc / total * 360, to = (acc + segs[i].n) / total * 360;
+      stops.push(RP_PIE_COLORS[i] + " " + from.toFixed(2) + "deg " + to.toFixed(2) + "deg");
+      acc += segs[i].n;
+    }
+    pieStyle = "background:conic-gradient(" + stops.join(",") + ")";
+    pieNum = String(total);
+    pieLbl = "累计拦截";
+  }
+  const legend = segs.map((x, i) =>
+    '<div class="rp-legend-row"><span class="rp-legend-dot" style="background:' + RP_PIE_COLORS[i] + '"></span>'
+    + '<span class="rp-legend-name">' + esc(x.k) + '</span>'
+    + '<span class="rp-legend-val">' + x.n + ' 次</span></div>').join("");
   const lines = [];
-  lines.push('<div class="rp-sec">拦截战绩（累计）</div>');
-  lines.push(reportLine("开屏秒跳", (s.auto || 0) + " 次"));
-  lines.push(reportLine("弹窗关闭", (s.popup || 0) + " 次"));
-  lines.push(reportLine("返回键温和关闭", (s.back || 0) + " 次"));
-  lines.push(reportLine("反馈面板收起", (s.feedback || 0) + " 次"));
-  lines.push(reportLine("手动跳过样本（已被学习）", (s.manual || 0) + " 次"));
-  lines.push('<div class="rp-sec">订阅两源命中（v7.1.0 使用顺序治理）</div>');
-  lines.push(reportLine("使用顺序", "市场规则优先 → 内置兜底 → 全局组垫底"));
-  lines.push(reportLine("市场源（导入·日更）", (sub.remoteHits || 0) + " 次命中" + (sub.remoteOk ? " ·「" + (sub.remoteName || "订阅") + "」" + (sub.remoteApps || 0) + " 款/" + (sub.remoteRules || 0) + " 条" : " · 未导入（订阅市场一键导入）")));
-  lines.push(reportLine("内置源（APK 快照）", (sub.builtinHits || 0) + " 次命中 · " + (sub.builtinApps || 0) + " 款/" + (sub.builtinRules || 0) + " 条"));
-  // 应用战绩 Top5（秒跳/弹窗/手动合计）
+  // 饼图常驻（进入页面即渲染显示，不再是生成后才显示）
+  lines.push('<div class="rp-pie-wrap">'
+    + '<div class="rp-pie" style="' + pieStyle + '"><div class="rp-pie-hole">'
+    + '<div class="rp-pie-num">' + pieNum + '</div><div class="rp-pie-lbl">' + esc(pieLbl) + '</div></div></div>'
+    + '<div class="rp-legend">' + legend + '</div>'
+    + '</div>');
+  // ① 拦截战绩（累计）
+  const secStats = [];
+  secStats.push(reportLine("开屏秒跳", (s.auto || 0) + " 次"));
+  secStats.push(reportLine("信息流关闭", (s.feed || 0) + " 次"));
+  secStats.push(reportLine("弹窗关闭", (s.popup || 0) + " 次"));
+  secStats.push(reportLine("返回键温和关闭", (s.back || 0) + " 次"));
+  secStats.push(reportLine("反馈面板收起", (s.feedback || 0) + " 次"));
+  secStats.push(reportLine("手动跳过样本（已被学习）", (s.manual || 0) + " 次"));
+  lines.push(reportFold("拦截战绩（累计）", secStats));
+  // ② 订阅两源命中（市场优先、内置兜底——v7.1.0 使用顺序治理）
+  const secSub = [];
+  secSub.push(reportLine("使用顺序", "市场规则优先 → 内置兜底 → 全局组垫底"));
+  secSub.push(reportLine("市场源（导入·日更）", (sub.remoteHits || 0) + " 次命中" + (sub.remoteOk ? " ·「" + (sub.remoteName || "订阅") + "」" + (sub.remoteApps || 0) + " 款/" + (sub.remoteRules || 0) + " 条" : " · 未导入（订阅市场一键导入）")));
+  secSub.push(reportLine("内置源（APK 快照）", (sub.builtinHits || 0) + " 次命中 · " + (sub.builtinApps || 0) + " 款/" + (sub.builtinRules || 0) + " 条"));
+  lines.push(reportFold("订阅两源命中", secSub));
+  // ③ 应用战绩 Top5（秒跳/弹窗/手动合计）
   try {
     const byApp = s.byApp || {};
     const top = Object.keys(byApp).map(k => {
@@ -1159,30 +1258,38 @@ function renderReport() {
       return { k, score: (a.auto || 0) + (a.popup || 0) + (a.manual || 0), a };
     }).filter(x => x.score > 0).sort((x, y) => y.score - x.score).slice(0, 5);
     if (top.length) {
-      lines.push('<div class="rp-sec">应用战绩 Top5</div>');
+      const secTop = [];
       top.forEach(x => {
-        lines.push(reportLine(shortPkgName(x.k), (x.a.auto || 0) + " 秒跳 / " + (x.a.popup || 0) + " 弹窗 / " + (x.a.manual || 0) + " 手动"));
+        secTop.push(reportLine(shortPkgName(x.k), (x.a.auto || 0) + " 秒跳 / " + (x.a.popup || 0) + " 弹窗 / " + (x.a.manual || 0) + " 手动"));
       });
+      lines.push(reportFold("应用战绩 Top5", secTop));
     }
   } catch (e) {}
+  // ④ 能耗画像（本次开机）
   if (en && en.ok) {
-    lines.push('<div class="rp-sec">能耗画像（本次开机）</div>');
-    lines.push(reportLine("无障碍事件 / 原生探针 / 全量扫描", en.events + " / " + (en.probes || 0) + " / " + en.scans));
-    lines.push(reportLine("手势能耗估算", en.microWh + " µWh（≈" + (en.microWh / 1000).toFixed(2) + " mWh）"));
+    const secEn = [];
+    secEn.push(reportLine("无障碍事件 / 原生探针 / 全量扫描", en.events + " / " + (en.probes || 0) + " / " + en.scans));
+    secEn.push(reportLine("手势能耗估算", en.microWh + " µWh（≈" + (en.microWh / 1000).toFixed(2) + " mWh）"));
+    lines.push(reportFold("能耗画像（本次开机）", secEn));
   }
-  lines.push('<div class="rp-sec">设备画像</div>');
-  lines.push(reportLine("设备", (dev.brand || "--") + " " + (dev.model || "") + " · " + (dev.os || "--") + " · Android " + (dev.sdk || "?")));
-  lines.push(reportLine("多点误点防线", "F 同指纹静默 / G 新鲜坐标复核 / H 结果静默（三重防线已启用）"));
+  // ⑤ 设备画像
+  const secDev = [];
+  secDev.push(reportLine("设备", (dev.brand || "--") + " " + (dev.model || "") + " · " + (dev.os || "--") + " · Android " + (dev.sdk || "?")));
+  secDev.push(reportLine("多点误点防线", "F 同指纹静默 / G 新鲜坐标复核 / H 结果静默（三重防线已启用）"));
+  lines.push(reportFold("设备画像", secDev));
+  // 底部生成时间行（折叠区外最底部——全收起/全展开都常驻）
   lines.push('<div class="rp-meta">生成于 ' + new Date().toLocaleString("zh-CN", { hour12: false })
     + " · 数据仅存本机 · 上传日志时本报告要点随引擎画像一并附带</div>");
   box.innerHTML = lines.join("");
   box.style.display = "";
-  if (btn) { btn.textContent = "重新生成"; }
-  toast("使用报告已生成");
+  // 折叠交互：点标题行切换 .open（默认全收起，CSS 控制展示）
+  box.querySelectorAll(".rp-fold-hd").forEach(hd => {
+    hd.addEventListener("click", () => { hd.parentNode.classList.toggle("open"); });
+  });
 }
 
 if ($("#btn-report")) {
-  $("#btn-report").addEventListener("click", () => { renderReport(); });
+  $("#btn-report").addEventListener("click", () => { renderReport(true); toast("报告已刷新"); });
 }
 
 /* ══════════ 我的：链接 ══════════ */

@@ -1,0 +1,85 @@
+{
+  "round": 34,
+  "version": "7.2.0",
+  "date": "2026-11-19",
+  "theme": "信息流广告真机命中三病灶根治（李跳跳方法论）+ 白名单全量应用列表 + 报告饼图折叠 + 多点防线 I 击数封顶",
+  "user_directives": [
+    "扫描日志上传未命中问题，app内穿插的广告全都没拦截，关于这一块的实现可以参考李跳跳的实现逻辑",
+    "扫描日志信息，优化内置规则库和订阅市场规则的使用顺序和命中问题，优化底层算法",
+    "部分用户设备开屏广告跳过时因为设备类型、分辨率或者其他原因影响，导致多点、误点——构建真实模拟环境1:1模拟解决",
+    "卫士报告生成之后增加折叠功能，不然太长看着难受——饼图常驻，用户到此页面再刷新",
+    "应用白名单搜索不到，不符合人的使用行为——像浏览器那样大小写不敏感检索，或直接显示全部应用（双方案均落地）",
+    "版本记录也要1.2.3.4这样按序号描述功能",
+    "功能完成后进入测试环境全方位测试，再根据测试修改不足——不要做没有意义的测试",
+    "完成过后同步github和推送releases，优化github面板描述"
+  ],
+  "feed_ad_guard_real_world_fix": {
+    "symptom": "用户实锤：app 内穿插的广告全都没拦截（朋友圈信息流广告全灭）——v7.1.0 81 项单测全绿但真机零命中",
+    "root_cause_1_armed_killed_on_window_change": "AdSkipService.clearTapGuards 在每次窗切换时 feedArmedPkg=null——P1 点角标拉起的关闭菜单本身就是 Dialog/Popup 新窗（TYPE_WINDOW_STATE_CHANGED 触发窗切换），armed 一进菜单就被清零 → P2 永远等不到（最直接死因）",
+    "root_cause_2_window_gate_double_kill": "maybeFeedScan 非armed 路径看 isFeedWindow(微信 sns 窗门)+winAt 窗闸——菜单 Dialog 新窗把 winClass 覆盖成菜单窗类 + windowAt 重置 → sns 门失败 + 12s 开屏窗闸阻断 → 8s armed 指纹窗活活耗尽",
+    "root_cause_3_dfs_budget": "预算制 DFS 300 节点在朋友圈大树上只爬到前几张卡片，深处理广告角标永远扫不到",
+    "root_cause_4_p2_double_gate": "真机微信角标菜单常只露出 1 个中性项（如仅「不感兴趣」）→ 旧「强特征≥1 且总数≥2」双闸零命中 → 菜单永远不收",
+    "fixes": [
+      "armed 直通：P1 出手 8s 内 P2 不看窗类/窗计时（菜单是 Dialog 新窗是常态而非异常）；clearTapGuards 绝不再清 feedArmed（armed 只由 8s 过期/P2 完成/切换到其他应用复位）",
+      "窗闸 12s→2.5s（FEED_START_MS）：朋友圈等信息流窗不是开屏窗——旧 12s 保守闸把头几屏 feed 扫描全饿死；开屏链与 feed 同窗时由点击冷却互斥",
+      "李跳跳方法论主路径：AccessibilityNodeInfo.findAccessibilityNodeInfosByText 按角标词/中性词原生直查（C++ 侧全树 contains 搜索·预算无关——深层卡片角标也能查到），候选节点再过 FeedAdGuard 语义（精确等值）+ 形态（≤35%屏×≤8%屏）闸；DFS 兜底保持",
+      "P2 armed≥1 即出手（中性项精确等值 + 扩展动作排除 + 形态闸逐候选不变——宁漏勿误红线不动）；新增真机文案「屏蔽此推广」（强特征）「减少此类广告」（弱）",
+      "armed 只走 P2（收菜单），绝不再回落 P1——菜单未及拉起时回落 P1 = 角标被连点 = 多点（v7.1.0 隐蔽病灶顺手根治）",
+      "P2 节流 350ms 快节奏复查（P2_SCAN_THROTTLE_MS）；feed 关闭单独记账 bumpStat(pkg,\"feed\")（P1 拉菜单是中间动作不计 auto——不虚增战绩）",
+      "feed 未命中诊断：feed 名单窗常规扫描零角标 → 30s 节流记「信息流未命中」日志行（随一日三次日志上传——用户反馈全没拦截时能区分「窗内无角标」与「角标文案未收编」）"
+    ]
+  },
+  "whitelist_full_app_list": {
+    "symptom": "用户实锤：应用白名单搜索不到，不符合人的使用行为",
+    "root_cause": "MainActivity.whitelistJson() 的列表来源 = 白名单 ∪ 引擎战绩 byApp（上限 80 条）——新装用户/没拦截记录的 App（QQ/微信等）根本不在列表，搜索必然找不到",
+    "fix": "双方案均落地（用户二选一提问，两者一起给）：① 枚举全部已安装可启动应用（PackageManager.queryIntentActivities ACTION_MAIN+CATEGORY_LAUNCHER，label 用 getApplicationLabel，30s 内存缓存，上限 500）；② 搜索像浏览器——中文名/包名双通道不区分大小写包含匹配（qqQQ→qq 能搜到 QQ），120ms debounce 实时过滤；列表滚动区 460px + 细滚动条",
+    "whitelist_add_remove_cache_invalidation": "增删白名单后缓存立即失效（防 30s 内勾选态回弹）"
+  },
+  "report_fold_pie": {
+    "user_directive": "卫士报告生成之后增加折叠功能，不然太长看着挺难受的，或者直接不显示也行，整个饼图在那，用户到此页面再刷新",
+    "fix": "饼图常驻（纯 CSS conic-gradient 甜甜圈 112px·五段：开屏秒跳/信息流关闭/弹窗/返回键/反馈面板·全 0 灰环+暂无拦截记录·绿色系五档配色零蓝色）+ 五段折叠明细（拦截战绩/订阅两源命中/Top5/能耗/设备画像·默认全收起·点击展开）+ 进入「我的」页自动静默刷新（零 toast）+ 按钮改「刷新报告」+ 信息流关闭单独一档统计（stats.feed）"
+  },
+  "version_records_numbered": {
+    "user_directive": "版本记录也要1.2.3.4这样按序号描述功能",
+    "fix": "CURRENT_RELEASE v7.2.0 = 1 标题 + features[] 序号行（1. 2. 3. 4. 5.）——版本记录页逐条序号渲染；检查更新 ≤5 带序号新版功能保持（ReleaseNotes 纯函数四代格式兼容不动）"
+  },
+  "multi_tap_defense_i": {
+    "user_directive": "部分用户设备开屏广告跳过时因为设备类型、分辨率或者其他原因影响，导致多点、误点",
+    "fix": "防线 I 同指纹击数封顶（MAX_STRIKES_PER_TARGET=2·纯函数 targetStrikesOk——同一目标指纹每窗最多 2 击，第 3 击起静默；换候选/换窗不受限）；耐心预算 MAX_CLICKS_PER_WIN 6→3（人的耐心 2~3 下）；F 同指纹静默 1500→1600ms；H 结果静默 250→600ms（给首击留出生效窗口——复验扫描 500ms 到点静默未过则不补击，下一轮 1.4s 再评——「点了还没生效就再点」的多点观感从节奏上根治）"
+  },
+  "tests": {
+    "strategy": "用户指令：功能实现完成后进入测试环境全方位测试，再根据测试修改不足——不要为了测试而测试（测试全部对准本轮真机病灶）",
+    "suite_updates": "FeedAdGuardTest 81→90（双闸断言反转为 armed≥1 语义·新增 S9 候选式快搜 6 项：噪声中只收真角标/P2 单项菜单出手/深树角标 DFS 够不到 vs 原生直查命中对照——旧病灶在场的直接证明）；HumanTapMatrixTest +1（S7c 防线 I 击数封顶真值表）；BrandFocus308Test 参数契约同步（F/G/H/I 四防线常量·耐心 3·巨横幅 CTA 绝不进候选红线保持）",
+    "red_then_green": "巨横幅断言按新语义修正：红线保持（全宽 CTA 绝不被点）——armed 下旁边紧凑中性项合法出手；此为语义对位修正非放松断言",
+    "total": "17 套件 4077 项 JVM 断言全绿（+10）· 308 机型八维各 308/308"
+  },
+  "suites": {
+    "MiniProgramGuardTest": 36,
+    "DecisionGuardTest": 22,
+    "SubscriptionBuiltinTest": 76,
+    "RegressionCoreTest": 15,
+    "MultiDeviceMatrixTest": 42,
+    "NonMainstreamAppTest": 130,
+    "RestoreGuardTest": 106,
+    "PowerGovernorTest": 48,
+    "RuleGovernorTest": 142,
+    "ComplianceGuardTest": 83,
+    "TapPointMatrixTest": 295,
+    "HumanTapMatrixTest": 20,
+    "BrandFocus308Test": 2868,
+    "ReleaseNotesTest": 30,
+    "SubMirrorTest": 35,
+    "FeedAdGuardTest": 90,
+    "RuleOrderTest": 39
+  },
+  "build": {
+    "versionCode": 72000,
+    "versionName": "7.2.0",
+    "apk": "dist/adshield-v7.2.0.apk",
+    "size_bytes": 837174,
+    "size_kb": 817,
+    "md5": "3100d6bd9e0fb4b58ae81a767e2120ad",
+    "signature": "同 keystore（AdShield）v1+v2 签名——任何历史版本覆盖安装即升级（授权/学习数据/白名单/已导入订阅全部保留）",
+    "minSdk_targetSdk": "24 / 34"
+  }
+}

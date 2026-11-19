@@ -255,6 +255,9 @@ public class AdSkipService extends AccessibilityService {
     public static final int NOTIF_ALERT = 2;   // 服务断开提醒（KeepAliveReceiver 发，服务连上即撤）
 
     private static final long WINDOW_MS = 12000;       // 开屏时间窗
+    /* v7.2.0 feed 窗闸：朋友圈等信息流窗不是开屏窗——旧 12s 保守闸把头几屏
+     * feed 扫描全饿死；2.5s 即开扫（开屏链与 feed 同窗时由点击冷却互斥）。 */
+    private static final long FEED_START_MS = 2500;
     /* v4.4.0 复验提速：点击冷却 900→600ms（快于人类「发现未关→再点」反应链；
      * 安全不破：复验仍需重新扫到跳过候选才出手，广告关了候选自然消失）
      * v5.6.0 激进化：600→500ms（用户实锤：好多广告没有命中——第一方自绘
@@ -455,6 +458,12 @@ public class AdSkipService extends AccessibilityService {
     private final java.util.HashMap<String, Long> feedScanAt = new java.util.HashMap<String, Long>();
     private String feedArmedPkg;
     private long feedArmedAt;
+    /* v7.2.0 feed 未命中诊断（扫描日志上传未命中问题）：30s 节流计数 */
+    private long feedMissAt;
+    private long feedMisses;
+    /* v7.2.0 多点防线 I：同指纹目标击数（每窗最多 2 击，第 3 击起静默——
+     * 与 firedTargetAt 时间静默互斥成双保险） */
+    private final java.util.HashMap<String, Integer> firedTargetCount = new java.util.HashMap<String, Integer>();
 
     private volatile String lastAutoClickPkg;
     private volatile long lastAutoClickAt;
@@ -2389,31 +2398,89 @@ public class AdSkipService extends AccessibilityService {
      * 双闸/两段式决策），服务侧只做调度与出手——所有既有防线（用户让路/耐心
      * 预算/F·H 多点防线/人手手势派发/边界终闸）经 execute() 免费复用。 */
 
-    /** v7.1.0 信息流广告扫描（独立于开屏链）：名单门 + 微信窗级门 + 1.2s 节流 + P1/P2 两段式决策 */
+    /** v7.2.0 信息流广告扫描（独立于开屏链）：三病灶根治后的接线。
+     *  · armed（P1 出手 8s 内）直通：不看窗类/窗计时——P1 拉起的关闭菜单是
+     *    Dialog/Popup 新窗，winClass 已被覆盖，P2 绝不能再看窗类脸色；
+     *  · 非armed：名单门 + 微信 sns 窗门 + 2.5s 窗闸 + 1.2s 节流；
+     *  · 原生直查主路径（李跳跳方法论）：findAccessibilityNodeInfosByText
+     *    按角标词/中性词直查全树（预算无关——深层卡片角标也能查到），
+     *    候选交 FeedAdGuard 语义+形态闸逐个判定；DFS 兜底保持；
+     *  · armed 只走 P2（收菜单），绝不再点角标（菜单未及拉起时回落 P1
+     *    =角标被连点 = 多点——v7.1.0 隐蔽病灶顺手根治）。 */
     private void maybeFeedScan(String pkg, long now) {
         if (!masterOn) return;
-        if (!com.zai.adshield.core.FeedAdGuard.isFeedWindow(pkg, winClassOf(pkg))) return; // 名单门+微信 sns 窗门
-        long elapsed = now - winAt(pkg);
-        if (elapsed <= WINDOW_MS) return; // 开屏窗期内开屏路径优先覆盖（feed 零干扰）
+        boolean armed = pkg.equals(feedArmedPkg)
+                && now - feedArmedAt <= com.zai.adshield.core.FeedAdGuard.P1_ARM_MS;
+        if (!armed) {
+            if (!com.zai.adshield.core.FeedAdGuard.isFeedWindow(pkg, winClassOf(pkg))) return; // 名单门+微信 sns 窗门
+            if (now - winAt(pkg) <= FEED_START_MS) return; // v7.2.0：12s→2.5s（feed 窗非开屏窗）
+        }
+        long throttle = armed
+                ? com.zai.adshield.core.FeedAdGuard.P2_SCAN_THROTTLE_MS
+                : com.zai.adshield.core.FeedAdGuard.FEED_SCAN_THROTTLE_MS;
         Long last = feedScanAt.get(pkg);
-        if (last != null && now - last < com.zai.adshield.core.FeedAdGuard.FEED_SCAN_THROTTLE_MS) return; // 1.2s 节流
+        if (last != null && now - last < throttle) return; // 节流（P2 350ms 快节奏复查）
         feedScanAt.put(pkg, now);
         try {
             android.view.accessibility.AccessibilityNodeInfo[] roots = collectRoots(pkg);
             if (roots.length == 0) return;
-            boolean armed = pkg.equals(feedArmedPkg)
-                    && now - feedArmedAt <= com.zai.adshield.core.FeedAdGuard.P1_ARM_MS; // P2 须在 P1 出手 8s 指纹窗内
             for (android.view.accessibility.AccessibilityNodeInfo r : roots) {
                 if (r == null) continue;
                 com.zai.adshield.core.AdDecisionCore.NodeView rootView = new NodeAdapter(r);
-                com.zai.adshield.core.FeedAdGuard.FeedDecision fd = armed
-                        ? com.zai.adshield.core.FeedAdGuard.decideP2(rootView, screenWidth, screenHeight, true)
-                        : null;
-                if (fd == null) fd = com.zai.adshield.core.FeedAdGuard.decideP1(rootView, screenWidth, screenHeight);
+                com.zai.adshield.core.FeedAdGuard.FeedDecision fd = null;
+                if (armed) {
+                    java.util.ArrayList<com.zai.adshield.core.AdDecisionCore.NodeView> cands =
+                            nativeFindTexts(r, com.zai.adshield.core.FeedAdGuard.neutralCloseWords());
+                    fd = com.zai.adshield.core.FeedAdGuard.decideP2FromCandidates(
+                            cands, screenWidth, screenHeight, true);
+                    if (fd == null) fd = com.zai.adshield.core.FeedAdGuard.decideP2(
+                            rootView, screenWidth, screenHeight, true); // DFS 兜底
+                } else {
+                    java.util.ArrayList<com.zai.adshield.core.AdDecisionCore.NodeView> cands =
+                            nativeFindTexts(r, com.zai.adshield.core.FeedAdGuard.BADGE_WORDS);
+                    fd = com.zai.adshield.core.FeedAdGuard.decideP1FromCandidates(
+                            cands, screenWidth, screenHeight);
+                    if (fd == null) fd = com.zai.adshield.core.FeedAdGuard.decideP1(
+                            rootView, screenWidth, screenHeight); // DFS 兜底
+                }
                 if (fd != null && executeFeed(pkg, fd, now)) return;
             }
+            if (!armed) logFeedMiss(pkg, now); // v7.2.0 未命中诊断（30s 节流）
         } catch (Throwable ignored) {
         }
+    }
+
+    /** v7.2.0 原生文本直查（李跳跳方法论）：findAccessibilityNodeInfosByText
+     *  C++ 侧全树 contains 搜索——预算无关，深埋卡片的角标/菜单项也能查到。
+     *  命中包装 NodeView 候选交 FeedAdGuard 语义+形态闸逐个判定（宁漏勿误
+     *  红线不变）。 */
+    private java.util.ArrayList<com.zai.adshield.core.AdDecisionCore.NodeView> nativeFindTexts(
+            android.view.accessibility.AccessibilityNodeInfo root, String[] words) {
+        java.util.ArrayList<com.zai.adshield.core.AdDecisionCore.NodeView> out =
+                new java.util.ArrayList<>();
+        if (root == null || words == null) return out;
+        for (String w : words) {
+            try {
+                java.util.List<android.view.accessibility.AccessibilityNodeInfo> hits =
+                        root.findAccessibilityNodeInfosByText(w);
+                if (hits == null) continue;
+                for (android.view.accessibility.AccessibilityNodeInfo h : hits) {
+                    if (h != null) out.add(new NodeAdapter(h));
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+        return out;
+    }
+
+    /** v7.2.0 feed 未命中诊断（扫描日志上传未命中问题）：feed 名单窗内常规
+     *  扫描零角标 → 30s 节流记一行（随引擎日志上传——用户反馈「全都没拦截」
+     *  时，日志能区分「窗内无角标」与「角标被闸住」）。 */
+    private void logFeedMiss(String pkg, long now) {
+        if (now - feedMissAt < 30000) return;
+        feedMissAt = now;
+        feedMisses++;
+        appendLog("🔍 信息流未命中（" + shortPkg(pkg) + "）：本窗无披露角标（正常内容流零命中为基线；如确有广告请把角标文案反馈给规则库）");
     }
 
     /** v7.1.0 feed 决策执行：构造 Decision 走既有 execute()（免费获得用户让路/耐心预算/F·H 多点防线/人手手势派发/边界终闸） */
@@ -2439,6 +2506,7 @@ public class AdSkipService extends AccessibilityService {
                 appendLog("🛡 信息流广告 P1（" + shortPkg(pkg) + "）：披露角标「" + fd.label + "」出手 → 等关闭菜单（8s 内）");
             } else {
                 feedArmedPkg = null; // P2 完成 → 收兵
+                bumpStat(pkg, "feed"); // v7.2.0：信息流关闭单独记账（不虚增 auto）
                 appendLog("🛡 信息流广告 P2（" + shortPkg(pkg) + "）：中性项「" + fd.label + "」收起 → 本条广告关闭");
             }
         }
@@ -3186,6 +3254,9 @@ public class AdSkipService extends AccessibilityService {
                     HumanTap.dupTolPx(screenDensity)) : null;
             if (targetKey != null && HumanTap.isFiredRecently(firedTargetAt, targetKey, now)) return false;
             if (!HumanTap.postTapQuietOk(lastGestureOkAt.get(pkg), now)) return false;
+            /* v7.2.0 多点防线 I：同指纹目标每窗 2 击封顶（第 3 击起静默——
+             * 设备触点被吞时的同目标连击从源头掐断；换候选/换窗不受限）。 */
+            if (targetKey != null && !HumanTap.targetStrikesOk(firedTargetCount.get(targetKey))) return false;
             int attempts = triesOfClick(pkg);
             clickAttemptNow = attempts; // v5.9.0：复验象限轮换基数（同候选换点防多点盲刺）
             // v3.8.0：手势真实触点【首选】——performAction 首点常被应用无声吞掉
@@ -3197,7 +3268,11 @@ public class AdSkipService extends AccessibilityService {
                 clickTries.put(pkg, attempts + 1);
                 skipAt.put(pkg, now); // v3.14.0：记录引擎出手时刻（跳过后反馈弹窗门控用）
                 // v6.1.0 F/H 记录：同指纹目标静默表 + 结果静默表（多点防线生效中）
-                if (targetKey != null) firedTargetAt.put(targetKey, now);
+                if (targetKey != null) {
+                    firedTargetAt.put(targetKey, now);
+                    Integer prevCnt = firedTargetCount.get(targetKey); // v7.2.0 防线 I：同指纹击数
+                    firedTargetCount.put(targetKey, prevCnt == null ? 1 : prevCnt + 1);
+                }
                 lastGestureOkAt.put(pkg, now);
                 if (firedTargetAt.size() > 256) firedTargetAt.clear(); // 防膨胀：跨窗清理为主，超限整体兑底
                 /* v6.0.0 人手复验节奏（替代 v4.4.0 的 450/900 双针机器枪）
@@ -3221,7 +3296,12 @@ public class AdSkipService extends AccessibilityService {
                         appendLog("🔁 复验未关闭 → 第 " + (attempts + 1) + " 次出手（" + shortPkg(pkg) + "）："
                                 + reasonZh(d.reason) + "（真实触点·1:1 人手·换第 " + (attempts + 1) + " 个候选，同坐标绝不重复盲刺）");
                     }
-                    bumpStat(pkg, "auto");
+                    if (d.reason != null && d.reason.startsWith("feed_")) {
+                        /* v7.2.0：feed 路径不计 auto——信息流关闭由 executeFeed
+                         * P2 完成时单独记 feed（P1 拉菜单是中间动作，不虚增战绩） */
+                    } else {
+                        bumpStat(pkg, "auto");
+                    }
                 }
                 // v3.5.0 关键：点击后【不熔断】扫描链——由后续扫描复验；
                 // 广告关掉会触发新窗口事件（计数清零）；仍在则换候选/升级兜底
@@ -3238,6 +3318,8 @@ public class AdSkipService extends AccessibilityService {
                     HumanTap.dupTolPx(screenDensity));
             if (HumanTap.isFiredRecently(firedTargetAt, targetKey, now)) return false;
             if (!HumanTap.postTapQuietOk(lastGestureOkAt.get(pkg), now)) return false;
+            /* v7.2.0 多点防线 I（学习位置直点同熙）：每窗 2 击封顶 */
+            if (!HumanTap.targetStrikesOk(firedTargetCount.get(targetKey))) return false;
             if (gestureTap(d.x, d.y)) {
                 lastClickAt.put(pkg, now);
                 lastAutoClickPkg = pkg;
@@ -3246,6 +3328,8 @@ public class AdSkipService extends AccessibilityService {
                 skipAt.put(pkg, now); // v3.14.0：记录引擎出手时刻（学习位置直点也是跳过出手）
                 energyGestures++;
                 firedTargetAt.put(targetKey, now); // v6.1.0 F：同指纹目标静默生效中
+                Integer prevCnt = firedTargetCount.get(targetKey); // v7.2.0 防线 I：同指纹击数
+                firedTargetCount.put(targetKey, prevCnt == null ? 1 : prevCnt + 1);
                 lastGestureOkAt.put(pkg, now);     // v6.1.0 H：结果静默生效中
                 scheduleVerifyScan(pkg, HumanTap.verifyDelayMs(tapAttempts)); // v6.0.0 人手复验节奏（学习位置直点同熙）
                 if (isLearned) {
@@ -3258,7 +3342,11 @@ public class AdSkipService extends AccessibilityService {
                     appendLog("🎯 位置点击（" + shortPkg(pkg) + "）：(" + d.x + "," + d.y + ") → "
                             + HumanTap.verifyDelayMs(tapAttempts) + "ms 后复验");
                 }
-                bumpStat(pkg, "auto");
+                if (d.reason != null && d.reason.startsWith("feed_")) {
+                    /* v7.2.0：feed 路径不计 auto（feed 只走 A_CLICK_BOUNDS，防御性对称） */
+                } else {
+                    bumpStat(pkg, "auto");
+                }
                 return true; // 不熔断：交由复验扫描确认
             }
             return false;
@@ -3417,7 +3505,11 @@ public class AdSkipService extends AccessibilityService {
         } catch (Throwable ignored) {
         }
         lastGestureOkAt.remove(pkg);
-        feedArmedPkg = null; // v7.1.0：新窗开启——feed P1 armed 指纹窗同步复位（P2 只对 P1 出手后的同一窗生效）
+        /* v7.2.0 根治（病灶①的另一半）：此处绝不清 feedArmed——P1 点角标拉起的
+         * 关闭菜单【本身就是新窗】（Dialog/Popup → TYPE_WINDOW_STATE_CHANGED →
+         * 本方法），armed 一进菜单就被清零 = P2 永远等不到 = 「朋友圈广告全没
+         * 拦截」用户实锤的最直接死因。armed 只由 P1_ARM_MS（8s）过期、P2 完成、
+         * 或切到【其他应用】复位（maybeFeedScan 的 pkg.equals(feedArmedPkg) 门）。 */
     }
 
     /** v5.9.0：标签所属窗口 bounds——取节点自身窗口（node.getWindow()，

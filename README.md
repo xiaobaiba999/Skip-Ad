@@ -2,12 +2,12 @@
 
 # Skip-Ad · 开屏卫士
 
-**安卓开屏广告秒跳引擎 —— 露头就跳、弹窗自动关、朋友圈信息流广告两段式关闭、订阅导入永不失败、1:1 人手模拟触点**
+**安卓开屏广告秒跳引擎 —— 露头就跳、弹窗自动关、朋友圈信息流广告两段式关闭（真机命中根治·李跳跳方法论）、白名单全量应用列表、1:1 人手模拟触点**
 
 [![Releases](https://img.shields.io/github/v/release/xiaobaiba999/Skip-Ad?style=flat-square&label=%E6%9C%80%E6%96%B0%E5%8F%91%E5%B8%83)](https://github.com/xiaobaiba999/Skip-Ad/releases/latest)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](#许可)
-[![APK](https://img.shields.io/badge/APK-816KB-orange?style=flat-square)](https://github.com/xiaobaiba999/Skip-Ad/releases/latest)
-[![Tests](https://img.shields.io/badge/JVM%E6%96%AD%E8%A8%80-4067%20%E2%9C%85-brightgreen?style=flat-square)](docs/test-reports/round-33.json)
+[![APK](https://img.shields.io/badge/APK-817KB-orange?style=flat-square)](https://github.com/xiaobaiba999/Skip-Ad/releases/latest)
+[![Tests](https://img.shields.io/badge/JVM%E6%96%AD%E8%A8%80-4077%20%E2%9C%85-brightgreen?style=flat-square)](docs/test-reports/round-34.json)
 [![Matrix](https://img.shields.io/badge/%E6%9C%BA%E5%9E%8B%E7%9F%A9%E9%98%B5-9%E5%93%81%E7%89%8C%E5%8F%8A%E5%AD%90%E5%93%81%E7%89%8C%286%E6%9C%BA%E5%9E%8B-308-blue?style=flat-square)](android-app/tests/com/zai/adshield/test/BrandFocus308Test.java)
 [![HumanTap](https://img.shields.io/badge/1%3A1%E4%BA%BA%E6%89%8B%E6%A8%A1%E6%8B%9F-%E8%AF%AF%E7%82%B9%E5%A4%9A%E7%82%B9%E6%A0%B9%E6%B2%BB-ff7043?style=flat-square)](android-app/tests/com/zai/adshield/test/HumanTapMatrixTest.java)
 [![Topic](https://img.shields.io/badge/topic-gkd--subscription-8e8e8e?style=flat-square)](https://github.com/topics/gkd-subscription)
@@ -23,22 +23,23 @@ Java 引擎 · GKD 订阅生态兼容 · [Releases](https://github.com/xiaobaiba
 | | |
 | --- | --- |
 | **怎么工作** | 无障碍服务读屏找到「跳过」控件（文本/描述/控件 ID/图片角落键四通道），0ms 露头即点；**1:1 人手模拟触点**（人手参数域+人手复验节奏+dp 密度归一+实时人眼追踪+轨迹去重+同目标/结果双静默防线——不同设备上零误触零多点）；点击冷却 300ms · 倒计时将尽提前 0.38s 开火 |
-| **拦截范围** | 开屏广告 · 插屏/激励弹窗 · 摇一摇诱导 · 悬浮广告球 · 视频前贴 · **朋友圈等信息流广告两段式关闭（v7.1）**（134 款内置 + 任意 GKD 订阅扩展） |
+| **拦截范围** | 开屏广告 · 插屏/激励弹窗 · 摇一摇诱导 · 悬浮广告球 · 视频前贴 · **朋友圈等信息流广告两段式关闭（v7.2 真机命中根治·原生文本直查）**（134 款内置 + 任意 GKD 订阅扩展） |
 | **不碰什么** | 小程序/支付/团购容器零扫描零点击；银行/政务/相机零干预；只点应用自带「跳过」键（合规红线） |
 | **隐私** | 数据仅存本机；联网仅日志上传（脱敏）与更新检查；零定位/通讯录/存储权限 |
-| **体积** | APK 816KB（含三源离线订阅快照 ~520KB）· 冷启动毫秒级 · 典型日功耗 0.05mWh 级 |
+| **体积** | APK 817KB（含三源离线订阅快照 ~520KB）· 冷启动毫秒级 · 典型日功耗 0.05mWh 级 |
 
-## 当前版本 v7.1.0（2026-11-19）· 规则使用顺序治理 + 信息流广告卫士
+## 当前版本 v7.2.0（2026-11-19）· 信息流广告真机命中根治 + 白名单全量应用列表
 
-**订阅两源使用顺序根治 + 朋友圈信息流广告两段式自动关闭**：v7.1.0 在 v7.0.0 稳定基座上继续治理——「内置规则库与订阅市场规则的使用顺序和命中问题」三处病灶（市场规则被内置静态快照短路饿死 / 泛化全局规则压住专属精准规则 / 单源单候选拖死整轮）全部根治；v6.2 已验证的信息流广告卫士整体移植（81 项单测原样回绿）。versionCode 71000 > 70000，覆盖安装即升级（授权/学习数据/已导入订阅全部保留）。
+**朋友圈广告「全都没拦截」四处死因根治（李跳跳方法论）**：v7.1.0 单测全绿但真机零命中——本轮挖出四处「单测测不出、真机必踩」的死因：① armed 指纹窗在菜单弹出的瞬间被窗切换清零（菜单 Dialog 就是新窗——最直接死因）② sns 窗门+12s 开屏窗闸对菜单窗双杀 ③ 300 节点预算制 DFS 够不到朋友圈大树深层卡片 ④ P2 双闸在真机单项菜单（仅「不感兴趣」）上零命中。全部根治：**原生文本直查**（`findAccessibilityNodeInfosByText` 全树搜索·预算无关——深层卡片角标同样能查到，候选仍逐个过语义+形态闸，宁漏勿误红线不变）+ **armed 直通窗闸** + **armed≥1 即出手**。versionCode 72000 > 71000，覆盖安装即升级（授权/学习数据/已导入订阅全部保留）。
 
-- **订阅两源使用顺序**：市场源（用户导入·日更）在该应用有专属规则时优先 → 内置源兜底 → 全局组垫底；两源各贡献一个候选进点击轮换；扫描日志新增两源覆盖诊断（`订阅[市场覆盖+内置覆盖]`），命中日志带源标注——「导入了怎么还是不跳」类问题上传日志即可定位
-- **信息流广告卫士（微信朋友圈就业广告等 App 内广告自动关闭）**：两段式 P1 点「广告/就业」披露角标 → P2 点「关闭该广告」中性项收菜单；四道安全闸（角标词精确等值/面积门/P2 双闸/18 款名单门+微信 sns 窗级门）——绝不点广告主体
-- **底层算法优化**：分应用规则行预筛 memo（每窗一次预筛，探针/DFS 双路径共享——每窗省 ~340 节点 × 50 行前缀比对；与旧全表路径数学等价，测试锁死）
-- **应用白名单中文名搜索 + 卫士使用报告**：白名单搜索栏中文名/包名双通道实时过滤；我的页一键生成使用报告（拦截战绩/订阅两源命中分账/Top5 应用/能耗画像/设备画像）
-- **机型矩阵 286→308 · 七维→八维**：每品牌 +2 新世代机型（HyperOS 5/HarmonyOS 8/MagicOS 12/ColorOS 18/OriginOS 8/One UI 10）；新增信息流广告维（角标/菜单几何按机型分辨率 1:1 缩放逐机型验证）——11 组 × 28 = 308 机型【八维】各 308/308 · 全仓 **17 套件 4067 项 JVM 断言全绿**
+- **信息流广告真机命中（参考李跳跳实现逻辑）**：P1 点「广告/就业」披露角标 → P2 点「关闭该广告/不感兴趣」中性项收菜单；armed 期绝不回落 P1（角标连点根治）；feed 关闭单独记账；feed 未命中诊断日志随一日三次上传——「全没拦截」类反馈日志可区分「窗内无角标」与「角标文案未收编」
+- **白名单全量应用列表（搜索不到根治）**：列表改为**全部已安装可启动应用**（上限 500·中文序白名单置顶）+ 浏览器式搜索（中文名/包名双通道**不区分大小写**——qqQQ 能检索到 QQ；120ms 防抖实时过滤）
+- **卫士使用报告：饼图常驻 + 明细折叠 + 到页自动刷新**：conic-gradient 饼图（开屏/信息流关闭/弹窗/返回键/反馈面板五段）+ 五段折叠明细默认收起 + 进入「我的」页自动刷新（不再长篇难受）
+- **多点误点防线 I + 节奏收紧**：同指纹目标每窗 2 击封顶（第 3 击静默）· 耐心预算 6→3 · 同指纹静默 1600ms · 结果静默 600ms——设备触点被吞时的同目标连击从源头掐断
+- **版本记录序号化**：版本记录按 1. 2. 3. 4. 序号逐条列出功能；检查更新 ≤5 条带序号新版功能保持
+- **308 机型八维矩阵保持**（只测点名 9 品牌+子品牌）· 全仓 **17 套件 4077 项 JVM 断言全绿（+10）**
 
-历史版本全部归档在 [docs/CHANGELOG.md](docs/CHANGELOG.md)；本轮治理实录：[docs/OPTIMIZATION-v7.1.0.md](docs/OPTIMIZATION-v7.1.0.md)。
+历史版本全部归档在 [docs/CHANGELOG.md](docs/CHANGELOG.md)；本轮治理实录：[docs/OPTIMIZATION-v7.2.0.md](docs/OPTIMIZATION-v7.2.0.md)。
 
 ## App 截图（真实 UI 截取）
 
@@ -94,15 +95,15 @@ android-app/
 
 ## 测试
 
-- **9 品牌 + 子品牌 11 组 × 28 机型 = 308 机型**（只测用户点名的品牌：OPPO/vivo/小米/三星/华为/荣耀/红米/一加/iQOO 及其子品牌 POCO/realme，其他品牌不测）：开屏命中 / 多点误点 / 屏蔽速度 / bug / 功耗 / 精准度 / 算法优化 / **信息流广告（v7.1 新增）** **八维各 308/308**（含 2026-2027 新世代机型与 HyperOS 4~5/HarmonyOS 7~8/One UI 9~10 等新系统；信息流维角标/菜单几何按机型分辨率 1:1 缩放逐机型验证）
+- **9 品牌 + 子品牌 11 组 × 28 机型 = 308 机型**（只测用户点名的品牌：OPPO/vivo/小米/三星/华为/荣耀/红米/一加/iQOO 及其子品牌 POCO/realme，其他品牌不测）：开屏命中 / 多点误点 / 屏蔽速度 / bug / 功耗 / 精准度 / 算法优化 / **信息流广告（v7.1 新增·v7.2 真机命中）** **八维各 308/308**（含 2026-2027 新世代机型与 HyperOS 4~5/HarmonyOS 7~8/One UI 9~10 等新系统；信息流维角标/菜单几何按机型分辨率 1:1 缩放逐机型验证）
 - **1:1 人手模拟矩阵**：24 类真实设备几何 × **真实密度配对**（720p 遗留机 1.0~2.0 / QHD 旗舰 3.5~4.0 / 折叠内屏 2.0~2.6——真实世界设备组合）+ 全 7 档压力条件契约（可刺→安全落点 · 亚指腹→拒点）全绿
-- **设备自适应触点矩阵**：24 类真实设备几何 × 12 误触场景全绿；**订阅镜像链与快照归一**（SubMirrorTest 35 项）+ **版本描述规范**（ReleaseNotesTest 30 项）+ **规则使用顺序治理**（RuleOrderTest 39 项·v7.1 新增）+ **信息流广告卫士**（FeedAdGuardTest 81 项·v7.1 移植回绿）
-- 三十三轮自测轨迹见 [docs/test-reports/summary.md](docs/test-reports/summary.md)
-- 每轮报告：`docs/test-reports/round-N.json`（最新：[round-33](docs/test-reports/round-33.json) · 4067 断言全绿）
+- **设备自适应触点矩阵**：24 类真实设备几何 × 12 误触场景全绿；**订阅镜像链与快照归一**（SubMirrorTest 35 项）+ **版本描述规范**（ReleaseNotesTest 30 项）+ **规则使用顺序治理**（RuleOrderTest 39 项）+ **信息流广告卫士**（FeedAdGuardTest 90 项·v7.2 真机命中根治扩容：候选式快搜+armed≥1 语义）
+- 三十四轮自测轨迹见 [docs/test-reports/summary.md](docs/test-reports/summary.md)
+- 每轮报告：`docs/test-reports/round-N.json`（最新：[round-34](docs/test-reports/round-34.json) · 4077 断言全绿）
 
 ## 安装
 
-1. [Releases](https://github.com/xiaobaiba999/Skip-Ad/releases/latest) 下载 APK（816KB）直接安装（v7.0.0 用户覆盖安装即升级 v7.1.0——versionCode 71000）；
+1. [Releases](https://github.com/xiaobaiba999/Skip-Ad/releases/latest) 下载 APK（817KB）直接安装（v7.0.0/v7.1.0 用户覆盖安装即升级 v7.2.0——versionCode 72000）；
 2. 开启无障碍服务（系统会弹 10 秒安全确认，属正常防诈设计——开启一次后 App 内/通知栏即可控制，绝不再去系统设置）；
 3. 常被清理后台的机型（HyperOS 等）：App 首页「保活体检」只显示待处理项，点「去设置」逐项确认。
 

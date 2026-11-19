@@ -650,17 +650,18 @@ public final class BrandFocus308Test {
                 boolean staleJitter = HumanTap.isStaleBounds(oldB, jitterB, density);
                 boolean staleGone = HumanTap.isStaleBounds(oldB, null, density);
                 if (staleAnim && !staleJitter && staleGone) multiOk++;
-                // ①″c H 结果静默期：刚派发完 250ms 内连发被拦；过期放行
+                // ①″c H 结果静默期：刚派发完 600ms 内连发被拦；过期放行（v7.2.0：250→600ms）
                 boolean postQuietBlocked = !HumanTap.postTapQuietOk(now - 100, now);
-                boolean postQuietPassed = HumanTap.postTapQuietOk(now - 300, now);
+                boolean postQuietPassed = HumanTap.postTapQuietOk(now - 700, now);
                 if (postQuietBlocked && postQuietPassed) multiOk++;
-                // ①″d F/G/H 三防线常量全场在场（多点误点防线的参数契约）
-                boolean quietConsts = HumanTap.SAME_TARGET_QUIET_MS == 1500L
-                        && HumanTap.POST_TAP_QUIET_MS == 250L
+                // ①″d F/G/H/I 四防线常量全场在场（多点误点防线的参数契约）
+                boolean quietConsts = HumanTap.SAME_TARGET_QUIET_MS == 1600L
+                        && HumanTap.POST_TAP_QUIET_MS == 600L
                         && HumanTap.STALE_DRIFT_MIN_DP == 24
-                        && HumanTap.STALE_DRIFT_RATIO == 0.5;
+                        && HumanTap.STALE_DRIFT_RATIO == 0.5
+                        && HumanTap.MAX_STRIKES_PER_TARGET == 2; // v7.2.0 防线 I：同指纹每窗 2 击封顶
                 if (quietConsts) multiOk++;
-                TestHost.check(multiOk == 4, "①″ 多点误点 " + model + "（" + os + " · F 指纹静默 " + fired + "出/" + blocked + "拦 · G 新鲜复核 · H 结果静默 · 常量在场 " + multiOk + "/4）");
+                TestHost.check(multiOk == 4, "①″ 多点误点 " + model + "（" + os + " · F 指纹静默 " + fired + "出/" + blocked + "拦 · G 新鲜复核 · H 结果静默 · I 击数封顶 · 常量在场 " + multiOk + "/4）");
                 if (multiOk == 4) multiN++;
 
                 /* ② 屏蔽速度（120 节点树 · walk+decide · v5.7 激进参数在场） */
@@ -676,7 +677,7 @@ public final class BrandFocus308Test {
                 boolean speedOk = perDecisionMs < 20
                         && AdDecisionCore.COUNTDOWN_EXTRA_MS == 120
                         && AdDecisionCore.MAX_CLICKS_PER_WIN == HumanTap.HUMAN_PATIENCE
-                        && AdDecisionCore.MAX_CLICKS_PER_WIN == 6
+                        && AdDecisionCore.MAX_CLICKS_PER_WIN == 3
                         && AdDecisionCore.SKIP_CANDS_MAX == 8
                         && humanEngineInPlace(model);
                 TestHost.check(speedOk, "② 屏蔽速度 " + model + "（" + perDecisionMs + "ms/决策 · v6 人手引擎参数在场）");
@@ -808,7 +809,7 @@ public final class BrandFocus308Test {
                  *     tapBounds 逐元素==角标自身（绝不广告主体）；
                  *  b) 广告主体大容器拒收：正确角标词「广告」+巨容器（100% 宽）面
                  *     积门拒 + 正常内容流零命中（宁漏勿误）；
-                 *  c) P2 armed 收菜单：双闸（强特征≥1 且总数≥2）+优先级最高项
+                 *  c) P2 armed 收菜单（v7.2.0：armed≥1 即出手）+优先级最高项
                  *     「关闭该广告」+tapBounds==该项自身；
                  *  d) P2 非 armed 零对抗（用户自己长按的菜单绝不对抗）。 */
                 int feedOk = 0;
@@ -851,7 +852,7 @@ public final class BrandFocus308Test {
                         && fp2.tapBounds[0] == mX0 && fp2.tapBounds[1] == r0Y
                         && fp2.tapBounds[2] == mX1 && fp2.tapBounds[3] == r0Y + rowH) feedOk++;
                 if (FeedAdGuard.decideP2(feedMenuTree, w, h, false) == null) feedOk++;
-                TestHost.check(feedOk == 4, "⑦ 信息流广告 " + model + "（" + os + " · 角标/菜单几何 1:1 缩放 · P1 角标+主体拒收+P2 双闸+非 armed 零对抗 " + feedOk + "/4）");
+                TestHost.check(feedOk == 4, "⑦ 信息流广告 " + model + "（" + os + " · 角标/菜单几何 1:1 缩放 · P1 角标+主体拒收+P2 armed≥1+非 armed 零对抗 " + feedOk + "/4）");
                 if (feedOk == 4) feedN++;
             }
 
@@ -915,7 +916,9 @@ public final class BrandFocus308Test {
                 && HumanTap.DUR_FIRST_MIN == 95 && HumanTap.DUR_FIRST_SPAN == 36
                 && HumanTap.DUR_RETRY_MIN == 115 && HumanTap.DUR_RETRY_SPAN == 46
                 && HumanTap.JITTER_ABS == 2
-                && HumanTap.HUMAN_PATIENCE == 6
+                && HumanTap.HUMAN_PATIENCE == 3
+                && HumanTap.targetStrikesOk(null) && HumanTap.targetStrikesOk(1)
+                && !HumanTap.targetStrikesOk(2) && !HumanTap.targetStrikesOk(3)
                 && HumanTap.MIN_SIDE_DP == 12 && HumanTap.EDGE_INSET_DP == 6
                 && HumanTap.DUP_TOL_DP == 8
                 && HumanTap.verifyDelayMs(0) == 500L

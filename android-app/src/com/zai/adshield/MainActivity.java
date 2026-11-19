@@ -645,19 +645,40 @@ public class MainActivity extends Activity {
 
         /* ───── v4.3.0 应用白名单（白名单内应用零扫描零点击零学习） ───── */
 
-        /** 白名单状态：{list:[当前白名单], known:[{pkg,label} 近期处理过的应用]} */
+        /* ═══ v7.2.0 白名单全量应用列表（用户实锤）═══
+         * 用户原话：「应用白名单搜索不到，不符合人的使用行为，搜索应该像
+         * 浏览器那样，我输入qqQQ无论是大写小写都能检索到，或者直接把所有
+         * 应用显示出来」。
+         * 根因：旧 known 列表 = 白名单 ∪ 引擎战绩 byApp（上限 80）——新装
+         * 用户/从未被拦截过的 App（QQ、微信等）根本不在列表里，搜索必然找不到。
+         * 修复（两端配合）：本桥 known 改为枚举全部已安装可启动应用
+         * （ACTION_MAIN + CATEGORY_LAUNCHER）∪ 白名单 ∪ 引擎战绩，上限
+         * 80→500；白名单内排最前，其余 Collator(CHINA) 中文序（与 JS 端
+         * 排序语义一致）；搜索大小写不敏感在 app.js 侧（v7.2.0 debounce）。
+         * 另加 30s 静态内存缓存——app.js 每次切到首页 tab 都会调
+         * renderWhitelist(true) → whitelistJson()，避免高频 PackageManager IPC。 */
+        /** v7.2.0：whitelistJson 结果 30s 内存缓存（结果 JSON + 时间戳）；
+         *  增删白名单后置空失效，绝不回吐旧 list */
+        private static volatile String wlMemoJson = null;
+        private static volatile long wlMemoAt = 0L;
+
+        /** 白名单状态：{list:[当前白名单], known:[{pkg,label} 全量应用]}（v7.2.0
+         *  起为全部已安装可启动应用 ∪ 白名单 ∪ 引擎战绩，上限 500 条） */
         @JavascriptInterface
         public String whitelistJson() {
             org.json.JSONObject o = new org.json.JSONObject();
             try {
+                // v7.2.0：30 秒内直返缓存（高频桥调用防抖，免 PackageManager IPC）
+                String memo = wlMemoJson;
+                if (memo != null && System.currentTimeMillis() - wlMemoAt < 30000L) return memo;
                 java.util.ArrayList<String> list = new java.util.ArrayList<>();
                 java.util.HashSet<String> wl = com.zai.adshield.AdSkipService.parseWhitelistCsv(
                         com.zai.adshield.AdSkipService.whitelistCsvOf(a));
                 list.addAll(wl);
                 o.put("list", new org.json.JSONArray(list));
-                // 已知应用：白名单 ∪ 引擎战绩（byApp）——用户识别得到的应用列表
-                java.util.TreeMap<String, Integer> known = new java.util.TreeMap<>();
-                for (String p : wl) known.put(p, 1);
+                // 全量应用三源合并（pkg → label；LinkedHashMap 保插入序）
+                java.util.LinkedHashMap<String, String> known = new java.util.LinkedHashMap<>();
+                // 源③：引擎战绩 byApp（保留旧逻辑——用户实际处理过的应用确保在列）
                 try {
                     String snap = AdSkipService.snapshotState(a);
                     org.json.JSONObject st = snap != null ? new org.json.JSONObject(snap) : null;
@@ -665,20 +686,69 @@ public class MainActivity extends Activity {
                             ? st.optJSONObject("stats").optJSONObject("byApp") : null;
                     if (byApp != null) {
                         java.util.Iterator<String> it = byApp.keys();
-                        while (it.hasNext()) known.put(it.next(), 1);
+                        while (it.hasNext()) known.put(it.next(), null); // label 稍后统一补全
                     }
                 } catch (Exception ignored) {
                 }
+                // 源②：白名单里的包（即使已卸载也保留显示，勾选态不丢）
+                for (String p : wl) {
+                    if (!known.containsKey(p)) known.put(p, null);
+                }
+                // 源①（主力）：全部已安装可启动应用——新装/未被拦截过的 App
+                // （QQ、微信）也能被 qqQQ 搜到的前提
+                try {
+                    java.util.HashSet<String> seen = new java.util.HashSet<>();
+                    java.util.List<android.content.pm.ResolveInfo> ris =
+                            a.getPackageManager().queryIntentActivities(
+                                    new android.content.Intent(android.content.Intent.ACTION_MAIN)
+                                            .addCategory(android.content.Intent.CATEGORY_LAUNCHER), 0);
+                    for (android.content.pm.ResolveInfo ri : ris) {
+                        if (ri == null || ri.activityInfo == null
+                                || ri.activityInfo.applicationInfo == null) continue;
+                        String pkg = ri.activityInfo.applicationInfo.packageName;
+                        if (pkg == null || pkg.isEmpty() || !seen.add(pkg)) continue; // 同包多入口去重
+                        String label = null;
+                        try {
+                            CharSequence l = a.getPackageManager()
+                                    .getApplicationLabel(ri.activityInfo.applicationInfo);
+                            if (l != null && l.length() > 0) label = l.toString();
+                        } catch (Throwable ignored) {
+                        }
+                        // 已在列（战绩/白名单）则仅补 label；新应用追加尾部
+                        known.put(pkg, label);
+                    }
+                } catch (Throwable ignored) {
+                }
+                // label 兜底补全（一次到位，避免排序比较器里反复 PM IPC）
+                for (java.util.Map.Entry<String, String> e : known.entrySet()) {
+                    if (e.getValue() == null || e.getValue().isEmpty()) {
+                        e.setValue(appLabelOf(e.getKey()));
+                    }
+                }
+                // 排序：白名单内最前（与 JS 端一致），其余 Collator 中文序、同名按包名
+                java.util.ArrayList<java.util.Map.Entry<String, String>> es =
+                        new java.util.ArrayList<>(known.entrySet());
+                final java.text.Collator coll = java.text.Collator.getInstance(java.util.Locale.CHINA);
+                java.util.Collections.sort(es, (x, y) -> {
+                    boolean wx = wl.contains(x.getKey()), wy = wl.contains(y.getKey());
+                    if (wx != wy) return wx ? -1 : 1;
+                    int c = coll.compare(x.getValue(), y.getValue());
+                    return c != 0 ? c : x.getKey().compareTo(y.getKey());
+                });
                 org.json.JSONArray arr = new org.json.JSONArray();
                 int n = 0;
-                for (String pkg : known.keySet()) {
-                    if (n++ >= 80) break; // 展示上限（防止超长列表）
-                    org.json.JSONObject e = new org.json.JSONObject();
-                    e.put("pkg", pkg);
-                    e.put("label", appLabelOf(pkg));
-                    arr.put(e);
+                for (java.util.Map.Entry<String, String> e : es) {
+                    if (n++ >= 500) break; // v7.2.0 展示上限 80→500（一般手机 100~400 款应用）
+                    org.json.JSONObject e2 = new org.json.JSONObject();
+                    e2.put("pkg", e.getKey());
+                    e2.put("label", e.getValue());
+                    arr.put(e2);
                 }
                 o.put("known", arr);
+                String out = o.toString();
+                wlMemoJson = out; // 记入缓存（30s TTL）
+                wlMemoAt = System.currentTimeMillis();
+                return out;
             } catch (Exception ignored) {
             }
             return o.toString();
@@ -686,12 +756,16 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public boolean whitelistAdd(String pkg) {
-            return AdSkipService.whitelistAdd(a, pkg);
+            boolean ok = AdSkipService.whitelistAdd(a, pkg);
+            if (ok) wlMemoJson = null; // v7.2.0：白名单已变更，缓存失效（否则 30s 内回吐旧 list）
+            return ok;
         }
 
         @JavascriptInterface
         public boolean whitelistRemove(String pkg) {
-            return AdSkipService.whitelistRemove(a, pkg);
+            boolean ok = AdSkipService.whitelistRemove(a, pkg);
+            if (ok) wlMemoJson = null; // v7.2.0：白名单已变更，缓存失效
+            return ok;
         }
 
         /** 应用名（PackageManager 查询；失败回退包名末段） */

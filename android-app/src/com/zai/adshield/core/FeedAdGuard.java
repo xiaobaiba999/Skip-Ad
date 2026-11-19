@@ -11,6 +11,24 @@ import com.zai.adshield.core.AdDecisionCore.NodeView;
  * 用户实锤（第十一轮原话）：能不能增加功能实现自动关闭 app 内的广告内容，
  * 例如微信朋友圈就有广告穿插在朋友圈之中——v7.1.0 将本模块（v6.2.0
  * 已验证实现·81 项单测全绿）整体移植回 7.0 稳定基座，接线零改动。
+ * 用户实锤（第十二轮原话）：app 内穿插的广告全都没拦截，关于这一块的
+ * 实现可以参考李跳跳的实现逻辑（李跳跳核心方法论：按文本直查目标节点
+ * findAccessibilityNodeInfosByText + 逐节点语义闸确认后点击，不做预算制
+ * DFS 爬树）——v7.2.0 三处真机病灶根治：
+ *  · 病灶① P2 被窗类覆盖双杀：P1 点角标后拉起的关闭菜单是 Dialog/Popup
+ *    新窗 → TYPE_WINDOW_STATE_CHANGED 把 winClass 覆盖成菜单窗类 →
+ *    isFeedWindow(微信 sns 窗门) 失败 + winAt 重置 → 12s 开屏窗闸阻断 →
+ *    8s armed 指纹窗活活耗尽 →「全都没拦截」。修复：armed 直通（P2 只认
+ *    armed 本身 + 中性项精确等值双保险，不再依赖窗类/窗计时）；
+ *  · 病灶② 预算制 DFS 够不到深层卡片：300 节点预算在朋友圈大树上只爬到
+ *    前几张卡片，深处理广告角标永远扫不到。修复：原生
+ *    findAccessibilityNodeInfosByText 按角标词/中性词直查（C++ 侧全树搜，
+ *    预算无关），候选节点再过本模块语义+形态闸（宁漏勿误红线不变）；
+ *  · 病灶③ P2 双闸过严：真机微信角标菜单常只露出 1 个中性项（如仅
+ *    「不感兴趣」）→ 强特征≥1 且总数≥2 双闸全零命中 → 菜单永远不收。
+ *    修复：armed（P1 刚出手）本身即最强上下文信号——armed 且中性项≥1
+ *    即出手（李跳跳式）；非 armed 依旧零动作（用户自己长拉的菜单绝
+ *    不对抗）。
  *
  * 场景（与开屏广告的本质差异）：开屏广告是「全屏整窗 + 独立倒计时键」——
  * 跳过即离开；信息流广告（朋友圈就业广告/微博信息流/B站推荐流）是「嵌在
@@ -48,8 +66,10 @@ public final class FeedAdGuard {
     }
 
     /* ══ 安全闸参数（全部 public 常量——测试断言在场性）══ */
-    /** 信息流扫描节流（功耗红线：与 300 节点预算构成双闸）。 */
+    /** 信息流扫描节流（功耗红线：与节点预算构成双闸）。 */
     public static final long FEED_SCAN_THROTTLE_MS = 1200;
+    /** v7.2.0 P2 扫描节流（菜单拉起后的快节奏复查——350ms，armed 专用）。 */
+    public static final long P2_SCAN_THROTTLE_MS = 350;
     /** 信息流树节点预算（大 feed 树深挖上限——第二道功耗闸）。 */
     public static final int FEED_NODE_BUDGET = 300;
     /** P2 须在 P1 出手 8s 指纹窗内（用户自己长按的菜单绝不对抗）。 */
@@ -97,18 +117,26 @@ public final class FeedAdGuard {
 
     /* ══ 闸①：披露角标词（精确等值——绝不 contains）══
      * 朋友圈就业广告披露角标族（就业/求职/招聘/职位）与通用披露角标
-     * （广告/推广）同表；带纯符号尾的变体（广告×/广告·/就业›）单独收编。 */
-    static final String[] BADGE_WORDS = {
+     * （广告/推广）同表；带纯符号尾的变体（广告×/广告·/就业›）单独收编。
+     * v7.2.0 public：服务侧原生直查（李跳跳方法论）按词逐个直查。 */
+    public static final String[] BADGE_WORDS = {
             "广告", "推广", "就业", "求职", "招聘", "职位",
     };
 
-    /* ══ 闸③：P2 中性关闭项（精确等值；优先级即数组序）══ */
+    /* ══ 闸③：P2 中性关闭项（精确等值；优先级即数组序）。
+     * v7.2.0 收编「减少此类广告」（微信菜单变体）与「屏蔽此推广」（旧版
+     * 朋友圈文案）两族真机文案。 */
     static final String[] NEUTRAL_CLOSE_ITEMS = {
-            "关闭该广告", "关闭此广告", "屏蔽此广告", "关闭广告", "不感兴趣",
+            "关闭该广告", "关闭此广告", "屏蔽此广告", "屏蔽此推广", "关闭广告", "不感兴趣", "减少此类广告",
     };
-    /** 菜单强特征（真·广告关闭菜单独有文案——双闸之一）。 */
+
+    /** v7.2.0 中性关闭词表 public 视图（服务侧 P2 原生直查用）。 */
+    public static String[] neutralCloseWords() {
+        return NEUTRAL_CLOSE_ITEMS.clone();
+    }
+    /** 菜单强特征（真·广告关闭菜单独有文案）。 */
     static final String[] NEUTRAL_STRONG_ITEMS = {
-            "关闭该广告", "关闭此广告", "屏蔽此广告",
+            "关闭该广告", "关闭此广告", "屏蔽此广告", "屏蔽此推广",
     };
     /** 扩展动作（绝不代点——替用户做超出「关闭本条」的决策=越权）。 */
     static final String[] EXTENDED_ACTIONS = {
@@ -243,9 +271,11 @@ public final class FeedAdGuard {
     }
 
     /**
-     * P2 决策：armed（P1 出手 8s 指纹窗内）才找中性关闭项收菜单；
-     * 非 armed 一律 null（用户自己长按的「不感兴趣」菜单绝不对抗）。
-     * 双闸：菜单强特征 ≥1 且中性项总数 ≥2（真·广告关闭菜单的确认信号）。
+     * P2 决策（DFS 兜底路径）：armed（P1 出手 8s 指纹窗内）才找中性关闭项
+     * 收菜单；非 armed 一律 null（用户自己长按的「不感兴趣」菜单绝不对抗）。
+     * v7.2.0 病灶③根治：armed 本身即最强上下文（角标刚被我们点开）——
+     * 中性项 ≥1 即出手（真机微信菜单常只露 1 个中性项，旧「强特征≥1 且
+     * 总数≥2」双闸在真机上零命中）；精确等值 + 扩展动作排除原样保持。
      */
     public static FeedDecision decideP2(NodeView root, int screenW, int screenH, boolean armed) {
         if (!armed || root == null) return null;
@@ -253,13 +283,80 @@ public final class FeedAdGuard {
         java.util.LinkedHashMap<String, NodeView> found =
                 new java.util.LinkedHashMap<String, NodeView>();
         collectNeutral(root, 0, budget, found, screenW, screenH);
-        if (found.size() < 2) return null; // 总数 ≥2（双闸之二）
-        int strong = 0;
-        for (String label : found.keySet()) {
-            if (isNeutralStrongItem(label)) strong++;
+        if (found.isEmpty()) return null; // v7.2.0：中性项 ≥1（armed 即确认信号）
+        /* 优先级即数组序 */
+        for (String pri : NEUTRAL_CLOSE_ITEMS) {
+            NodeView n = found.get(pri);
+            if (n != null) return build(ACTION_P2_CLOSE, n, screenW, screenH);
         }
-        if (strong < 1) return null; // 强特征 ≥1（双闸之一）
-        /* 优先级即数组序：关闭该广告 > 关闭此广告 > 屏蔽此广告 > 关闭广告 > 不感兴趣 */
+        return null;
+    }
+
+    /* ───────── v7.2.0 候选式快搜（李跳跳方法论主路径） ─────────
+     * 服务侧用 AccessibilityNodeInfo.findAccessibilityNodeInfosByText(词)
+     * 原生直查（C++ 侧全树 contains 搜索·预算无关——300 节点 DFS 够不到
+     * 的深层卡片也能查到），命中节点包装成 NodeView 候选传入；本模块仍逐
+     * 候选过完整语义（精确等值）+ 形态（≤35%屏×≤8%屏）闸——宁漏勿误红线
+     * 与 DFS 路径完全一致，只是「爬树」换成「直查」。 */
+
+    /**
+     * P1 候选式决策：角标词原生直查命中节点里找披露角标（闸①②逐候选
+     * 判定）。返回 null = 无角标（正常内容流零命中——宁漏勿误）。
+     * tapBounds = 角标【自身】 bounds——绝不广告主体。
+     */
+    public static FeedDecision decideP1FromCandidates(java.util.List<NodeView> candidates,
+                                                       int screenW, int screenH) {
+        if (candidates == null) return null;
+        for (NodeView n : candidates) {
+            if (n == null) continue;
+            try {
+                if (!n.visible()) continue;
+                String text = nz(n.text());
+                String desc = nz(n.desc());
+                String label = text.length() > 0 ? text : desc;
+                int[] b = n.bounds();
+                if (label.length() > 0 && isDisclosureBadge(label, b, screenW, screenH)) {
+                    return build(ACTION_P1_BADGE, n, screenW, screenH);
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+        return null;
+    }
+
+    /**
+     * P2 候选式决策：中性词原生直查命中节点里找关闭项收菜单（armed 才出手
+     * ——与 DFS 路径同闸；精确等值 + 扩展动作排除 + 形态闸逐候选不变）。
+     * 优先级即数组序（关闭该广告 > … > 不感兴趣 > 减少此类广告）。
+     */
+    public static FeedDecision decideP2FromCandidates(java.util.List<NodeView> candidates,
+                                                        int screenW, int screenH, boolean armed) {
+        if (!armed || candidates == null) return null;
+        java.util.LinkedHashMap<String, NodeView> found =
+                new java.util.LinkedHashMap<String, NodeView>();
+        for (NodeView n : candidates) {
+            if (n == null) continue;
+            try {
+                if (!n.visible()) continue;
+                String text = nz(n.text());
+                String desc = nz(n.desc());
+                String label = text.length() > 0 ? text : desc;
+                int[] b = n.bounds();
+                if (label.length() == 0 || b == null || b.length < 4
+                        || b[2] <= b[0] || b[3] <= b[1]) continue;
+                if (!isNeutralCloseItem(label) || isExtendedActionItem(label)) continue;
+                int w = b[2] - b[0], h = b[3] - b[1];
+                boolean formOk;
+                if (screenW > 0 && screenH > 0) {
+                    formOk = w <= (int) (screenW * BADGE_W_MAX) && h <= (int) (screenH * BADGE_H_MAX);
+                } else {
+                    formOk = w <= BADGE_FALLBACK_W_PX && h <= BADGE_FALLBACK_H_PX;
+                }
+                if (formOk && !found.containsKey(label)) found.put(label, n);
+            } catch (Throwable ignored) {
+            }
+        }
+        if (found.isEmpty()) return null;
         for (String pri : NEUTRAL_CLOSE_ITEMS) {
             NodeView n = found.get(pri);
             if (n != null) return build(ACTION_P2_CLOSE, n, screenW, screenH);
@@ -340,8 +437,9 @@ public final class FeedAdGuard {
                 + " 族(≤" + BADGE_MAX_CHARS + "字,宽≤" + (int) (BADGE_W_MAX * 100) + "%屏×高≤"
                 + (int) (BADGE_H_MAX * 100) + "%屏) · 中性关闭 " + NEUTRAL_CLOSE_ITEMS.length
                 + " 项(强特征 " + NEUTRAL_STRONG_ITEMS.length + " + 弱 " + (NEUTRAL_CLOSE_ITEMS.length - NEUTRAL_STRONG_ITEMS.length)
-                + " · 强≥1且总≥2双闸) · 扩展动作绝不代点 " + EXTENDED_ACTIONS.length
-                + " 类 · 扫描节流 " + FEED_SCAN_THROTTLE_MS + "ms + 节点预算 " + FEED_NODE_BUDGET;
+                + " · armed≥1即出手) · 扩展动作绝不代点 " + EXTENDED_ACTIONS.length
+                + " 类 · 扫描节流 " + FEED_SCAN_THROTTLE_MS + "ms(P2 " + P2_SCAN_THROTTLE_MS
+                + "ms) + 节点预算 " + FEED_NODE_BUDGET + "(原生直查主路径·DFS兜底)";
     }
 
     static String nz(String s) {

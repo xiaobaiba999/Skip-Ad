@@ -228,7 +228,7 @@ public final class AdDecisionCore {
      * 安全域 + 人手手势参数），首点命中率大幅提升，重试预算从「机器枪」
      * 迁回「人的耐心」：6 下内没关就优雅收手等倒计时走完，与
      * HumanTap.HUMAN_PATIENCE 同源（安全闸依旧零变化）。 */
-    public static final int MAX_CLICKS_PER_WIN = 6;       // v6.0.0：12→6（1:1 人手耐心——多点级联根治）
+    public static final int MAX_CLICKS_PER_WIN = 3;       // v7.2.0：6→3（用户十二轮实锤多点观感——人的耐心 2~3 下；与 HumanTap.HUMAN_PATIENCE 同源）
     public static final double CLOSE_TOP_MAX = 0.35;      // 开屏×关闭键须在顶部 35% 内
     public static final int LONG_TEXT_LEN = 40;           // 长文本（正常内容页特征）
 

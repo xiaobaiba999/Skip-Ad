@@ -36,7 +36,7 @@ import java.util.ArrayList;
  * <li>S6 全链路落点：标准开屏树 walk→decide 出手 → tapRect+pickDp（密度
  *   缩放）→ 落点在跳过键可见域内且距边 ≥ 密度内缩，±2px 抖动仍在域内
  *   ——1:1 人手模拟在任意设备几何上的终极断言；</li>
- * <li>S7 人手耐心预算：MAX_CLICKS_PER_WIN == HUMAN_PATIENCE == 6（人的耐心
+ * <li>S7 人手耐心预算：MAX_CLICKS_PER_WIN == HUMAN_PATIENCE == 3（人的耐心
  *   ——6 下没关优雅收手等倒计时，绝不 12 连点机器枪）。</li>
  * </ol>
  */
@@ -407,17 +407,22 @@ public final class HumanTapMatrixTest {
                 "S6 全链路（" + decidedN + "/" + GEOM.length + " 几何全决策 · 真实配对+7 档压力条件契约落点安全 + 位移追踪安全）");
     }
 
-    /* ══ S7：人手耐心预算（多点级联根治的预算侧）══ */
+    /* ══ S7：人手耐心预算（多点级联根治的预算侧·v7.2.0 收紧 6→3）══ */
     static void s7_patience() {
         TestHost.suite("S7 人手耐心预算");
         TestHost.check(AdDecisionCore.MAX_CLICKS_PER_WIN == HumanTap.HUMAN_PATIENCE
-                        && AdDecisionCore.MAX_CLICKS_PER_WIN == 6,
-                "S7 耐心预算（MAX_CLICKS_PER_WIN == HUMAN_PATIENCE == 6——12 连点机器枪退役）");
-        // 预算 × 节奏联合：6 次出手的时间跨度 ≥ 人手耐心（非机器枪）
+                        && AdDecisionCore.MAX_CLICKS_PER_WIN == 3,
+                "S7 耐心预算（MAX_CLICKS_PER_WIN == HUMAN_PATIENCE == 3——用户十二轮实锤多点观感，人的耐心 2~3 下）");
+        // v7.2.0 防线 I：同指纹每窗 2 击封顶（第 3 击起静默）
+        TestHost.check(HumanTap.MAX_STRIKES_PER_TARGET == 2
+                        && HumanTap.targetStrikesOk(null) && HumanTap.targetStrikesOk(0)
+                        && HumanTap.targetStrikesOk(1) && !HumanTap.targetStrikesOk(2),
+                "S7c 防线 I 击数封顶（同指纹每窗 2 击·第 3 击静默——设备触点被吞不再无限补击）");
+        // 预算 × 节奏联合：3 次出手的时间跨度 ≥ 人手耐心（非机器枪）
         long span = 0;
-        for (int attempt = 0; attempt < 6; attempt++) {
+        for (int attempt = 0; attempt < 3; attempt++) {
             span += HumanTap.verifyDelayMs(attempt);
         }
-        TestHost.check(span >= 15000, "S7b 全程跨度（6 击复验总跨度 " + span + "ms ≥ 15s——人手节奏）");
+        TestHost.check(span >= 4000, "S7b 全程跨度（3 击复验总跨度 " + span + "ms ≥ 4s——人手节奏）");
     }
 }

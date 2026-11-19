@@ -6,14 +6,17 @@ import com.zai.adshield.core.TapPoint;
 import com.zai.adshield.test.TestHost.SimNode;
 
 /**
- * FeedAdGuard 单元测试（v6.2.0 · 核心新增能力：App 内信息流广告识别跳过——
- * 微信朋友圈就业广告等）。与 MiniProgramGuard 同规约（纯 Java 零 Android
- * 依赖，ECJ -1.8 编译 JVM 运行）。
+ * FeedAdGuard 单元测试（v6.2.0 首发 · v7.2.0 十二轮实锤病灶三根治后回归扩容：
+ *  ① armed 直通（P1 拉起的菜单是 Dialog 新窗，窗类被覆盖——P2 只认 armed）
+ *  ② 候选式快搜（李跳跳方法论：原生 findByText 直查，预算无关）
+ *  ③ P2 armed≥1 即出手（真机微信菜单常只露 1 个中性项）。
+ * 与 MiniProgramGuard 同规约（纯 Java 零 Android 依赖，ECJ -1.8 编译 JVM 运行）。
  * ─────────────────────────────────────────────────────────────
- * 恰好 81 项断言（check/checkEq 总调用数）：
+ * 恰好 90 项断言（check/checkEq 总调用数）：
  *  S1 名单门（20）/ S2 微信窗级门（6）/ S3 P1 角标语义闸①（12）/
- *  S4 P1 面积闸②（8）/ S5 P2 中性项闸③（10）/ S6 两段式决策（12）/
- *  S7 常量在场（7）/ S8 预算闸与 1:1 人手角标触点（6）。
+ *  S4 P1 面积闸②（8）/ S5 P2 中性项闸③（12）/ S6 两段式决策（12）/
+ *  S7 常量在场（8）/ S8 预算闸与 1:1 人手角标触点（6）/
+ *  S9 v7.2.0 候选式快搜（6）。
  * 标准屏 1080×2400；角标 bounds 示例 {990,300,1120,380}（宽 130 高 80
  * ——满足 ≤35% 屏宽 × ≤8% 屏高）。
  */
@@ -105,11 +108,13 @@ public final class FeedAdGuardTest {
         TestHost.check(!FeedAdGuard.isDisclosureBadge("广告", new int[]{100, 100, 100, 180}, 1080, 2400),
                 "宽 0 空矩形拒");
 
-        /* ════ S5 P2 中性项闸③（10 项）════ */
+        /* ════ S5 P2 中性项闸③（12 项）════ */
         TestHost.suite("FeedAdGuard · S5 P2 中性关闭项闸（精确等值；扩展动作绝不代点）");
         TestHost.check(FeedAdGuard.isNeutralCloseItem("关闭该广告"), "中性项「关闭该广告」");
         TestHost.check(FeedAdGuard.isNeutralCloseItem("关闭此广告"), "中性项「关闭此广告」");
         TestHost.check(FeedAdGuard.isNeutralCloseItem("屏蔽此广告"), "中性项「屏蔽此广告」");
+        TestHost.check(FeedAdGuard.isNeutralCloseItem("屏蔽此推广"), "v7.2.0 中性项「屏蔽此推广」（旧版朋友圈真机文案）");
+        TestHost.check(FeedAdGuard.isNeutralCloseItem("减少此类广告"), "v7.2.0 中性项「减少此类广告」（微信菜单变体）");
         TestHost.check(FeedAdGuard.isNeutralCloseItem("关闭广告"), "中性项「关闭广告」");
         TestHost.check(FeedAdGuard.isNeutralCloseItem("不感兴趣"), "中性项「不感兴趣」");
         TestHost.check(FeedAdGuard.isNeutralCloseItem(" 不感兴趣 "), "中性项 trim 后等值（「 不感兴趣 」）");
@@ -158,13 +163,16 @@ public final class FeedAdGuardTest {
         SimNode menuWeakOnly = new SimNode();
         menuWeakOnly.boundsArr = new int[]{200, 700, 880, 1500};
         menuWeakOnly.add(new SimNode("不感兴趣", 220, 760, 580, 840));
-        TestHost.check(FeedAdGuard.decideP2(menuWeakOnly, 1080, 2400, true) == null,
-                "P2 双闸①：仅「不感兴趣」强特征 0 → 拒收");
+        FeedAdGuard.FeedDecision p2Weak = FeedAdGuard.decideP2(menuWeakOnly, 1080, 2400, true);
+        TestHost.check(p2Weak != null && FeedAdGuard.ACTION_P2_CLOSE.equals(p2Weak.action)
+                        && "不感兴趣".equals(p2Weak.label),
+                "v7.2.0 病灶③根治：仅「不感兴趣」单项菜单 armed 即出手（真机微信菜单常态；旧双闸拒收=全都没拦截）");
         SimNode menuStrongOnly = new SimNode();
         menuStrongOnly.boundsArr = new int[]{200, 700, 880, 1500};
         menuStrongOnly.add(new SimNode("关闭该广告", 220, 760, 580, 840));
-        TestHost.check(FeedAdGuard.decideP2(menuStrongOnly, 1080, 2400, true) == null,
-                "P2 双闸②：仅「关闭该广告」总数 1 → 拒收");
+        FeedAdGuard.FeedDecision p2Strong = FeedAdGuard.decideP2(menuStrongOnly, 1080, 2400, true);
+        TestHost.check(p2Strong != null && "关闭该广告".equals(p2Strong.label),
+                "v7.2.0 病灶③根治：仅「关闭该广告」单项菜单 armed 即出手（旧双闸拒收）");
         SimNode menu3 = new SimNode();
         menu3.boundsArr = new int[]{200, 700, 880, 1500};
         menu3.add(new SimNode("关闭该广告", 220, 760, 580, 840));
@@ -176,24 +184,29 @@ public final class FeedAdGuardTest {
         TestHost.check(FeedAdGuard.decideP2(null, 1080, 2400, true) == null, "P2 null 树安全");
         TestHost.check(FeedAdGuard.decideP1(moments, 1080, 2400) != null,
                 "P1 出手后同角标仍可识别（复验/重试路径）");
-        // 巨横幅菜单：形态闸拒全宽 CTA 行
+        // 巨横幅菜单：形态闸拒全宽 CTA 行（armed 下仅收紧凑中性项——CTA 绝不进候选）
         SimNode bannerMenu = new SimNode();
         bannerMenu.boundsArr = new int[]{0, 700, 1080, 1500};
         bannerMenu.add(new SimNode("关闭该广告", 0, 760, 1080, 840)); // 宽 100% 屏巨横幅
         bannerMenu.add(new SimNode("不感兴趣", 220, 860, 580, 940));
-        TestHost.check(FeedAdGuard.decideP2(bannerMenu, 1080, 2400, true) == null,
-                "P2 形态闸拒巨横幅（全宽「关闭该广告」绝不进菜单候选）");
+        FeedAdGuard.FeedDecision pBanner = FeedAdGuard.decideP2(bannerMenu, 1080, 2400, true);
+        TestHost.check(pBanner == null || (!"关闭该广告".equals(pBanner.label)
+                        && "不感兴趣".equals(pBanner.label) && pBanner.tapBounds[0] == 220
+                        && pBanner.tapBounds[2] - pBanner.tapBounds[0] <= 378),
+                "P2 形态闸拒巨横幅（全宽「关闭该广告」CTA 绝不进候选——armed 仅收紧凑中性项）");
 
-        /* ════ S7 常量在场（7 项）════ */
+        /* ════ S7 常量在场（8 项）════ */
         TestHost.suite("FeedAdGuard · S7 常量在场（安全闸参数）");
         TestHost.checkEq(1200L, FeedAdGuard.FEED_SCAN_THROTTLE_MS, "FEED_SCAN_THROTTLE_MS == 1200（1.2s 节流）");
-        TestHost.checkEq(300, FeedAdGuard.FEED_NODE_BUDGET, "FEED_NODE_BUDGET == 300（节点预算双闸之二）");
+        TestHost.checkEq(350L, FeedAdGuard.P2_SCAN_THROTTLE_MS, "v7.2.0 P2_SCAN_THROTTLE_MS == 350（armed 快节奏复查）");
+        TestHost.checkEq(300, FeedAdGuard.FEED_NODE_BUDGET, "FEED_NODE_BUDGET == 300（DFS 兑底预算）");
         TestHost.checkEq(8000L, FeedAdGuard.P1_ARM_MS, "P1_ARM_MS == 8000（P2 指纹窗）");
         TestHost.check(Math.abs(FeedAdGuard.BADGE_W_MAX - 0.35) < 1e-9, "BADGE_W_MAX == 0.35（≤35% 屏宽）");
         TestHost.check(Math.abs(FeedAdGuard.BADGE_H_MAX - 0.08) < 1e-9, "BADGE_H_MAX == 0.08（≤8% 屏高）");
         TestHost.checkEq(6, FeedAdGuard.BADGE_MAX_CHARS, "BADGE_MAX_CHARS == 6（>6 字必是正文）");
-        TestHost.check(FeedAdGuard.stats() != null && FeedAdGuard.stats().contains("18 款"),
-                "stats() 名单 18 款在场（FEED_APPS 包私有，以 stats 断言）");
+        TestHost.check(FeedAdGuard.stats() != null && FeedAdGuard.stats().contains("18 款")
+                        && FeedAdGuard.stats().contains("armed≥1即出手"),
+                "stats() 名单 18 款 + v7.2.0 armed≥1 即出手在场");
 
         /* ════ S8 预算闸与 1:1 人手角标触点（6 项）════ */
         TestHost.suite("FeedAdGuard · S8 预算闸与 1:1 人手角标触点");
@@ -251,6 +264,44 @@ public final class FeedAdGuardTest {
         }
         TestHost.check(jitterOk && (1120 - 990) / 2 >= 30 && (900 - 820) / 2 >= 30,
                 "HumanTap.tapSpec ±2px 微抖不出角标面（人手参数域 6 种子·角标半宽 65 ≥ 30px）");
+
+        /* ════ S9 v7.2.0 候选式快搜（李跳跳方法论：原生直查主路径）════ */
+        TestHost.suite("FeedAdGuard · S9 候选式快搜（decideP?FromCandidates）");
+        // ① 候选列表含角标 + 噪声（正文/扩展动作/巨横幅）→ 只收角标
+        java.util.ArrayList<com.zai.adshield.core.AdDecisionCore.NodeView> p1c =
+                new java.util.ArrayList<>();
+        p1c.add(new SimNode("高薪招聘急招月入过万", 0, 300, 1080, 380));  // contains 但非角标
+        p1c.add(new SimNode("广告", 990, 300, 1120, 380));               // 真角标
+        p1c.add(new SimNode("广告位出租", 990, 300, 1120, 380));          // 词+汉字非纯符号尾
+        p1c.add(new SimNode("广告", 0, 0, 972, 960));                     // 巨大容器（形态闸拒）
+        FeedAdGuard.FeedDecision p1cHit = FeedAdGuard.decideP1FromCandidates(p1c, 1080, 2400);
+        TestHost.check(p1cHit != null && FeedAdGuard.ACTION_P1_BADGE.equals(p1cHit.action)
+                        && "广告".equals(p1cHit.label) && p1cHit.tapBounds[0] == 990,
+                "P1 候选式：噪声中只收真角标（语义+形态闸逐候选不变）");
+        TestHost.check(FeedAdGuard.decideP1FromCandidates(null, 1080, 2400) == null,
+                "P1 候选式 null 列表安全");
+        // ② P2 候选式：armed 单项即出手；非 armed 零对抗
+        java.util.ArrayList<com.zai.adshield.core.AdDecisionCore.NodeView> p2c =
+                new java.util.ArrayList<>();
+        p2c.add(new SimNode("不感兴趣", 220, 860, 580, 940));
+        p2c.add(new SimNode("屏蔽作者", 220, 960, 580, 1040)); // 扩展动作绝不代点
+        FeedAdGuard.FeedDecision p2cHit = FeedAdGuard.decideP2FromCandidates(p2c, 1080, 2400, true);
+        TestHost.check(p2cHit != null && FeedAdGuard.ACTION_P2_CLOSE.equals(p2cHit.action)
+                        && "不感兴趣".equals(p2cHit.label),
+                "P2 候选式 armed：单项「不感兴趣」即出手（真机菜单常态）");
+        TestHost.check(FeedAdGuard.decideP2FromCandidates(p2c, 1080, 2400, false) == null,
+                "P2 候选式非 armed 零对抗（用户自己长拉的菜单绝不对抗）");
+        // ③ 病灶②根治证明：深树 600+ 节点·角标在 ≈400 节点处——DFS 预算够不到，
+        //    原生直查（模拟）候选能拿到 → 候选式决策非 null
+        SimNode deepLate2 = deepFeedTree(new SimNode("就业", 990, 820, 1120, 900), 19);
+        TestHost.check(FeedAdGuard.decideP1(deepLate2, 1080, 2400) == null,
+                "对照组：DFS 300 预算仍够不到 ≈400 节点处角标（旧病灶在场的证明）");
+        java.util.ArrayList<com.zai.adshield.core.AdDecisionCore.NodeView> deepCands =
+                new java.util.ArrayList<>();
+        deepCands.add(new SimNode("就业", 990, 820, 1120, 900)); // 原生直查命中即拿到（预算无关）
+        FeedAdGuard.FeedDecision deepHit = FeedAdGuard.decideP1FromCandidates(deepCands, 1080, 2400);
+        TestHost.check(deepHit != null && "就业".equals(deepHit.label),
+                "病灶②根治：同深树角标经原生直查候选 → 命中（预算无关——深层卡片也能关）");
 
         TestHost.done();
     }

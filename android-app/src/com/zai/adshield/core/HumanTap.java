@@ -158,10 +158,12 @@ public final class HumanTap {
         return false;
     }
 
-    /* ── E：人手耐心预算（服务侧 MAX_CLICKS_PER_WIN 同步收紧 12→6）── */
+    /* ── E：人手耐心预算（v7.2.0：服务侧 MAX_CLICKS_PER_WIN 同步收紧 6→3——
+     *  用户第十二轮实锤：部分设备开屏跳过仍有多点观感；人的耐心就是
+     *  2~3 下，第 3 下后优雅收手等倒计时/等用户，绝不机器枪连点）── */
 
-    /** 同窗出手预算（人的耐心）：6——与 AdDecisionCore.MAX_CLICKS_PER_WIN 同源 */
-    public static final int HUMAN_PATIENCE = 6;
+    /** 同窗出手预算（人的耐心）：3——与 AdDecisionCore.MAX_CLICKS_PER_WIN 同源 */
+    public static final int HUMAN_PATIENCE = 3;
 
     /* ── v6.1.0 二轮根治（用户实锤：部分用户设备开屏广告跳过时因为设备类型、
      * 分辨率或其他原因影响，导致多点、误点的情况，体验非常不好）──
@@ -182,13 +184,38 @@ public final class HumanTap {
      *    出手物理上不可能 0ms 连续；机器连发是反自动化 SDK 触点检测的
      *    直接特征，也是多点观感的来源之一）。 */
 
-    /** v6.1.0 F：同指纹目标静默期（ms）——点击已派发后此窗内绝不重复出手 */
-    public static final long SAME_TARGET_QUIET_MS = 1500;
+    /** v6.1.0 F：同指纹目标静默期（ms）——点击已派发后此窗内绝不重复出手。
+     *  v7.2.0：1500→1600ms（首击后 500ms 复验 + 600ms 结果静默均已跨过，
+     *  同目标再击至少间隔 1.6s——人手双击下限）。 */
+    public static final long SAME_TARGET_QUIET_MS = 1600;
     /** v6.1.0 G：陈旧 bounds 判定——中心位移 > max(旧矩形短边×50%, 24dp 对应 px) */
     public static final double STALE_DRIFT_RATIO = 0.5;
     public static final int STALE_DRIFT_MIN_DP = 24;
-    /** v6.1.0 H：手势派发成功后的全局结果静默期（ms） */
-    public static final long POST_TAP_QUIET_MS = 250;
+    /** v6.1.0 H：手势派发成功后的全局结果静默期（ms）。
+     *  v7.2.0：250→600ms（给首击留出生效窗口——复验扫描在 500ms 到点，
+     *  静默未过则不补击，下一轮 1.4s 再评：「点了还没生效就再点」的
+     *  多点观感从节奏上根治）。 */
+    public static final long POST_TAP_QUIET_MS = 600;
+
+    /* ── v7.2.0 多点防线 I：同指纹击数封顶 ──
+     * 用户第十二轮实锤：部分用户设备开屏广告跳过时因为设备类型、分辨率或
+     * 其他原因影响，导致多点、误点。F 时间静默之外补【击数】封顶：同一
+     * 目标指纹（包名+容差网格坐标+语义标签）每窗最多 2 击，第 3 击起静默
+     * ——设备触点被吞时引擎不再对同一目标无限补击（换候选/换窗不受限）。 */
+
+    /** v7.2.0 防线 I：同指纹目标每窗击数上限。 */
+    public static final int MAX_STRIKES_PER_TARGET = 2;
+
+    /**
+     * v7.2.0 防线 I：同指纹目标本窗已击数是否仍在限额内。
+     * <p>纯函数：firedCount 为 null（未出手过）或 < 2 时放行；≥2 拒绝
+     * （第 3 击起静默——同目标连击的多点级联从源头掐断）。
+     *
+     * @param firedCount 服务侧维护的「指纹→本窗已击数」表查询结果
+     */
+    public static boolean targetStrikesOk(Integer firedCount) {
+        return firedCount == null || firedCount < MAX_STRIKES_PER_TARGET;
+    }
 
     /**
      * v6.1.0 F：目标指纹（pkg + 中心坐标粗粒度 + 语义标签）。中心坐标粗粒度
