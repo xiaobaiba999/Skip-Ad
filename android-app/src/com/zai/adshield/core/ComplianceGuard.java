@@ -237,6 +237,28 @@ public final class ComplianceGuard {
     }
 
     /**
+     * v6.2.0 feed 决策专用边界终闸（execute 的 feed_p1_badge/feed_p2_close 分支）：
+     * 场景断言（零扫描/短信/相机/守护）+ 语义断言（P1 角标 isDisclosureBadge /
+     * P2 中性项 isNeutralCloseItem——FeedAdGuard 语义）+ 形态断言（面积 ≤35% 屏）。
+     * 绝不新增任何非信息流放行面（reason 前缀 feed_ 仅服务侧 feed 路径构造）。
+     */
+    public static int feedBoundaryCheck(String label, int[] bounds, int screenW, int screenH,
+                                        String pkg, String cls) {
+        if (isZeroScanScenario(pkg, cls)) return BND_FAIL_SCENARIO;
+        if (AdDecisionCore.isSmsOverlayPkg(pkg) || AdDecisionCore.isCameraPkg(pkg)) return BND_FAIL_SCENARIO;
+        if (AdDecisionCore.isCameraClass(cls)) return BND_FAIL_SCENARIO;
+        if (AdDecisionCore.isGuardPkg(pkg)) return BND_FAIL_SCENARIO;
+        String t = label == null ? "" : label.trim();
+        if (!FeedAdGuard.isNeutralCloseItem(t) && !FeedAdGuard.isDisclosureBadge(t, bounds, screenW, screenH)) {
+            return BND_FAIL_SEMANTIC;
+        }
+        if (bounds == null || bounds.length < 4) return BND_FAIL_FORM;
+        double area = areaRatioAdaptive(bounds, screenW, screenH);
+        if (area <= 0 || area > AdDecisionCore.SKIP_AREA_MAX) return BND_FAIL_FORM;
+        return BND_OK;
+    }
+
+    /**
      * 权限使用审计（模块四）：7 项权限 → 用途/触发时机全量映射。
      * App 内「关于 → 权限使用审计」展示 + 日志上传自动附带。
      * 返回逐行审计报告（纯函数：权限清单与 Manifest 同步维护）。

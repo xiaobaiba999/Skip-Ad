@@ -35,18 +35,20 @@ function mascotImg(size, state, head) {
 
 $("#brand-logo").innerHTML = mascotImg(30, "on", true);
 
-/* ═══ v6.1.0 版本记录（用户实锤：版本信息描述言简意赅——1 个标题 + 1 个
- * 段落；历史版本全部归档 GitHub Releases，App 内不再堆叠多条要点）═══ */
+/* ═══ v6.2.0 版本记录（用户实锤：App 内广告也要识别跳过——微信朋友圈就业广告等；版本描述 ≤5 个标题要标序号）═══ */
 const CURRENT_RELEASE = {
   date: "2026-11-19",
-  title: "更快、更稳、更省心",
-  summary: "订阅导入多通道自愈（拉取失败自动换镜像，Connection reset 根治）；误触三重防线（同目标防重复点击·按最新位置点击·点击后静默）；日志留存翻倍、每天 8 小时一次自动上报 3 次；免打扰持久模式已取消，普通用户零电脑操作。",
+  title: "App 内广告也能跳过了",
+  summary: "新增信息流广告卫士：微信朋友圈就业类广告等 App 内广告两段式关闭（点「广告/就业」角标，再点「关闭该广告」，绝不误点广告本体）；广告命中继续拓宽（繁体文案与更多 SDK 指纹）；新版本功能描述带序号展示。",
 };
 
 /* v6.1.0 新版功能描述（用户实锤：发现新版本时同样显示新版功能描述，
- * 言简意赅不超过 5 个标题）：解析 Release notes 提取 ≤5 条标题行 */
+ * 言简意赅不超过 5 个标题）：解析 Release notes 提取 ≤5 条标题行。
+ * v6.2.0 序号化：每条标题带序号前缀（"1. "…），序号在截断后追加——
+ * 截断（44 字）只作用于正文，序号不受截断影响。 */
 function notesToHeadlines(notes, maxN) {
   const out = [];
+  const raw = [];
   const lines = String(notes || "").split("\n");
   for (let i = 0; i < lines.length; i++) {
     const t = lines[i].trim();
@@ -57,20 +59,21 @@ function notesToHeadlines(notes, maxN) {
     if (!s || s.length < 2) continue;
     s = s.replace(/[*`>]/g, "").trim();
     if (s.length > 44) s = s.slice(0, 42) + "…";
-    if (out.indexOf(s) < 0) out.push(s);
+    if (raw.indexOf(s) < 0) { raw.push(s); out.push(raw.length + ". " + s); }
     if (out.length >= (maxN || 5)) break;
   }
   return out;
 }
 
-/* v6.1.0：新版功能描述渲染（更新横幅 + 我的页检查更新共用） */
+/* v6.1.0：新版功能描述渲染（更新横幅 + 我的页检查更新共用）
+ * v6.2.0：标题本体已含序号（notesToHeadlines 序号化），渲染前缀 · 移除 */
 function renderReleaseNotes(d) {
   const box = $("#ub-notes");
   if (!box) return;
   const heads = notesToHeadlines(d.notes, 5);
   box.innerHTML = heads.length
     ? '<div class="ub-notes-title">新版亮点</div>'
-      + heads.map(h => '<div class="ub-note-item">· ' + esc(h) + '</div>').join("")
+      + heads.map(h => '<div class="ub-note-item">' + esc(h) + '</div>').join("")
     : "";
 }
 

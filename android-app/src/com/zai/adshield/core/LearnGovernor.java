@@ -181,6 +181,11 @@ public final class LearnGovernor {
                 /* v5.9.0 同源对齐：isAdActivityClass v5.9 新认的国内聚合段
                  *（ksad 原已在表——快手族；csj_ 为穿山甲联盟复合族补齐） */
                 "csj_",
+                /* v6.2.0 同源对齐：isAdActivityClass v6.2 新认的四段
+                 *（扫描日志六轮拓宽：advertisement——AdvertisementActivity
+                 * 整段 / offerwall——OfferWall 积分墙 / screenad——
+                 * SplashScreenAd 复合族 / adsdialog——AdsDialog 弹窗） */
+                "advertisement", "offerwall", "screenad", "adsdialog",
         };
         for (String seg : sdkSegs) {
             if (c.contains(seg)) return true;

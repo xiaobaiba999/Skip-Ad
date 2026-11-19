@@ -268,7 +268,12 @@ public final class AdDecisionCore {
              * （合规敏感 App 普遍如此，旧库未收零命中），SKIP 族全量补收 */
             "跳过推广", "关闭推广", "跳過片頭", "跳過推廣"};
     public static final String[] GYRO_HINTS = {"翻转", "摇一摇", "摇晃", "晃动", "摇动", "扭一扭", "转动手机", "倾斜手机", "拿起手机"};
-    public static final String[] CLOSE_TEXTS = {"×", "x", "X", "✕", "✖", "╳", "关闭", "close", "不感兴趣", "我知道了", "知道了", "关闭广告", "跳过", "忽略", "暂不"};
+    public static final String[] CLOSE_TEXTS = {"×", "x", "X", "✕", "✖", "╳", "关闭", "close", "不感兴趣", "我知道了", "知道了", "关闭广告", "跳过", "忽略", "暂不",
+            /* v6.2.0 扫描日志六轮拓宽：等值通道繁体四件套——「跳過/關閉/
+             * 不感興趣/關閉廣告」（扫描日志繁体 App 整窗零命中实锤；与
+             * matchesSkip 繁简双通同源——第 4 层 vid-close 等值通道与角落
+             * 键确认通道的繁体补齐，语义等值零放宽） */
+            "跳過", "關閉", "不感興趣", "關閉廣告"};
     public static final String[] BADGE_TEXTS = {"广告", "推广", "赞助", "广告推广", "sponsored", "promoted", "sponsor"};
     public static final String[] CTA_TEXTS = {"立即领取", "点击领取", "领取红包", "限时", "秒杀", "恭喜", "马上抢", "立即下载", "立即抢购", "0元领", "0元", "免费领", "点击进入", "立即查看", "开通会员", "领取礼包", "大奖"};
     public static final String[] GUARD_PKG_HINTS = {"bank", "icbc", "cmb", "ccb", "psbc", "abchina", "boc", "unionpay", "gov", "alipay", "955", "12345"};
@@ -1078,6 +1083,21 @@ public final class AdDecisionCore {
              *  ——误报面可控；游戏/下载/登录红线对照进测试断言。 */
             if (s.contains("mobads") || s.contains("sigmob")
                     || s.contains("adcolony") || s.contains("vungle")) return true;
+            /* v6.2.0 扫描日志六轮拓宽（用户实锤：扫描日志很多广告命中不了
+             * ——进一步拓宽命中跳过率）：
+             *  · advertisement——AdvertisementActivity 整段（旧库只认
+             *    advertising 漏掉 advertisement——SDK 侧完整英文词，
+             *    整窗无指纹 = 零 vid-close 点击 + 零返回兜底）；
+             *  · offerwall——OfferWall 积分墙（游戏 SDK 激励广告窗高频
+             *    命名段）；
+             *  · screenad——SplashScreenAd 复合族（开屏广告 SDK 复合
+             *    命名——与 splashad/adsplash 旧段互补的完整词形态）；
+             *  · adsdialog——AdsDialog 弹窗 Activity（SDK 广告弹窗命名）。
+             * 四段均为 SDK 侧命名约定，业务 App 窗口绝无此命名——误报面
+             * 可控；App 自建 SplashActivity/MainActivity/UnityPlayerActivity
+             * 依旧绝不误认（红线对照进 BrandFocus286Test 断言）。 */
+            if (s.contains("advertisement") || s.contains("offerwall")
+                    || s.contains("screenad") || s.contains("adsdialog")) return true;
         }
         return false;
     }
@@ -1331,7 +1351,10 @@ public final class AdDecisionCore {
     public static boolean matchesSkip(String s) {
         if (s == null) return false;
         String lower = s.toLowerCase();
-        if (lower.contains("skip") || lower.contains("跳过")) return true;
+        /* v6.2.0 扫描日志六轮拓宽：主路径繁简双通——「跳過」与「跳过」
+         * 并列（扫描日志繁体 App 整窗零候选实锤；contains 语义等值，
+         * 「跳過」繁体文案不含「跳过」简体串，旧库整窗漏过）。 */
+        if (lower.contains("skip") || lower.contains("跳过") || lower.contains("跳過")) return true;
         return matchesAny(s, SKIP_TEXTS);
     }
 

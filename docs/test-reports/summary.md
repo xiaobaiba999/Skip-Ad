@@ -227,3 +227,33 @@ className 指纹）对此**零信号**，引擎从不出手（R15 复现：img_l
 - DND-PERSIST-OFF（免打扰持久模式取消）：用户实锤不能在安装时实现、必须连电脑（ADB WRITE_SECURE_SETTINGS）太麻烦——取消：sh-card 整卡移除 + refreshSecureHeal/btn-sh-copy JS 移除；普通路径（一键恢复+前台看门狗+零触摸自愈）覆盖全部免电脑场景；v6.1.0 起无任何需 ADB/电脑授权项
 - MATRIX-220（测试矩阵收窄+扩容）：BrandMatrix180Test → BrandFocus220Test——9 品牌+子品牌 11 组 × 20 机型 = 220（删除魅族/中兴努比亚红魔/传音/摩托罗拉/其他五组——其他品牌不测了）；机型表新增系统版本列（拓展系统维度）；分辨率覆盖 720p 入门→2K+ 旗舰、折叠外屏窄幅、平板；七维（180 矩阵六维 + 新增 ①″ 多点误点专项）各 220/220；断言结构 220×8 机型级 + 11×7 品牌汇总 + 7 矩阵总检 = 1844
 - PUSH-SYNC：v6.1.0 全量推送 GitHub + Releases（tag v6.1.0 · APK asset）；GitHub 面板描述优化 + 免责声明（用户第八轮原话要求）
+
+## Round 28 · v6.2.0（2026-11-19）——信息流广告卫士（朋友圈就业广告两段式）· 扫描日志六轮拓宽 · 9 品牌×26=286 机型八维矩阵
+
+**触发**：用户第九轮实锤「扫描日志，很多广告命中不了，最好把app内的广告也识别跳过，比如微信朋友圈里就业广告，还有其他app也是」+「优化版本信息描述，言简意赅有一个标题一个段落，发现新版本时同样显示新版本的功能描述，不要错过5个标题要标序号」+「拓展设备型号和品牌以及系统，只测试oppo/vivo/xiaomi/三星/华为/荣耀/红米/一加/iqoo及其子品牌，其他品牌就不要测试了」+「包括app开屏广告测试，屏蔽速度测试，bug测试，项目功耗测试，精准度测试等等」+「进一步拓宽广告日志命中跳过率，完成同步github推送releases，优化github面板描述加免责声明」。
+
+**变更定位表（本轮五域）**
+| # | 域 | 用户诉求（原话） | 本轮修复 |
+|---|---|---|---|
+| ① | App 内广告 | 「把app内的广告也识别跳过，比如微信朋友圈里就业广告」 | 新增 FeedAdGuard 信息流广告卫士：两段式（P1 点「广告/就业」披露角标 → P2 点「关闭该广告」中性项收起）+ 四道安全闸（角标词精确等值 · 面积门宽≤35%屏×高≤8%屏 · P2 只点中性项且须 P1 出手 8s 指纹窗 + 强特征≥1且总≥2 双闸 · 18 款信息流 App 名单门）——绝不点广告主体；微信窗级门只认 sns 族窗（聊天主界面零扫描红线保持）；功耗双闸 1.2s 节流 + 300 节点预算；ComplianceGuard.feedBoundaryCheck 终闸 + 复用 execute()（用户让路/耐心预算/F·H 多点防线/人手手势派发全量继承） |
+| ② | 命中跳过率 | 「扫描日志很多广告命中不了」「进一步拓宽广告日志命中跳过率」 | 六轮拓宽：SKIP 文案库 +8 条（繁体零命中面 關閉廣告/跳過福利/跳過引導 + 引导/福利/动画/抽奖变体）· matchesSkip 主路径繁简双通 · CLOSE 族 +4 繁体四件套 · 角标族 +4（就业/求职/招聘/职位）· SDK 窗指纹 +4 段（advertisement/offerwall/screenad/adsdialog——累计 50+）· LearnGovernor 同源对齐 |
+| ③ | 版本描述 | 「言简意赅有一个标题一个段落」「不超过5个标题要标序号」 | CURRENT_RELEASE 1 标题 + 1 段落保持；notesToHeadlines() 输出带序号（1. 2. 3. ≤5 条——先截断正文再加序号、内容去重不受序号影响）；更新横幅 + 检查更新同源渲染 |
+| ④ | 测试矩阵 | 「拓展设备型号和品牌以及系统」「只测试 oppo/vivo/xiaomi/三星/华为/荣耀/红米/一加/iqoo及其子品牌」 | BrandFocus220Test → BrandFocus286Test：11 组 × 26 = 286（+30%——新增世代机型与系统 HyperOS 3/HarmonyOS 5.1/MagicOS 10/ColorOS 16/OriginOS 6/One UI 8/OxygenOS 16）；八维 = 七维 + ⑦ 信息流广告维（P1 角标命中/P2 菜单两段/正常内容零命中/微信窗级门） |
+| ⑤ | GitHub 同步 | 「完成同步github和推送releases」「优化github面板描述加免责声明」 | tag v6.2.0 + Release（APK asset + 序号化功能描述 ≤5 条）· README 面板 v6.2.0（3765 断言徽章/286 矩阵徽章/FeedAdGuard 徽章/信息流广告能力行/合规边界行同步）· 免责声明保持 · 仓库 description 同步 |
+
+**测试矩阵（本轮全绿 3765 项 · +907）**
+| 套件 | 断言 | 结果 | 覆盖 |
+|---|---|---|---|
+| 9 品牌+子品牌 11×26=286 机型矩阵（BrandFocus286Test · 拓展设备型号与系统，新增 ⑦ 信息流广告维） | 2670 | ✅ | 286 机型八维全绿：① 开屏命中六信号+六轮拓宽零回归（繁体族 8 条/主路径繁简双通/4 档新指纹/非广告窗 7 档全免疫）/①′ 人手触点安全/①″ 多点误点专项/② 屏蔽速度/③ bug 四陷阱/④ 功耗（信息流 1.2s 节流+300 预算双闸在场）/⑤ 精准度/⑥ 算法（26 条指纹全命中）/⑦ 信息流广告（v6.2.0 新增）；断言结构 286×9 + 11×8 + 8 |
+| FeedAdGuardTest（v6.2.0 新增——四道安全闸 · 两段式决策） | 81 | ✅ | S1 名单门 18 款/S2 微信窗级门（sns 族扫·LauncherUI 零扫描）/S3 角标语义闸（精确等值·纯符号尾·>6 字正文拒·contains 绝不中）/S4 面积闸（35%×8% + 420×126 兜底）/S5 中性项闸（5 项等值·扩展动作绝不代点）/S6 两段式决策（P1 bounds=角标自身·非 armed 零对抗·双闸·优先级）/S7 常量在场/S8 预算闸+1:1 人手角标触点 |
+| 1:1 人手模拟引擎矩阵（HumanTapMatrixTest） | 19 | ✅ | v6.0.0 A~E + v6.1.0 F/G/H 全量零回归 |
+| 设备自适应触点矩阵（TapPointMatrixTest） | 295 | ✅ | 24 几何 × 12 场景存量零回归（本轮 TapPoint 零改动） |
+| 存量回归（10 套件） | 700 | ✅ | MiniProgram 36/Decision 22/SubscriptionBuiltin 76/RegressionCore 15/MultiDevice 42/NonMainstream 130/RestoreGuard 106/PowerGovernor 48/RuleGovernor 142/Compliance 83——引擎增补零语义变化（boundaryCheck 原样未动） |
+| 整体（构建/签名/分发） | 4 | ✅ | VC 60200 · APK 312,670 B（305KB）· 同签名覆盖安装 · 三目录 MD5 e5c86d2bd46081a10752c894619d609d 一致 |
+
+**修复清单**
+- FEED-GUARD（信息流广告识别跳过）：FeedAdGuard.java 新增（两段式 + 四道安全闸 + 18 款名单门 + 微信 sns 窗级门 + 功耗双闸）· AdSkipService 薄接线（maybeFeedScan/executeFeed/clearTapGuards 复位）· ComplianceGuard.feedBoundaryCheck 终闸（boundaryCheck 原样未动）· FeedAdGuardTest 81 项
+- HIT-WIDEN-6（扫描日志六轮拓宽）：TEXT_EXACT +8 · matchesSkip contains("跳過") · CLOSE_TEXTS +4 · BADGE_WORDS +4（就业族）· isAdActivityClass +4（advertisement/offerwall/screenad/adsdialog）· LearnGovernor.sdkSegs 同源 +4
+- NOTES-NUM（版本描述序号化）：notesToHeadlines 序号前缀 + 内容去重并行 raw 数组；CURRENT_RELEASE v6.2.0（1 标题 + 1 段落）
+- MATRIX-286（矩阵拓展）：BrandFocus286Test（286×9 + 11×8 + 8 = 2670）· NEW_FINGERPRINTS 22→26 · run-tests.sh 14 套件（+FeedAdGuardTest）
+- RELEASE-SYNC：tag v6.2.0 + Release（APK 312,670 B asset · 序号化描述）+ README 面板 v6.2.0 + 免责声明保持 + 仓库 description 同步
