@@ -162,4 +162,85 @@ public final class HumanTap {
 
     /** 同窗出手预算（人的耐心）：6——与 AdDecisionCore.MAX_CLICKS_PER_WIN 同源 */
     public static final int HUMAN_PATIENCE = 6;
+
+    /* ── v6.1.0 二轮根治（用户实锤：部分用户设备开屏广告跳过时因为设备类型、
+     * 分辨率或其他原因影响，导致多点、误点的情况，体验非常不好）──
+     *  v6.0.0 已做 A~E（人手参数散布/复验节奏放缓/耐心预算/dp 归一/轨迹去重），
+     *  本轮针对残余「多点/误点」三条真实路径补三道纯函数防线：
+     *  F sameTargetKey/isFiredRecently：目标指纹去抖——点击已派发后
+     *    SAME_TARGET_QUIET_MS 内同指纹目标（包名+中心±容差+语义标签）
+     *    绝不再出手。场景：点击已生效但广告 Activity 跳转有 300~800ms
+     *    动画延迟，复验扫描看到「按钮还在」再点一次=用户肉眼的多点；
+     *  G isStaleBounds：出手前新鲜度复核——人眼按「它现在在哪」点击；
+     *    出手时用点击决策时刻捕获的旧 bounds（扫描→决策→派发有 26~56ms
+     *    人手延迟 + 300ms 冷却链路延迟），入场缩放/位移动画中的按钮
+     *    已位移 → 中心位移超过旧矩形短边 50%+24dp 判为陈旧坐标，
+     *    放弃本次出手等下一轮扫描用新 bounds（点空→复验→再点的
+     *    多点级联从源头掐断；位移中盲点旧坐标=误点）；
+     *  H postTapQuietOk：结果静默期——手势成功派发后 POST_TAP_QUIET_MS
+     *    内同包任何新候选不再出手（真人完成一次点击后手指离屏到下一次
+     *    出手物理上不可能 0ms 连续；机器连发是反自动化 SDK 触点检测的
+     *    直接特征，也是多点观感的来源之一）。 */
+
+    /** v6.1.0 F：同指纹目标静默期（ms）——点击已派发后此窗内绝不重复出手 */
+    public static final long SAME_TARGET_QUIET_MS = 1500;
+    /** v6.1.0 G：陈旧 bounds 判定——中心位移 > max(旧矩形短边×50%, 24dp 对应 px) */
+    public static final double STALE_DRIFT_RATIO = 0.5;
+    public static final int STALE_DRIFT_MIN_DP = 24;
+    /** v6.1.0 H：手势派发成功后的全局结果静默期（ms） */
+    public static final long POST_TAP_QUIET_MS = 250;
+
+    /**
+     * v6.1.0 F：目标指纹（pkg + 中心坐标粗粒度 + 语义标签）。中心坐标粗粒度
+     * = 容差网格化（同一按钮的复验扫描坐标偏差 < 网格尺寸 → 同指纹）。
+     * <p>纯函数；测试侧固定输入可精确断言。
+     *
+     * @param tolPx 指纹网格尺寸（px，按设备密度；建议 = dupTolPx(density)）
+     */
+    public static String sameTargetKey(String pkg, int cx, int cy, String tag, int tolPx) {
+        int gx = tolPx > 0 ? cx / tolPx : cx;
+        int gy = tolPx > 0 ? cy / tolPx : cy;
+        String t = tag == null ? "" : tag;
+        return pkg + "|" + gx + "," + gy + "|" + t.length() + ":" + t.hashCode();
+    }
+
+    /**
+     * v6.1.0 F：同指纹目标是否在静默期内（刚出手过 → true = 拒绝再次出手）。
+     * firedAt：指纹→上次派发时刻（服务侧维护，窗口切换清空）。
+     */
+    public static boolean isFiredRecently(java.util.Map<String, Long> firedAt, String key, long now) {
+        if (firedAt == null || key == null) return false;
+        Long at = firedAt.get(key);
+        return at != null && now - at < SAME_TARGET_QUIET_MS;
+    }
+
+    /**
+     * v6.1.0 G：出手前新鲜度复核——旧 bounds（决策捕获时刻）中心 vs 新 bounds
+     * （出手时刻 re-fetch）中心位移是否判为「陈旧坐标」。true = 按钮正在
+     * 入场/位移动画中，放弃本次出手（等下一轮扫描用新 bounds）。
+     * <p>位移阈值 = max(旧矩形短边 × 50%, 24dp×density)——小于此为正常
+     * 抖动（按钮呼吸/微调不影响安全触点），大于此为动画位移（按旧坐标=点空）。
+     *
+     * @param oldRect 决策时刻捕获的 bounds [l,t,r,b]（null → 判陈旧：节点已消失）
+     * @param newRect 出手时刻 re-fetch 的 bounds [l,t,r,b]（null → 判陈旧）
+     */
+    public static boolean isStaleBounds(int[] oldRect, int[] newRect, float density) {
+        if (oldRect == null || newRect == null || oldRect.length < 4 || newRect.length < 4) return true;
+        int oldW = oldRect[2] - oldRect[0], oldH = oldRect[3] - oldRect[1];
+        if (oldW <= 0 || oldH <= 0) return true;
+        int ocx = (oldRect[0] + oldRect[2]) / 2, ocy = (oldRect[1] + oldRect[3]) / 2;
+        int ncx = (newRect[0] + newRect[2]) / 2, ncy = (newRect[1] + newRect[3]) / 2;
+        int dx = Math.abs(ocx - ncx), dy = Math.abs(ocy - ncy);
+        int shortSide = Math.min(oldW, oldH);
+        int limit = Math.max((int) (shortSide * STALE_DRIFT_RATIO), dpPx(STALE_DRIFT_MIN_DP, density));
+        return dx > limit || dy > limit;
+    }
+
+    /**
+     * v6.1.0 H：结果静默期——手势派发成功后同包全局静默是否已过。
+     * <p>lastGestureOkAt：该包上次手势派发成功时刻（服务侧维护）。
+     */
+    public static boolean postTapQuietOk(Long lastGestureOkAt, long now) {
+        return lastGestureOkAt == null || now - lastGestureOkAt >= POST_TAP_QUIET_MS;
+    }
 }

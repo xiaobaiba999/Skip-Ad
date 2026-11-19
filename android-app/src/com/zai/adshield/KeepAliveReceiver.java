@@ -80,7 +80,7 @@ public class KeepAliveReceiver extends BroadcastReceiver {
             }, "sub-update");
             subThread.setDaemon(true);
             subThread.start();
-            // v4.2.0：心跳顺带检查 12h 自动日志提交（未到期/服务未运行/息屏秒回零开销）
+            // v4.2.0：心跳顺带检查自动日志提交（v6.1.0：8h 一日 3 次；未到期/服务未运行/息屏秒回零开销）
             try {
                 AdSkipService.maybeAutoUploadLog(ctx);
             } catch (Throwable ignored) {

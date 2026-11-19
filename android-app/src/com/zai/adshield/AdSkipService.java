@@ -268,7 +268,10 @@ public class AdSkipService extends AccessibilityService {
     private static final long COOLDOWN_MS = 300;
     private static final long LEARN_WINDOW_MS = 30000; // 手动点击学习宽时间窗
     private static final int MAX_RULES_PER_APP = 8;
-    private static final int MAX_LOG = 120; // v4.2.0：60→120（日志更具体：手动/自动上传携带更多上下文）
+    /* v6.1.0 日志留存扩容（用户实锤：日志要更详细、留存更多、重点类型
+     * 留存）：120→300 条——覆盖完整开屏周期（含订阅拉取失败/自愈/误触
+     * 防护等重点事件，此前 120 条高频命中日志会把低频重点事件挤出） */
+    private static final int MAX_LOG = 300;
 
     /* ═══ v4.2.0 用户意图让路（issue#31-37：「用户点开弹窗广告落地页又被
      * 引擎自动关闭，手动重开又被关」根治）═══
@@ -285,9 +288,14 @@ public class AdSkipService extends AccessibilityService {
     private final java.util.HashMap<String, Long> yieldLogAt = new java.util.HashMap<>();
     /* v4.2.0：弹窗窗期内容变化补扫节流（4s 后 300ms 一次） */
     private final java.util.HashMap<String, Long> popupNudgeAt = new java.util.HashMap<>();
+    /* v6.1.0 误触二轮三防线接线：F 同指纹目标静默（指纹→上次派发时刻） +
+     * H 结果静默期（包→上次手势派发成功时刻）；窗口切换随点击计数一并清空 */
+    private final java.util.HashMap<String, Long> firedTargetAt = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Long> lastGestureOkAt = new java.util.HashMap<>();
 
-    /* v4.2.0：每 12 小时自动提交引擎日志（除用户手动上传外） */
-    public static final long AUTO_LOG_MS = 12 * 60 * 60 * 1000L;
+    /* v6.1.0：每 8 小时自动提交引擎日志（用户实锤：一天自动提交 3 次、
+     * 24 小时均匀 → 12h→8h；成功才计时，服务未运行/息屏跳过等下轮心跳） */
+    public static final long AUTO_LOG_MS = 8 * 60 * 60 * 1000L;
 
     /* 极速链（v4.3.0 功耗收紧：16 档 → 13 档——前 4s 的内容变化补扫已覆盖
        密集相位，固定档只留骨架；露头就秒跳不变（0/80/200ms 三连快扫）
@@ -566,10 +574,11 @@ public class AdSkipService extends AccessibilityService {
         return ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_STATE, null);
     }
 
-    /* ═══ v4.2.0 每 12 小时自动提交引擎日志（KeepAliveReceiver 心跳顺带）═══
-     * 除用户手动上传外的第二条日志通道：默认每 12h 一次，成功才计时；
-     * 服务未运行/暂停/息屏时跳过（等下一轮心跳，绝不夜间耗电）。
-     * 与手动上传同一内置令牌通道（GitHub issue），标题带「自动」标识。 */
+    /* ═══ v4.2.0 自动提交引擎日志（KeepAliveReceiver 心跳顺带）═══
+     * v6.1.0：12h→8h（用户实锤：一天自动提交 3 次，24 小时均匀 → 一日
+     * 三次）；成功才计时；服务未运行/暂停/息屏时跳过（等下一轮心跳，
+     * 绝不夜间耗电）。与手动上传同一内置令牌通道（GitHub issue），
+     * 标题带「自动」标识。 */
     public static void maybeAutoUploadLog(final Context ctx) {
         try {
             final SharedPreferences sp = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
@@ -591,14 +600,14 @@ public class AdSkipService extends AccessibilityService {
                     }
                     String body = buildLogBody(ctx, st, ver, true);
                     String title = "[引擎日志][v" + ver + "] "
-                            + android.os.Build.BRAND + " " + android.os.Build.MODEL + "（12 小时自动）";
+                            + android.os.Build.BRAND + " " + android.os.Build.MODEL + "（8 小时自动 · 一日 3 次）";
                     String r = Net.postIssue(title, body);
                     org.json.JSONObject o = new org.json.JSONObject(r);
                     if (o.optBoolean("ok")) {
                         sp.edit().putLong("autoLogAt", System.currentTimeMillis()).apply();
                         AdSkipService sv = instance;
                         if (sv != null) {
-                            sv.appendLog("📨 引擎日志已自动提交（每 12 小时一次；手动上传不受影响）");
+                            sv.appendLog("📨 引擎日志已自动提交（每 8 小时一次 · 一日 3 次均匀覆盖全天；手动上传不受影响）");
                         }
                     }
                 } catch (Throwable ignored) {
@@ -610,8 +619,12 @@ public class AdSkipService extends AccessibilityService {
         }
     }
 
-    /** v4.2.0：日志正文构造（自动/手动共用：状态 + 引擎日志 16 条带时间戳 +
-     *  Top5 应用战绩 + 订阅命中 + 能耗画像） */
+    /** v4.2.0：日志正文构造（自动/手动共用：状态 + 引擎日志 40 条带时间戳 +
+     *  Top5 应用战绩 + 订阅命中 + 能耗画像 + v6.1.0 重点事件留存段）
+     *  v6.1.0（用户实锤：日志要更详细、重点类型留存）：
+     *   · 条数 16→40（留存 300 条窗口里带时间戳的尾部更长截面）；
+     *   · 重点类型统计行：本开机周期命中/误触防护/自愈/订阅拉取四类——
+     *     低频重点事件不再被高频命中日志淹没。 */
     static String buildLogBody(Context ctx, org.json.JSONObject st, String ver, boolean auto) {
         try {
             StringBuilder b = new StringBuilder(1024);
@@ -625,7 +638,7 @@ public class AdSkipService extends AccessibilityService {
             int backs = stats == null ? 0 : stats.optInt("back", 0);
             int feedback = stats == null ? 0 : stats.optInt("feedback", 0);
             b.append("- 版本：v").append(ver).append(" · 环境：Android APK")
-                    .append(auto ? " · 12h 自动提交" : " · 手动上传").append("\n");
+                    .append(auto ? " · 8h 自动提交（一日 3 次）" : " · 手动上传").append("\n");
             b.append("- 真实引擎：秒跳 ").append(auto_).append(" · 弹窗关闭 ").append(popup)
                     .append(" · 返回键 ").append(backs).append(" · 反馈面板收起 ").append(feedback)
                     .append(" · 手动样本 ").append(manual).append("\n");
@@ -703,11 +716,44 @@ public class AdSkipService extends AccessibilityService {
                         .append(" · 拦截误学 ").append(sv.posLearnDropped)
                         .append("（v5.3.0：点击后 1.5s 窗口未关 = 普通点击，不当跳过键学习）\n");
             }
-            // 引擎日志 16 条（带时间戳）
+            // v6.1.0 重点事件留存段：低频重点事件不被高频命中日志淹没——
+            // 从 300 条留存窗口里反查四类重点事件（误触防护/自愈/订阅/异常），
+            // 独立统计行 + 最近 6 条重点事件原文
+            try {
+                org.json.JSONArray allLog = st.optJSONArray("log");
+                int dupGuard = 0, healEvt = 0, subEvt = 0, warnEvt = 0;
+                java.util.ArrayList<String> keyRecent = new java.util.ArrayList<>();
+                if (allLog != null) {
+                    for (int i = Math.max(0, allLog.length() - 300); i < allLog.length(); i++) {
+                        org.json.JSONObject e = allLog.optJSONObject(i);
+                        if (e == null) continue;
+                        String m = e.optString("msg", "");
+                        boolean isKey = false;
+                        if (m.contains("防重复") || m.contains("同指纹") || m.contains("拒发")
+                                || m.contains("覆盖层") || m.contains("位移中")) { dupGuard++; isKey = true; }
+                        else if (m.contains("自愈") || m.contains("重绑") || m.contains("拉活")) { healEvt++; isKey = true; }
+                        else if (m.contains("订阅") && (m.contains("失败") || m.contains("拉取") || m.contains("镜像"))) { subEvt++; isKey = true; }
+                        else if (m.contains("⚠") || m.contains("⛔") || m.contains("梯子") || m.contains("中断")) { warnEvt++; isKey = true; }
+                        if (isKey && keyRecent.size() < 6) keyRecent.add(m);
+                    }
+                }
+                b.append("- 重点事件（本留存窗）：误触防护 ").append(dupGuard)
+                        .append(" · 自愈/拉活 ").append(healEvt)
+                        .append(" · 订阅异常 ").append(subEvt)
+                        .append(" · 引擎预警 ").append(warnEvt).append("\n");
+                if (!keyRecent.isEmpty()) {
+                    b.append("- 重点事件最近 6 条：\n");
+                    for (int i = 0; i < keyRecent.size(); i++) {
+                        b.append("  - ").append(keyRecent.get(i)).append("\n");
+                    }
+                }
+            } catch (Throwable ignored) {
+            }
+            // 引擎日志 40 条（v6.1.0：16→40，带时间戳——留存更长截面）
             org.json.JSONArray log = st.optJSONArray("log");
-            b.append("- 引擎日志（最近 16 条）：\n");
+            b.append("- 引擎日志（最近 40 条）：\n");
             if (log != null && log.length() > 0) {
-                int from = Math.max(0, log.length() - 16);
+                int from = Math.max(0, log.length() - 40);
                 java.text.SimpleDateFormat df = new java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US);
                 for (int i = from; i < log.length(); i++) {
                     org.json.JSONObject e = log.optJSONObject(i);
@@ -1527,6 +1573,7 @@ public class AdSkipService extends AccessibilityService {
                 backTries.put(pkg, 0);
                 clickTries.put(pkg, 0); // v3.5.0：新窗重置复验计数
                 clearTapTrail(pkg); // v6.0.0：新窗清空触点轨迹（同坐标去重只在同窗内生效）
+                clearTapGuards(pkg); // v6.1.0：新窗清空同指纹目标静默/结果静默（多点防线只在同窗内生效）
                 cdLastN.remove(pkg);   // v3.8.0：新窗重置倒计时锚点
                 cdAnchorAt.remove(pkg);
                 cdWaitUntil.remove(pkg);
@@ -3016,6 +3063,17 @@ public class AdSkipService extends AccessibilityService {
         }
         if (d.action.equals(AdDecisionCore.A_CLICK_BOUNDS) || d.action.equals(AdDecisionCore.A_CLOSE)) {
             if (!clickCoolOK) return false;
+            /* v6.1.0 F/H 多点防线（用户实锤：点击已生效但广告跳转动画期
+             * 复验看到「按钮还在」再点一次=用户肉眼的多点；机器连发也是
+             * 反自动化 SDK 触点检测的直接特征）：
+             *  F 同指纹目标静默——SAME_TARGET_QUIET_MS 内同指纹目标绝不再出手；
+             *  H 结果静默——手势派发成功后 POST_TAP_QUIET_MS 内同包任何出手让路 */
+            String targetKey = d.bounds != null
+                    ? HumanTap.sameTargetKey(pkg, (d.bounds[0] + d.bounds[2]) / 2,
+                    (d.bounds[1] + d.bounds[3]) / 2, d.reason,
+                    HumanTap.dupTolPx(screenDensity)) : null;
+            if (targetKey != null && HumanTap.isFiredRecently(firedTargetAt, targetKey, now)) return false;
+            if (!HumanTap.postTapQuietOk(lastGestureOkAt.get(pkg), now)) return false;
             int attempts = triesOfClick(pkg);
             clickAttemptNow = attempts; // v5.9.0：复验象限轮换基数（同候选换点防多点盲刺）
             // v3.8.0：手势真实触点【首选】——performAction 首点常被应用无声吞掉
@@ -3026,6 +3084,10 @@ public class AdSkipService extends AccessibilityService {
                 lastAutoClickAt = now;
                 clickTries.put(pkg, attempts + 1);
                 skipAt.put(pkg, now); // v3.14.0：记录引擎出手时刻（跳过后反馈弹窗门控用）
+                // v6.1.0 F/H 记录：同指纹目标静默表 + 结果静默表（多点防线生效中）
+                if (targetKey != null) firedTargetAt.put(targetKey, now);
+                lastGestureOkAt.put(pkg, now);
+                if (firedTargetAt.size() > 256) firedTargetAt.clear(); // 防膨胀：跨窗清理为主，超限整体兑底
                 /* v6.0.0 人手复验节奏（替代 v4.4.0 的 450/900 双针机器枪）
                  * ——首击后 500ms 扫一眼（人手 300~500ms 补刀节奏不变），
                  * 第 2/3/4/5/6 击后 1.4s/2.4s/3.6s/5.2s/7.0s 渐进放缓：
@@ -3059,6 +3121,11 @@ public class AdSkipService extends AccessibilityService {
             if (!clickCoolOK) return false;
             boolean isLearned = "learned_pos".equals(d.reason);
             int tapAttempts = triesOfClick(pkg); // v6.0.0：人手节奏基数（学习位置直点同熙）
+            /* v6.1.0 F/H 多点防线（学习位置直点同熙：同指纹静默 + 结果静默） */
+            String targetKey = HumanTap.sameTargetKey(pkg, d.x, d.y, d.reason,
+                    HumanTap.dupTolPx(screenDensity));
+            if (HumanTap.isFiredRecently(firedTargetAt, targetKey, now)) return false;
+            if (!HumanTap.postTapQuietOk(lastGestureOkAt.get(pkg), now)) return false;
             if (gestureTap(d.x, d.y)) {
                 lastClickAt.put(pkg, now);
                 lastAutoClickPkg = pkg;
@@ -3066,6 +3133,8 @@ public class AdSkipService extends AccessibilityService {
                 clickTries.put(pkg, tapAttempts + 1);
                 skipAt.put(pkg, now); // v3.14.0：记录引擎出手时刻（学习位置直点也是跳过出手）
                 energyGestures++;
+                firedTargetAt.put(targetKey, now); // v6.1.0 F：同指纹目标静默生效中
+                lastGestureOkAt.put(pkg, now);     // v6.1.0 H：结果静默生效中
                 scheduleVerifyScan(pkg, HumanTap.verifyDelayMs(tapAttempts)); // v6.0.0 人手复验节奏（学习位置直点同熙）
                 if (isLearned) {
                     appendLog("🎯 学习位置点击（" + shortPkg(pkg) + "）：你手动教过的位置指纹 ("
@@ -3102,6 +3171,32 @@ public class AdSkipService extends AccessibilityService {
      *  语义目标）；再失败由复验扫描换候选——绝不在危险坐标上盲刺。 */
     private boolean clickNode(Decision d) {
         lastGesture = false;
+        /* v6.1.0 G 出手前新鲜度复核（误点根治——用户实锤：设备类型/分辨率
+         * 原因导致误点）：扫描→决策→派发链路有 26~56ms 人手延迟 + 300ms 冷却，
+         * 入场缩放/位移动画中的按钮已位移——人眼按「它现在在哪」点击，机器
+         * 不能按「它曾在哪」点：出手时 re-fetch 最新 bounds，中心位移超过
+         * 旧矩形短边 50%+24dp = 动画位移中 → 放弃本次出手等下一轮扫描用新
+         * bounds（点空→复验→再点的多点级联从源头掐断；盲点旧坐标=误点）；
+         * 节点已不可见/已消失 → 绝不按旧坐标盲刺。 */
+        if (d.bounds != null && d.node instanceof NodeAdapter) {
+            try {
+                AccessibilityNodeInfo n = ((NodeAdapter) d.node).n;
+                if (n != null) {
+                    Rect fresh = new Rect();
+                    n.getBoundsInScreen(fresh); // void API：结果写入 fresh
+                    if (n.isVisibleToUser() && fresh.width() > 0 && fresh.height() > 0) {
+                        if (HumanTap.isStaleBounds(d.bounds,
+                                new int[]{fresh.left, fresh.top, fresh.right, fresh.bottom},
+                                screenDensity)) {
+                            return false; // 按钮位移动画中：让路本轮，下一轮扫描用新 bounds
+                        }
+                    } else {
+                        return false; // 节点已不可见/已消失：绝不按旧坐标盲刺
+                    }
+                }
+            } catch (Throwable ignored) {
+            }
+        }
         if (d.bounds != null) {
             int[] pt = adaptiveTapPoint(d); // v6.0.0：实时bounds+dp自适应安全域+轨迹去重
             if (pt != null && gestureTap(pt[0], pt[1])) {
@@ -3196,6 +3291,20 @@ public class AdSkipService extends AccessibilityService {
     /** v6.0.0：新窗开启——触点轨迹随 clickTries 同步清零（同包） */
     private void clearTapTrail(String pkg) {
         tapTrail.remove(pkg);
+    }
+
+    /** v6.1.0：新窗开启——同指纹目标静默表/结果静默表同步清零（同包：
+     *  多点防线只在同一广告窗内生效，跨窗（新广告窗）零残留） */
+    private void clearTapGuards(String pkg) {
+        String p = pkg == null ? "" : pkg;
+        try {
+            java.util.Iterator<java.util.Map.Entry<String, Long>> it = firedTargetAt.entrySet().iterator();
+            while (it.hasNext()) {
+                if (it.next().getKey().startsWith(p + "|")) it.remove();
+            }
+        } catch (Throwable ignored) {
+        }
+        lastGestureOkAt.remove(pkg);
     }
 
     /** v5.9.0：标签所属窗口 bounds——取节点自身窗口（node.getWindow()，

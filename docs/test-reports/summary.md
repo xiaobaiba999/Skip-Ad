@@ -195,3 +195,35 @@ className 指纹）对此**零信号**，引擎从不出手（R15 复现：img_l
 - AGGRO-HIT-R5（五轮激进·扫描日志继续优化）：SDK 指纹 +4 段（mobads 百度联盟 · sigmob Sigmob · adcolony AdColony · vungle Liftoff Vungle——累计 50+ 段）；分应用表 +6 款（微博/腾讯视频/优酷/爱奇艺/芒果TV/酷我音乐——社交/长视频/音乐类高频 App 开屏未命中实锤）
 - MATRIX-180：11×15=165 → 12×15=180（+其他族 Pixel/Nothing/索尼/联想 15 款——国际市场真实机型）；测试算术修正三处（真实密度配对表 TestHost.realDensities + 7 档压力条件契约 + S4c 切比雪夫算术修正——引擎行为正确、断言语义错位的诚实修正，非放松断言）
 - PUSH-SYNC：v6.0.0 全量推送 GitHub + Releases（tag v6.0.0 · APK asset）
+
+## Round 27 · v6.1.0（2026-11-19）——订阅拉取多通道自愈（Connection reset 根治）· 误触三重防线 · 日志一日三次 · 9 品牌×20=220 机型矩阵
+
+**触发**：用户第八轮实锤「订阅市场点击导入时提示拉去失败 Connection reset」+「优化版本信息描述言简意赅一个标题一个段落、发现新版本时同样显示新版本功能描述（不超过5个标题）」+「高级免打扰持久模式必须电脑执行太麻烦就取消」+「新增自动提交日志、优化日志记录（更详细、留存更多、重点类型留存）、一天自动提交3次24小时均匀」+「设备类型/分辨率原因导致多点误点——1比1模拟人在不同设备上操作使用卫士解决该bug」+「只测试 oppo,vivo,xiaomi,三星,华为,荣耀,红米,一加,iqoo及其子品牌，其他品牌不要测了，每品牌N多机型」+「开屏广告/屏蔽速度/bug/功耗/精准度等全模块算法测试」+「完成同步github推送releases；优化github面板描述加免责声明」。
+
+**变更定位表（本轮六域）**
+| # | 域 | 用户诉求（原话） | 本轮修复 |
+|---|---|---|---|
+| ① | 订阅拉取 | 「订阅市场点击导入时提示拉去失败 Connection reset」 | 根因：订阅市场 3 源全部 cdn.jsdelivr.net，国内运营商间歇性 TCP 重置；旧镜像变体链只对 npmmirror/gkd-kit/raw.githubusercontent 生成变体，对 jsdelivr 本身零回退——三源同 CDN 同命运 → mirrorVariants() 规则④ jsdelivr 5 变体全链 + 同址瞬时故障重试 1 次 + 超时调优（10s/15s→7s/12s）+ UA 浏览器风格 + humanizeNetError() 5 类人话化——最坏 10 次出手（5 变体 × 2 次）任一成功即导入成功 |
+| ② | 多点误点残余 | 「设备类型/分辨率原因导致多点误点——1比1模拟人在不同设备上操作使用卫士解决该bug」 | v6.0.0 A~E 后三条残余路径补三道纯函数防线（HumanTap F/G/H）：F 同指纹目标去抖 1500ms · G 出手前新鲜度复核（位移 > max(旧矩形短边×50%, 24dp) 判动画位移中放弃出手）· H 结果静默 250ms |
+| ③ | 日志 | 「新增自动提交日志、优化日志记录（更详细、留存更多、重点类型留存）、一天自动提交3次24小时均匀」 | AUTO_LOG_MS 12h→8h（一日 3 次 8h/16h/24h 均匀 · 成功才计时 · 息屏/服务未运行跳过绝不夜间耗电）· 留存 120→300 条 · 上报 16→40 条 · 新增重点事件留存段（四类统计 + 最近 6 条原文） |
+| ④ | 版本信息描述 | 「言简意赅一个标题一个段落」「发现新版本时同样显示新版本功能描述（不超过5个标题）」 | CURRENT_RELEASE 5 条长要点 → 1 标题（更快、更稳、更省心）+1 段落；notesToHeadlines() 解析 Release notes ≤5 条标题行（每条截断 44 字）——更新横幅 ub-notes 区 +「我的→检查更新」同样展示；fetchLatest 补 notes 字段 |
+| ⑤ | 免打扰持久模式 | 「高级免打扰持久模式必须电脑执行太麻烦就取消」 | 不能在安装时实现、必须连电脑（ADB WRITE_SECURE_SETTINGS）——取消：sh-card 整卡移除 + refreshSecureHeal/btn-sh-copy JS 移除；v6.1.0 起无任何需 ADB/电脑授权项 |
+| ⑥ | 测试矩阵 | 「只测试 oppo,vivo,xiaomi,三星,华为,荣耀,红米,一加,iqoo及其子品牌，其他品牌不要测了，每品牌N多机型」「开屏广告/屏蔽速度/bug/功耗/精准度等全模块算法测试」 | BrandMatrix180Test→BrandFocus220Test：9 品牌+子品牌 11 组 × 20 机型 = 220（删五组）+ 机型表新增系统版本列 + 七维新增 ①″ 多点误点专项 |
+
+**测试矩阵（本轮全绿 2858 项 · +506）**
+| 套件 | 断言 | 结果 | 覆盖 |
+|---|---|---|---|
+| 9 品牌+子品牌 11×20=220 机型矩阵（BrandFocus220Test · 收窄+扩容，新增 ①″ 多点误点专项） | 1844 | ✅ | 220 机型（删除魅族/中兴努比亚红魔/传音/摩托罗拉/其他五组——其他品牌不测了）：小米·HyperOS 2/3｜红米 Redmi·HyperOS｜POCO·HyperOS｜华为·HarmonyOS 4.2-5.1｜荣耀·MagicOS 8-10｜OPPO·ColorOS 15-16｜真我 realme·ColorOS｜vivo·OriginOS 5-6｜iQOO·OriginOS｜三星·One UI 6.1-8｜一加·ColorOS/OxygenOS 15 × 20 机型（机型表新增系统版本列 · 分辨率 720p 入门→2K+ 旗舰/折叠外屏窄幅/平板）；七维各 220/220（① 开屏命中六信号/①′ 人手触点安全/①″ 多点误点专项：同指纹连点 10 次仅 1 次出手 9 次拦截·位移 60% 拒绝·微抖 2px 放行·null 拒绝·250ms 结果静默·常量在场 1500ms/250ms/24dp/0.5/② 屏蔽速度/③ bug 四陷阱/④ 功耗/⑤ 精准度/⑥ 算法含品牌族归一 11 组全对）；断言结构 220×8 机型级 + 11×7 品牌汇总 + 7 矩阵总检 |
+| 1:1 人手模拟引擎矩阵（HumanTapMatrixTest） | 19 | ✅ | v6.0.0 A~E 五要素存量零回归（人手参数散布/复验节奏放缓/耐心预算 6/dp 归一/轨迹去重）——F/G/H 为纯函数新增不触碰 A~E 契约 |
+| 设备自适应触点矩阵（TapPointMatrixTest） | 295 | ✅ | 24 类几何 × 12 场景存量零回归（本轮 TapPoint 零改动） |
+| 存量回归（10 套件） | 700 | ✅ | v6.0.0 全量零回归（v6.1.0 改动面：镜像变体链/F/G/H/日志参数/版本精简/持久模式移除全部零回归） |
+| 整体（构建/签名/分发） | 4 | ✅ | VC 60100 · APK 308,574 B（301KB）· 同签名覆盖安装 · MD5 a2bd1027736739c81780d4cbd3617bdc 三目录一致 |
+
+**修复清单**
+- SUB-RESET（订阅拉取 Connection reset 根治）：mirrorVariants() 新增规则④——jsdelivr gh URL 生成 5 变体全链（原始 jsdelivr → fastly.jsdelivr.net 同 CDN 另一接入点 → ghfast.top 代理 GitHub raw → gh-proxy.com 代理 → raw.githubusercontent.com 直连）；Net.httpGetRaw() 同址瞬时故障重试 1 次（间隔 600ms——只对 reset/timeout/EOF 等瞬时性故障重试，HTTP 4xx/5xx 立即换址）；超时调优：连接 10s→7s、读取 15s→12s（快速失败快速切镜像）；UA 改浏览器风格（CDN/代理站友好，GitHub API 仍用原 UA）；humanizeNetError() 错误人话化 5 类（Connection reset →「网络连接被运营商/CDN 重置（jsdelivr 类海外源在国内间歇性被干扰，稍后重试或换网络通常可恢复）」）；最坏 10 次出手（5 变体 × 2 次）任一成功即导入成功
+- MISFIRE-FGH（误触二轮三防线）：F sameTargetKey/isFiredRecently 同指纹目标去抖（SAME_TARGET_QUIET_MS=1500ms——点击已派发后 1.5s 内同指纹目标（包名+中心坐标容差网格化+语义标签哈希）绝不再出手：点击已生效但广告跳转有 300~800ms 动画延迟，复验扫描看到「按钮还在」再点一次=用户肉眼的多点）· G isStaleBounds 出手前新鲜度复核（STALE_DRIFT_RATIO=0.5 + STALE_DRIFT_MIN_DP=24dp——出手时 re-fetch 节点最新 bounds（getBoundsInScreen），中心位移超过 max(旧矩形短边×50%, 24dp×density) 判为动画位移中→放弃本次出手等下一轮扫描用新 bounds：「点它现在在哪」而不是「它曾在哪」；节点已不可见/消失→绝不盲刺）· H postTapQuietOk 结果静默期（POST_TAP_QUIET_MS=250ms——手势成功派发后同包 250ms 内任何新候选不再出手：真人完成一次点击后物理上不可能 0ms 连续再点，机器连发是反自动化 SDK 触点检测的直接特征）；接线：execute 的 A_CLICK_BOUNDS/A_CLOSE/A_TAP_POINT 分支出手前查 F/H、成功后记录 firedTargetAt/lastGestureOkAt · clickNode 出手前做 G 复核 · 新窗切换 clearTapGuards 同步清零（防线只在同窗内生效）· firedTargetAt 256 条防膨胀兜底
+- LOG-3XDAILY（日志增强）：AUTO_LOG_MS 12h→8h（一天自动提交 3 次、24 小时均匀：8h/16h/24h 三个时点——成功才计时、息屏/服务未运行跳过等下轮心跳，绝不夜间耗电）；MAX_LOG 留存 120→300 条（覆盖完整开屏周期：订阅拉取失败/自愈/误触防护等重点低频事件不再被高频命中日志挤出）；buildLogBody 上报携带引擎日志 16→40 条（带时间戳）；新增重点事件留存段（从 300 条留存窗反查四类重点事件统计：误触防护/自愈拉活/订阅异常/引擎预警 + 最近 6 条重点事件原文——「什么类型要重点留存」的答案）；标题文案「（8 小时自动 · 一日 3 次）」
+- RELEASE-NOTES（版本信息描述精简）：CURRENT_RELEASE 5 条长要点 → 1 标题（更快、更稳、更省心）+ 1 段落；notesToHeadlines()——发现新版本时解析 Release notes 提取 ≤5 条标题行（每条截断 44 字），更新横幅 ub-notes 区 +「我的→检查更新」发现新版时同样展示；fetchLatest 浏览器路径补 notes 字段
+- DND-PERSIST-OFF（免打扰持久模式取消）：用户实锤不能在安装时实现、必须连电脑（ADB WRITE_SECURE_SETTINGS）太麻烦——取消：sh-card 整卡移除 + refreshSecureHeal/btn-sh-copy JS 移除；普通路径（一键恢复+前台看门狗+零触摸自愈）覆盖全部免电脑场景；v6.1.0 起无任何需 ADB/电脑授权项
+- MATRIX-220（测试矩阵收窄+扩容）：BrandMatrix180Test → BrandFocus220Test——9 品牌+子品牌 11 组 × 20 机型 = 220（删除魅族/中兴努比亚红魔/传音/摩托罗拉/其他五组——其他品牌不测了）；机型表新增系统版本列（拓展系统维度）；分辨率覆盖 720p 入门→2K+ 旗舰、折叠外屏窄幅、平板；七维（180 矩阵六维 + 新增 ①″ 多点误点专项）各 220/220；断言结构 220×8 机型级 + 11×7 品牌汇总 + 7 矩阵总检 = 1844
+- PUSH-SYNC：v6.1.0 全量推送 GitHub + Releases（tag v6.1.0 · APK asset）；GitHub 面板描述优化 + 免责声明（用户第八轮原话要求）

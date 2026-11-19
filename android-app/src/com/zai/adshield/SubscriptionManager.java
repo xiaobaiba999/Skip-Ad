@@ -286,10 +286,10 @@ public final class SubscriptionManager {
     }
 
     static String fetch(Context ctx, String url, SharedPreferences sp) {
-        // v4.1.0 镜像回退链（issue#30：官方订阅链接 404——npmmirror 上
-        // @gkd-kit/subscription 的文件路径已从 /files/gkd.json5 迁到
-        // /files/dist/gkd.json5，旧链接整体失效）：原始链接失败时自动
-        // 依次尝试镜像变体，成功后仍按用户填写的原始 URL 记忆
+        // v4.1.0 镜像回退链（issue#30）+ v6.1.0 Connection reset 根治（用户实锤：
+        // 订阅市场导入提示拉取失败 Connection reset——jsdelivr 单源被运营商
+        // 重置时无变体可退）：每个变体先同址重试（httpGetRaw 内 600ms）再换址，
+        // 全链 5 变体任一成功即导入成功
         java.util.List<String> variants = mirrorVariants(url);
         Exception lastEx = null;
         for (int i = 0; i < variants.size(); i++) {
@@ -299,12 +299,36 @@ public final class SubscriptionManager {
                 lastEx = e;
             }
         }
-        String msg = lastEx == null ? "网络失败" : (lastEx.getMessage() == null ? "网络失败" : lastEx.getMessage());
-        lastError = msg;
+        String raw = lastEx == null ? "网络失败" : (lastEx.getMessage() == null ? "网络失败" : lastEx.getMessage());
+        lastError = raw;
+        String msg = humanizeNetError(raw);
         String hint = variants.size() > 1
-                ? "（已自动尝试 " + variants.size() + " 个镜像地址）· 订阅页「订阅市场」可一键导入活跃维护的订阅"
+                ? "（已自动重试并切换 " + variants.size() + " 个镜像通道仍失败——多为当前网络对海外源全阻断，可稍后重试或换 Wi-Fi/流量后重试一次）"
                 : " · 订阅页「订阅市场」可一键导入活跃维护的订阅";
         return "{\"ok\":false,\"error\":" + jsonStr("拉取失败：" + msg + hint) + "}";
+    }
+
+    /** v6.1.0：网络错误人话化（Connection reset 等术语翻译为用户可理解的
+     *  原因说明——「拉取失败：Connection reset」对普通用户零信息量） */
+    static String humanizeNetError(String raw) {
+        if (raw == null) return "网络异常";
+        String low = raw.toLowerCase();
+        if (low.contains("reset") || raw.contains("重置")) {
+            return "网络连接被运营商/CDN 重置（jsdelivr 类海外源在国内间歇性被干扰，稍后重试或换网络通常可恢复）";
+        }
+        if (low.contains("timeout") || low.contains("timed out") || raw.contains("超时")) {
+            return "连接超时（当前网络访问海外源不稳定，已自动换镜像重试）";
+        }
+        if (low.contains("unknowhost") || low.contains("unknownhost") || raw.contains("未知主机")) {
+            return "域名解析失败（当前网络 DNS 异常，可稍后重试）";
+        }
+        if (low.contains("404")) {
+            return "订阅文件不存在（404——订阅源可能已迁移，可换订阅市场其他源）";
+        }
+        if (low.contains("403")) {
+            return "订阅源拒绝访问（403）";
+        }
+        return raw;
     }
 
     /** 镜像变体列表：原始 URL 打头，后接按域名规则生成的回退地址 */
@@ -335,6 +359,25 @@ public final class SubscriptionManager {
                     String branch = rest.substring(i2 + 1, i3);
                     String path = rest.substring(i3 + 1);
                     list.add("https://cdn.jsdelivr.net/gh/" + owner + "/" + repo + "@" + branch + "/" + path);
+                }
+            }
+            // ④ v6.1.0 jsdelivr gh URL → 多通道全链（Connection reset 根治：
+            //    市场 3 源全在 cdn.jsdelivr.net，被运营商重置时零变体可退——
+            //    fastly 接入点（同 CDN 另一接入点，重置概率独立）→ ghfast.top
+            //    代理 GitHub raw → gh-proxy.com 代理 → raw 直连；配合
+            //    httpGetRaw 同址重试 = 最坏 10 次出手任一成功即导入成功）
+            if (url.startsWith("https://cdn.jsdelivr.net/gh/") || url.startsWith("https://fastly.jsdelivr.net/gh/")) {
+                String rest = url.substring(url.indexOf("/gh/") + 4);
+                int at = rest.indexOf('@');
+                int slash = at < 0 ? -1 : rest.indexOf('/', at + 1);
+                if (at > 0 && slash > at) {
+                    String ownerRepo = rest.substring(0, at);      // owner/repo
+                    String branch = rest.substring(at + 1, slash); // 分支
+                    String path = rest.substring(slash + 1);       // 文件路径
+                    list.add("https://fastly.jsdelivr.net/gh/" + ownerRepo + "@" + branch + "/" + path);
+                    list.add("https://ghfast.top/https://github.com/" + ownerRepo + "/raw/" + branch + "/" + path);
+                    list.add("https://gh-proxy.com/https://github.com/" + ownerRepo + "/raw/" + branch + "/" + path);
+                    list.add("https://raw.githubusercontent.com/" + ownerRepo + "/" + branch + "/" + path);
                 }
             }
         } catch (Throwable ignored) {

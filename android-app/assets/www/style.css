@@ -78,6 +78,10 @@ body {
   border-radius: 10px; padding: 5px 14px; font-size: 13px; font-weight: 600;
 }
 .ub-detail { margin-top: 10px; }
+/* v6.1.0 新版功能描述（≤5 标题，言简意赅） */
+.ub-notes { margin: 2px 0 8px; }
+.ub-notes-title { font-size: 12px; font-weight: 700; color: #1c7a48; margin-bottom: 3px; }
+.ub-note-item { font-size: 12.5px; color: #33564a; line-height: 1.55; }
 
 /* ───────── 主体 ───────── */
 #main { flex: 1; padding: 14px 16px 24px; }

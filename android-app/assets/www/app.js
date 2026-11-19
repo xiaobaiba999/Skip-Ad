@@ -35,20 +35,44 @@ function mascotImg(size, state, head) {
 
 $("#brand-logo").innerHTML = mascotImg(30, "on", true);
 
-/* ══════════ 版本记录（v5.5.0：仅展示当前安装版本） ══════════
- * 版本号动态读 appVer()（构建时注入，非硬编码）；历史版本全部归档在
- * GitHub Releases，本页不再堆叠多版本记录——只保留当前版本的
- * 版本号 / 核心要点 / 发布时间三项信息。 */
+/* ═══ v6.1.0 版本记录（用户实锤：版本信息描述言简意赅——1 个标题 + 1 个
+ * 段落；历史版本全部归档 GitHub Releases，App 内不再堆叠多条要点）═══ */
 const CURRENT_RELEASE = {
-  date: "2026-11-18",
-  highlights: [
-    "屏蔽速度压榨：点击冷却 420→300ms · 倒计时缓冲 180→120ms · 骨架扫描档 13→18 档（前 4s 密度×2）· 补扫节流 120→80ms · 弹窗冷却 1600→1200ms——从「按钮出现」到「点击命中」全链路压榨",
-    "命中三轮激进：SDK 指纹 +4 档（Mintegral/Pangle/TopOn/Moloco）·「推广」文案族全量补收（合规敏感 App 以推广代广告）· 分应用表 +10 款（快手/闲鱼/酷安/虎牙/斗鱼等）",
-    "首页怎么简单怎么来：保活体检压缩为一行状态只列待处理项；免打扰持久模式移入「我的→高级」，首页零极客内容",
-    "订阅市场防呆版：只留 3 个高星活跃源，点一下整行即导入，去仓库按钮/去更多订阅/App 内零跳转",
-    "10 品牌 × 15 机型 = 150 机型测试矩阵六维全绿（开屏命中/屏蔽速度/bug/功耗/精准度/算法）",
-  ],
+  date: "2026-11-19",
+  title: "更快、更稳、更省心",
+  summary: "订阅导入多通道自愈（拉取失败自动换镜像，Connection reset 根治）；误触三重防线（同目标防重复点击·按最新位置点击·点击后静默）；日志留存翻倍、每天 8 小时一次自动上报 3 次；免打扰持久模式已取消，普通用户零电脑操作。",
 };
+
+/* v6.1.0 新版功能描述（用户实锤：发现新版本时同样显示新版功能描述，
+ * 言简意赅不超过 5 个标题）：解析 Release notes 提取 ≤5 条标题行 */
+function notesToHeadlines(notes, maxN) {
+  const out = [];
+  const lines = String(notes || "").split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const t = lines[i].trim();
+    if (!t) continue;
+    let s = null;
+    if (t.charAt(0) === "#") s = t.replace(/^#+\s*/, "");
+    else if (t.startsWith("- ") || t.startsWith("* ")) s = t.slice(2).trim();
+    if (!s || s.length < 2) continue;
+    s = s.replace(/[*`>]/g, "").trim();
+    if (s.length > 44) s = s.slice(0, 42) + "…";
+    if (out.indexOf(s) < 0) out.push(s);
+    if (out.length >= (maxN || 5)) break;
+  }
+  return out;
+}
+
+/* v6.1.0：新版功能描述渲染（更新横幅 + 我的页检查更新共用） */
+function renderReleaseNotes(d) {
+  const box = $("#ub-notes");
+  if (!box) return;
+  const heads = notesToHeadlines(d.notes, 5);
+  box.innerHTML = heads.length
+    ? '<div class="ub-notes-title">新版亮点</div>'
+      + heads.map(h => '<div class="ub-note-item">· ' + esc(h) + '</div>').join("")
+    : "";
+}
 
 /* v5.8.0：权限使用审计卡已移除（用户实测：我的模块不需要展示权限审计——
  * 零权限声明已在 GitHub README 与系统设置里可查，App 内不再堆叠信息）。 */
@@ -62,7 +86,7 @@ $$(".tabbtn").forEach(b => b.addEventListener("click", () => {
   const pg = b.dataset.page;
   if (pg === "home") { refreshHome(); renderWhitelist(true); }
   if (pg === "sub") refreshSub();
-  if (pg === "me") { renderLog(); try { refreshSecureHeal(); } catch (e) {} }
+  if (pg === "me") renderLog();
 }));
 
 /* ══════════ 首页：守护状态 ══════════ */
@@ -293,57 +317,11 @@ setInterval(() => {
   } catch (e) {}
 }, 3000);
 
-/* ═══ v5.8.0 高级卡：免打扰持久模式（原首页卡移入我的→高级）═══
- * 用户实锤：「整的太复杂还连接电脑」——普通用户路径（一键恢复 + 前台
- * 看门狗自动拉活）已零系统设置零电脑；ADB 极客玩法降级为高级折叠项，
- * 首页彻底清爽。文案一行说清，不堆描述。 */
-let shCmd = "";
-function refreshSecureHeal() {
-  const card = $("#sh-card");
-  if (!card || !HAS_BRIDGE) return;
-  let st = null;
-  try { st = JSON.parse(AndroidApp.secureHealStatus() || "{}"); } catch (e) {}
-  if (!st) return;
-  card.style.display = "";
-  const chip = $("#sh-chip");
-  if (st.granted) {
-    chip.className = "chip chip-green";
-    chip.textContent = "已授权";
-    $("#sh-desc").textContent = "生效中：无障碍被吊销自动写回重绑";
-    $("#sh-how").style.display = "none";
-    $("#btn-sh-copy").style.display = "none";
-  } else {
-    chip.className = "chip";
-    chip.textContent = "未授权";
-    $("#sh-desc").textContent = "可选极客玩法，普通用户无需理会";
-    const how = $("#sh-how");
-    how.style.display = "";
-    shCmd = st.cmd || "";
-    how.textContent = "需电脑执行一次：" + shCmd;
-    $("#btn-sh-copy").style.display = "";
-  }
-}
-$("#btn-sh-copy").addEventListener("click", () => {
-  if (!shCmd) return;
-  try {
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(shCmd);
-      toast("命令已复制，电脑连手机执行一次即可");
-      return;
-    }
-  } catch (e) {}
-  try {
-    const ta = document.createElement("textarea");
-    ta.value = shCmd;
-    document.body.appendChild(ta);
-    ta.select();
-    document.execCommand("copy");
-    document.body.removeChild(ta);
-    toast("命令已复制，电脑连手机执行一次即可");
-  } catch (e) {
-    toast("复制失败，请长按卡片手动复制命令");
-  }
-});
+/* ═══ v6.1.0 免打扰持久模式已取消 ═══
+ * 用户实锤：「高级免打扰持久模式不能直接在安装的时候实现，一定要在
+ * 电脑上执行的话就取消吧，这样很麻烦」——ADB WRITE_SECURE_SETTINGS
+ * 授权必须连电脑，与「零电脑」体验目标冲突，整卡移除。普通用户路径
+ * （一键恢复 + 前台看门狗 + 零触摸自愈）覆盖全部免电脑场景。 */
 
 function refreshBattery(running) {
   const banner = $("#battery-banner");
@@ -676,11 +654,12 @@ $("#sub-toggle").addEventListener("change", () => {
 $("#me-ver").textContent = "v" + appVer();
 $("#ver-chip").textContent = "v" + appVer();
 
-/* v5.5.0：版本记录仅展示当前安装版本（版本号动态读取，非硬编码） */
+/* v6.1.0：版本记录言简意赅——1 个标题 + 1 个段落（历史版本归档 GitHub Releases） */
 $("#changelog").innerHTML =
   '<div class="log-item"><div class="log-v">v' + esc(appVer())
   + ' · ' + esc(CURRENT_RELEASE.date) + '</div>'
-  + CURRENT_RELEASE.highlights.map(h => '<div class="log-d">' + esc(h) + '</div>').join("")
+  + '<div class="log-d"><b>' + esc(CURRENT_RELEASE.title) + '</b></div>'
+  + '<div class="log-d">' + esc(CURRENT_RELEASE.summary) + '</div>'
   + '</div>';
 
 const GH_API = "https://api.github.com/repos/xiaobaiba999/Skip-Ad";
@@ -709,6 +688,7 @@ async function fetchLatest() {
       const apk = (j.assets || []).filter(a => a && a.name && a.name.endsWith(".apk"))[0];
       return {
         ok: true, hasRelease: true, tag: j.tag_name, url: j.html_url,
+        notes: j.body || "", // v6.1.0：新版功能描述（浏览器预览路径）
         apkUrl: apk ? apk.browser_download_url : "",
         apkMirrors: apk ? ["https://ghfast.top/" + apk.browser_download_url, "https://gh-proxy.com/" + apk.browser_download_url] : [],
         apkFileName: apk ? apk.name : "adshield.apk",
@@ -818,6 +798,7 @@ $("#btn-check-update").addEventListener("click", async () => {
   latestRelease = d;
   const latest = String(d.tag || "").replace(/^v/, "");
   const isNewer = cmpVer(latest, appVer()) > 0;
+  if (isNewer) renderReleaseNotes(d); // v6.1.0：发现新版本→新版功能描述（≤5 标题）
   if (d.apkUrl) {
     dlBtn.textContent = isNewer ? "下载 v" + latest : "重新下载 APK";
     dlBtn.dataset.phase = "download";
@@ -925,7 +906,6 @@ function renderLog(force) {
 $("#btn-refresh-log").addEventListener("click", () => {
   renderLog(true);
   toast("日志已刷新");
-  try { refreshSecureHeal(); } catch (e) {}
 });
 
 /* ══════════ v5.5.0 日志上传强反馈 ══════════
@@ -1126,6 +1106,7 @@ function toast(msg) {
       const latest = String(d.tag || "").replace(/^v/, "");
       if (cmpVer(latest, appVer()) > 0) {
         $("#ub-tag").textContent = "v" + latest;
+        renderReleaseNotes(d); // v6.1.0：新版本功能描述（≤5 标题，展开即见）
         $("#update-banner").style.display = "";
       }
     }

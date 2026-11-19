@@ -18,7 +18,7 @@
     <span class="ver-chip" id="ver-chip">v?</span>
   </header>
 
-  <!-- 更新横幅 -->
+  <!-- 更新横幅（v6.1.0：新版本功能描述言简意赅——不超过 5 个标题） -->
   <div class="update-banner" id="update-banner" style="display:none">
     <div class="ub-row">
       <span class="ub-dot"></span>
@@ -26,6 +26,7 @@
       <button class="ub-btn" id="ub-toggle">查看</button>
     </div>
     <div class="ub-detail" id="ub-detail" style="display:none">
+      <div id="ub-notes" class="ub-notes"></div>
       <div class="progress-wrap" id="ub-progress-wrap" style="display:none">
         <div class="progress"><div class="progress-bar" id="ub-bar"></div></div>
         <div class="progress-text" id="ub-progress-text">准备中</div>
@@ -179,24 +180,13 @@
 
       <div class="card">
         <div class="card-title">版本记录</div>
+        <!-- v6.1.0：版本描述言简意赅——1 个标题 + 1 个段落，历史版本归档 GitHub Releases -->
         <div class="changelog" id="changelog"></div>
       </div>
 
-      <!-- v5.8.0 高级（可选·默认收起）：免打扰持久模式入口从首页移入——
-           首页怎么简单怎么来，极客玩法藏进高级折叠项 -->
-      <div class="card" id="sh-card" style="display:none">
-        <div class="row-between">
-          <div>
-            <div class="card-title">高级 · 免打扰持久模式</div>
-            <div class="sub-note" style="margin-top:4px" id="sh-desc">可选极客玩法，普通用户无需理会</div>
-          </div>
-          <span class="chip" id="sh-chip">未授权</span>
-        </div>
-        <div class="sub-note" id="sh-how" style="display:none;margin-top:6px"></div>
-        <div class="btn-row" style="margin-top:8px">
-          <button class="btn btn-ghost btn-sm" id="btn-sh-copy">复制授权命令</button>
-        </div>
-      </div>
+      <!-- v6.1.0 免打扰持久模式已取消（用户实锤：高级免打扰持久模式不能在安装时
+           实现、必须连电脑执行的活太麻烦——不要了）：一键恢复 + 前台看门狗 +
+           零触摸自愈已覆盖普通用户全部场景，ADB 极客入口整体移除。 -->
 
       <div class="card">
         <div class="row-between">
@@ -216,7 +206,7 @@
         </button>
       </div>
 
-      <p class="foot-note">数据仅存本机 · 联网仅日志与更新 · 日志每 12 小时自动提交一次</p>
+      <p class="foot-note">数据仅存本机 · 联网仅日志与更新 · 日志每 8 小时自动提交一次（一日 3 次）</p>
     </section>
   </main>
 
