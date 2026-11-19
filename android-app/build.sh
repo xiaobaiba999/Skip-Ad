@@ -60,6 +60,16 @@ sed -e "s/android:versionCode=\"[0-9]*\"/android:versionCode=\"${VC}\"/" \
     -e "s/android:versionName=\"[^\"]*\"/android:versionName=\"${VN}\"/" \
     "$ROOT/AndroidManifest.xml" > "$BUILD/AndroidManifest.xml"
 
+# ── v7.6.1 页面资产符号校验闸（打包前硬门）──────────────────────────────
+# 死因（用户实锤「扫描日志，7.6版本记录没了，使用报告也不见」）：v7.6.0 的
+# assets/www/app.js 版本记录注释未闭合——块注释吞掉 const CURRENT_RELEASE
+# 声明（纯语法闸拦不住，坏资产直接进了已发布 APK）。此闸语义级三重断言：
+# 语法解析 + stub 环境顶层执行 + 关键符号（版本记录/扫描日志/使用报告接线）
+# 在场——缺一即拒绝打包（详见 scripts/check-appjs.sh）。
+if [ -f "$ROOT/../scripts/check-appjs.sh" ]; then
+  "$ROOT/../scripts/check-appjs.sh" "$ROOT/assets/www/app.js"
+fi
+
 echo "▶ 2/6 编译资源 (aapt2 compile)"
 aapt2 compile --dir "$ROOT/res" -o "$BUILD/res.zip"
 

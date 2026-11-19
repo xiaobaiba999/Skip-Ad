@@ -1,0 +1,54 @@
+{
+  "round": 38,
+  "version": "7.6.1",
+  "date": "2026-11-19",
+  "theme": "热修复：页面板块恢复（扫描日志/版本记录/使用报告）+ 构建链页面资产符号校验闸",
+  "user_directives": [
+    "扫描日志，7.6版本记录没了，使用报告也不见",
+    "修复完成同步github"
+  ],
+  "root_causes": {
+    "cause_unterminated_comment": "v7.6.0 发布时 assets/www/app.js 版本记录块注释尾部丢了 */ 未闭合——块注释吞掉后续 17 行（整个 const CURRENT_RELEASE 声明被吃进注释）→ 页面渲染抛 ReferenceError 中断 → 扫描日志/版本记录/使用报告三大板块全部消失；node --check 语法层完全通过（纯语法闸拦不住语义级损坏）——坏资产进了已发布 APK"
+  },
+  "fixes": {
+    "comment_closed": "版本记录注释闭合（回到 */ 结尾）→ CURRENT_RELEASE 声明回到活代码 → 三大板块全部恢复；版本记录升级为 v7.6.1 热修复叙事",
+    "asset_symbol_gate": "scripts/check-appjs.sh + build.sh 打包前硬门：① 语法解析 ② stub 环境顶层执行（ReferenceError 硬拒·定时器 no-op 防挂起）③ 5 关键符号断言（CURRENT_RELEASE/renderLog/renderReport/renderReleaseNotes/notesToHeadlines）——缺一即拒绝打包",
+    "gate_verified": "死因复现样本（未闭合注释）：5 符号全灭拒打包退出 1；修复样本：5 项全过退出 0；包内资产抽出后同样全过",
+    "aggressive_kept": "激进模式全量保持（首击零门控/重击等将尽+6s 封顶/插屏语境闸/终闸语义面收编/新窗首扫提速）"
+  },
+  "tests": {
+    "total": "4314/4314 全绿（20 套件零改动保持）",
+    "delta": "+1 个新闸（check-appjs.sh 语义级三重断言，死因复现样本 5 符号全灭拒打包验证）",
+    "suites": {
+      "BrandFocus308Test": 2868,
+      "TapPointMatrixTest": 295,
+      "NonMainstreamAppTest": 130,
+      "RuleGovernorTest": 142,
+      "RestoreGuardTest": 106,
+      "ComplianceGuardTest": 83,
+      "SubscriptionBuiltinTest": 76,
+      "FeedAdGuardTest": 131,
+      "RuleOrderTest": 39,
+      "InterstitialGuardTest": 93,
+      "SplashCountdownTest": 61,
+      "AggressiveModeTest": 42,
+      "MiniProgramGuardTest": 36,
+      "SubMirrorTest": 35,
+      "HumanTapMatrixTest": 20,
+      "DecisionGuardTest": 22,
+      "MultiDeviceMatrixTest": 42,
+      "PowerGovernorTest": 48,
+      "RegressionCoreTest": 15,
+      "ReleaseNotesTest": 30,
+      "check-appjs.sh": "语义闸（不计入断言总数）"
+    }
+  },
+  "build": {
+    "apk_bytes": 849462,
+    "version_code": 76100,
+    "version_name": "7.6.1",
+    "md5": "d7e4326257a21a5d73d80500cdc6dfec",
+    "sha256": "b74cde33df8f6811f164b68a173bf72ad970d04e0763f56e7fd8517a9a5896a0"
+  },
+  "publish": "git push + tag v7.6.1 + publish-v761.mjs（GitHub Release + APK asset digest 核对 + 仓库描述同步）+ README 面板同步"
+}
