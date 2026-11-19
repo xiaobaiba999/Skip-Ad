@@ -29,6 +29,7 @@ import com.zai.adshield.core.AdDecisionCore.ScanFind;
 import com.zai.adshield.core.HumanTap;
 import com.zai.adshield.core.MiniProgramGuard;
 import com.zai.adshield.core.PowerGovernor;
+import com.zai.adshield.core.ReentryGuard;
 import com.zai.adshield.core.RestoreGuard;
 import com.zai.adshield.core.RuleEngine;
 import com.zai.adshield.core.RuleEngine.Hit;
@@ -474,6 +475,13 @@ public class AdSkipService extends AccessibilityService {
     private final java.util.HashMap<String, Long> interMissAt = new java.util.HashMap<String, Long>();
     private final java.util.HashMap<String, Long> interWinAt = new java.util.HashMap<String, Long>(); // v7.6.0：新窗提速（窗切换重置节流）
     private long interMisses;
+    /* ═══ v7.7.0 回切开屏：进入期全量门 + 回切日志节流 ═══
+     * entryFullUntil：包 → 进入期（冷启/回切判 entering 的时刻 + 4s）到期
+     * 时刻。进入期内 profileSuppressScan 直接让路（CLEAN 档案不抑制）——
+     * 回切开屏常叠在被档案判 CLEAN 的主界面窗类上（死因②），进入期
+     * 恢复全量梯子。reentryLogAt：同包回切日志 30s 节流（防切来切去刷屏）。 */
+    private final java.util.HashMap<String, Long> entryFullUntil = new java.util.HashMap<String, Long>();
+    private final java.util.HashMap<String, Long> reentryLogAt = new java.util.HashMap<String, Long>();
     /* v7.4.0 空闲巡检：用户停下刷屏盯着广告看时 content-changed 零事件 =
      * 零扫描（日志 #79/#80 实锤：广告静止在屏 2 分钟引擎全程盲）。巡检
      * Runnable 2.5s 一扫，只在信息流窗在场时存活（离窗/切包/masterOff 即停
@@ -1473,7 +1481,23 @@ public class AdSkipService extends AccessibilityService {
         CharSequence pkgCs = event.getPackageName();
         if (pkgCs == null) return;
         String pkg = pkgCs.toString();
-        if (pkg.equals(getPackageName())) return;
+        /* ═══ v7.7.0 自家包前台边界登记（回切开屏根治·死因①）═══
+         * 旧版对自家包事件无条件整体丢弃 → lastFgPkg 从未变成卫士包名。
+         * 用户在「目标 App → 卫士 → 目标 App」往返时：切回目标 App 的
+         * 窗口事件里 pkg == lastFgPkg（还停在目标 App）→ entering=false
+         * → 不按新进入处理（rootWinCls 不刷新、回切开屏零日志）——切回
+         * 期间弹的开屏广告整窗漏拦（用户实锤「扫描日志从另一个 app 切回
+         * 这个 app 期间会弹广告没有拦截到」）。
+         * 对策：自家包的窗口切换事件仍不扫描（自家无广告），但把前台
+         * 边界登记下来（lastFgPkg = 自家包）——切回目标 App 时
+         * entering 正确判 true。附带收益：用户停在卫士期间，目标 App
+         * 的后台内容事件被前置过滤正确丢弃（功耗同时下降）。 */
+        if (pkg.equals(getPackageName())) {
+            if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+                lastFgPkg = pkg;
+            }
+            return;
+        }
         int et = event.getEventType();
         long now = System.currentTimeMillis();
 
@@ -1608,7 +1632,27 @@ public class AdSkipService extends AccessibilityService {
                 // v3.6.0 根窗口追踪：新进入前台的应用，其首个窗口 = 入口窗
                 //（冷启动开屏 / 从桌面·其他应用回前台的首窗）——入口窗上
                 // 按返回键 = 退出应用，安全门据此禁一切返回键兜底
-                boolean entering = !pkg.equals(lastFgPkg);
+                /* ═══ v7.7.0 回切判定扩容（回切开屏根治·死因①接线）═══
+                 * 新进入 ∪ 回切：离开同一包 ≥ REENTER_GAP_MS（6s）后回到
+                 * 它 = 等价新进入（ReentryGuard.isEntering 纯函数）。覆盖：
+                 *  · 卫士自家包边界（自家事件顶部已登记 lastFgPkg）；
+                 *  · 息屏回亮（屏幕关闭期间零事件，windowAt 停在旧时刻）；
+                 *  · 白名单应用边界（白名单事件只维持前台追踪）；
+                 *  · 一切 lastFgPkg 漏登记路径（ROM 窗口事件缺失）。
+                 * 回切 = entering → rootWinCls 刷新 + 进入期全量门（死因②）+
+                 * 回切开屏日志（扫描日志命中记账拓宽）。 */
+                boolean entering = ReentryGuard.isEntering(pkg, lastFgPkg, winAt(pkg), now);
+                long awayMs = entering ? ReentryGuard.reentryAwayMs(pkg, lastFgPkg, winAt(pkg), now) : 0L;
+                boolean reentry = pkg.equals(lastFgPkg) && awayMs > 0; // 同包离开后回切
+                if (reentry) {
+                    entryFullUntil.put(pkg, ReentryGuard.entryUntil(now));
+                    if (reentryLogOk(pkg, now)) {
+                        appendLog("🔄 回切开屏（" + shortPkg(pkg) + "）：离开 " + (awayMs / 1000)
+                                + "s 后回前台 → 按新进入处理，进入期全量扫描（CLEAN 档案让路）");
+                    }
+                } else if (entering) {
+                    entryFullUntil.put(pkg, ReentryGuard.entryUntil(now));
+                }
                 lastFgPkg = pkg;
                 /* v4.2.0 用户主动打开窗口标记：用户真实点击后 2.5s 内切到的
                  * 非 Dialog 新窗口 = 用户主动打开（广告落地页/商品详情页）。
@@ -1829,6 +1873,20 @@ public class AdSkipService extends AccessibilityService {
     private long winAt(String pkg) {
         Long t = windowAt.get(pkg);
         return t == null ? 0L : t;
+    }
+
+    /* ═══ v7.7.0 回切开屏：进入期访问器 + 回切日志节流 ═══ */
+    private long entryFullUntilGet(String pkg) {
+        Long t = entryFullUntil.get(pkg);
+        return t == null ? 0L : t.longValue();
+    }
+
+    private boolean reentryLogOk(String pkg, long now) {
+        Long last = reentryLogAt.get(pkg);
+        if (last != null && now - last.longValue() < 30_000L) return false;
+        if (reentryLogAt.size() > 32) reentryLogAt.clear(); // 防膨胀
+        reentryLogAt.put(pkg, now);
+        return true;
     }
 
     private long popupUntilGet(String pkg) {
@@ -2184,9 +2242,13 @@ public class AdSkipService extends AccessibilityService {
 
     /** 是否抑制本窗全量梯子（CLEAN 且无强信号）。
      *  强信号：Dialog/Popup 窗 · SDK 广告窗指纹 · className 学习指纹 ·
-     *  学习位置在场（手动教过的坐标）· 72h 复查期到。 */
+     *  学习位置在场（手动教过的坐标）· 72h 复查期到 ·
+     *  v7.7.0：进入期（冷启/回切后 4s 内）——回切开屏常叠在判 CLEAN 的
+     *  主界面窗类上（同窗类盖开屏层），进入期一律放行全量（死因②根治）。 */
     private boolean profileSuppressScan(String pkg, String cls) {
         if (pkg == null || cls == null || cls.length() == 0) return false;
+        if (com.zai.adshield.core.ReentryGuard.entryFullActive(
+                entryFullUntilGet(pkg), System.currentTimeMillis())) return false; // v7.7.0：进入期全量
         if (isDialogClass(cls) || AdDecisionCore.isAdActivityClass(cls)) return false;
         String key = pkg + "|" + cls;
         Integer sBox = winStreak.get(key);
@@ -2421,10 +2483,15 @@ public class AdSkipService extends AccessibilityService {
             Hit best = null;
             /* v7.5.0：探针词扩「skip」——英文 Skip 键（国际 App/出海 SDK
              * 开屏）旧版只能等 DFS 预算路径，深树晚到。原生直查无预算，
-             * 先到先点（matchText 全套规则+形状门照常逐候选验）。 */
-            for (int probe = 0; probe < 3; probe++) {
+             * 先到先点（matchText 全套规则+形状门照常逐候选验）。
+             * v7.7.0：探针词再扩「关闭广告/關閉廣告」（用户十六轮实锤：
+             * 切回 App 期间弹的插层/回切开屏常以「关闭广告」整词作键——
+             * 「跳过」族探针探不到，CLEAN 档案窗里这类键整窗漏拦）。
+             * 前三词保持原顺序（跳过族命中率最高，先查先点零延迟）。 */
+            for (int probe = 0; probe < 5; probe++) {
                 List<AccessibilityNodeInfo> found = root.findAccessibilityNodeInfosByText(
-                        probe == 0 ? "跳过" : (probe == 1 ? "跳過" : "skip"));
+                        probe == 0 ? "跳过" : (probe == 1 ? "跳過" : (probe == 2 ? "skip"
+                                : (probe == 3 ? "关闭广告" : "關閉廣告"))));
                 if (found == null || found.isEmpty()) continue;
                 for (int i = 0; i < found.size() && i < 10; i++) {
                     AccessibilityNodeInfo n = found.get(i);

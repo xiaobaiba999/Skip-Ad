@@ -7,6 +7,7 @@ import com.zai.adshield.core.AdDecisionCore.ScanFind;
 import com.zai.adshield.core.FeedAdGuard;
 import com.zai.adshield.core.HumanTap;
 import com.zai.adshield.core.PowerGovernor;
+import com.zai.adshield.core.ReentryGuard;
 import com.zai.adshield.core.RestoreGuard;
 import com.zai.adshield.core.RuleEngine;
 import com.zai.adshield.core.RuleEngine.Hit;
@@ -15,6 +16,16 @@ import com.zai.adshield.core.TapPoint;
 import com.zai.adshield.test.TestHost.SimNode;
 
 /**
+ * v7.7.0 扩容（用户指令：优化模拟各个品牌和机型进行测试修复，拓展设备型号和
+ * 品牌以及系统——每品牌 28→32 机型）：新增 2027 世代机型（小米 19 系/HyperOS 5 ·
+ * Redmi K120/Turbo 6/Note 18 · POCO F11/X11 · Mate 90/HarmonyOS 8 · Magic9/
+ * MagicOS 12 · Find X10/ColorOS 18 · 真我 GT9 · X310/OriginOS 8 · iQOO 21/
+ * Neo 13 · S27/One UI 10 · 一加 18/OxygenOS 18）· 11 组 × 32 = 352 机型【九维】
+ * 全 352/352——第九维「回切开屏」（用户十七轮实锤：从另一个 app 切回这个 app
+ * 期间弹的广告没有拦截到）：ReentryGuard 回切判定真值表 + 进入期全量门 +
+ * 回切开屏命中（CLEAN 档案主界面窗类叠开屏层仍命中）+ 回切期插层键词典
+ * （「关闭广告/關閉廣告」整词键——探针词扩容配套）逐机型验证。
+ *
  * v7.1.0 扩容（用户指令：拓展设备型号和品牌以及系统 + 信息流广告维）：
  *  每品牌 26→28 机型（新增 HyperOS 5/HarmonyOS 8/MagicOS 12/ColorOS 18/
  *  OriginOS 8/One UI 10 世代机型）· 11 组 × 28 = 308 机型【八维】全 308/308
@@ -72,8 +83,12 @@ import com.zai.adshield.test.TestHost.SimNode;
  *    App 内广告两段式：披露角标/中性菜单几何按机型分辨率 1:1 缩放，
  *    P1 角标识别·tapBounds 逐元素==角标自身·广告主体大容器拒收·
  *    P2 armed 收菜单·非 armed 零对抗，4 项全过）
+ *  ⑨ v7.7.0 回切开屏维（ReentryGuard 真值表 + 进入期全量门 + 回切开屏
+ *    命中 + 回切期插层键词典——回切判定（同包离开 ≥6s 等价新进入）/进入
+ *    期 4s CLEAN 档案让路/主界面窗类叠开屏层仍命中/「关闭广告/關閉廣告」
+ *    整词键匹配，4 项全过）
  */
-public final class BrandFocus308Test {
+public final class BrandFocus352Test {
 
     /* 机型表四列：{名称, 宽px, 高px, 系统版本}——系统拓展：同一机型跨系统版本
      * 如 HyperOS 2→3 的演化在品牌层代表（组内 HyperOS 2 与 3 并存 = 数字系列
@@ -107,7 +122,13 @@ public final class BrandFocus308Test {
             {"小米 16 Pro", "1440", "3200", "HyperOS 4"},
             {"小米 16", "1200", "2670", "HyperOS 4"},
             {"小米 19 Pro", "1440", "3200", "HyperOS 5"},
+            {"小米 19", "1200", "2670", "HyperOS 5"},
             {"小米平板 8 Pro", "2112", "3200", "HyperOS 5"},
+            /* v7.7.0 扩容（+4 · 2027 世代）：19 Ultra 2K 旗舰/
+             * Civi 6 Pro 轻薄中端/平板 9 Pro 3:2 大屏/19 Pro 2K——HyperOS 5 */
+            {"小米 19 Ultra", "1440", "3200", "HyperOS 5"},
+            {"Civi 6 Pro", "1236", "2750", "HyperOS 5"},
+            {"小米平板 9 Pro", "2128", "3200", "HyperOS 5"},
     };
     /* 红米单列品牌（用户点名）——制造商仍为 Xiaomi，K/Note/Turbo/数字全系列 */
     static final String[][] REDMI = {
@@ -139,6 +160,12 @@ public final class BrandFocus308Test {
             {"Redmi Note 16", "1080", "2400", "HyperOS 4"},
             {"Redmi K110 Pro", "1440", "3200", "HyperOS 5"},
             {"Redmi Note 17 Pro", "1220", "2712", "HyperOS 5"},
+            /* v7.7.0 扩容（+4 · 2027 世代）：K120 Pro 2K 旗舰/Turbo 6 1.5K 中端/
+             * Note 18 Pro 大电池中端/Redmi 17 入门 1080p——HyperOS 5 全档 */
+            {"Redmi K120 Pro", "1440", "3200", "HyperOS 5"},
+            {"Redmi Turbo 6", "1260", "2772", "HyperOS 5"},
+            {"Redmi Note 18 Pro", "1220", "2712", "HyperOS 5"},
+            {"Redmi 17", "1080", "2400", "HyperOS 5"},
     };
     /* POCO——小米子品牌（用户点名小米含子品牌）独立成组，F/X/M 全系列 */
     static final String[][] POCO = {
@@ -170,6 +197,12 @@ public final class BrandFocus308Test {
             {"POCO M8 Pro", "1080", "2400", "HyperOS 4"},
             {"POCO F10 Pro", "1440", "3200", "HyperOS 5"},
             {"POCO X10", "1080", "2400", "HyperOS 5"},
+            /* v7.7.0 扩容（+4 · 2027 世代）：F11 Ultra 2K 旗舰/X11 Pro 1.5K 中端/
+             * M9 Pro 中端/C80 入门 720p——HyperOS 5 全档 */
+            {"POCO F11 Ultra", "1440", "3200", "HyperOS 5"},
+            {"POCO X11 Pro", "1220", "2712", "HyperOS 5"},
+            {"POCO M9 Pro", "1080", "2400", "HyperOS 5"},
+            {"POCO C80", "720", "1650", "HyperOS 5"},
     };
     static final String[][] HUAWEI = {
             {"Mate 70 Pro+", "1260", "2844", "HarmonyOS 4.2"},
@@ -200,6 +233,12 @@ public final class BrandFocus308Test {
             {"nova 15 Pro", "1080", "2376", "HarmonyOS 6"},
             {"Mate 90 Pro", "1440", "3168", "HarmonyOS 8"},
             {"Mate X7 外屏", "1080", "2376", "HarmonyOS 8"},
+            /* v7.7.0 扩容（+4 · 2027 世代）：Mate 90 RS 顶配/Mate 90 标准旗舰/
+             * Pura 95 影像旗舰/nova 16 中端——HarmonyOS 8 全档 */
+            {"Mate 90 RS", "1440", "3168", "HarmonyOS 8"},
+            {"Mate 90", "1200", "2688", "HarmonyOS 8"},
+            {"Pura 95", "1260", "2844", "HarmonyOS 8"},
+            {"nova 16", "1080", "2376", "HarmonyOS 8"},
     };
     static final String[][] HONOR = {
             {"Magic8 至臻版", "1280", "2800", "MagicOS 10"},
@@ -230,6 +269,12 @@ public final class BrandFocus308Test {
             {"荣耀 GT 2", "1080", "2400", "MagicOS 11"},
             {"Magic10 Pro", "1440", "3168", "MagicOS 12"},
             {"荣耀 600 Pro", "1220", "2704", "MagicOS 12"},
+            /* v7.7.0 扩容（+4 · 2027 世代）：Magic10 至臻版顶配/荣耀 600 标准档/
+             * Magic Pad 3 平板（3:2）/荣耀 X80 入门——MagicOS 12 全档 */
+            {"Magic10 至臻版", "1440", "3168", "MagicOS 12"},
+            {"荣耀 600", "1200", "2664", "MagicOS 12"},
+            {"Magic Pad 3", "2032", "3056", "MagicOS 12"},
+            {"荣耀 X80", "1080", "2436", "MagicOS 12"},
     };
     static final String[][] OPPO = {
             {"Find X9 Ultra", "1260", "2760", "ColorOS 16"},
@@ -260,6 +305,12 @@ public final class BrandFocus308Test {
             {"OPPO A6 Pro", "1080", "2400", "ColorOS 16"},
             {"Find X10 Pro", "1260", "2780", "ColorOS 18"},
             {"OPPO Pad 5 Pro", "2064", "3328", "ColorOS 18"},
+            /* v7.7.0 扩容（+4 · 2027 世代）：Find X10 Ultra 顶配/Find X10 标准旗舰/
+             * Reno 16 中端/A6 入门——ColorOS 18 全档 */
+            {"Find X10 Ultra", "1260", "2780", "ColorOS 18"},
+            {"Find X10", "1260", "2780", "ColorOS 18"},
+            {"Reno 16", "1080", "2412", "ColorOS 18"},
+            {"OPPO A6", "720", "1612", "ColorOS 18"},
     };
     /* 真我——OPPO 子品牌独立成组（用户点名 oppo 含子品牌） */
     static final String[][] REALME = {
@@ -291,6 +342,12 @@ public final class BrandFocus308Test {
             {"真我 15", "720", "1650", "ColorOS 16"},
             {"真我 GT9 Pro", "1260", "2780", "ColorOS 18"},
             {"真我 Neo10", "1080", "2412", "ColorOS 17"},
+            /* v7.7.0 扩容（+4 · 2027 世代）：GT9 Ultra 顶配/GT9 标准旗舰/
+             * Neo11 性能中端/V80 入门——ColorOS 18 全档 */
+            {"真我 GT9 Ultra", "1440", "3168", "ColorOS 18"},
+            {"真我 GT9", "1260", "2780", "ColorOS 18"},
+            {"真我 Neo11", "1080", "2412", "ColorOS 18"},
+            {"真我 V80", "1080", "2400", "ColorOS 18"},
     };
     static final String[][] VIVO = {
             {"X300 Ultra", "1440", "3200", "OriginOS 6"},
@@ -321,6 +378,12 @@ public final class BrandFocus308Test {
             {"vivo Y300", "720", "1610", "OriginOS 6"},
             {"vivo X310 Pro", "1260", "2800", "OriginOS 8"},
             {"vivo S40", "1080", "2376", "OriginOS 8"},
+            /* v7.7.0 扩容（+4 · 2027 世代）：X310 Ultra 顶配/X310 标准旗舰/
+             * S41 轻薄中端/Pad 4 Pro 平板（3:2）——OriginOS 8 全档 */
+            {"vivo X310 Ultra", "1440", "3200", "OriginOS 8"},
+            {"vivo X310", "1260", "2800", "OriginOS 8"},
+            {"vivo S41", "1080", "2376", "OriginOS 8"},
+            {"vivo Pad 4 Pro", "1848", "2800", "OriginOS 8"},
     };
     /* iQOO 单列品牌（用户点名）——制造商仍为 vivo，数字/Neo/Z/Turbo 全系列 */
     static final String[][] IQOO = {
@@ -352,6 +415,12 @@ public final class BrandFocus308Test {
             {"iQOO Neo 11", "1220", "2712", "OriginOS 6"},
             {"iQOO 20 Pro", "1440", "3200", "OriginOS 8"},
             {"iQOO Neo 13", "1260", "2800", "OriginOS 8"},
+            /* v7.7.0 扩容（+4 · 2027 世代）：iQOO 21 电竞旗舰/Neo 14 性能中端/
+             * Z14 中端/Turbo 12 入门——OriginOS 8 全档 */
+            {"iQOO 21", "1440", "3200", "OriginOS 8"},
+            {"iQOO Neo 14", "1260", "2800", "OriginOS 8"},
+            {"iQOO Z14", "1080", "2400", "OriginOS 8"},
+            {"iQOO Z14 Turbo", "720", "1612", "OriginOS 8"},
     };
     static final String[][] SAMSUNG = {
             {"Galaxy S25 Ultra", "1440", "3120", "One UI 7"},
@@ -382,6 +451,12 @@ public final class BrandFocus308Test {
             {"Galaxy A56 5G 新", "1080", "2340", "One UI 9"},
             {"Galaxy S27 Ultra", "1440", "3120", "One UI 10"},
             {"Galaxy Z Fold9 外屏", "1080", "2316", "One UI 10"},
+            /* v7.7.0 扩容（+4 · 2027 世代）：S27+ 大屏旗舰/S27 标准旗舰/
+             * Z Flip9 副屏折叠/Tab S12 平板（16:10）——One UI 10 全档 */
+            {"Galaxy S27+", "1080", "2340", "One UI 10"},
+            {"Galaxy S27", "1080", "2340", "One UI 10"},
+            {"Galaxy Z Flip9 外屏", "1080", "2640", "One UI 10"},
+            {"Galaxy Tab S12", "1600", "2560", "One UI 10"},
     };
     /* 一加——ColorOS（国行）/OxygenOS 15（海外 Nord 系）双线在场 */
     static final String[][] ONEPLUS = {
@@ -413,6 +488,12 @@ public final class BrandFocus308Test {
             {"一加 Nord 5T", "1260", "2772", "OxygenOS 16"},
             {"一加 18", "1440", "3168", "ColorOS 18"},
             {"一加 Ace 8", "1080", "2412", "ColorOS 18"},
+            /* v7.7.0 扩容（+4 · 2027 世代）：18 Pro 顶配/Ace 8 Pro 性能旗舰/
+             * Ace 8V 中端/Nord 7 海外中端——ColorOS 18/OxygenOS 18 双线 */
+            {"一加 18 Pro", "1440", "3168", "ColorOS 18"},
+            {"一加 Ace 8 Pro", "1216", "2640", "ColorOS 18"},
+            {"一加 Ace 8V", "1080", "2400", "ColorOS 18"},
+            {"一加 Nord 7", "1080", "2400", "OxygenOS 18"},
     };
     static final String[][][] BRANDS = {
             XIAOMI, REDMI, POCO, HUAWEI, HONOR, OPPO, REALME, VIVO, IQOO, SAMSUNG, ONEPLUS,
@@ -500,12 +581,13 @@ public final class BrandFocus308Test {
         }
 
         int brandHitTotal = 0, brandMultiTotal = 0, brandSpeedTotal = 0, brandBugTotal = 0,
-                brandPowerTotal = 0, brandPrecTotal = 0, brandAlgoTotal = 0, brandFeedTotal = 0;
+                brandPowerTotal = 0, brandPrecTotal = 0, brandAlgoTotal = 0, brandFeedTotal = 0,
+                brandReentryTotal = 0;
 
         for (int bi = 0; bi < BRANDS.length; bi++) {
             String[][] models = BRANDS[bi];
             TestHost.suite("品牌 " + BRAND_NAMES[bi] + "（" + models.length + " 机型）");
-            int hitN = 0, multiN = 0, speedN = 0, bugN = 0, powN = 0, precN = 0, algoN = 0, feedN = 0;
+            int hitN = 0, multiN = 0, speedN = 0, bugN = 0, powN = 0, precN = 0, algoN = 0, feedN = 0, reN = 0;
 
             for (int mi = 0; mi < models.length; mi++) {
                 String model = models[mi][0];
@@ -901,6 +983,52 @@ public final class BrandFocus308Test {
                 if (p1xOk) feedOk++;
                 TestHost.check(feedOk == 6, "⑦ 信息流广告 " + model + "（" + os + " · 角标/菜单/面板/卡片几何 1:1 缩放 · P1 角标+主体拒收+P2 armed≥1+非 armed 零对抗+P0 面板直通+P1X 卡片直关 " + feedOk + "/6）");
                 if (feedOk == 6) feedN++;
+
+                /* ⑨ v7.7.0 回切开屏维（ReentryGuard 真值表 + 进入期全量门 +
+                 * 回切开屏命中 + 回切期插层键词典——按机型分辨率 1:1 缩放）：
+                 * 用户十七轮实锤「从另一个 app 切回这个 app 期间弹的广告没有
+                 * 拦截到」——回切判定（同包离开 ≥6s 等价新进入）/进入期 4s
+                 * CLEAN 档案让路（回切开屏常叠在判 CLEAN 的主界面窗类上）/
+                 * 主界面窗类叠开屏层仍命中跳过键/「关闭广告·關閉廣告」整词键
+                 * （探针词扩容配套——繁体區 App 与出海 SDK），4 项全过。 */
+                int reOk = 0;
+                // ⑨a 回切判定真值表：新包名进入 · 同包 5.9s 非回切 · 同包 6s 回切 ·
+                //      从未登记窗时刻（lastWinAt=0）按完整离开处理
+                long rn = 2_000_000L;
+                if (ReentryGuard.isEntering("com.matrix.re.new", "other.app", rn - 100L, rn)
+                        && !ReentryGuard.isEntering("com.matrix.re.same", "com.matrix.re.same", rn - 5_900L, rn)
+                        && ReentryGuard.isEntering("com.matrix.re.same", "com.matrix.re.same", rn - 6_000L, rn)
+                        && ReentryGuard.isEntering("com.matrix.re.same", "com.matrix.re.same", 0L, rn)) reOk++;
+                // ⑨b 进入期全量门：4s 内放行（CLEAN 档案让路）· 期外不干预 ·
+                //      未登记（0）不干预——「宁多扫绝不漏」的激进档位语义
+                if (ReentryGuard.entryFullActive(ReentryGuard.entryUntil(rn), rn)
+                        && !ReentryGuard.entryFullActive(ReentryGuard.entryUntil(rn), rn + 4_001L)
+                        && !ReentryGuard.entryFullActive(0L, rn)) reOk++;
+                // ⑨c 回切开屏命中：主界面窗类（MainActivity——常被判 CLEAN 档案）
+                //      上叠开屏层 + 跳过键（几何按机型 w/h 1:1 缩放）→ walk+decide
+                //      仍命中（回切进入期全量链不丢键）
+                SimNode reTree = new SimNode();
+                reTree.cls = "com.matrix.MainActivity";
+                reTree.boundsArr = new int[]{0, 0, w, h};
+                SimNode reSkip = new SimNode("跳过", skL, skT, skR, skB);
+                reSkip.clickable = true;
+                reTree.add(reSkip);
+                Ctx reCtx = ctx(pkg, "com.matrix.MainActivity", w, h);
+                ScanFind reFind = AdDecisionCore.walk(reTree, reCtx);
+                Decision reDec = AdDecisionCore.decide(reFind, reCtx);
+                if (!AdDecisionCore.A_NONE.equals(reDec.action)) reOk++;
+                // ⑨d 回切期插层键词典：「关闭广告」「關閉廣告」整词键（切回期间
+                //      弹的插层常以两词作键——v7.7.0 探针词扩容配套）全命中
+                int reLex = 0;
+                String[] reWords = {"关闭广告", "關閉廣告"};
+                for (String rw : reWords) {
+                    SimNode lw = new SimNode(rw, skL, skT, skR, skB);
+                    lw.clickable = true;
+                    if (RuleEngine.matchText(rw, new int[]{skL, skT, skR, skB}, lw, reCtx) != null) reLex++;
+                }
+                if (reLex == reWords.length) reOk++;
+                TestHost.check(reOk == 4, "⑨ 回切开屏 " + model + "（" + os + " · 回切判定/进入期全量门/主界面叠开屏层命中/插层键词典 " + reOk + "/4）");
+                if (reOk == 4) reN++;
             }
 
             TestHost.suite("品牌汇总 " + BRAND_NAMES[bi]);
@@ -912,6 +1040,7 @@ public final class BrandFocus308Test {
             TestHost.check(precN == models.length, BRAND_NAMES[bi] + " 精准度 " + precN + "/" + models.length);
             TestHost.check(algoN == models.length, BRAND_NAMES[bi] + " 算法优化 " + algoN + "/" + models.length);
             TestHost.check(feedN == models.length, BRAND_NAMES[bi] + " 信息流广告 " + feedN + "/" + models.length);
+            TestHost.check(reN == models.length, BRAND_NAMES[bi] + " 回切开屏 " + reN + "/" + models.length);
             brandHitTotal += hitN;
             brandMultiTotal += multiN;
             brandSpeedTotal += speedN;
@@ -920,21 +1049,23 @@ public final class BrandFocus308Test {
             brandPrecTotal += precN;
             brandAlgoTotal += algoN;
             brandFeedTotal += feedN;
+            brandReentryTotal += reN;
         }
 
-        /* ══ 矩阵总检（9 品牌+子品牌 11 组 × 28 机型 = 308 · 八维全 308/308）══ */
-        TestHost.suite("矩阵总检（9 品牌+子品牌 11 组 × 28 机型）");
-        TestHost.check(brandHitTotal == 308, "开屏命中总 " + brandHitTotal + "/308");
-        TestHost.check(brandMultiTotal == 308, "多点误点总 " + brandMultiTotal + "/308");
-        TestHost.check(brandSpeedTotal == 308, "屏蔽速度总 " + brandSpeedTotal + "/308");
-        TestHost.check(brandBugTotal == 308, "bug 防线总 " + brandBugTotal + "/308");
-        TestHost.check(brandPowerTotal == 308, "功耗总 " + brandPowerTotal + "/308");
-        TestHost.check(brandPrecTotal == 308, "精准度总 " + brandPrecTotal + "/308");
-        TestHost.check(brandAlgoTotal == 308, "算法优化总 " + brandAlgoTotal + "/308");
-        TestHost.check(brandFeedTotal == 308, "信息流广告总 " + brandFeedTotal + "/308");
+        /* ══ 矩阵总检（9 品牌+子品牌 11 组 × 32 机型 = 352 · 九维全 352/352）══ */
+        TestHost.suite("矩阵总检（9 品牌+子品牌 11 组 × 32 机型）");
+        TestHost.check(brandHitTotal == 352, "开屏命中总 " + brandHitTotal + "/352");
+        TestHost.check(brandMultiTotal == 352, "多点误点总 " + brandMultiTotal + "/352");
+        TestHost.check(brandSpeedTotal == 352, "屏蔽速度总 " + brandSpeedTotal + "/352");
+        TestHost.check(brandBugTotal == 352, "bug 防线总 " + brandBugTotal + "/352");
+        TestHost.check(brandPowerTotal == 352, "功耗总 " + brandPowerTotal + "/352");
+        TestHost.check(brandPrecTotal == 352, "精准度总 " + brandPrecTotal + "/352");
+        TestHost.check(brandAlgoTotal == 352, "算法优化总 " + brandAlgoTotal + "/352");
+        TestHost.check(brandFeedTotal == 352, "信息流广告总 " + brandFeedTotal + "/352");
+        TestHost.check(brandReentryTotal == 352, "回切开屏总 " + brandReentryTotal + "/352");
         System.out.println("  矩阵: " + brandHitTotal + "/" + brandMultiTotal + "/" + brandSpeedTotal
                 + "/" + brandBugTotal + "/" + brandPowerTotal + "/" + brandPrecTotal
-                + "/" + brandAlgoTotal + "/" + brandFeedTotal + "（八维各 /308）");
+                + "/" + brandAlgoTotal + "/" + brandFeedTotal + "/" + brandReentryTotal + "（九维各 /352）");
 
         TestHost.done();
     }

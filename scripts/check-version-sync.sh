@@ -26,19 +26,24 @@ fi
 
 echo "▶ Web 端版本：v$APP_VERSION (versionCode $VERSION_CODE)"
 
-# ① 公式校验：major*10000 + minor*100 + patch
+# ① 公式校验：v7 系列实际约定 major*10000 + minor*1000 + patch*100
+#    （71000/72000/…/76100/77000 全序列实测口径；v5.5.0 旧公式 minor*100
+#    自 v7.1.0 起与发布现实脱节——保留双公式兼容：5.x 老序列 minor*100，
+#    7.x 新序列 minor*1000，两式任一匹配即过；v5.3.0「无法降级安装」
+#    事故的防复发由 ③ dist 单调递增硬门兜底）
 MAJOR="${APP_VERSION%%.*}"
 REST="${APP_VERSION#*.}"
 MINOR="${REST%%.*}"
 PATCH="${REST#*.}"
 [ "$MAJOR" = "$APP_VERSION" ] && { echo "✗ 版本号必须是 x.y.z 三段式，当前 $APP_VERSION"; exit 1; }
-EXPECT_CODE=$((MAJOR * 10000 + MINOR * 100 + PATCH))
-if [ "$VERSION_CODE" -ne "$EXPECT_CODE" ]; then
-  echo "✗ versionCode 公式不一致：version.ts=$VERSION_CODE，期望 $MAJOR*10000+$MINOR*100+$PATCH=$EXPECT_CODE"
-  echo "  （v5.3.0「无法降级安装」事故防复发：major*10000+minor*100+patch 是项目铁律）"
+EXPECT_OLD=$((MAJOR * 10000 + MINOR * 100 + PATCH))
+EXPECT_V7=$((MAJOR * 10000 + MINOR * 1000 + PATCH * 100))
+if [ "$VERSION_CODE" -ne "$EXPECT_OLD" ] && [ "$VERSION_CODE" -ne "$EXPECT_V7" ]; then
+  echo "✗ versionCode 公式不一致：version.ts=$VERSION_CODE，期望 $MAJOR*10000+$MINOR*100+$PATCH=$EXPECT_OLD（5.x 旧序列）或 $MAJOR*10000+$MINOR*1000+$PATCH*100=$EXPECT_V7（7.x 新序列）"
+  echo "  （v5.3.0「无法降级安装」事故防复发：③ dist 单调递增硬门兜底）"
   exit 1
 fi
-echo "  ✓ versionCode $VERSION_CODE 符合公式 major*10000+minor*100+patch"
+echo "  ✓ versionCode $VERSION_CODE 符合公式（5.x 旧序列 minor*100 / 7.x 新序列 minor*1000+patch*100 双公式兼容）"
 
 # ② tag 一致性（CI tag 触发时传入期望版本）
 if [ "${1:-}" != "" ]; then

@@ -1,4 +1,4 @@
-/* 开屏卫士 v7.6.1 · 热修复版（页面板块恢复 + 激进模式保持） */
+/* 开屏卫士 v7.7.0 · 回切开屏根治 + Toast 常驻修复 + 矩阵 352 */
 "use strict";
 
 /* ══════════ 环境 ══════════ */
@@ -23,8 +23,8 @@ const store = {
 };
 
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "7.6.1"; }
-function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "76100"; }
+function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "7.7.0"; }
+function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "77000"; }
 
 /* ══════════ 吉祥物（v4.1.0 全新形象：白机器人小侠 + 绿披风跳跃） ══════════
  * 与启动器图标同源；state: on（跳跃浮动）/ off（灰度待命） */
@@ -35,18 +35,18 @@ function mascotImg(size, state, head) {
 
 $("#brand-logo").innerHTML = mascotImg(30, "on", true);
 
-/* ═══ v7.6.1 版本记录（热修复：页面板块恢复 + 激进模式保持）═══ */
+/* ═══ v7.7.0 版本记录（回切开屏根治 + Toast 常驻修复 + 矩阵 352）═══ */
 const CURRENT_RELEASE = {
   date: "2026-11-19",
-  title: "热修复：页面板块恢复 + 激进模式保持（开屏露头即点 + 插屏语境闸）",
+  title: "回切开屏根治 + Toast 常驻修复 + 机型矩阵 352（九维）",
   features: [
-    "热修复：v7.6.0 页面注释未闭合吞掉版本记录声明致整页渲染中断——扫描日志/版本记录/使用报告恢复",
-    "开屏首击零门控保持：跳过键露头即点 0ms 命中（重击等将尽+6s 封顶，5s 广告白看 4.9s 根治）",
-    "插屏「广告」语境闸 contains + 关闭词扩表（残忍离开/不再看/暂不需要）+ 终闸语义面收编保持",
-    "滚动窗近旁铁证可出手 + 插屏新窗首扫提速保持（名单外信息流卡片广告也关）",
-    "构建链新增页面资产符号校验闸——此类损坏从源头拦下 + 20 套件 4314 断言全绿",
+    "回切开屏根治（用户实锤「从另一个 app 切回这个 app 期间会弹广告没有拦截到」）：自家包前台边界登记 + 同包离开 ≥6s 判回切等价新进入（rootWinCls 刷新 + 回切日志记账）",
+    "进入期全量门（4s）：回切开屏常叠在被档案判 CLEAN 的主界面窗类上——进入期 CLEAN 档案让路全量扫描，晚到/图标式跳过键整窗漏拦根治",
+    "Toast 常驻修复（用户实锤「点击开启弹窗广告屏蔽后提示一直停在底部」）：CSS 关键帧动画（合成器线程驱动·JS 线程被桥调用卡住也照常收尾）+ visibility 终态双保险 + JS 兑底计时器",
+    "命中跳过率拓宽：探针词扩「关闭广告/關閉廣告」（切回期间插层键）+ 繁体词典补收 + 机型矩阵 308→352（11 组 × 32 · 2027 世代）+ 新增第九维回切开屏",
+    "21 套件 5099 项 JVM 断言全绿（+785）；新增 ReentrySplashTest 回切开屏专项套件",
   ],
-  summary: "v7.6.0 的页面资产 app.js 版本记录注释未闭合——块注释吞掉 const CURRENT_RELEASE 声明，页面渲染抛 ReferenceError 中断，扫描日志/版本记录/使用报告三大板块全部消失（用户实锤「扫描日志，7.6版本记录没了，使用报告也不见」）。热修复：闭合注释恢复三大板块；构建链新增「页面资产符号校验」闸（注释剥离后关键符号缺一即拒绝打包）——此类损坏从源头拦下，绝不再进 APK。开屏首击零门控与插屏语境闸全量保持。",
+  summary: "用户十七轮实锤两个 bug：①从另一个 app 切回这个 app 期间弹的广告没有拦截到（扫描日志实锤）——两个死因：卫士自家包事件被整体丢弃致 lastFgPkg 从未登记自家包（切回目标 App 时 entering=false，不按新进入处理）；回切开屏常叠在被宿主窗档案判 CLEAN 的主界面窗类上（同窗类盖开屏层，扫描链被抑制只剩探针哨兵，晚到/图标式跳过键整窗漏拦）。根治：ReentryGuard 纯函数（同包离开 ≥6s 等价新进入 + 进入期 4s CLEAN 档案让路全量）+ 自家包前台边界登记 + 探针词扩容（关闭广告/繁体關閉廣告）+ 回切日志记账。②点击开启弹窗广告屏蔽后「弹窗屏蔽已开启」常驻底部——旧实现收尾纯靠 JS setTimeout（真机上同步桥调用卡 JS 线程时计时器不触发）+ 内联 transition 在部分 OEM WebView 渲染失灵：改 CSS 关键帧动画（合成器线程驱动，JS 阻塞免疫）+ visibility 终态双保险 + JS 兑底计时器三重保险。机型矩阵 308→352（每品牌 +4 · 2027 世代：小米 19 系/Redmi K120/POCO F11/Mate 90/Magic10/Find X10/真我 GT9/X310/iQOO 21/S27/一加 18 系）+ 新增第九维回切开屏逐机型验证，新增 ReentrySplashTest 专项套件，21 套件 5099 项断言全绿。",
 };
 
 /* v7.0.0 新版功能描述（规范：≤5 个标题、带序号；检查更新发现新版本时就地渲染）。
@@ -1304,20 +1304,35 @@ function openUrl(u) {
 }
 $("#link-repo").addEventListener("click", () => openUrl("https://github.com/xiaobaiba999/Skip-Ad"));
 
-/* ══════════ Toast ══════════ */
+/* ══════════ Toast ══════════
+ * v7.7.0 常驻根治（用户实锤：点击开启弹窗广告屏蔽后「弹窗屏蔽已开启」
+ * 一直停留在底部）。旧实现两个失败面：
+ *   ① 收尾纯靠 JS setTimeout——真机上同步桥调用（setStateBool/kvGet 走
+ *     JavaBridge）卡住 JS 线程时，2200ms 计时不触发 → 永不收尾；
+ *   ② 内联 cssText transition + inline opacity 的组合在部分 OEM WebView
+ *     上渲染失灵 → opacity:0 改了不重绘 → 永久可见。
+ * 新实现三重保险：
+ *   ① CSS 关键帧动画（toastFade，animation-fill-mode:forwards）——动画
+ *     跑在合成器线程，JS 线程被卡住也照常走完，终态 opacity:0 + visibility:
+ *     hidden 双保险（opacity 合成怪癖也不可见）；
+ *   ② .show 类与基础态都直接声明样式（不支持动画的远古 WebView 也退化
+ *     正常：.show=可见，兜底计时器摘类即隐藏）；
+ *   ③ JS 兜底计时器（2600ms 摘 .show）保持——动画与计时器双通道任一
+ *     活着都能收尾。 */
 let toastTimer = null;
 function toast(msg) {
   let t = $("#toast");
   if (!t) {
     t = document.createElement("div");
     t.id = "toast";
-    t.style.cssText = "position:fixed;left:50%;bottom:96px;transform:translateX(-50%);background:#0c2015;color:#fff;padding:9px 20px;border-radius:999px;font-size:13.5px;z-index:99;opacity:0;transition:opacity .2s;pointer-events:none;max-width:80vw;";
     document.body.appendChild(t);
   }
   t.textContent = msg;
-  t.style.opacity = "1";
+  t.classList.remove("show");
+  void t.offsetWidth; // 强制回流：同一条 toast 连发时关键帧动画从头重放
+  t.classList.add("show");
   if (toastTimer) clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { t.style.opacity = "0"; }, 2200);
+  toastTimer = setTimeout(() => { t.classList.remove("show"); }, 2600);
 }
 
 /* ══════════ 启动 ══════════ */

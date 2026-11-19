@@ -1,0 +1,64 @@
+{
+  "round": 39,
+  "version": "7.7.0",
+  "date": "2026-11-19",
+  "theme": "回切开屏根治 + Toast 常驻修复 + 机型矩阵 352（九维）",
+  "user_directives": [
+    "点击开启弹窗广告屏蔽，下方弹窗屏蔽已开启几个字一直保持在底部，这是个bug",
+    "扫描日志从另一个app切回这个app，期间会弹广告，这个没有拦截到，这是个bug",
+    "优化模拟各个品牌和机型进行测试修复，拓展设备型号和品牌以及系统，只测试oppo/vivo/xiaomi/三星/华为/荣耀/红米/一加/iqoo及其子品牌",
+    "进一步拓宽广告日志命中跳过率",
+    "完成过同步github和推送releases，优化github面板描述，加免责声明"
+  ],
+  "root_causes": {
+    "cause_reentry_entering_misjudge": "卫士自家包事件在 onAccessibilityEvent 顶部整体丢弃 → lastFgPkg 从未登记成卫士包名 →「目标 App → 卫士 → 目标 App」往返后切回目标 App 时 pkg == lastFgPkg（entering=false）不按新进入处理（rootWinCls 不刷新、回切开屏零日志）",
+    "cause_reentry_clean_profile_kill": "回切开屏常叠在主界面窗类上（同 MainActivity 盖开屏层，窗类不变），而主界面窗类早被宿主窗档案判 CLEAN（连续 3 次零候选）→ bumpScanChain 只排探针哨兵/低频档 {0,700} → 晚到的（1~2s 才渲染）与图标式/WebView 式跳过键（原生文本探针探不到）整窗漏拦——上一轮「回归：开屏广告有的跳不了或非常非常慢」的底层病灶",
+    "cause_toast_persist": "Toast 收尾纯靠 JS setTimeout(2200ms) 改 opacity——两个真机失败面：①同步桥调用（setStateBool/kvGet 走 JavaBridge）卡住 JS 线程时计时器不触发（永不收尾）；②内联 cssText transition + inline opacity 组合在部分 OEM WebView 渲染失灵（opacity:0 改了不重绘）"
+  },
+  "fixes": {
+    "reentry_guard": "core/ReentryGuard.java 纯函数：isEntering（同包离开 ≥6s 判回切等价新进入——息屏回亮/白名单边界/ROM 漏网全兜住；6s 阈值低于典型二次开屏触发阈值、高于窗级抖动误报面）+ entryUntil/entryFullActive（进入期 4s）+ reentryAwayMs（离开时长记账）",
+    "own_pkg_boundary": "自家包 WINDOW_STATE_CHANGED 登记 lastFgPkg（前台边界——切回目标 App 时 entering 正确判 true；附带收益：停在卫士期间目标 App 后台内容事件被前置过滤正确丢弃，功耗下降）",
+    "entry_full_gate": "profileSuppressScan 首查进入期——进入期（4s）内 CLEAN 档案直接让路全量（18 档梯子 + 80ms 补扫全开）；激进档「宁多扫绝不漏」，进入是低频事件功耗代价可忽略",
+    "reentry_log": "🔄 回切开屏（pkg）：离开 Ns 后回前台 → 按新进入处理（30s 包级节流）——扫描日志命中/未命中定位线索拓宽",
+    "toast_keyframe": "CSS 关键帧动画 toastFade（animation-fill-mode:forwards·合成器线程驱动——JS 线程被桥调用卡住动画也照常走完）+ 终态 opacity:0/visibility:hidden 双保险 + JS 兜底计时器 2600ms 三重保险；三连点重放动画（void offsetWidth 强制回流）",
+    "probe_lexicon": "探针词 3→5（跳过/跳過/skip/关闭广告/關閉廣告——切回期间插层常以整词作键）+ 繁体词典补收（TEXT_EXACT 增關閉廣告/關閉此廣告、SKIP_TEXTS 增關閉廣告）；matchText 全套规则+形状门照常逐候选验",
+    "matrix_352": "11 组 × 32 机型（每品牌 +4 · 2027 世代：小米 19 系/Redmi K120/POCO F11/Mate 90/Magic10 至臻/Find X10/真我 GT9/X310/iQOO 21/S27/一加 18 系）+ 第九维回切开屏逐机型验证（回切判定/进入期门/主界面叠开屏层命中/插层键词典）"
+  },
+  "tests": {
+    "total": "5099/5099 全绿（21 套件；v7.6.1 为 4314 · +785）",
+    "delta": "+1 套件（ReentrySplashTest 25 项）+ BrandFocus352Test 3628（矩阵 308→352 · 第九维 352 项）+ 页面资产语义闸保持",
+    "browser_verified": "agent-browser 实测：三连点 toast mid-anim opacity=1/anim=toastFade → 3.2s 后 opacity=0 + visibility=hidden + 类已摘；三大板块（扫描日志/版本记录/使用报告）渲染 OK；VLM 视觉确认 toast 胶囊正常显示、版本 v7.7.0",
+    "suites": {
+      "BrandFocus352Test": 3628,
+      "TapPointMatrixTest": 295,
+      "NonMainstreamAppTest": 130,
+      "RuleGovernorTest": 142,
+      "RestoreGuardTest": 106,
+      "ComplianceGuardTest": 83,
+      "SubscriptionBuiltinTest": 76,
+      "FeedAdGuardTest": 131,
+      "RuleOrderTest": 39,
+      "InterstitialGuardTest": 93,
+      "SplashCountdownTest": 61,
+      "AggressiveModeTest": 42,
+      "ReentrySplashTest": 25,
+      "MiniProgramGuardTest": 36,
+      "SubMirrorTest": 35,
+      "HumanTapMatrixTest": 20,
+      "DecisionGuardTest": 22,
+      "MultiDeviceMatrixTest": 42,
+      "PowerGovernorTest": 48,
+      "RegressionCoreTest": 15,
+      "ReleaseNotesTest": 30,
+      "check-appjs.sh": "语义闸（不计入断言总数）"
+    }
+  },
+  "build": {
+    "apk_bytes": 849462,
+    "version_code": 77000,
+    "version_name": "7.7.0",
+    "md5": "75a7ba4e9527bf841a6afc05d08656c8",
+    "sha256": "4eeef88dee87d6730730e251976767a6d7519c36ae0c3842d855f0a2b508d545"
+  },
+  "publish": "git push + tag v7.7.0 + publish-v770.mjs（GitHub Release + APK asset digest 核对 + 仓库描述同步）+ README 面板同步 + 免责声明扩充"
+}

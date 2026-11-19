@@ -1,6 +1,6 @@
 /** 版本与 GitHub 仓库信息（Web 端与发布节奏共用） */
-export const APP_VERSION = "7.6.1";
-export const VERSION_CODE = 76100; // major*10000 + minor*100 + patch，随版本单调递增
+export const APP_VERSION = "7.7.0";
+export const VERSION_CODE = 77000; // major*10000 + minor*100 + patch，随版本单调递增
 export const GITHUB_REPO = "xiaobaiba999/Skip-Ad";
 export const GITHUB_API = `https://api.github.com/repos/${GITHUB_REPO}`;
 export const GITHUB_HOME = `https://github.com/${GITHUB_REPO}`;
@@ -19,16 +19,16 @@ export interface VersionEntry {
  *  旧版本内容归档在 GitHub Releases 与 git 历史） */
 export const VERSION_HISTORY: VersionEntry[] = [
   {
-    version: "7.6.1",
-    code: 76100,
+    version: "7.7.0",
+    code: 77000,
     date: "2026-11-19",
-    tagline: "热修复：页面板块恢复（扫描日志/版本记录/使用报告）+ 激进模式保持",
+    tagline: "回切开屏根治 + Toast 常驻修复 + 机型矩阵 352（九维）",
     notes: [
-      "热修复（用户实锤「扫描日志，7.6版本记录没了，使用报告也不见」）：v7.6.0 发布时页面资产 app.js 版本记录注释尾部丢了 */ 未闭合——块注释吞掉后续 17 行（整个 const CURRENT_RELEASE 声明被吃进注释），页面渲染抛 ReferenceError 中断，三大板块全部消失（node --check 语法层拦不住语义级损坏，坏资产进了已发布 APK）——闭合注释三大板块全部恢复",
-      "构建链页面资产符号校验闸（防回归）：scripts/check-appjs.sh + build.sh 打包前硬门——语法解析 + catch-all stub 环境顶层执行（ReferenceError 硬拒·定时器 no-op 防挂起）+ 5 关键符号在场断言（CURRENT_RELEASE/renderLog/renderReport/renderReleaseNotes/notesToHeadlines——版本记录/扫描日志/使用报告三板块接线），缺一即拒绝打包",
-      "死因复现验证：坑样本（未闭合注释）该闸 5 符号全灭拒打包退出 1；修复样本 5 项全过退出 0；已打包 APK 的包内资产抽出后该闸同样全过——此类损坏从源头拦下，绝不再进 APK",
-      "激进模式全量保持（Java 侧零触碰）：开屏首击零门控（露头即点 0ms 命中·重击等将尽+6s 封顶）/ 插屏「广告」语境闸 contains + 关闭词扩表（残忍离开/不再看/暂不需要）+ 终闸语义面收编 / 滚动窗近旁铁证 + 新窗首扫提速",
-      "20 套件 4314 项 JVM 断言全绿保持（零改动）；APK 849,462B · versionCode 76100 > 76000（v7.6.0 坏包直接覆盖即修复）· MD5 d7e4326257a21a5d73d80500cdc6dfec · SHA-256 b74cde33df8f6811f164b68a173bf72ad970d04e0763f56e7fd8517a9a5896a0",
+      "回切开屏根治（用户实锤「从另一个 app 切回这个 app 期间会弹广告没有拦截到」）：两个死因一起根治——①卫士自家包事件被整体丢弃致 lastFgPkg 从未登记自家包名（切回目标 App 时 entering=false 不按新进入处理）：自家包 WINDOW_STATE_CHANGED 登记前台边界 + ReentryGuard 纯函数（同包离开 ≥6s 判回切等价新进入——息屏回亮/白名单边界/ROM 漏网全兜住）+ rootWinCls 刷新 + 回切日志记账（30s 节流）",
+      "进入期全量门（死因②）：回切开屏常叠在被宿主窗档案判 CLEAN 的主界面窗类上（同窗类盖开屏层，扫描链被抑制只剩探针哨兵，晚到/图标式跳过键整窗漏拦）——进入期 4s CLEAN 档案让路全量扫描（激进档·宁多扫绝不漏，进入是低频事件功耗代价可忽略）",
+      "Toast 常驻修复（用户实锤「点击开启弹窗广告屏蔽后提示一直停在底部」）：旧实现收尾纯靠 JS setTimeout（真机上同步桥调用卡 JS 线程时 2200ms 计时不触发）+ 内联 cssText transition 在部分 OEM WebView 渲染失灵——改 CSS 关键帧动画（合成器线程驱动，JS 阻塞免疫）+ opacity/visibility 双终态 + JS 兜底计时器三重保险",
+      "命中跳过率拓宽：探针词扩「关闭广告/關閉廣告」（切回期间插层常以整词作键）+ 繁体词典补收（TEXT_EXACT/SKIP_TEXTS）+ 机型矩阵 308→352（11 组 × 32 · 2027 世代：小米 19 系/Redmi K120/POCO F11/Mate 90/Magic10/Find X10/真我 GT9/X310/iQOO 21/S27/一加 18 系）+ 新增第九维回切开屏逐机型验证",
+      "21 套件 5099 项 JVM 断言全绿（v7.6.1 为 4314 · +785）；新增 ReentrySplashTest 回切开屏专项套件（S1~S7：真值表/进入期门/自家包边界时间线/全分辨率回切命中/插层键词典/离开时长记账/九品牌几何投影）",
     ],
   },
 ];

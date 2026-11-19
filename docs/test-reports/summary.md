@@ -258,3 +258,21 @@ className 指纹）对此**零信号**，引擎从不出手（R15 复现：img_l
 - LOG-LOOP（用户实锤「扫描日志继续实现继续优化」）：插屏未命中诊断 logInterMiss（30s 包级节流·带窗类+角标词命中样本被闸也照登——随一日三次上传）
 - PROBE-SKIP：开屏探针词扩「skip」（英文 Skip 键先到先点——matchText 全套规则照常验）
 - PUSH-SYNC：v7.5.0 全量推送 GitHub + Releases（tag v7.5.0 · APK asset · 仓库描述与 README 面板同步）
+
+## Round 39 · v7.7.0（2026-11-19）——回切开屏根治 + Toast 常驻修复 + 机型矩阵 352（九维）
+
+| 套件 | 断言 | 结果 | 要点 |
+| --- | --- | --- | --- |
+| ReentrySplashTest（新） | 25 | ✅ | S1 回切判定真值表 8（新进入/5.999s 抖动/6s 边界含/从未登记/空包名防 NPE）· S2 进入期全量门 7（4s 让路·期外档案自治·常量契约 6000/4000）· S3 自家包前台边界时间线 3（X → 卫士 → X entering=true 死因①真值表 + 息屏 10s 回亮判回切）· S4 全分辨率回切命中 1（720p→2K+·3:2 平板 12 档全过）· S5 插层键词典 1（关闭广告/關閉廣告）· S6 离开时长记账 4 · S7 九品牌几何投影 1 |
+| BrandFocus352Test（308→352 · ⑨维新增） | 3628 | ✅ | 11 组 × 32 机型（每品牌 +4 · 2027 世代：小米 19 Ultra/Civi 6 Pro/平板 9 Pro · Redmi K120 Pro/Turbo 6/Note 18 Pro/17 · POCO F11 Ultra/X11 Pro/M9 Pro/C80 · Mate 90 RS/Mate 90/Pura 95/nova 16 · Magic10 至臻/荣耀 600/Magic Pad 3/X80 · Find X10 Ultra/X10/Reno 16/A6 · 真我 GT9 Ultra/GT9/Neo11/V80 · X310 Ultra/X310/S41/Pad 4 Pro · iQOO 21/Neo 14/Z14/Z14 Turbo · S27+/S27/Z Flip9/Tab S12 · 一加 18 Pro/Ace 8 Pro/Ace 8V/Nord 7）；第九维回切开屏 352/352（回切判定/进入期门/主界面叠开屏层命中/插层键词典逐机型 1:1 缩放）· 九维各 352/352 |
+| 存量回归（19 套件） | 1446 | ✅ | v7.6.1 全量零回归（探针词/词典扩容只放宽「找到」面——既有八维语义逐字等价保持） |
+| 浏览器端实测 | — | ✅ | agent-browser：三连点 toast mid-anim opacity=1/anim=toastFade → 3.2s 后 opacity=0 + visibility=hidden + 类已摘；三大板块渲染 OK · VLM 视觉确认 toast 胶囊正常 · 版本 v7.7.0 |
+| 整体（构建/签名/分发） | 5099 | ✅ | 21 套件全绿 · VC 77000 · 832KB（849,462 B）· MD5 75a7ba4e · SHA-256 4eeef88d 三目录一致 + 包内资产语义闸同验 |
+
+**修复清单（全部对准本轮用户实锤——不做无意义的测试）**
+- REENTRY-ENTERING（用户实锤「扫描日志从另一个app切回这个app，期间会弹广告，这个没有拦截到」死因①）：自家包 WINDOW_STATE_CHANGED 登记 lastFgPkg（前台边界）+ ReentryGuard.isEntering（同包离开 ≥6s 等价新进入——息屏回亮/白名单边界/ROM 漏网全兜住）+ rootWinCls 刷新 + 回切日志记账（30s 节流）
+- REENTRY-CLEAN-KILL（死因②）：进入期全量门 4s（profileSuppressScan 首查进入期——CLEAN 档案让路，回切开屏常叠在判 CLEAN 的主界面窗类上，晚到/图标式跳过键整窗漏拦根治；激进档宁多扫绝不漏）
+- TOAST-PERSIST（用户实锤「弹窗屏蔽已开启几个字一直保持在底部」）：CSS 关键帧动画 toastFade（合成器线程驱动·JS 线程被桥调用卡住也照常收尾）+ opacity/visibility 双终态 + JS 兜底计时器三重保险；三连点重放动画
+- HIT-RATE（用户指令「进一步拓宽广告日志命中跳过率」）：探针词 3→5（+关闭广告/關閉廣告）+ 繁体词典补收（TEXT_EXACT/SKIP_TEXTS）+ 回切日志记账
+- MATRIX-352（用户指令「拓展设备型号和品牌以及系统」）：308→352 + 第九维回切开屏逐机型验证
+- PUSH-SYNC：v7.7.0 全量推送 GitHub + Releases（tag v7.7.0 · APK asset digest 核对 · 仓库描述与 README 面板同步 · 免责声明扩充）

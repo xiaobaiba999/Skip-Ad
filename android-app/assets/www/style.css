@@ -570,3 +570,36 @@ textarea { resize: none; }
 .rp-fold.open .rp-fold-arrow::after { content: "▾"; }
 .rp-fold-bd { display: none; padding-bottom: 6px; }
 .rp-fold.open .rp-fold-bd { display: block; }
+
+/* ══════════ Toast（v7.7.0 关键帧版·真机常驻 bug 根治）═════════
+ * 动画跑在合成器线程：JS 线程被同步桥调用卡住也照常走完；
+ * 终态 opacity:0 + visibility:hidden 双保险（即使部分 OEM WebView
+ * 对 opacity 有合成怪癖也不可见）。.show 同时直接声明可见样式——
+ * 不支持动画的远古 WebView 退化正常（JS 兜底计时器摘类即隐藏）。 */
+#toast {
+  position: fixed;
+  left: 50%;
+  bottom: 96px;
+  transform: translateX(-50%);
+  background: #0c2015;
+  color: #fff;
+  padding: 9px 20px;
+  border-radius: 999px;
+  font-size: 13.5px;
+  z-index: 99;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  max-width: 80vw;
+}
+#toast.show {
+  opacity: 1;
+  visibility: visible;
+  animation: toastFade 2400ms cubic-bezier(.2, 0, .2, 1) forwards;
+}
+@keyframes toastFade {
+  0%      { opacity: 1; visibility: visible; }
+  88%     { opacity: 1; visibility: visible; }
+  99.9%   { opacity: 0; visibility: visible; }
+  100%    { opacity: 0; visibility: hidden; }
+}
