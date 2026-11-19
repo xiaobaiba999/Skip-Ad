@@ -366,6 +366,10 @@ public final class AdDecisionCore {
         public boolean halfScreenAd;
         public boolean updateDialog;
         public boolean videoApp;
+        /* v7.1.0 底层算法优化：分应用规则行预筛结果（服务侧每窗一次
+         * RuleEngine.rowsFor(pkg) 填入；null = matchText 回落全表扫描——
+         * 探针/DFS 双路径共享，每窗省下 ~340 节点 × 50 行前缀比对）。 */
+        public String[][] appTextRules;
     }
 
     /* ───────── 决策输出 ───────── */

@@ -1,4 +1,4 @@
-/* 开屏卫士 v4.1.0 · GKD 订阅融合版 */
+/* 开屏卫士 v7.1.0 · 规则顺序治理 + 信息流广告卫士版 */
 "use strict";
 
 /* ══════════ 环境 ══════════ */
@@ -23,8 +23,8 @@ const store = {
 };
 
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "5.9.0"; }
-function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "50900"; }
+function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "7.1.0"; }
+function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "71000"; }
 
 /* ══════════ 吉祥物（v4.1.0 全新形象：白机器人小侠 + 绿披风跳跃） ══════════
  * 与启动器图标同源；state: on（跳跃浮动）/ off（灰度待命） */
@@ -35,12 +35,12 @@ function mascotImg(size, state, head) {
 
 $("#brand-logo").innerHTML = mascotImg(30, "on", true);
 
-/* ═══ v7.0.0 版本记录（规范：当前版本 = 1 个标题 + 1 个段落；历史版本
+/* ═══ v7.1.0 版本记录（规范：当前版本 = 1 个标题 + 1 个段落；历史版本
  * 全部归档 GitHub Releases）═══ */
 const CURRENT_RELEASE = {
   date: "2026-11-19",
-  title: "回到最稳的基座，重新出发",
-  summary: "回退到 6.0 已验证基座重构（v6.1 后的版本全部不可用——已从 GitHub 清除）；订阅市场八通道镜像 + 离线快照兑底，导入永不失败；检查更新当场显示新版本 ≤5 条带序号功能描述；日志留存翻倍、每日 8 小时自动上报 3 次；多点误点三重防线按设备类型/分辨率自适应。",
+  title: "规则顺序治理 + 信息流广告卫士",
+  summary: "订阅两源使用顺序根治（市场规则优先、内置兑底、全局组垫底——命中不再被旧序饿死）；微信朋友圈就业广告等 App 内信息流广告两段式自动关闭（点角标→收菜单，绝不碰广告主体）；分应用规则行预筛提速；白名单支持中文名搜索；新增卫士使用报告；11 组×28=308 机型八维验证。",
 };
 
 /* v7.0.0 新版功能描述（规范：≤5 个标题、带序号；检查更新发现新版本时就地渲染）。
@@ -426,6 +426,7 @@ bindToggle("toggle-learning", "learning", "习惯学习已开启", "习惯学习
 
 /* ══════════ v4.3.0 应用白名单 ══════════ */
 let wlCache = null; // {list:Set, known:[{pkg,label}]}
+let wlQuery = "";   // v7.1.0：白名单搜索词（中文名/包名实时过滤）
 
 function loadWhitelist() {
   if (!HAS_BRIDGE) {
@@ -441,20 +442,33 @@ function loadWhitelist() {
   return wlCache;
 }
 
+/* ═══ v7.1.0 白名单搜索匹配（用户实锤：应用白名单搜索栏实现 app 中文名搜索）═══
+ * 匹配面：App 中文名（label，如「微信」「哔哩哔哩」）与应用包名（pkg）
+ * 双通道不区分大小写包含匹配；去空格后逐字符匹配（中文名无空格语义）。 */
+function wlMatch(item, q) {
+  if (!q) return true;
+  const label = String(item.label || "").toLowerCase();
+  const pkg = String(item.pkg || "").toLowerCase();
+  return label.indexOf(q) >= 0 || pkg.indexOf(q) >= 0;
+}
+
 function renderWhitelist(force) {
   const box = $("#wl-list");
   if (!box) return;
   if (!wlCache || force) loadWhitelist();
   const wl = wlCache;
   $("#wl-count").textContent = String(wl.list.size);
-  // 白名单里的排前面，其余按字母
-  const known = (wl.known || []).slice().sort((a, b) => {
+  // 白名单里的排前面，其余按字母；v7.1.0：搜索词实时过滤（中文名/包名）
+  const q = wlQuery.trim().toLowerCase();
+  const known = (wl.known || []).filter(x => wlMatch(x, q)).slice().sort((a, b) => {
     const wa = wl.list.has(a.pkg) ? 0 : 1, wb = wl.list.has(b.pkg) ? 0 : 1;
     if (wa !== wb) return wa - wb;
     return String(a.label).localeCompare(String(b.label), "zh");
   });
   if (!known.length) {
-    box.innerHTML = '<div class="empty">暂无记录——卫士处理过的应用会出现在这里</div>';
+    box.innerHTML = q
+      ? '<div class="empty">没有匹配「' + esc(wlQuery.trim()) + '」的应用——可尝试中文名或包名关键字</div>'
+      : '<div class="empty">暂无记录——卫士处理过的应用会出现在这里</div>';
     return;
   }
   box.innerHTML = known.map(x => {
@@ -476,6 +490,14 @@ function renderWhitelist(force) {
       toast(t.checked ? "已加入白名单：卫士在该应用内完全让路" : "已移出白名单：恢复守护");
       renderWhitelist(true);
     });
+  });
+}
+
+/* v7.1.0：搜索栏输入即过滤（中文名/包名实时过滤，零按钮防呆） */
+if ($("#wl-search")) {
+  $("#wl-search").addEventListener("input", () => {
+    wlQuery = $("#wl-search").value || "";
+    renderWhitelist(false);
   });
 }
 
@@ -1080,6 +1102,88 @@ async function doUploadLog() {
 }
 
 $("#btn-upload-log").addEventListener("click", () => { void doUploadLog(); });
+
+/* ══════════ v7.1.0 卫士使用报告（我的页一键生成）══════════
+ * 数据全部来自本机（状态快照/订阅状态/能耗画像/设备信息），零上传零联网：
+ *  · 拦截战绩：秒跳 / 弹窗关闭 / 返回键 / 反馈面板收起 / 手动样本
+ *  · 订阅两源命中：市场（用户导入·日更）与内置（APK 快照）分别记账——
+ *    v7.1.0 使用顺序治理后两源各贡献候选，命中数可直接对比
+ *  · 应用战绩 Top5 / 能耗画像（本次开机）/ 设备画像
+ * 浏览器预览（无桥）渲染演示数据。 */
+function reportLine(k, v) {
+  return '<div class="rp-line">' + esc(k) + "：" + esc(v) + "</div>";
+}
+
+function renderReport() {
+  const box = $("#report-body");
+  const btn = $("#btn-report");
+  if (!box) return;
+  let st = { stats: {} }, sub = { builtinApps: 0, builtinRules: 0, remoteHits: 0, builtinHits: 0 };
+  let en = null, dev = {};
+  if (HAS_BRIDGE) {
+    try { st = getRealState(); } catch (e) {}
+    try { sub = JSON.parse(AndroidApp.subState()); } catch (e) {}
+    try { en = JSON.parse(AndroidApp.energyStats()); } catch (e) {}
+    try { dev = JSON.parse(AndroidApp.deviceInfo()); } catch (e) {}
+  } else {
+    // 浏览器演示数据（无桥环境——面板与真实 APK 内数据结构完全一致）
+    st = { stats: { auto: 128, popup: 36, back: 9, feedback: 14, manual: 21, byApp: {
+      "com.ss.android.ugc.aweme": { auto: 41, popup: 12 },
+      "com.xingin.xhs": { auto: 27 },
+      "tv.danmaku.bili": { auto: 19, popup: 8 },
+      "com.tencent.qqmusic": { auto: 15 },
+      "com.zhihu.android": { auto: 11 },
+    } } };
+    sub = { builtinApps: 21, builtinRules: 21, remoteOk: true, remoteName: "id667 的 GKD 订阅",
+      remoteApps: 610, remoteRules: 828, remoteHits: 47, builtinHits: 12 };
+    en = { ok: true, events: 312, probes: 88, scans: 41, microWh: 62 };
+    dev = { brand: "Xiaomi", model: "小米 17 Pro", os: "HyperOS 3", sdk: 35 };
+  }
+  const s = st.stats || {};
+  const lines = [];
+  lines.push('<div class="rp-sec">拦截战绩（累计）</div>');
+  lines.push(reportLine("开屏秒跳", (s.auto || 0) + " 次"));
+  lines.push(reportLine("弹窗关闭", (s.popup || 0) + " 次"));
+  lines.push(reportLine("返回键温和关闭", (s.back || 0) + " 次"));
+  lines.push(reportLine("反馈面板收起", (s.feedback || 0) + " 次"));
+  lines.push(reportLine("手动跳过样本（已被学习）", (s.manual || 0) + " 次"));
+  lines.push('<div class="rp-sec">订阅两源命中（v7.1.0 使用顺序治理）</div>');
+  lines.push(reportLine("使用顺序", "市场规则优先 → 内置兜底 → 全局组垫底"));
+  lines.push(reportLine("市场源（导入·日更）", (sub.remoteHits || 0) + " 次命中" + (sub.remoteOk ? " ·「" + (sub.remoteName || "订阅") + "」" + (sub.remoteApps || 0) + " 款/" + (sub.remoteRules || 0) + " 条" : " · 未导入（订阅市场一键导入）")));
+  lines.push(reportLine("内置源（APK 快照）", (sub.builtinHits || 0) + " 次命中 · " + (sub.builtinApps || 0) + " 款/" + (sub.builtinRules || 0) + " 条"));
+  // 应用战绩 Top5（秒跳/弹窗/手动合计）
+  try {
+    const byApp = s.byApp || {};
+    const top = Object.keys(byApp).map(k => {
+      const a = byApp[k] || {};
+      return { k, score: (a.auto || 0) + (a.popup || 0) + (a.manual || 0), a };
+    }).filter(x => x.score > 0).sort((x, y) => y.score - x.score).slice(0, 5);
+    if (top.length) {
+      lines.push('<div class="rp-sec">应用战绩 Top5</div>');
+      top.forEach(x => {
+        lines.push(reportLine(shortPkgName(x.k), (x.a.auto || 0) + " 秒跳 / " + (x.a.popup || 0) + " 弹窗 / " + (x.a.manual || 0) + " 手动"));
+      });
+    }
+  } catch (e) {}
+  if (en && en.ok) {
+    lines.push('<div class="rp-sec">能耗画像（本次开机）</div>');
+    lines.push(reportLine("无障碍事件 / 原生探针 / 全量扫描", en.events + " / " + (en.probes || 0) + " / " + en.scans));
+    lines.push(reportLine("手势能耗估算", en.microWh + " µWh（≈" + (en.microWh / 1000).toFixed(2) + " mWh）"));
+  }
+  lines.push('<div class="rp-sec">设备画像</div>');
+  lines.push(reportLine("设备", (dev.brand || "--") + " " + (dev.model || "") + " · " + (dev.os || "--") + " · Android " + (dev.sdk || "?")));
+  lines.push(reportLine("多点误点防线", "F 同指纹静默 / G 新鲜坐标复核 / H 结果静默（三重防线已启用）"));
+  lines.push('<div class="rp-meta">生成于 ' + new Date().toLocaleString("zh-CN", { hour12: false })
+    + " · 数据仅存本机 · 上传日志时本报告要点随引擎画像一并附带</div>");
+  box.innerHTML = lines.join("");
+  box.style.display = "";
+  if (btn) { btn.textContent = "重新生成"; }
+  toast("使用报告已生成");
+}
+
+if ($("#btn-report")) {
+  $("#btn-report").addEventListener("click", () => { renderReport(); });
+}
 
 /* ══════════ 我的：链接 ══════════ */
 function openUrl(u) {

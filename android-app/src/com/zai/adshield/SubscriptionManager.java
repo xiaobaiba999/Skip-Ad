@@ -166,23 +166,62 @@ public final class SubscriptionManager {
     /* ───────── 匹配（服务扫描热路径，只读 volatile 快照） ───────── */
 
     public static RuleEngine.Hit match(String pkg, NodeView root, Ctx ctx) {
+        /* v7.1.0 起服务扫描主路径改用 matchSources（两源各贡献一候选进点击
+         * 轮换，不再单源短路）——本方法保留给旧调用方兼容。 */
+        java.util.ArrayList<RuleEngine.Hit> list = matchSources(pkg, root, ctx);
+        return list.isEmpty() ? null : list.get(0);
+    }
+
+    /** v7.1.0 两源候选收集（RuleRouter 裁决使用顺序）——用户实锤「内置规则库
+     *  和订阅市场规则的使用顺序和命中问题」根治：
+     *  · 市场源（用户主动导入·日更）在该应用有专属规则时【优先】；
+     *  · 内置源（APK 静态快照·21 款 vid 规则）兑底接力；
+     *  · 两源各贡献一个候选进点击轮换（文本候选用尽 → 市场候选 → 内置候选
+     *    → …）——单源候选失效不再拖死整轮；
+     *  · 源命中计数分别记账（订阅页「命中」+ 使用报告可见）；hit.src 带
+     *    「市场·/内置·」源标注（日志与 reasonZh 可诊断）。 */
+    public static java.util.ArrayList<RuleEngine.Hit> matchSources(String pkg, NodeView root, Ctx ctx) {
+        java.util.ArrayList<RuleEngine.Hit> out = new java.util.ArrayList<RuleEngine.Hit>(2);
         Subscription builtin = builtinSub;
-        if (builtin != null) {
-            RuleEngine.Hit h = builtin.match(pkg, root, ctx, 400, RUNTIME, "b|");
-            if (h != null) {
-                builtinHits++;
-                return h;
-            }
-        }
         Subscription remote = remoteEnabled ? remoteSub : null;
-        if (remote != null) {
-            RuleEngine.Hit h = remote.match(pkg, root, ctx, 400, RUNTIME, "r|");
-            if (h != null) {
-                remoteHits++;
-                return h;
+        boolean remoteCovers = remote != null && remote.covers(pkg);
+        String[] order = com.zai.adshield.core.RuleRouter.sourceOrder(
+                remoteEnabled, remote != null, remoteCovers,
+                builtin != null, builtin != null && builtin.covers(pkg));
+        for (int i = 0; i < order.length; i++) {
+            try {
+                boolean isRemote = com.zai.adshield.core.RuleRouter.SRC_REMOTE.equals(order[i]);
+                Subscription sub = isRemote ? remote : builtin;
+                if (sub == null) continue;
+                RuleEngine.Hit h = sub.match(pkg, root, ctx, 400, RUNTIME, isRemote ? "r|" : "b|");
+                if (h != null) {
+                    if (isRemote) remoteHits++;
+                    else builtinHits++;
+                    h.src = com.zai.adshield.core.RuleRouter.zh(order[i]) + "·" + (h.src == null ? "" : h.src);
+                    out.add(h);
+                }
+            } catch (Throwable ignored) {
             }
         }
-        return null;
+        return out;
+    }
+
+    /** v7.1.0：该应用的订阅两源覆盖一行诊断（扫描未命中日志用——
+     *  使用顺序问题可见化：用户上传日志后直接看到该应用的规则覆盖状态）。
+     *  空串 = 两源都未覆盖（无订阅内容——不上噪声）。 */
+    public static String coverageLine(String pkg) {
+        if (pkg == null || pkg.length() == 0) return "";
+        Subscription bi = builtinSub;
+        Subscription rm = remoteEnabled ? remoteSub : null;
+        boolean bc = bi != null && bi.covers(pkg);
+        boolean rc = rm != null && rm.covers(pkg);
+        if (!bc && !rc) return "";
+        StringBuilder b = new StringBuilder(64);
+        b.append("订阅[");
+        if (rc) b.append("市场覆盖");
+        if (bc) b.append(b.length() > 3 ? "+" : "").append("内置覆盖");
+        b.append("]");
+        return b.toString();
     }
 
     /** v5.3.0：订阅（内置或启用的远程）是否覆盖该应用的专属规则 */

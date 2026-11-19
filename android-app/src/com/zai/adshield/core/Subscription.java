@@ -352,7 +352,14 @@ public final class Subscription {
         if (root == null) return null;
         // ① 规则预过滤：包名 + 全局组排除表 + Activity 限定 + matchTime 窗口
         //   （零树遍历的最大的功耗优化）
+        /* ═══ v7.1.0 使用顺序修复（用户实锤：内置规则库与订阅市场规则的
+         * 使用顺序和命中优化）：应用【专属规则】先于【全局组】尝试。
+         * 旧序病灶：parse() 把 globalGroups 解析进 apps 时排在 apps[] 之前
+         * ——泛化全局规则（[text*="跳过"][text.length<10] 等）反先于该应用
+         * 的精准专属规则（带 activityIds/精确选择器）被尝试，专属规则被
+         * 全局组短路饿死；两段收集：专属候选在前、全局候选垫底。 ═══ */
         List<Cand> cands = new ArrayList<Cand>(8);
+        List<Cand> globalCands = new ArrayList<Cand>(4);
         for (int i = 0; i < apps.size(); i++) {
             App app = apps.get(i);
             boolean global = "*".equals(app.id);
@@ -364,9 +371,11 @@ public final class Subscription {
                 if (!activityAllowed(rule, ctx.activityId)) continue;
                 // v4.3.0：matchTime 窗口（GKD 语义：进入窗口 N ms 内才激活）
                 if (rule.matchTime > 0 && ctx.elapsedMs > rule.matchTime) continue;
-                cands.add(new Cand(app, rule));
+                if (global) globalCands.add(new Cand(app, rule));
+                else cands.add(new Cand(app, rule));
             }
         }
+        cands.addAll(globalCands); // v7.1.0：全局组垫底（专属规则先出手）
         if (cands.isEmpty()) return null; // 微信主界面等场景：绝大多数规则在此出局
         // ② 单遍 DFS（共享预算）
         GkdSelector.Exe exe = new GkdSelector.Exe(new int[]{budget});

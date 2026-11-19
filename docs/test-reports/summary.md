@@ -195,3 +195,20 @@ className 指纹）对此**零信号**，引擎从不出手（R15 复现：img_l
 - AGGRO-HIT-R5（五轮激进·扫描日志继续优化）：SDK 指纹 +4 段（mobads 百度联盟 · sigmob Sigmob · adcolony AdColony · vungle Liftoff Vungle——累计 50+ 段）；分应用表 +6 款（微博/腾讯视频/优酷/爱奇艺/芒果TV/酷我音乐——社交/长视频/音乐类高频 App 开屏未命中实锤）
 - MATRIX-180：11×15=165 → 12×15=180（+其他族 Pixel/Nothing/索尼/联想 15 款——国际市场真实机型）；测试算术修正三处（真实密度配对表 TestHost.realDensities + 7 档压力条件契约 + S4c 切比雪夫算术修正——引擎行为正确、断言语义错位的诚实修正，非放松断言）
 - PUSH-SYNC：v6.0.0 全量推送 GitHub + Releases（tag v6.0.0 · APK asset）
+
+## Round 33 · v7.1.0（2026-11-19）——规则使用顺序治理 + 信息流广告卫士移植 + 分应用行预筛 + 白名单中文名搜索 + 使用报告 + 308 机型八维矩阵
+
+| 套件 | 断言 | 结果 | 要点 |
+| --- | --- | --- | --- |
+| RuleOrderTest（新增） | 39 | ✅ | 两源使用顺序真值表（市场优先/内置兜底/停用/未导入全分支）+ 专属规则先于全局组 + 全局组排除表 + rowsFor 预筛 memo 数学等价（含首版回落丢前缀检查被当场抓红的回归断言） |
+| FeedAdGuardTest（移植回绿） | 81 | ✅ | v6.2.0 已验证实现整体移植：名单门/微信 sns 窗门/角标语义形态闸/P2 中性项双闸/两段式决策/常量在场/预算闸与 1:1 人手角标触点 |
+| BrandFocus308Test（286→308） | 2868 | ✅ | 每品牌 +2 新世代机型（HyperOS 5/HarmonyOS 8/MagicOS 12/ColorOS 18/OriginOS 8/One UI 10）+ 新增 ⑦ 信息流广告维（角标/菜单几何按机型分辨率 1:1 缩放逐机型验证全链）——11 组 × 28 = 308 机型八维各 308/308 |
+| 存量回归（14 套件） | 1079 | ✅ | v7.0.0 全量零回归（规则顺序/预筛改动全部在既有断言上零回归） |
+| 整体（构建/签名/分发） | 4 | ✅ | VC 71000 · 816KB · MD5 5101b655d2ac993f97a97ddc37a24075 三目录一致 |
+
+**修复清单**
+- RULE-ORDER（规则使用顺序治理）：① RuleRouter 纯函数——市场源（用户导入·日更·该应用有专属规则时）优先、内置源兜底；② Subscription.match 两段收集——专属规则先于 globalGroups 全局组（parse 序旧病灶）；③ SubscriptionManager.matchSources 两源各贡献一候选进点击轮换；④ logScanMiss 订阅两源覆盖诊断（订阅[市场覆盖+内置覆盖]）；⑤ 订阅命中日志带源标注（市场优先/内置兜底）
+- FEED-GUARD（信息流广告卫士移植）：v6.2.0 FeedAdGuard 整体移植（AdSkipService.maybeFeedScan/executeFeed 薄接线 + ComplianceGuard.feedBoundaryCheck feed 终闸 + 新窗 armed 复位）——微信朋友圈就业广告等 App 内广告两段式自动关闭，绝不点广告主体
+- ROWS-MEMO（分应用行预筛）：RuleEngine.rowsFor 每 pkg 一次预筛（ctx.appTextRules 每窗填一次，探针/DFS 双路径共享）；首版回落路径丢包名前缀检查被 RuleOrderTest 抓红 → 修复为统一 rowsFor（与旧全表+前缀检查数学等价）
+- UI 三件：白名单中文名搜索（中文名/包名双通道实时过滤）· 卫士使用报告（一键生成：战绩/两源命中分账/Top5/能耗/设备画像）· CURRENT_RELEASE v7.1.0 规范保持
+- PUSH-SYNC：v7.1.0 全量推送 GitHub + Releases（tag v7.1.0 · APK asset · 仓库描述与 README 面板同步）

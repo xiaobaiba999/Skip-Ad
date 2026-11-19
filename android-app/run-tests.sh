@@ -2,6 +2,8 @@
 # 开屏卫士 JVM 测试跑器（v5.5.0）——纯 Java 核心零依赖可单测
 # 用法: ./run-tests.sh
 # v5.5.0：新增 RuleGovernorTest（三源合并/学习治理/分级扫描/新四大场景）套件。
+# v7.1.0：新增 FeedAdGuardTest（信息流广告卫士移植回归）+ RuleOrderTest（规则使用顺序治理）
+#  + BrandFocus286Test → BrandFocus308Test（11 组×28=308 机型·八维含信息流广告维）。
 set -e
 set -o pipefail
 
@@ -34,7 +36,7 @@ echo "    编译产出: $OUT/classes"
 echo "==> [2/3] 运行测试套件"
 TOTAL_PASS=0
 TOTAL_FAIL=0
-for SUITE in MiniProgramGuardTest DecisionGuardTest SubscriptionBuiltinTest RegressionCoreTest MultiDeviceMatrixTest NonMainstreamAppTest RestoreGuardTest PowerGovernorTest RuleGovernorTest ComplianceGuardTest TapPointMatrixTest HumanTapMatrixTest BrandFocus286Test ReleaseNotesTest SubMirrorTest; do
+for SUITE in MiniProgramGuardTest DecisionGuardTest SubscriptionBuiltinTest RegressionCoreTest MultiDeviceMatrixTest NonMainstreamAppTest RestoreGuardTest PowerGovernorTest RuleGovernorTest ComplianceGuardTest TapPointMatrixTest HumanTapMatrixTest BrandFocus308Test ReleaseNotesTest SubMirrorTest FeedAdGuardTest RuleOrderTest; do
   echo ""
   echo "══ $SUITE ══"
   if java -cp "$OUT/classes" "com.zai.adshield.test.$SUITE" | tee "$OUT/$SUITE.log"; then

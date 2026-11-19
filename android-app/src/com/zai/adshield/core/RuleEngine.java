@@ -161,6 +161,32 @@ public final class RuleEngine {
         return out;
     }
 
+    /* ═══ v7.1.0 底层算法优化：分应用规则行预筛 memo ═══
+     * 热路径病灶：matchText 每个节点都线性扫全部 ~50 行做包名 startsWith
+     * 前缀比对（一窗 ~340 节点 × 50 行 = 17,000 次串比对；探针/DFS 双路径
+     * 都要过 matchText）。按 pkg 一次性预筛（服务侧每窗填一次
+     * ctx.appTextRules），命中该包的行从 50 行收敛到 0~3 行，后续每节点
+     * 零前缀比对。静态缓存容量 128（包名集合有限，真实并发命中数远低
+     * 于 128——溢出整体清空重建，窗口切换自然回填）。 */
+    private static final String[][] EMPTY_RULE_ROWS = new String[0][];
+    private static final java.util.HashMap<String, String[][]> ROWS_CACHE =
+            new java.util.HashMap<String, String[][]>();
+
+    /** 该包名适用的分应用规则行（预筛 + memo；包名空 → 空表零开销）。 */
+    public static synchronized String[][] rowsFor(String pkg) {
+        if (pkg == null || pkg.length() == 0) return EMPTY_RULE_ROWS;
+        String[][] hit = ROWS_CACHE.get(pkg);
+        if (hit != null) return hit;
+        java.util.ArrayList<String[]> out = new java.util.ArrayList<String[]>(4);
+        for (String[] row : APP_TEXT_RULES_LOW) {
+            if (pkg.startsWith(row[0])) out.add(row);
+        }
+        String[][] rows = out.toArray(new String[0][]);
+        if (ROWS_CACHE.size() > 128) ROWS_CACHE.clear(); // 防膨胀（包名集合有限）
+        ROWS_CACHE.put(pkg, rows);
+        return rows;
+    }
+
     /* ── 第1层：全局精确文案（等值即中，大小写归一）──
      * v5.6.0 热路径优化三件套之二：数组线性扫 → HashSet 等值查询
      *（类加载期一次建表；TEXT_EXACT 数组保留——stats() 统计用） */
@@ -409,15 +435,17 @@ public final class RuleEngine {
     public static Hit matchText(String label, int[] b, NodeView node, Ctx ctx) {
         String low = label.toLowerCase();
 
-        /* 第0层：分应用精确（不受长度上限约束；v5.6.0 并行小写表——零分配） */
+        /* 第0层：分应用精确（不受长度上限约束；v5.6.0 并行小写表零分配；
+         * v7.1.0 预筛 memo：ctx.appTextRules 已预筛时零全表扫描——服务侧
+         * 每窗填一次（RuleEngine.rowsFor），探针/DFS 双路径共享；未预筛的
+         * 调用方回落 rowsFor(pkg)（与旧「全表+包名前缀检查」数学等价：
+         * rowsFor 恰返回 row[0] 是 pkg 前缀的全部行——绝不漏也绝不误） */
         if (ctx.pkg != null) {
-            String[][] rows = APP_TEXT_RULES_LOW;
+            String[][] rows = ctx.appTextRules != null ? ctx.appTextRules : rowsFor(ctx.pkg);
             for (String[] row : rows) {
-                if (ctx.pkg.startsWith(row[0])) {
-                    for (int j = 1; j < row.length; j++) {
-                        if (low.equals(row[j])) {
-                            return build("app_exact", label, b, node, ctx);
-                        }
+                for (int j = 1; j < row.length; j++) {
+                    if (low.equals(row[j])) {
+                        return build("app_exact", label, b, node, ctx);
                     }
                 }
             }

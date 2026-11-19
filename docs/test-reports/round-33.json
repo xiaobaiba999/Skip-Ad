@@ -1,0 +1,89 @@
+{
+  "round": 33,
+  "version": "7.1.0",
+  "date": "2026-11-19",
+  "theme": "规则使用顺序治理 + 信息流广告卫士移植 + 分应用行预筛提速 + 白名单中文名搜索 + 使用报告 + 308 机型八维矩阵",
+  "user_directives": [
+    "优化版本记录信息描述，言简意赅有一个标题一个段落，按1.2.3.4.这样来，发现新版本时同样显示新版本的功能描述，不要超过5个标题",
+    "检查更新时不要只显示迭代版本，把下一版本的功能也显示出来",
+    "扫描日志信息，优化内置规则库和订阅市场规则的使用顺序和命中问题",
+    "优化底层算法",
+    "能不能增加功能实现自动关闭app内的广告内容，例如微信朋友圈就有广告穿插在朋友圈之中",
+    "应用白名单搜索栏实现app中文名搜索",
+    "优化模拟各个品牌和机型进行测试修复，拓展设备型号和品牌以及系统（只测点名9品牌+子品牌）·卫士使用报告",
+    "完成过同步github和推送releases，优化github面板描述"
+  ],
+  "rule_order_governance": {
+    "router": "core/RuleRouter.java（纯函数·JVM 可测）：市场源（用户导入·日更·该应用有专属规则时）优先 → 内置源（APK 静态快照）兜底；主引擎文本规则仍最前（探针 0ms）",
+    "subscription_fix": "Subscription.match 两段收集：应用专属规则候选在前、全局组（globalGroups）垫底——修复 parse 序（globalGroups 先入 apps）导致泛化全局规则饿死专属精准规则的旧病灶",
+    "rotation": "SubscriptionManager.matchSources：两源各贡献一个候选进点击轮换（文本候选用尽 → 市场候选 → 内置候选）——单源候选失效不再拖死整轮",
+    "scan_log": "logScanMiss 增订阅两源覆盖诊断（订阅[市场覆盖+内置覆盖]）——使用顺序问题上传日志即可定位；订阅命中日志带源标注（市场优先/内置兜底）"
+  },
+  "feed_ad_guard": {
+    "source": "v6.2.0 已验证实现整体移植（81 项单测原样回绿）",
+    "core": "core/FeedAdGuard.java（纯函数）：18 款信息流 App 名单门 + 微信 sns 窗级门 + 披露角标语义/形态闸（精确等值·宽≤35%屏×高≤8%屏·>6字必是正文）+ P2 中性项双闸（强特征≥1 且总数≥2·P1 出手 8s 指纹窗内）+ 扩展动作绝不代点",
+    "wiring": "AdSkipService.maybeFeedScan/executeFeed 薄接线（TYPE_WINDOW_CONTENT_CHANGED 独立于开屏链·1.2s 节流·300 节点预算·开屏窗期让路）+ ComplianceGuard.feedBoundaryCheck feed 专用终闸 + 新窗 armed 复位",
+    "two_phase": "P1 点「广告/就业/招聘」披露角标拉起关闭菜单 → P2 点「关闭该广告/不感兴趣」中性项收起——绝不点广告主体（宁漏勿误四道闸）"
+  },
+  "algorithm": {
+    "app_rows_memo": "RuleEngine.rowsFor 分应用规则行预筛 memo（服务侧每窗一次填 ctx.appTextRules；探针/DFS 双路径共享——每窗省 ~340 节点 × 50 行前缀比对；未预筛调用方回落 rowsFor(pkg) 与旧全表+前缀检查数学等价）",
+    "fix_caught_by_test": "RuleOrderTest 抓到首版实现回落路径丢包名前缀检查（任意包名误命中分应用文案）——修复为统一 rowsFor 预筛（数学等价论证 + 39 项断言锁死）"
+  },
+  "ui": {
+    "whitelist_search": "白名单搜索栏（中文名/包名双通道不区分大小写包含匹配·实时过滤·空态提示）",
+    "usage_report": "卫士使用报告（我的页一键生成：拦截战绩/订阅两源命中（市场优先·内置兜底分账）/应用战绩Top5/能耗画像/设备画像——数据全本机零上传）",
+    "release_spec": "CURRENT_RELEASE 1 标题 1 段落保持；检查更新 ≤5 带序号新版功能保持"
+  },
+  "suites": {
+    "MiniProgramGuardTest": 36,
+    "DecisionGuardTest": 22,
+    "SubscriptionBuiltinTest": 76,
+    "RegressionCoreTest": 15,
+    "MultiDeviceMatrixTest": 42,
+    "NonMainstreamAppTest": 130,
+    "RestoreGuardTest": 106,
+    "PowerGovernorTest": 48,
+    "RuleGovernorTest": 142,
+    "ComplianceGuardTest": 83,
+    "TapPointMatrixTest": 295,
+    "HumanTapMatrixTest": 19,
+    "BrandFocus308Test": 2868,
+    "ReleaseNotesTest": 30,
+    "SubMirrorTest": 35,
+    "FeedAdGuardTest": 81,
+    "RuleOrderTest": 39
+  },
+  "total_passed": 4067,
+  "total_failed": 0,
+  "delta_vs_v700": 616,
+  "device_matrix": {
+    "brand_groups": 11,
+    "models_per_group": 28,
+    "total_models": 308,
+    "new_generation_os": ["HyperOS 5", "HarmonyOS 8", "MagicOS 12", "ColorOS 18", "OriginOS 8", "One UI 10"],
+    "dimensions": ["开屏命中", "多点误点", "屏蔽速度", "bug防线", "功耗", "精准度", "算法优化", "信息流广告"],
+    "dimension_pass": [308, 308, 308, 308, 308, 308, 308, 308],
+    "brands": ["小米", "红米", "POCO", "华为", "荣耀", "OPPO", "真我realme", "vivo", "iQOO", "三星", "一加"],
+    "feed_dimension_note": "⑦ 信息流广告维：角标/中性菜单几何按机型分辨率 1:1 缩放（1080×2400 基准按 w/h 比例映射 720p~2K+ 全档）逐机型验证 P1/P2 全链",
+    "note": "只测 OPPO/vivo/小米/三星/华为/荣耀/红米/一加/iQOO 及其子品牌（realme/POCO）——其他品牌不测"
+  },
+  "apk": {
+    "file": "adshield-v7.1.0.apk",
+    "version_code": 71000,
+    "version_name": "7.1.0",
+    "size_bytes": 833078,
+    "size_kb": 816,
+    "md5": "5101b655d2ac993f97a97ddc37a24075",
+    "distribution": ["android-app/dist/", "download/", "download/开屏卫士APK/"]
+  },
+  "misfire_protection": {
+    "kept": "F 同指纹目标静默 1.5s / G 新鲜坐标复核 / H 结果静默 250ms（设备类型/分辨率自适应容差保持）",
+    "feed_path": "FeedAdGuard 出手走既有 execute() 防线（用户让路/耐心预算/F·H 多点防线/人手手势派发/边界终闸免费复用）"
+  },
+  "github_sync": {
+    "tag": "v7.1.0",
+    "release_body_spec": "1 标题 + 1 段落 + ≤5 条带序号功能（每条 ≤44 字——App 检查更新当场显示这 5 条）",
+    "repo_description_updated": true,
+    "readme_updated": true
+  }
+}

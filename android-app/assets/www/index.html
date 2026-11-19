@@ -93,6 +93,12 @@
           </div>
           <span class="chip" id="wl-count">0</span>
         </div>
+        <!-- v7.1.0 白名单搜索栏（用户实锤：应用白名单搜索栏实现 app 中文名搜索——
+             支持中文名/包名不区分大小写包含匹配，实时过滤下方列表） -->
+        <div class="wl-search-row">
+          <input type="text" id="wl-search" class="fb-input" placeholder="搜索应用（中文名 / 包名）"
+                 autocomplete="off" aria-label="搜索白名单应用">
+        </div>
         <div class="wl-list" id="wl-list"><div class="empty">加载中…</div></div>
         <div class="wl-add-row">
           <input type="text" id="wl-input" class="fb-input" placeholder="输入应用包名，如 net.csdn.csdnplus">
@@ -171,6 +177,19 @@
         <div class="card-title">版本记录</div>
         <!-- v6.1.0：版本描述言简意赅——1 个标题 + 1 个段落，历史版本归档 GitHub Releases -->
         <div class="changelog" id="changelog"></div>
+      </div>
+
+      <!-- v7.1.0 卫士使用报告（用户点名：测试项之一——App 内一键生成，
+           数据全部来自本机日志/统计/订阅状态，零上传零联网） -->
+      <div class="card">
+        <div class="row-between">
+          <div>
+            <div class="card-title">卫士使用报告</div>
+            <div class="sub-note" style="margin-top:4px">拦截战绩 · 订阅两源命中 · 能耗画像 · 设备画像</div>
+          </div>
+          <button class="btn btn-ghost btn-sm" id="btn-report">生成报告</button>
+        </div>
+        <div class="log-box report-box" id="report-body" style="display:none"></div>
       </div>
 
       <!-- v6.1.0 免打扰持久模式已取消（用户实锤：高级免打扰持久模式不能在安装时

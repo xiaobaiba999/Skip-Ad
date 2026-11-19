@@ -446,6 +446,15 @@ public class AdSkipService extends AccessibilityService {
     private final java.util.HashMap<String, Long> rescueAt = new java.util.HashMap<>();
     /* v4.3.0：白名单生效提示日志去重 */
     private final java.util.HashMap<String, Long> wlLogAt = new java.util.HashMap<>();
+    /* v7.1.0 FeedAdGuard（自 v6.2.0 已验证代码移植）：信息流广告两段式状态
+     * （P1 点披露角标出手 → 8s armed 指纹窗 → P2 点中性项收菜单）。
+     * 用户第十一轮原话：能不能增加功能实现自动关闭 app 内的广告内容，
+     * 例如微信朋友圈就有广告穿插在朋友圈之中——FeedAdGuard 两段式
+     * （宁漏勿误四道闸：角标词精确等值/面积门/P2 中性项双闸/18 款名单门）
+     * 全部复用既有 execute() 防线（用户让路/耐心预算/F·H 多点防线/人手手势）。 */
+    private final java.util.HashMap<String, Long> feedScanAt = new java.util.HashMap<String, Long>();
+    private String feedArmedPkg;
+    private long feedArmedAt;
 
     private volatile String lastAutoClickPkg;
     private volatile long lastAutoClickAt;
@@ -982,6 +991,9 @@ public class AdSkipService extends AccessibilityService {
                 bi == null ? 0 : bi.ruleCount(),
                 SubscriptionManager.remoteSub == null ? 0 : SubscriptionManager.remoteSub.ruleCount(),
                 learnedRuleCount()));
+        /* v7.1.0：订阅两源使用顺序治理 + 信息流广告卫士上线（启动日志可见） */
+        appendLog(com.zai.adshield.core.RuleRouter.summary());
+        appendLog("🛡 " + com.zai.adshield.core.FeedAdGuard.stats());
     }
 
     /** v5.5.0：学习规则总数（state.rules 全包名累计） */
@@ -1638,6 +1650,11 @@ public class AdSkipService extends AccessibilityService {
                 /* ═══ v5.3.0 位置学习验证钩子②：树体缩水（同窗广告容器
                  * 卸载/Dialog 消散）——零文本点击挂起中，缩水 ≥40% 即提交 ═══ */
                 posVerifyOnContentChange(pkg, now);
+                /* ═══ v7.1.0 FeedAdGuard：信息流广告（微信朋友圈就业广告等
+                 * App 内广告）两段式识别——独立于开屏链（feed 窗常驻、窗计时
+                 * 不重置）；名单门 + 微信 sns 窗门 + 1.2s 节流 + 300 节点预算
+                 * 双闸（功耗红线）；开屏窗期内让路（开屏路径优先）。 ═══ */
+                maybeFeedScan(pkg, now);
                 if (now - winAt(pkg) < WINDOW_MS) {
                     nudgeScan(pkg, now);
                     break;
@@ -2367,6 +2384,67 @@ public class AdSkipService extends AccessibilityService {
         }
     }
 
+    /* ───────── v7.1.0 信息流广告扫描（自 v6.2.0 已验证代码移植，薄接线） ─────────
+     * FeedAdGuard 是纯函数核心（名单门/微信 sns 窗门/角标语义形态闸/P2 中性项
+     * 双闸/两段式决策），服务侧只做调度与出手——所有既有防线（用户让路/耐心
+     * 预算/F·H 多点防线/人手手势派发/边界终闸）经 execute() 免费复用。 */
+
+    /** v7.1.0 信息流广告扫描（独立于开屏链）：名单门 + 微信窗级门 + 1.2s 节流 + P1/P2 两段式决策 */
+    private void maybeFeedScan(String pkg, long now) {
+        if (!masterOn) return;
+        if (!com.zai.adshield.core.FeedAdGuard.isFeedWindow(pkg, winClassOf(pkg))) return; // 名单门+微信 sns 窗门
+        long elapsed = now - winAt(pkg);
+        if (elapsed <= WINDOW_MS) return; // 开屏窗期内开屏路径优先覆盖（feed 零干扰）
+        Long last = feedScanAt.get(pkg);
+        if (last != null && now - last < com.zai.adshield.core.FeedAdGuard.FEED_SCAN_THROTTLE_MS) return; // 1.2s 节流
+        feedScanAt.put(pkg, now);
+        try {
+            android.view.accessibility.AccessibilityNodeInfo[] roots = collectRoots(pkg);
+            if (roots.length == 0) return;
+            boolean armed = pkg.equals(feedArmedPkg)
+                    && now - feedArmedAt <= com.zai.adshield.core.FeedAdGuard.P1_ARM_MS; // P2 须在 P1 出手 8s 指纹窗内
+            for (android.view.accessibility.AccessibilityNodeInfo r : roots) {
+                if (r == null) continue;
+                com.zai.adshield.core.AdDecisionCore.NodeView rootView = new NodeAdapter(r);
+                com.zai.adshield.core.FeedAdGuard.FeedDecision fd = armed
+                        ? com.zai.adshield.core.FeedAdGuard.decideP2(rootView, screenWidth, screenHeight, true)
+                        : null;
+                if (fd == null) fd = com.zai.adshield.core.FeedAdGuard.decideP1(rootView, screenWidth, screenHeight);
+                if (fd != null && executeFeed(pkg, fd, now)) return;
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** v7.1.0 feed 决策执行：构造 Decision 走既有 execute()（免费获得用户让路/耐心预算/F·H 多点防线/人手手势派发/边界终闸） */
+    private boolean executeFeed(String pkg, com.zai.adshield.core.FeedAdGuard.FeedDecision fd, long now) {
+        if (fd == null || fd.tapBounds == null || fd.tapBounds.length < 4) return false;
+        com.zai.adshield.core.AdDecisionCore.Decision d = new com.zai.adshield.core.AdDecisionCore.Decision();
+        d.action = com.zai.adshield.core.AdDecisionCore.A_CLICK_BOUNDS;
+        d.reason = fd.action;          // feed_p1_badge / feed_p2_close —— execute() 按此走 feed 终闸
+        d.label = fd.label;
+        d.bounds = fd.tapBounds;       // 角标/菜单项【自身】bounds——绝不广告主体
+        d.node = fd.node;
+        Long lastClick = lastClickAt.get(pkg);
+        boolean clickCoolOK = lastClick == null || now - lastClick >= COOLDOWN_MS;
+        com.zai.adshield.core.AdDecisionCore.Ctx ctx = new com.zai.adshield.core.AdDecisionCore.Ctx();
+        ctx.screenW = screenWidth; ctx.screenH = screenHeight;
+        ctx.pkg = pkg; ctx.activityId = winClassOf(pkg) == null ? "" : winClassOf(pkg);
+        ctx.elapsedMs = now - winAt(pkg);
+        ctx.budgetNodes = com.zai.adshield.core.FeedAdGuard.FEED_NODE_BUDGET;
+        boolean ok = execute(pkg, d, null, ctx, clickCoolOK, now);
+        if (ok) {
+            if (com.zai.adshield.core.FeedAdGuard.ACTION_P1_BADGE.equals(fd.action)) {
+                feedArmedPkg = pkg; feedArmedAt = now; // P1 出手 → armed 8s（P2 指纹窗）
+                appendLog("🛡 信息流广告 P1（" + shortPkg(pkg) + "）：披露角标「" + fd.label + "」出手 → 等关闭菜单（8s 内）");
+            } else {
+                feedArmedPkg = null; // P2 完成 → 收兵
+                appendLog("🛡 信息流广告 P2（" + shortPkg(pkg) + "）：中性项「" + fd.label + "」收起 → 本条广告关闭");
+            }
+        }
+        return ok;
+    }
+
     private void tryScan(String pkg, long winStart, long atMs) {
         if (instance == null) return;
         // v4.1.0：主开关暂停 / 相机窗 —— 扫描链里排着的任务一律作废
@@ -2446,6 +2524,9 @@ public class AdSkipService extends AccessibilityService {
                 ctx.screenH = screenHeight;
                 ctx.pkg = pkg; // v3.10.0：分应用规则表
                 ctx.activityId = winClassOf(pkg); // v4.2.0：GKD 订阅规则 activityIds 限定
+                /* v7.1.0 底层算法优化：分应用规则行预筛（每窗一次）——探针/DFS
+                 * 双路径共享，每节点零全表前缀比对（~340 节点 × 50 行 → 一次） */
+                ctx.appTextRules = com.zai.adshield.core.RuleEngine.rowsFor(pkg);
                 ctx.elapsedMs = Math.max(0, elapsed - ri * 30);
                 ctx.splashLive = splashLive;
                 ctx.popupLive = popupLive;
@@ -2531,8 +2612,12 @@ public class AdSkipService extends AccessibilityService {
                     boolean needSub = hits.isEmpty() || clickAttempts >= hits.size();
                     if (needSub) {
                         try {
-                            Hit sh = SubscriptionManager.match(pkg, new NodeAdapter(roots[ri]), ctx);
-                            if (sh != null) hits.add(sh);
+                            /* v7.1.0 两源订阅候选（RuleRouter 使用顺序：市场优先 →
+                             * 内置兑底；各贡献一个候选进点击轮换——单源候选失效
+                             * 不再拖死整轮，市场规则不再被内置静态快照短路饿死） */
+                            java.util.ArrayList<Hit> sh = SubscriptionManager.matchSources(
+                                    pkg, new NodeAdapter(roots[ri]), ctx);
+                            if (!sh.isEmpty()) hits.addAll(sh);
                         } catch (Throwable ignored) {
                         }
                     }
@@ -2549,7 +2634,11 @@ public class AdSkipService extends AccessibilityService {
                             rd.action = AdDecisionCore.A_CLICK_BOUNDS;
                             rd.node = hit.gestureOnly ? null : hit.clickNode;
                             rd.bounds = hit.tapBounds;
-                            rd.reason = "rule_" + hit.appId;
+                            /* v7.1.0：订阅命中带源标注（市场优先/内置兑底）——
+                             * 日志与 reasonZh 可诊断（订阅页两源命中也分别记账） */
+                            rd.reason = "sub_gkd".equals(hit.appId)
+                                    ? ("rule_sub_gkd_" + (String.valueOf(hit.src).startsWith("市场") ? "remote" : "builtin"))
+                                    : "rule_" + hit.appId;
                             /* v5.5.1（issue#64 微博误杀根治）：命中文案随 Decision
                              * 传递——gestureOnly（无可点祖先，微博图片跳过键常态）
                              * 时边界自检拿不到空 label，凭规则已验证的「跳过广告」
@@ -2706,6 +2795,13 @@ public class AdSkipService extends AccessibilityService {
             if (cls.length() > 0) sb.append(" · 窗口 ").append(shortCls(cls));
             String samples = collectNodeSamples(roots.length > 0 ? roots[0] : null);
             if (samples.length() > 0) sb.append(" · 候选样本：").append(samples);
+            /* v7.1.0 订阅两源覆盖诊断（使用顺序问题可见化：该应用市场/内置
+             * 谁在岗谁缺席——上传日志即可定位「导入了怎么还是不跳」类问题） */
+            try {
+                String orderLine = SubscriptionManager.coverageLine(pkg);
+                if (orderLine.length() > 0) sb.append(" · ").append(orderLine);
+            } catch (Throwable ignored) {
+            }
             sb.append(" ——上传日志可帮我们补规则");
             appendLog(sb.toString());
         } catch (Throwable ignored) {
@@ -3005,7 +3101,12 @@ public class AdSkipService extends AccessibilityService {
                 bl = d.label.trim();
             }
             boolean userTaught = "learned_pos".equals(d.reason) || d.reason.startsWith("learned");
-            int bnd = com.zai.adshield.core.ComplianceGuard.boundaryCheck(
+            /* v7.1.0：feed 决策（reason 前缀 feed_）走 feed 专用终闸——语义断言
+             * 换源为 FeedAdGuard 角标/中性项语义（feed 路径只点角标/中性关闭项，
+             * 绝不广告主体）；非 feed 路径 byte-for-byte 保持原终闸不变。 */
+            int bnd = (d.reason != null && d.reason.startsWith("feed_"))
+                    ? com.zai.adshield.core.ComplianceGuard.feedBoundaryCheck(bl, bb2, screenWidth, screenHeight, pkg, winClassOf(pkg))
+                    : com.zai.adshield.core.ComplianceGuard.boundaryCheck(
                     bl, bv, bb2, screenWidth, screenHeight, pkg, winClassOf(pkg), userTaught);
             if (bnd != com.zai.adshield.core.ComplianceGuard.BND_OK) {
                 boundaryGuardLog(pkg, d.reason, bnd, bl.length() > 0 ? bl : bv);
@@ -3316,6 +3417,7 @@ public class AdSkipService extends AccessibilityService {
         } catch (Throwable ignored) {
         }
         lastGestureOkAt.remove(pkg);
+        feedArmedPkg = null; // v7.1.0：新窗开启——feed P1 armed 指纹窗同步复位（P2 只对 P1 出手后的同一窗生效）
     }
 
     /** v5.9.0：标签所属窗口 bounds——取节点自身窗口（node.getWindow()，
@@ -3453,6 +3555,10 @@ public class AdSkipService extends AccessibilityService {
         if (r.equals("rule_global_vid")) return "内嵌规则·vid 跳过键（零文本图片键）";
         if (r.equals("rule_sdk_close_vid")) return "内嵌规则·SDK 窗图片关闭键";
         if (r.equals("rule_sub_gkd")) return "GKD 订阅规则命中（选择器定位控件）";
+        if (r.equals("rule_sub_gkd_remote")) return "GKD 订阅规则命中（市场源优先——选择器定位控件）";
+        if (r.equals("rule_sub_gkd_builtin")) return "GKD 订阅规则命中（内置源兑底——选择器定位控件）";
+        if (r.equals("feed_p1_badge")) return "信息流广告披露角标（v7.1.0·自 v6.2.0 已验证实现移植）"; // feed 决策专用
+        if (r.equals("feed_p2_close")) return "信息流广告关闭菜单中性项（v7.1.0·自 v6.2.0 已验证实现移植）";
         if (r.equals("skip_text")) return "文本跳过键";
         if (r.equals("fake_skip_tap")) return "假跳过手势直点（标签坐标）";
         if (r.equals("sdk_window")) return "SDK 广告窗指纹";

@@ -378,6 +378,18 @@ textarea { resize: none; }
   max-width: 60vw;
 }
 .wl-add-row { display: flex; gap: 8px; margin-top: 12px; }
+/* v7.1.0 白名单搜索栏（中文名/包名实时过滤） */
+.wl-search-row { display: flex; gap: 8px; margin-top: 10px; }
+.wl-search-row .fb-input { flex: 1; min-width: 0; }
+.wl-search-row .wl-search-count {
+  align-self: center; font-size: 12.5px; color: var(--sub); white-space: nowrap;
+}
+/* v7.1.0 卫士使用报告 */
+.report-box { font-size: 12.5px; line-height: 1.7; }
+.report-box .rp-sec { font-weight: 700; margin-top: 8px; }
+.report-box .rp-sec:first-child { margin-top: 0; }
+.report-box .rp-line { color: var(--ink); }
+.report-box .rp-meta { color: var(--sub); font-size: 11.5px; margin-top: 6px; }
 .wl-add-row .fb-input { flex: 1; min-width: 0; }
 
 /* ══════════ v5.2.0 保活体检（issue#56：防清理后台/覆盖安装吊销无障碍）══════════ */
