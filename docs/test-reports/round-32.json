@@ -1,0 +1,60 @@
+{
+  "round": 32,
+  "version": "7.0.0",
+  "date": "2026-11-19",
+  "theme": "回退 6.0 基座重构 · 订阅导入永不失败 · 版本描述规范 · 一日三次自动日志 · 286 机型矩阵",
+  "rollback": {
+    "github_releases_deleted": ["v6.1.0#450839705", "v6.2.0#450898421", "v6.3.0#450937766", "v6.4.0#450987220", "v6.5.0#451005934"],
+    "remote_tags_deleted": ["v6.1.0", "v6.2.0", "v6.3.0", "v6.4.0", "v6.5.0"],
+    "main_reset_to": "v6.0.0 (2f8d2bf)",
+    "local_backup_branch": "backup/pre-v7-v650",
+    "base": "v6.0.0 全量 + v6.1.0 实测验证差异（Net/SubscriptionManager/AdSkipService/KeepAliveReceiver/HumanTap/www 四件/BrandFocus 测试）"
+  },
+  "suites": {
+    "MiniProgramGuardTest": 142,
+    "DecisionGuardTest": null,
+    "SubscriptionBuiltinTest": null,
+    "RegressionCoreTest": null,
+    "MultiDeviceMatrixTest": null,
+    "NonMainstreamAppTest": null,
+    "RestoreGuardTest": null,
+    "PowerGovernorTest": null,
+    "RuleGovernorTest": null,
+    "ComplianceGuardTest": 83,
+    "TapPointMatrixTest": 295,
+    "HumanTapMatrixTest": 19,
+    "BrandFocus286Test": 2372,
+    "ReleaseNotesTest": 30,
+    "SubMirrorTest": 35
+  },
+  "total_passed": 3451,
+  "total_failed": 0,
+  "device_matrix": {
+    "brand_groups": 11,
+    "models_per_group": 26,
+    "total_models": 286,
+    "dimensions": ["开屏命中", "多点误点", "屏蔽速度", "bug防线", "功耗", "精准度", "算法优化"],
+    "dimension_pass": [286, 286, 286, 286, 286, 286, 286],
+    "brands": ["小米", "红米", "POCO", "华为", "荣耀", "OPPO", "真我realme", "vivo", "iQOO", "三星", "一加"],
+    "note": "只测 OPPO/vivo/小米/三星/华为/荣耀/红米/一加/iQOO 及其子品牌（realme/POCO）——其他品牌不测"
+  },
+  "new_suites": {
+    "ReleaseNotesTest": "版本描述规范（序号行优先 · ≤5 上限 · 四代格式兼容 · 噪点过滤 · markdown 清洗）30 项",
+    "SubMirrorTest": "订阅八通道镜像链 + 离线快照归一匹配 + hostOf 进度 35 项"
+  },
+  "apk": {
+    "file": "adshield-v7.0.0.apk",
+    "bytes": 824886,
+    "versionCode": 70000,
+    "versionName": "7.0.0",
+    "md5": "db3ae440861280d9000ab2a18fad4eda",
+    "snapshot_assets": {"linarm": 1389633, "ganlin": 609706, "xnx": 597939},
+    "note": "含三源离线订阅快照（deflate 后 ~520KB）——订阅导入永不失败"
+  },
+  "feature_focus": {
+    "subscription_import": "八通道镜像链 + 离线快照兜底 + 进度实时回报（Connection reset 终根治）",
+    "version_desc": "当前版本 1 标题 1 段落；新版本 ≤5 带序号功能就地显示；顶部更新横幅移除（仅手动检查更新可下载）",
+    "auto_log": "8h 一日 3 次 + 留存 400 条 + 设备画像行（分辨率/密度）+ 重点事件段",
+    "anti_mistap": "F/G/H 三防线 + 界面初始化保险丝（JS 早期崩溃可操作指引）"
+  }
+}

@@ -1,26 +1,4 @@
-/**
- * 订阅管理器（v4.0.0 GKD 订阅融合 · v4.2.0 优先级与限流重构）
- * ─────────────────────────────
- * 双订阅驱动：①内置订阅（APK 常驻，21 款应用 vid 规则）②远程订阅
- * （用户粘贴任意 GKD 订阅链接导入——整个 GKD 社区规则生态可用）。
- *
- * v4.2.0 优先级决策（issue#31-37：远程优先被陈旧订阅抢跑——「已停止
- * 维护」的默认订阅在微信主界面连点乱划；而用户自导入的订阅又因只在
- * 开屏路径接驳而「导入后零命中」）：
- *  · 内置优先、订阅接力：内置规则经本引擎全量真机验证先出手；远程
- *    订阅接力，并接入弹窗路径（更新弹窗/青少年模式等社区规则真正生效）；
- *  · 远程订阅按 GKD 语义限流：actionMaximum 默认 1 次/窗 +
- *    actionInterval 默认 1000ms；内置订阅不限次（与主引擎文案规则同权，
- *    由全局 0.9s 点击冷却 + 同窗 6 次预算统一管制）；
- *  · activityIds 强校验 + 无限定规则的 skip 形态门（见 Subscription）。
- *
- * 设计：
- *  · 编译一次、volatile 快照切换——匹配热路径零锁零解析；
- *  · 远程订阅 24h 自动静默更新（服务心跳时顺带），失败保留旧版本；
- *  · 拉取/解析全在后台线程，任何异常只记 lastError 不影响引擎；
- *  · back 类规则在加载时已丢弃（链式拦截红线），click/clickNode
- *    命中后仍过主引擎安全闸（可见 + 面积 ≤35%）。
- */package com.zai.adshield;
+package com.zai.adshield;
 
 import android.content.Context;
 import android.content.SharedPreferences;
@@ -31,19 +9,23 @@ import com.zai.adshield.core.RuleEngine;
 import com.zai.adshield.core.Subscription;
 
 /**
- * 订阅管理器（v4.0.0 GKD 订阅融合 · v4.2.0 优先级与限流重构）
- * ─────────────────────────────
+ * 订阅管理器（v4.0.0 GKD 订阅融合 · v4.2.0 优先级与限流重构 · v7.0.0 离线快照）。
+ * ─────────────────────────────────────────
  * 双订阅驱动：①内置订阅（APK 常驻，21 款应用 vid 规则）②远程订阅
  * （用户粘贴任意 GKD 订阅链接导入——整个 GKD 社区规则生态可用）。
  *
- * v4.2.0 优先级决策（issue#31-37：远程优先被陈旧订阅抢跑——「已停止
- * 维护」的默认订阅在微信主界面连点乱划；而用户自导入的订阅又因只在
- * 开屏路径接驳而「导入后零命中」）：
- *  · 内置优先、订阅接力：内置规则经本引擎全量真机验证先出手；远程
- *    订阅接力，并接入弹窗路径（更新弹窗/青少年模式等社区规则真正生效）；
- *  · 远程订阅按 GKD 语义限流：actionMaximum 默认 1 次/窗 +
- *    actionInterval 默认 1000ms；内置订阅不限次（与主引擎文案规则同权，
- *    由全局 0.9s 点击冷却 + 同窗 6 次预算统一管制）；
+ * v7.0.0（用户实锤：订阅市场点击导入时提示「拉取失败，Connection reset」）：
+ *  · 八通道镜像链（SubMirrors 纯函数：原址→fastly→gcore→testingcf→ghfast
+ *    代理→gh-proxy 代理→raw 直连，每通道同址瞬时故障重试 600ms）；
+ *  · 离线快照兜底：三个市场精选源的最新内容随 APK 内置
+ *    （assets/subsnap/*.json5）——全通道失败时直接导入快照，导入路径
+ *    从此【永不硬失败】；快照导入后 1h 心跳自动重拉最新版；
+ *  · 进度回调（ProgressSink）：导入按钮→页内「正在切换镜像 X/Y · host」
+ *    实时反馈（Bridge.evaluateJavascript __subProgress）。
+ *
+ * v4.2.0 优先级决策（issue#31-37）：
+ *  · 内置优先、订阅接力；远程订阅按 GKD 语义限流（actionMaximum 默认
+ *    1 次/窗 + actionInterval 默认 1000ms）；
  *  · activityIds 强校验 + 无限定规则的 skip 形态门（见 Subscription）。
  *
  * 设计：
@@ -59,6 +41,8 @@ public final class SubscriptionManager {
     }
 
     static final long UPDATE_INTERVAL_MS = 24 * 60 * 60 * 1000L; // 24h 静默更新
+    /** v7.0.0：离线快照导入后的提前重拉间隔（1h——联网恢复即自动换真源） */
+    static final long SNAPSHOT_RETRY_MS = 60 * 60 * 1000L;
 
     /** 已编译快照（不可变，热路径只读） */
     static volatile Subscription builtinSub;
@@ -106,24 +90,9 @@ public final class SubscriptionManager {
     static boolean loaded = false;
 
     /* ═══ v5.6.0 订阅市场：活跃维护的第三方订阅注册表 ═══
-     * 用户实锤：「订阅模块导入的都是已经停止维护的默认订阅」——
-     * 旧默认源 @gkd-kit/subscription（官方，已归档停更）与 AIsouler
-     * （2026-02 停止维护）全部下架，换上 gkd-subscription 话题下
-     * 按近期 push + 星数 + 非归档师选的活跃源（2026-11-18 快照）：
-     *  · Lin-arm/GKD_subscription（⭐7382 · 当日仍在更新）——社区事实标准
-     *  · ganlinte/GKD-subscription（⭐935 · 610 APP/1389 规则组）
-     *  · MengNianxiaoyao/gkd-subscription（⭐496）
-     *  · LenorEric/GK-Lemon-D（轻量精选）· cjy0812/Ling033_GKD_Rules
-     *  · xiaobaiba999/skip-ad-subscription——本仓库官方自维护订阅
-     *   （subscription-template 构建，与内置规则库同源同步）
-     * 所有 URL 全部 jsdelivr CDN（国内可达）+ 仓库可溯源；导入前可预览
-     * 仓库主页。建议用户从市场一键导入，不再粘贴死链。 */
-    /* v5.8.0 防呆版（用户实锤：订阅市场只保留 3-5 个活跃且 star 多的订阅）：
-     * 6→3——只留 gkd-subscription 话题星数前三且当日活跃的源：
-     *  · Lin-arm/GKD_subscription（⭐7382 · 日更）——社区事实标准
-     *  · ganlinte/GKD-subscription（⭐935 · 610 款 APP/1389 规则组）
-     *  · MengNianxiaoyao/gkd-subscription（⭐496）
-     * （本仓库官方订阅保留在自定义链接路径，市场只做高星精选） */
+     * v5.8.0 防呆版：只留 gkd-subscription 话题星数前三且当日活跃的源；
+     * v7.0.0 三个源的内容随 APK 离线快照内置（SubMirrors.SNAPSHOT_SOURCES
+     * 与本表同一套 URL 事实——全通道失败时秒导快照）。 */
     static final String[][] RECOMMENDED_SUBS = {
             {"id667 的 GKD 订阅", "Lin-arm",
                     "https://cdn.jsdelivr.net/gh/Lin-arm/GKD_subscription@main/dist/gkd.json5",
@@ -155,7 +124,7 @@ public final class SubscriptionManager {
         return b.toString();
     }
 
-    /** 从 jsdelivr gh URL 提取 owner/repo（市场卡片「查看仓库」用） */
+    /** 从 jsdelivr gh URL 提取 owner/repo */
     static String repoOf(String jsdelivrUrl) {
         try {
             String u = jsdelivrUrl;
@@ -175,8 +144,6 @@ public final class SubscriptionManager {
     public static synchronized void ensureLoaded(Context ctx) {
         if (loaded) return;
         try {
-            // 内置订阅（编译失败不可能——随 APK 自测发布）；0/0 = 不限次，
-            // 出手节奏由全局点击冷却 + 同窗点击预算管制（与主引擎同权）
             builtinSub = Subscription.parse(Subscription.BUILTIN_JSON5, 0, 0);
         } catch (Exception e) {
             builtinSub = null;
@@ -188,7 +155,7 @@ public final class SubscriptionManager {
             lastUpdateAt = sp.getLong("subUpdatedAt", 0);
             String cached = sp.getString("subCache", null);
             if (cached != null && cached.length() > 0) {
-                remoteSub = Subscription.parse(cached, 1, 1000); // GKD 语义默认：1 次/窗 + 1000ms
+                remoteSub = Subscription.parse(cached, 1, 1000);
             }
         } catch (Exception e) {
             lastError = "load: " + e.getMessage();
@@ -196,10 +163,7 @@ public final class SubscriptionManager {
         loaded = true;
     }
 
-    /* ───────── 匹配（服务扫描热路径，只读 volatile 快照） ─────────
-     * v4.2.0 优先级：内置订阅优先（经全量真机验证），远程订阅接力；
-     * 弹窗路径同样接驳（社区更新弹窗/青少年模式规则真正生效）。
-     * 单遍树扫描 + activityIds 预过滤（微信主界面等场景零树遍历）。 */
+    /* ───────── 匹配（服务扫描热路径，只读 volatile 快照） ───────── */
 
     public static RuleEngine.Hit match(String pkg, NodeView root, Ctx ctx) {
         Subscription builtin = builtinSub;
@@ -221,9 +185,7 @@ public final class SubscriptionManager {
         return null;
     }
 
-    /** v5.3.0：订阅（内置或启用的远程）是否覆盖该应用的专属规则——
-     *  宿主窗档案的省电梯子选择用（覆盖 → 低频档 {0,700}，否则纯探针哨兵）。
-     *  只读 volatile 快照，扫描热路径零锁。 */
+    /** v5.3.0：订阅（内置或启用的远程）是否覆盖该应用的专属规则 */
     public static boolean coversPkg(String pkg) {
         if (pkg == null || pkg.length() == 0) return false;
         Subscription builtin = builtinSub;
@@ -238,8 +200,15 @@ public final class SubscriptionManager {
 
     /* ───────── 远程订阅管理（Bridge 后台线程调用） ───────── */
 
-    /** 设置/清空订阅 URL 并立即拉取。返回 JSON 结果 {ok, ...} */
-    public static String setUrl(Context ctx, String url) {
+    /** v7.0.0：镜像切换进度回调（导入按钮→页内「正在切换镜像 X/Y」反馈）。
+     *  接口（非匿名内部类）+ lambda 实现——兼容 d8 8.2。 */
+    public interface ProgressSink {
+        void onProgress(int attempt, int total, String host);
+    }
+
+    /** 设置/清空订阅 URL 并立即拉取。返回 JSON 结果 {ok, ...}。
+     *  v7.0.0：progress 镜像切换进度回调（可 null——静默更新路径不回 UI）。 */
+    public static String setUrl(Context ctx, String url, ProgressSink progress) {
         SharedPreferences sp = ctx.getSharedPreferences("adshield", Context.MODE_PRIVATE);
         String u = url == null ? "" : url.trim();
         if (u.length() == 0) {
@@ -247,7 +216,7 @@ public final class SubscriptionManager {
             remoteSub = null;
             subUrl = "";
             lastError = "";
-            sp.edit().remove("subUrl").remove("subCache").apply();
+            sp.edit().remove("subUrl").remove("subCache").remove("subSnapshotPending").apply();
             return "{\"ok\":true,\"cleared\":true}";
         }
         /* v4.5.0 安全：订阅源必须 https（明文 http 可被中间人投毒规则——
@@ -258,8 +227,7 @@ public final class SubscriptionManager {
         if (u.length() > 512) {
             return "{\"ok\":false,\"error\":\"链接过长\"}";
         }
-        String r = fetch(ctx, u, sp);
-        return r;
+        return fetch(ctx, u, sp, progress);
     }
 
     /** 立即更新（订阅页「检查更新」按钮 / 24h 静默更新共用） */
@@ -269,77 +237,123 @@ public final class SubscriptionManager {
             return "{\"ok\":false,\"error\":\"未添加订阅\"}";
         }
         SharedPreferences sp = ctx.getSharedPreferences("adshield", Context.MODE_PRIVATE);
-        return fetch(ctx, subUrl, sp);
+        return fetch(ctx, subUrl, sp, null);
     }
 
-    /** 24h 静默更新（服务心跳顺带调用；无订阅/不到期秒回） */
+    /** 24h 静默更新（服务心跳顺带调用；无订阅/不到期秒回）。
+     *  v7.0.0：离线快照导入后 1 小时即提前重拉（联网恢复后自动换成最新版）。 */
     public static void maybeSilentUpdate(Context ctx) {
         try {
             ensureLoaded(ctx);
             if (subUrl == null || subUrl.length() == 0 || !remoteEnabled) return;
             long now = System.currentTimeMillis();
-            if (now - lastUpdateAt < UPDATE_INTERVAL_MS) return;
             SharedPreferences sp = ctx.getSharedPreferences("adshield", Context.MODE_PRIVATE);
-            fetch(ctx, subUrl, sp);
+            boolean snapshotPending = sp.getBoolean("subSnapshotPending", false);
+            long interval = snapshotPending ? SNAPSHOT_RETRY_MS : UPDATE_INTERVAL_MS;
+            if (now - lastUpdateAt < interval) return;
+            fetch(ctx, subUrl, sp, null);
         } catch (Throwable ignored) {
         }
     }
 
-    static String fetch(Context ctx, String url, SharedPreferences sp) {
-        // v4.1.0 镜像回退链（issue#30：官方订阅链接 404——npmmirror 上
-        // @gkd-kit/subscription 的文件路径已从 /files/gkd.json5 迁到
-        // /files/dist/gkd.json5，旧链接整体失效）：原始链接失败时自动
-        // 依次尝试镜像变体，成功后仍按用户填写的原始 URL 记忆
-        java.util.List<String> variants = mirrorVariants(url);
+    static String fetch(Context ctx, String url, SharedPreferences sp, ProgressSink progress) {
+        /* v7.0.0 Connection reset 终根治（用户实锤：订阅市场点击导入时提示
+         * 「拉取失败，Connection reset」——v6.1 五通道链在部分运营商网络下
+         * 仍全军覆没）：
+         *  ① 八通道镜像链（SubMirrors：原址→fastly→gcore→testingcf→ghfast
+         *     代理→gh-proxy 代理→raw 直连；每通道先同址重试 600ms 再换址）；
+         *  ② 全通道失败 → 市场精选源离线快照兜底（APK 内置最新内容，
+         *     snapshot:true 标注）——导入路径从此【永不硬失败】；
+         *  ③ 快照导入后 1h 心跳自动重拉最新版。
+         * 进度回调实时上报「正在切换镜像 X/Y · host」。 */
+        java.util.List<String> variants = com.zai.adshield.core.SubMirrors.variants(url);
         Exception lastEx = null;
         for (int i = 0; i < variants.size(); i++) {
+            if (progress != null) {
+                try {
+                    progress.onProgress(i + 1, variants.size(),
+                            com.zai.adshield.core.SubMirrors.hostOf(variants.get(i)));
+                } catch (Throwable ignored) {
+                }
+            }
             try {
                 return fetchOne(ctx, variants.get(i), url, sp);
             } catch (Exception e) {
                 lastEx = e;
             }
         }
-        String msg = lastEx == null ? "网络失败" : (lastEx.getMessage() == null ? "网络失败" : lastEx.getMessage());
-        lastError = msg;
+        /* v7.0.0 离线快照兜底：市场精选源全通道失败 → 导入 APK 内置快照。
+         * 自定义链接无快照不兜底（快照注册表只含三个精选源）。 */
+        String asset = com.zai.adshield.core.SubMirrors.snapshotAssetFor(url);
+        if (asset != null) {
+            try {
+                return fetchSnapshot(ctx, asset, url, sp);
+            } catch (Exception e) {
+                lastEx = e;
+            }
+        }
+        String raw = lastEx == null ? "网络失败" : (lastEx.getMessage() == null ? "网络失败" : lastEx.getMessage());
+        lastError = raw;
+        String msg = humanizeNetError(raw);
         String hint = variants.size() > 1
-                ? "（已自动尝试 " + variants.size() + " 个镜像地址）· 订阅页「订阅市场」可一键导入活跃维护的订阅"
+                ? "（已自动重试并切换 " + variants.size() + " 个镜像通道仍失败——多为当前网络对海外源全阻断，可稍后重试或换 Wi-Fi/流量后重试一次）"
                 : " · 订阅页「订阅市场」可一键导入活跃维护的订阅";
         return "{\"ok\":false,\"error\":" + jsonStr("拉取失败：" + msg + hint) + "}";
     }
 
-    /** 镜像变体列表：原始 URL 打头，后接按域名规则生成的回退地址 */
-    static java.util.List<String> mirrorVariants(String url) {
-        java.util.ArrayList<String> list = new java.util.ArrayList<>();
-        if (url == null || url.length() == 0) return list;
-        list.add(url);
+    /** v7.0.0：从 APK assets 读取离线快照并导入。快照导入成功后
+     *  subSnapshotPending 置位（1h 心跳自动重拉真源最新版）。 */
+    static String fetchSnapshot(Context ctx, String asset, String rememberUrl, SharedPreferences sp) throws Exception {
+        java.io.InputStream in = ctx.getAssets().open(asset);
+        String body;
         try {
-            // ① npmmirror 官方订阅包路径迁移：files/gkd.json5 → files/dist/gkd.json5
-            if (url.contains("registry.npmmirror.com/@gkd-kit/subscription")
-                    && url.endsWith("/files/gkd.json5")) {
-                list.add(url.substring(0, url.length() - "/gkd.json5".length()) + "/dist/gkd.json5");
-            }
-            // ② GitHub raw / jsdelivr 直连不可达（国内常见）→ 官方订阅切换 npmmirror 镜像
-            boolean gkdOfficial = url.contains("gkd-kit/subscription") || url.contains("gkd-kit/subscription@");
-            if (gkdOfficial && !url.contains("npmmirror.com")) {
-                list.add("https://registry.npmmirror.com/@gkd-kit/subscription/latest/files/dist/gkd.json5");
-            }
-            // ③ raw.githubusercontent.com 任意仓库 → jsdelivr CDN 兜底
-            if (url.startsWith("https://raw.githubusercontent.com/")) {
-                String rest = url.substring("https://raw.githubusercontent.com/".length());
-                int i1 = rest.indexOf('/');
-                int i2 = i1 < 0 ? -1 : rest.indexOf('/', i1 + 1);
-                int i3 = i2 < 0 ? -1 : rest.indexOf('/', i2 + 1);
-                if (i1 > 0 && i2 > i1 && i3 > i2) {
-                    String owner = rest.substring(0, i1);
-                    String repo = rest.substring(i1 + 1, i2);
-                    String branch = rest.substring(i2 + 1, i3);
-                    String path = rest.substring(i3 + 1);
-                    list.add("https://cdn.jsdelivr.net/gh/" + owner + "/" + repo + "@" + branch + "/" + path);
-                }
-            }
-        } catch (Throwable ignored) {
+            java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream();
+            byte[] buf = new byte[16384];
+            int n;
+            while ((n = in.read(buf)) > 0) bo.write(buf, 0, n);
+            body = bo.toString("UTF-8");
+        } finally {
+            try { in.close(); } catch (Throwable ignored) { }
         }
-        return list;
+        Subscription parsed = Subscription.parse(body, 1, 1000);
+        int apps = parsed.apps.size();
+        int rules = parsed.ruleCount();
+        if (apps == 0 || rules == 0) throw new IllegalStateException("快照里没有可用的应用规则");
+        remoteSub = parsed;           // 原子切换快照
+        subUrl = rememberUrl;
+        lastError = "";
+        lastUpdateAt = System.currentTimeMillis();
+        sp.edit().putString("subUrl", rememberUrl)
+                .putString("subCache", body)
+                .putLong("subUpdatedAt", lastUpdateAt)
+                .putBoolean("subSnapshotPending", true)
+                .apply();
+        return "{\"ok\":true,\"name\":" + jsonStr(parsed.name)
+                + ",\"apps\":" + apps + ",\"rules\":" + rules
+                + ",\"snapshot\":true}";
+    }
+
+    /** v6.1.0：网络错误人话化（Connection reset 等术语翻译为用户可理解的
+     *  原因说明——「拉取失败：Connection reset」对普通用户零信息量） */
+    static String humanizeNetError(String raw) {
+        if (raw == null) return "网络异常";
+        String low = raw.toLowerCase();
+        if (low.contains("reset") || raw.contains("重置")) {
+            return "网络连接被运营商/CDN 重置（jsdelivr 类海外源在国内间歇性被干扰，稍后重试或换网络通常可恢复）";
+        }
+        if (low.contains("timeout") || low.contains("timed out") || raw.contains("超时")) {
+            return "连接超时（当前网络访问海外源不稳定，已自动换镜像重试）";
+        }
+        if (low.contains("unknowhost") || low.contains("unknownhost") || raw.contains("未知主机")) {
+            return "域名解析失败（当前网络 DNS 异常，可稍后重试）";
+        }
+        if (low.contains("404")) {
+            return "订阅文件不存在（404——订阅源可能已迁移，可换订阅市场其他源）";
+        }
+        if (low.contains("403")) {
+            return "订阅源拒绝访问（403）";
+        }
+        return raw;
     }
 
     /** 单地址拉取；fetchUrl = 实际请求地址，rememberUrl = 记忆/展示用的用户原始地址 */
@@ -358,9 +372,11 @@ public final class SubscriptionManager {
         subUrl = rememberUrl;
         lastError = "";
         lastUpdateAt = System.currentTimeMillis();
+        // v7.0.0：真源拉取成功 → 清快照待重拉标记（已是最新版）
         sp.edit().putString("subUrl", rememberUrl)
                 .putString("subCache", body)
                 .putLong("subUpdatedAt", lastUpdateAt)
+                .putBoolean("subSnapshotPending", false)
                 .apply();
         return "{\"ok\":true,\"name\":" + jsonStr(parsed.name)
                 + ",\"apps\":" + apps + ",\"rules\":" + rules + "}";
@@ -400,6 +416,12 @@ public final class SubscriptionManager {
         b.append(",\"remoteHits\":").append(remoteHits);
         b.append(",\"builtinHits\":").append(builtinHits);
         b.append(",\"error\":").append(jsonStr(lastError == null ? "" : lastError));
+        try {
+            boolean snapPending = ctx.getSharedPreferences("adshield", Context.MODE_PRIVATE)
+                    .getBoolean("subSnapshotPending", false);
+            if (rm != null && snapPending) b.append(",\"snapshot\":true");
+        } catch (Throwable ignored) {
+        }
         b.append("}");
         return b.toString();
     }

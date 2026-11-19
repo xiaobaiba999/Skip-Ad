@@ -565,21 +565,26 @@ public class MainActivity extends Activity {
             return SubscriptionManager.recommendJson();
         }
 
-        /** 设置/清空远程订阅 URL（立即拉取；后台线程执行） */
+        /** 设置/清空远程订阅 URL（立即拉取；后台线程执行）。
+         *  v7.0.0：镜像切换进度实时回报页内（window.__subProgress(attempt,total,host)
+         *  ——「正在切换镜像 X/Y · host」反馈；离线快照兜底由 SubscriptionManager
+         *  内部完成，导入路径永不硬失败）。 */
         @JavascriptInterface
         public void subSetUrl(final String url, final String cb) {
             new Thread(() -> {
+                final String r;
                 try {
-                    final String r = SubscriptionManager.setUrl(a, url);
-                    a.runOnUiThread(() -> {
+                    SubscriptionManager.ProgressSink sink = (attempt, total, host) -> a.runOnUiThread(() -> {
                         try {
                             if (a.webView != null) {
                                 a.webView.evaluateJavascript(
-                                        "window.__subCb && window.__subCb(" + JSON.stringifyCb(cb) + "," + r + ")", null);
+                                        "window.__subProgress && window.__subProgress("
+                                                + attempt + "," + total + "," + JSON.stringifyCb(host) + ")", null);
                             }
                         } catch (Throwable ignored) {
                         }
                     });
+                    r = SubscriptionManager.setUrl(a, url, sink);
                 } catch (final Throwable t) {
                     a.runOnUiThread(() -> {
                         try {
@@ -590,7 +595,17 @@ public class MainActivity extends Activity {
                         } catch (Throwable ignored) {
                         }
                     });
+                    return;
                 }
+                a.runOnUiThread(() -> {
+                    try {
+                        if (a.webView != null) {
+                            a.webView.evaluateJavascript(
+                                    "window.__subCb && window.__subCb(" + JSON.stringifyCb(cb) + "," + r + ")", null);
+                        }
+                    } catch (Throwable ignored) {
+                    }
+                });
             }, "sub-set-url").start();
         }
 

@@ -64,26 +64,60 @@ public final class Net {
         return new String(android.util.Base64.decode(s, android.util.Base64.DEFAULT), StandardCharsets.UTF_8);
     }
 
-    /** v4.0.0 订阅拉取：GET 任意 URL 原文（GKD 订阅 JSON5），2xx 返回 body，否则抛异常 */
+    /** v4.0.0 订阅拉取：GET 任意 URL 原文（GKD 订阅 JSON5），2xx 返回 body，否则抛异常。
+     *  v6.1.0 Connection reset 根治（用户实锤：订阅市场点击导入提示「拉取失败，
+     *  Connection reset」——国内移动网络对 cdn.jsdelivr.net 间歇性 TCP 重置，
+     *  瞬时故障单次即弃）：同地址瞬时故障重试 1 次（间隔 600ms），只对连接
+     *  类异常（reset/timeout/EOF）重试，4xx 业务错误不重试。 */
     public static String httpGetRaw(String url) throws Exception {
-        String[] r = http("GET", url, null, null);
-        int code = Integer.parseInt(r[0]);
-        if (code < 200 || code >= 300) throw new IllegalStateException("HTTP " + code);
-        return r[1];
+        Exception lastEx = null;
+        for (int attempt = 1; attempt <= 2; attempt++) {
+            try {
+                String[] r = http("GET", url, null, null);
+                int code = Integer.parseInt(r[0]);
+                if (code < 200 || code >= 300) throw new IllegalStateException("HTTP " + code);
+                return r[1];
+            } catch (Exception e) {
+                // 仅瞬时性网络故障重试（reset/timeout/EOF）；HTTP 4xx/5xx 立即上抛交镜像链
+                if (!isTransient(e) || attempt == 2) throw e;
+                lastEx = e;
+                sleep(600);
+            }
+        }
+        throw lastEx == null ? new IllegalStateException("网络失败") : lastEx;
+    }
+
+    /** v6.1.0：瞬时性网络故障判定（reset/timeout/EOF——值得同址重试；
+     *  其余（HTTP 状态码错误等）交上层镜像变体链换址） */
+    static boolean isTransient(Exception e) {
+        if (e == null) return false;
+        String m = e.getMessage();
+        if (m == null) m = "";
+        String low = m.toLowerCase();
+        return low.contains("reset") || low.contains("timeout") || low.contains("timed out")
+                || low.contains("eof") || low.contains("broken pipe")
+                || low.contains("connection") || e instanceof java.io.IOException;
     }
 
     /* ───────── 底层 HTTP ───────── */
 
-    /** 返回 [statusCode, body]；任何异常向上抛出由调用方兜底 */
+    /** 返回 [statusCode, body]；任何异常向上抛出由调用方兜底。
+     *  v6.1.0 超时调优：连接 10s→7s、读取 15s→12s——Connection reset 场景
+     *  下快速失败快速切镜像（订阅 JSON5 通常 <2MB，12s 足够），最坏等待链
+     *  总时长不膨胀；UA 改浏览器风格（部分代理站拦非浏览器 UA）。 */
     private static String[] http(String method, String url, String token, String body) throws Exception {
         HttpURLConnection c = null;
         try {
             c = (HttpURLConnection) new URL(url).openConnection();
-            c.setConnectTimeout(10000);
-            c.setReadTimeout(15000);
+            c.setConnectTimeout(7000);
+            c.setReadTimeout(12000);
             c.setRequestMethod(method);
-            c.setRequestProperty("Accept", "application/vnd.github+json");
-            c.setRequestProperty("User-Agent", "adshield-android");
+            boolean githubApi = url.contains("api.github.com");
+            c.setRequestProperty("Accept", githubApi
+                    ? "application/vnd.github+json" : "text/plain,application/json,*/*");
+            c.setRequestProperty("User-Agent", githubApi
+                    ? "adshield-android" : BROWSER_UA);
+            c.setRequestProperty("Accept-Encoding", "identity");
             if (token != null && token.length() > 0) {
                 c.setRequestProperty("Authorization", "Bearer " + token);
             }
@@ -111,6 +145,10 @@ public final class Net {
         try { in.close(); } catch (Exception ignored) { }
         return new String(bo.toByteArray(), StandardCharsets.UTF_8);
     }
+
+    /** v6.1.0：CDN/代理站友好浏览器 UA（订阅镜像通道专用；GitHub API 仍用固定 UA） */
+    static final String BROWSER_UA =
+            "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Mobile Safari/537.36";
 
     /* ───────── 问题反馈 → GitHub Issues（内置令牌，用户零配置） ───────── */
 
@@ -226,7 +264,9 @@ public final class Net {
         }
     }
 
-    /** 解析单个 Release JSON → 页面可用结构（含镜像通道列表） */
+    /** 解析单个 Release JSON → 页面可用结构（含镜像通道列表）。
+     *  v7.0.0：headlines[] 新版功能标题预解析（core.ReleaseNotes 纯函数——
+     *  检查更新发现新版本时页内直接渲染 ≤5 条带序号功能描述，JS 零解析）。 */
     private static String parseRelease(String body) throws Exception {
         JSONObject d = new JSONObject(body);
         JSONObject out = new JSONObject();
@@ -237,6 +277,13 @@ public final class Net {
         out.put("notes", d.optString("body", ""));
         out.put("publishedAt", d.optString("published_at", ""));
         out.put("url", d.optString("html_url", ""));
+        try {
+            String[] heads = com.zai.adshield.core.ReleaseNotes.headlines(d.optString("body", ""));
+            JSONArray hl = new JSONArray();
+            for (String h : heads) hl.put(h);
+            out.put("headlines", hl);
+        } catch (Throwable ignored) {
+        }
         String apkUrl = "";
         String apkFileName = "adshield.apk";
         double apkMB = 0;
