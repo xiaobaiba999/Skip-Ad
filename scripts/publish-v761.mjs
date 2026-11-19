@@ -7,7 +7,7 @@ const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.git
 /* ── GitHub 面板描述（仓库 description 字段）同步 v7.6.1：热修复主题 ──
  * 用户指令（第十六轮）：「扫描日志，7.6版本记录没了，使用报告也不见，修复
  * 完成同步github」。死因：v7.6.0 发布时页面资产 app.js 版本记录注释尾部丢
- * 了 ` */` 未闭合——块注释吞掉整个 const CURRENT_RELEASE 声明，页面渲染
+ * 了闭合符（star-slash）未闭合——块注释吞掉整个 const CURRENT_RELEASE 声明，页面渲染
  * 抛 ReferenceError 中断，扫描日志/版本记录/使用报告三大板块全部消失。 */
 const desc = "无障碍驱动的安卓开屏广告秒跳引擎 · v7.6.1 热修复：页面板块恢复（v7.6.0 资产注释未闭合吞掉版本记录声明致扫描日志/版本记录/使用报告三板块消失——闭合修复）+ 构建链页面资产符号校验闸（语法解析+stub 顶层执行+关键符号缺一即拒绝打包——此类损坏从源头拦下）· 激进模式保持（开屏露头即点：首击零门控·重击等将尽+6s 封顶 + 插屏「广告」语境闸 contains + 终闸语义面收编）· 信息流三路/安全加固全部保持 · 更新链 SHA-256 校验 · 308 机型八维矩阵 · 4314 断言全绿 · 免 Root · APK 832KB（使用前请阅 README 免责声明）";
 const dr = await fetch(`https://api.github.com/repos/${REPO}`, {
