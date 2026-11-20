@@ -138,5 +138,18 @@
     "失败样本入库驱动修复（FALSE_CLICK 最高优先级 → DUPLICATE_CLICK → MISS）——一个真实缺陷一个回归测试",
     "真机回传后订阅证据链八格与点击结果六态的首份真实分布报告",
     "证据驱动下一轮选题（不再以断言数量为目标）"
-  ]
+  ],
+  "git": {
+    "commit": "95204de",
+    "push": "SUCCESS",
+    "pushDetail": "6f43785..95204de main -> main（git-push-once.sh token 注入内存 URL，无 force push）",
+    "postPushVerify": "origin/main = 95204de（fetch 核对一致）"
+  },
+  "github_release": {
+    "tag": "v7.9.5",
+    "url": "https://github.com/xiaobaiba999/Skip-Ad/releases/tag/v7.9.5",
+    "releaseId": 452711895,
+    "asset": "adshield-v7.9.5.apk 上传成功 · GitHub digest sha256:118ab150… 与本地 SHA-256 比对 MATCH=YES（发布侧校验闭环）",
+    "repoDescription": "PATCH 成功（345 字符 · 远端核对一致——真实世界证据层主题 + 真机诚实口径入文案；首发 353 字符超限 422 后精简重试成功，仓库内 publish-v795.mjs 已同步精简版）"
+  }
 }
