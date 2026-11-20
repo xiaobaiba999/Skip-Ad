@@ -3,6 +3,33 @@
 > 首页只保留当前版本要点；全部历史版本详情在本页归档。
 > 发布物（APK/报告/文档）见 [Releases](https://github.com/xiaobaiba999/Skip-Ad/releases) 与 `docs/test-reports/`。
 
+## v7.9.1（2026-11-20）—— 任务状态机轮：重复点击/误触/合法重试三难根治 + 订阅命中 0 根治 + 三 app 漏检修复
+
+- **本轮方法论（用户指令「先证明问题在哪里，再修改代码——不用关闭重试掩盖状态机问题、不用加扫描频率掩盖识别问题」）**：完整审计点击执行链路（任务创建 → 候选生成/评分 → SafetyGuard 终闸 → 无障碍代点/真实触点双通道 → 500ms 复验 → 候选轮换 → 重试调度 → 反馈面板 → 状态清理 → 异步取消），并做 v7.3.0/v7.6.0/v7.9.0 三版 git 回归考古。实锤根因四条（均有文件级证据）：
+  - **根因①（无任务实体）**：引擎没有「广告任务」概念——状态散落在十余张 per-package HashMap（clickTries/gaveUp/lastClickAt/skipAt/adClosedAt/chainKilledAt/firedTarget*/lastGestureOkAt）。「成功」的唯一信号是 TYPE_WINDOW_STATE_CHANGED 的窗口类切换（AdSkipService:1693）——**对 Activity 不变的插屏/覆盖层/Dialog 广告（用户第五轮强调的核心场景）成功信号永不触发**，状态永不重置、任务永不终止。
+  - **根因②（反馈面板对插屏路径完全盲）**：handleFeedbackSheet 只接在 tryScan 内；maybeInterstitialScan（1.5s 节流独立扫描链）从不查反馈面板。真机日志实锤链（18:39:02~18:39:04）：inter_close 首击成功 → 反馈面板弹出（tryScan 路径已「停用重试」）→ 面板/残留 UI 里「我为什么会看到广告」语境词（含「广告」）+ 面板自身「×/关闭」候选再次过闸 → 2 秒后第二击落在普通按钮（情况 A/B 的直接机制）。
+  - **根因③（订阅 needSub 饥饿）**：git 考古实锤——v7.5.0/v7.7.0 探针词扩容（+skip/+关闭广告/+關閉廣告）后探针先中 → hits 非空 → 第 0 击 needSub=false → matchSources **整窗不被咨询**（命中计数在收集侧——「0 命中」= 从未被调用）。订阅内核（Subscription/GkdSelector/RuleRouter）v7.3.0→v7.9.0 零改动，回归全在调用方。
+  - **根因④（静默语义盲）**：ting.android MainActivity 8 节点零内容事件——contentAt 空 → silenceMs=-1 → videoLike 永不成立 → 20s 观察窗/1.5s 轮询针永不开启 → 长视频开屏（>12s 露头按钮）整窗漏拦。
+- **广告任务状态机（新核心模块 core/AdTaskCore.java——纯 Java 零 Android 依赖，与 InterstitialGuard 同规约）**：
+  - **九态**：DETECTED / READY / CLICKING / VERIFYING / RETRY_WAIT / FEEDBACK / SUCCESS / FAILED / CANCELLED——终态三态不可逆（isTerminal）。
+  - **唯一任务 ID**：每包每窗一个当前任务（winStart 窗代 + seq 序号双因子身份——窗口刷新/探针触发/异步回调/点击通道切换都不产生重复任务）。
+  - **成功不可逆**：SUCCESS 后 clickAllowed/callbackAllowed 全 false——该任务后续一切点击请求与过期回调一律拒收；终态落账同步杀链（chainKilledAt）+ 静默期（adClosedAt）+ 新任务冷却（taskAllowsNew 2.2s——广告 detach 残留期/反馈面板期/跳转动画期的残留「广告」语境+「×/关闭」候选不是新广告）。
+  - **反馈面板独立流程**：FEEDBACK 态绝不对原广告再执行关闭（只代点「取消」收起——绝不替用户提交反馈）；面板收起 → SUCCESS（面板只在广告关闭后弹出——铁证）。
+  - **合法重试保护（情况 C 不误杀）**：RETRY_WAIT/VERIFYING 态照常放行（复验扫描重新见到候选 = 合法重试）；重试前置检查表五要件（广告仍在场/同窗/候选存活/候选可见/关闭语义）任一不满足不得对旧坐标出手；预算用尽 → FAILED（绝不无限重试）。
+  - **双通道统一**：真实触点（gestureTap）与无障碍代点（performAction）都经 execute() 唯一入口派发、统一 taskOnDispatch 记账（→ VERIFYING）——通道切换不产生重复任务，两通道绝不并发。
+  - **视频新键解禁**：视频末露头的文本新指纹键 = 新按钮（FAILED 任务合法解禁证据，预算刷新=开新任务——v7.8.0 视频开屏能力零回退；角落/手势候选绝不刷新，误触红线）。
+- **就地 SUCCESS 验证（第三阶段重设计——500ms 复验保留审计结论：节奏正确但缺判定）**：出手后复验扫描两轮零候选（≥350ms 独立两轮——树刷新瞬间候选抖动不误判）→ 不可逆 SUCCESS；单轮零只观察不补刀（「页面变化但无法确认广告是否关闭」→ 绝不对旧坐标第二击）；候选再现即重置（合法重试保护）。插屏路径 >12s 窗龄场景（tryScan 的 splashLive 早退）由插屏扫描自身承担验证（interSawCandidate 观测面）。500ms 首击复验节奏（HumanTap.verifyDelayMs 人手节奏）零变化——审计结论：不删不改，只补「判定」。
+- **过期回调全面验活（第四阶段验收 7）**：复验针 scheduleVerifyScan 带任务 ID（窗代+序号——任务终态/换代一律作废）；TapGestureCallback.onCancelled 的 350ms 补扫带代际+任务双护栏（旧版无任何护栏）；返回键 600ms 复验带代际+任务护栏；视频轮询针终态降频 1.5s→3s（广告已关后「轮询针继续全量复扫再出手」根治——观察在岗出手拒收；新实例冷却过后恢复 1.5s 节奏）。
+- **订阅命中 0 根治（第五阶段）**：①反饥饿——每窗首次扫描无条件咨询一次 matchSources（subConsultedWin 每窗一次记账；v7.3.0 行为恢复；成本契约：每窗一次 ≤400 节点 DFS 与 v7.3.0 相同）；②七分类统计——notLoaded（未加载）/ noCover（应用不匹配）/ noMatch（页面选择器不匹配——activityIds 限定/选择器链/形态闸/限流）/ hit（规则命中）/ blocked（被安全闸拦截）/ clickFail（双通道派发全失败）/ clickOk（点击执行成功）——stateJson subStat 字段 + 上传日志「订阅七分类」行（订阅页与远程日志直接可读归因——不再把所有未命中都统计为订阅未命中）。
+- **三 app 漏检修复（第六阶段调查结论落地）**：
+  - **ting.android**：静默语义归一——零内容事件（SurfaceView/TextureView 视频在放的观测铁证）旧版传 -1 → 归一为窗口全程静默（silence=elapsed，与 logScanMiss「零内容事件」诊断字段同口径）→ videoLike 可成立 → 20s 观察窗 + 1.5s 轮询针对长视频开屏开岗；树持续有事件的窗（静默 <1.6s）不受影响（功耗契约不变——arm-hint 的 silence<0 达标分支与归一后语义一致）。
+  - **taobao TMSActivity**：TMS 营销容器收编 SDK 广告窗指纹（isAdActivityClassScan 段级 tmsactivity——阿里系广告/营销落地页约定命名，业务 App 窗口绝无此命名）→ wctx.sdkAdWin=true → 插屏闸⓪第三路在场证据 + 图标关闭钮路径语境闸接通（WebView 无文字窗的纯图标 × 钮可出手）。
+  - **微信朋友圈 ImproveSnsTimelineUI**：订阅反饥饿后远程 GKD 订阅（932 款含 mm SnsTimeLineUI 朋友圈广告关闭规则）重新参与匹配——此前被探针命中饿死整窗不咨询；不盲扩角标词表（朋友圈正常内容「图片/评论/头像/实况」绝不当广告——宁漏勿误红线）。
+- **插屏出手日志诚实化**：「× 关闭钮出手（语境闸通过）→ 500ms 后复验」——「本条广告关闭」只在复验确认（任务 SUCCESS/窗口切换复验通过）后打出（v7.9.0 出手瞬间宣称已关闭、两秒后第二击同屏出现——用户实锤的口径矛盾根治）。
+- **性能契约（本轮改动功耗面全审）**：①任务门/验活全为内存布尔判定零 IPC 零扫描；②两轮零候选确认针每任务最多一针（+1 次扫描/窗——点击已发生）；③订阅每窗一次咨询与 v7.3.0 相同（探针/规则命中路径零变化）；④视频轮询终态降频 1.5s→3s（广告已关后轮询针功耗减半）；⑤反馈面板闸复用既有 roots 收集零新增扫描；⑥静默归一零成本（纯参数归一）。省电档案/事件订阅/CLEAN 探针哨兵全保持。
+- **测试（+83 项断言，全绿 24 套件 6197 项——v7.9.0 为 6114）**：新增 AdTaskTest 套件：S1 终态不可逆与点击/回调门（14）/ S2 状态转移真值表（21）/ S3 反馈面板独立流程（7）/ S4 合法重试保护与预算钳制（9——情况 C 完整链仿真：第 1 击失败→RETRY_WAIT→第 2 击→SUCCESS→第 3 击被拒）/ S5 重试前置检查表（8）/ S6 终态冷却闸与视频新键解禁（9）/ S7 两轮零候选就地确认（6）/ S8 轮询终态降频契约（6）。既有 23 套件零改动全绿（回归零破坏）。
+- 工程化：ECJ 全量编译零错误（核心 + 测试）；APK 844KB · VC 79100（>79000 覆盖安装即升级）· 三目录分发（android-app/dist · 仓库 dist）；包内资产语义闸（check-appjs.sh）同验通过。
+
 ## v7.9.0（2026-11-20）—— 源码审计轮：三处接线盲区根治 + 图标关闭钮路径 + 视频画像竞速根治
 
 - **本轮方法论（用户指令「先找根因再改代码 · 先修架构再加规则」）**：完整审计 AdSkipService（5236 行）/ InterstitialGuard / VideoSplashGuard / AdDecisionCore 全链路（事件路由 → 窗口收集 → Node Tree 遍历 → 候选 → 规则匹配 → 评分 → 安全门 → 点击 → 复验），实锤 **v7.8.0 的三处「纯函数单测全绿、服务侧零接线」盲区**——纯函数层被单测保护得很好，服务侧装配层没有断言覆盖，三处死线全是装配缺陷（不是算法缺陷）：

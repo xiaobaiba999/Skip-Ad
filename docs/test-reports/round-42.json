@@ -1,0 +1,62 @@
+{
+  "round": 42,
+  "version": "7.9.1",
+  "date": "2026-11-20",
+  "theme": "任务状态机轮：重复点击/误触/合法重试三难根治 + 订阅命中 0 根治 + 三 app 漏检修复",
+  "user_directives": [
+    "三类真机事故（均已真实出现）：A 第一次成功后第二击误触普通按钮 / B 第一次成功后重复关闭 / C 第一次失败第二次才成功——不能简单关闭所有重试",
+    "先证明问题在哪里再修改代码：完整源码审计（广告检测引擎/候选与评分/SafetyGuard/无障碍点击/真实触点/通道切换/500ms 复验/候选切换/重试调度/反馈面板/状态清理/异步取消/订阅匹配/学习规则）",
+    "第二阶段重构点击任务状态管理：唯一任务 ID/成功不可逆终态/异步回调验活/双通道统一/不误杀合理重试",
+    "第三阶段重设计点击后验证：500ms 审计不直接删除；区分广告已关/仍在场/反馈面板/页面变化不确定/点击无效五情况",
+    "第四阶段调查漏检：微信朋友圈 mm ImproveSnsTimelineUI / 淘宝 taobao TMSActivity WebView / ting.android MainActivity 零内容事件",
+    "第五阶段检查订阅系统：内置 124 款命中 0、远程 932 款命中 0（v7.3.0 远程命中 2）——统计必须分列未加载/应用不匹配/页面不匹配/命中/被拦截/点击失败/成功",
+    "第六阶段安全原则：不降 SafetyGuard 阈值/不取消语义断言/不无限重试/不为命中率牺牲误触安全",
+    "第八阶段版本回归 v7.3.0/v7.6.0/v7.9.0：只修复有证据的问题不整体回退",
+    "所有本地验证通过后才准备提交 Git；未经用户确认不直接推送 GitHub"
+  ],
+  "root_causes": {
+    "cause_no_task_entity": "根因①·无任务实体：引擎没有「广告任务」概念——状态散落十余张 per-package HashMap（clickTries/gaveUp/lastClickAt/skipAt/adClosedAt/chainKilledAt/firedTarget*/lastGestureOkAt）。「成功」的唯一信号是 TYPE_WINDOW_STATE_CHANGED 窗口类切换（AdSkipService:1693-1704）——对 Activity 不变的插屏/覆盖层/Dialog 广告（用户第五轮强调核心场景）成功信号永不触发，状态永不重置任务永不终止 → 广告已关后残留「广告」语境+「×/关闭」候选被 1.5s 节流扫描再次过闸 → 第二击（情况 A/B 的直接机制）",
+    "cause_feedback_blind_interstitial": "根因②·反馈面板对插屏路径完全盲：handleFeedbackSheet 只接在 tryScan 内；maybeInterstitialScan（独立 1.5s 节流扫描链）从不查反馈面板。真机日志实锤链 18:39:02~18:39:04：inter_close 首击成功 → 反馈面板弹出（tryScan 已「停用重试」）→ 面板/残留 UI 的「我为什么会看到广告」语境词（含「广告」）+ 面板自身「×/关闭」候选再次过闸 → 2 秒后第二击落在普通按钮",
+    "cause_sub_starvation": "根因③·订阅 needSub 饥饿（git 考古 v7.3.0→v7.9.0 实锤）：Subscription/GkdSelector/RuleRouter/SubscriptionManager 四文件三版零改动——命中 2→0 的差量全在调用方 AdSkipService。v7.5.0 探针 2→3 词（+skip）、v7.7.0 3→5 词（+关闭广告/+關閉廣告）后：探针先中 → hits 非空 → 第 0 击 needSub=false → matchSources 整窗不被咨询（命中计数在收集侧——0 命中=从未被调用）；复合因素：v7.6.0 首击零门控命中即熔断（窗口提前终结订阅轮次）+ 并行卫士（feed/插屏/图标）抢先关窗",
+    "cause_silence_semantics": "根因④·静默语义盲（ting.android 实锤）：MainActivity 8 节点零内容事件 → contentAt 空 → silenceMs=-1 → videoLike 的静默 ≥1.6s 永不成立 → 20s 观察窗/1.5s 轮询针永不开启 → 长视频开屏（>12s 露头按钮）整窗漏拦；arm-hint 的 silence<0 达标分支暴露了该语义本应为「窗口全程静默」",
+    "cause_taobao_tms": "根因⑤·taobao TMSActivity 无指纹：TMS 营销容器窗类不在 isAdActivityClassScan 指纹表 → wctx.sdkAdWin=false → 插屏闸⓪三路语境全空（WebView 在岗但 closeCands 语境词均不在原生树——H5 内核渲染）→ 插屏整窗漏拦；图标关闭钮路径语境闸（需 SDK 窗指纹或 WebView+角标）也全灭",
+    "cause_mm_sns": "根因⑥·微信朋友圈订阅饿死：feed P1 角标词（广告/推广/就业/求职/招聘/职位）原生直查零命中（角标非可读文本或非词表变体）；同时远程 GKD 订阅的 mm SnsTimeLineUI 朋友圈广告关闭规则因根因③整窗不被咨询——两条路同时死。不盲扩角标词表（朋友圈正常内容「图片/评论/头像/实况图片」绝不当广告——宁漏勿误）",
+    "cause_callback_no_guard": "根因⑦·回调无验活：TapGestureCallback.onCancelled 的 350ms 补扫只查 instance!=null（无代际护栏无任务验活——旧版唯一无护栏回调）；execute 的 600ms 返回键复验只查 instance；videoPoll 只查 winAt 代际不感知广告已关（探针词含「关闭/close/×」contains 面——广告已关后轮询针全量复扫再出手的最直接链条）"
+  },
+  "fixes": {
+    "adtask_core": "新核心模块 core/AdTaskCore.java（纯 Java 零 Android 依赖，与 InterstitialGuard 同规约）：九态状态机（DETECTED/READY/CLICKING/VERIFYING/RETRY_WAIT/FEEDBACK/SUCCESS/FAILED/CANCELLED——终态三态不可逆）+ 唯一任务 ID 契约（winStart 窗代+seq 序号）+ clickAllowed/callbackAllowed 点击与回调门 + onDispatch/onVerifyAdGone/onVerifyAdStill/onVerifyUncertain/onFeedbackSeen/onFeedbackDone/onWindowChanged/onCancelled 转移真值表 + retryGuardsOk 重试前置五要件（广告仍在场/同窗/候选存活/候选可见/关闭语义——任一不满足不得对旧坐标出手）+ taskAllowsNew 终态冷却闸（2.2s）+ budgetRefreshForNewTarget 视频新键解禁 + zeroVerifyConfirmed 两轮零候选确认",
+    "service_task_wiring": "AdSkipService 接线：AdTask 载体（state/kind/winStart/seq/hadClick/endedAt/firstZeroVerifyAt/confirmQueued）+ taskBeginOrCheckClick（execute 出手前置门——终态/FEEDBACK 拒收，终态+冷却过开新任务并 resetTaskForNewInstance 全新预算/触点轨迹/多点防线记忆）+ taskOnDispatch（两通道统一记账→VERIFYING）+ markTaskSuccess/markTaskFailed/markTaskFeedback/markTaskWindowChanged（不可逆终态落账——杀链+静默期+冷却）+ taskLiveFor（回调验活）+ taskOnScanOutcome（两轮零候选就地 SUCCESS——单轮零只观察排确认针）",
+    "feedback_gate_interstitial": "maybeInterstitialScan 头部接线 handleFeedbackSheet（roots 已收集——面板在场期插屏扫描零出手只代点「取消」收起；插屏路径此前完全盲）+ videoPoll 路径经 tryScan 同源闸",
+    "inplace_success": "就地 SUCCESS 验证（500ms 复验审计结论：节奏正确但缺判定——不删不改只补判定）：tryScan 末 taskOnScanOutcome（零候选第一轮记时刻排确认针 +350ms，第二轮仍零→不可逆 SUCCESS）；插屏路径 >12s 窗龄场景由 maybeInterstitialScan 的 interSawCandidate 观测面自身承担（tryScan splashLive 早退的补位）",
+    "callback_guards": "过期回调全面验活：scheduleVerifyScan 带任务 ID（窗代+序号——任务终态/换代一律作废）+ TapGestureCallback.onCancelled 补扫带代际+任务双护栏（旧版无任何护栏）+ execute 返回键 600ms 复验带代际+任务护栏 + videoPoll 终态降频 1.5s→3s（pollDue 三参重载 + VIDEO_TERMINAL_POLL_MS=3000——广告已关后轮询针观察在岗出手拒收，新实例冷却过后恢复 1.5s 节奏）",
+    "sub_antistarvation": "订阅反饥饿：tryScan needSub 增加「每窗首次扫描无条件咨询」因子（subConsultedWin 每窗一次记账——v7.3.0 行为恢复；成本契约每窗一次 ≤400 节点 DFS 与 v7.3.0 相同，探针/规则命中路径零变化）",
+    "sub_seven_stats": "订阅七分类统计：SubscriptionManager AtomicInteger×7（notLoaded/noCover/noMatch/hit/blocked/clickFail/clickOk）+ matchSources 分类入口（未加载=两源全空；应用不匹配=两源都无该包专属规则；页面选择器不匹配=有覆盖但本轮无命中——activityIds 限定/选择器链/形态闸/限流）+ countClickOutcome（execute 回报——被安全闸拦截/双通道全失败/派发成功）+ stateJson subStat 字段 + buildLogBody 上传日志「订阅七分类」行",
+    "silence_normalization": "静默语义归一（ting.android 根治）：tryScan/videoPoll 两处调用点 silenceMs<0（零内容事件）→ 归一为 elapsed（窗口全程静默——SurfaceView/TextureView 视频在放的观测铁证，与 logScanMiss「零内容事件」诊断字段同口径）→ videoLike 可成立 → 20s 观察窗+轮询针开岗；树持续有事件的窗（静默<1.6s）不受影响——功耗契约不变",
+    "taobao_tms_fingerprint": "isAdActivityClassScan 段级新增 tmsactivity（淘宝 TMS 营销容器窗——阿里系广告/营销落地页约定命名，业务 App 窗口绝无此命名）→ wctx.sdkAdWin=true → 插屏闸⓪第三路在场证据 + 图标关闭钮路径语境闸接通（WebView 无文字窗的纯图标 × 钮可出手）+ videoLike sdkAdWin 路径接通",
+    "log_honesty": "插屏出手日志诚实化：executeInterstitial「本条广告关闭」（点击瞬间宣称已关闭——与两秒后第二击同屏出现的口径矛盾）改为「关闭钮出手 → 500ms 后复验」；「✓ 广告已关闭」只在复验确认（任务 SUCCESS 就地验证/窗口切换复验通过）后由 markTaskSuccess 打出",
+    "video_budget_refresh_task": "视频新键预算刷新=开新任务（resetTaskForNewInstance——FAILED 任务合法解禁；刷新块前移至任务门之前——新文本键就是 FAILED 任务的解禁证据，v7.8.0 视频开屏能力零回退；角落/手势候选绝不刷新，误触红线）"
+  },
+  "tests": {
+    "total_suites": 24,
+    "total_passed": 6197,
+    "total_failed": 0,
+    "new_suite": "AdTaskTest 83 项：S1 终态不可逆与点击/回调门 14 / S2 状态转移真值表 21 / S3 反馈面板独立流程 7 / S4 合法重试保护与预算钳制 9（情况 C 完整链仿真：第 1 击失败→RETRY_WAIT→第 2 击→SUCCESS→第 3 击被拒）/ S5 重试前置检查表 8 / S6 终态冷却闸与视频新键解禁 9 / S7 两轮零候选就地确认 6 / S8 轮询终态降频契约 6",
+    "regression": "既有 23 套件零改动全绿（6114 项回归零破坏）",
+    "ecj": "ECJ -1.8 全量编译零错误（核心+测试；Android R 类错误为 aapt2 生成前正常现象，build.sh 全链构建通过）"
+  },
+  "build": {
+    "versionCode": 79100,
+    "versionName": "7.9.1",
+    "size": 861750,
+    "size_kb": 844,
+    "md5": "3952ed825f6b054d34a76a6500c7ebaf",
+    "sha256": "f168be659ce87119ea7a3291539dfee72ce212feedaa20a5d33abfe7b1631622",
+    "dist": "android-app/dist/adshield-v7.9.1.apk + dist/adshield-v7.9.1.apk（两目录分发一致）",
+    "asset_gate": "check-appjs.sh 包内资产语义闸（5 关键符号）随 build.sh 构建通过"
+  },
+  "honesty": {
+    "performance": "性能契约全审：任务门/验活全为内存布尔判定（零 IPC 零扫描）；两轮零候选确认针每任务最多一针（+1 次扫描/窗——仅点击已发生的窗）；订阅每窗一次咨询与 v7.3.0 相同（探针/规则路径零变化）；视频轮询终态降频 1.5s→3s（广告已关后轮询针功耗减半）；反馈面板闸复用既有 roots 收集零新增扫描；静默归一零成本。省电档案/事件订阅/CLEAN 探针哨兵全保持。无法在沙盒实测真机 CPU/功耗——按改动面静态审计声明",
+    "not_run_on_device": "以下未在真机执行（沙盒无 Android 设备/无障碍环境）：三类事故的真机复验（ting/taobao/mm 漏检、反馈面板链、双通道重复执行）——状态机行为由 83 项 JVM 断言 + 6114 项回归断言保障，真机验证待用户实测",
+    "push": "未经用户确认未推送 GitHub（本轮指令明确：只有在所有本地验证通过后才准备提交 Git；未经用户确认不直接推送）"
+  }
+}

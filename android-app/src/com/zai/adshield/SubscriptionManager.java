@@ -7,7 +7,6 @@ import com.zai.adshield.core.AdDecisionCore.Ctx;
 import com.zai.adshield.core.AdDecisionCore.NodeView;
 import com.zai.adshield.core.RuleEngine;
 import com.zai.adshield.core.Subscription;
-
 /**
  * 订阅管理器（v4.0.0 GKD 订阅融合 · v4.2.0 优先级与限流重构 · v7.0.0 离线快照）。
  * ─────────────────────────────────────────
@@ -88,6 +87,41 @@ public final class SubscriptionManager {
     };
 
     static boolean loaded = false;
+
+    /* ═══ v7.9.1 订阅匹配七分类统计（用户实锤：v7.9.0 内置 124 款 124 条命中 0、
+     * 远程 932 款 2880 条命中 0——「不得把所有未命中都统计为订阅未命中」）═══
+     * 口径：
+     *  · notLoaded   订阅未加载（两源全空——BUILTIN_JSON5 解析失败 + 无远程缓存）；
+     *  · noCover     应用不匹配（两源都无该包专属规则——匹配器已咨询）；
+     *  · noMatch     页面选择器不匹配（有覆盖但本轮无命中：activityIds 限定/
+     *                选择器链/形态闸/限流记账任一拦截——上传日志可区分「未覆盖」与「覆盖但不中」）；
+     *  · ruleHit     规则匹配成功（候选进入点击轮换）；
+     *  · blocked     被安全机制拦截（终闸 boundaryCheck 拒点——宁漏勿误闸在岗证据）；
+     *  · clickFail   点击执行失败（双通道派发全失败）；
+     *  · clickOk     点击执行成功（派发完成——已出手）。 */
+    static final java.util.concurrent.atomic.AtomicInteger subNotLoaded =
+            new java.util.concurrent.atomic.AtomicInteger();
+    static final java.util.concurrent.atomic.AtomicInteger subNoCover =
+            new java.util.concurrent.atomic.AtomicInteger();
+    static final java.util.concurrent.atomic.AtomicInteger subNoMatch =
+            new java.util.concurrent.atomic.AtomicInteger();
+    static final java.util.concurrent.atomic.AtomicInteger subRuleHit =
+            new java.util.concurrent.atomic.AtomicInteger();
+    static final java.util.concurrent.atomic.AtomicInteger subBlocked =
+            new java.util.concurrent.atomic.AtomicInteger();
+    static final java.util.concurrent.atomic.AtomicInteger subClickFail =
+            new java.util.concurrent.atomic.AtomicInteger();
+    static final java.util.concurrent.atomic.AtomicInteger subClickOk =
+            new java.util.concurrent.atomic.AtomicInteger();
+
+    /** v7.9.1：订阅出手结果计数（AdSkipService.execute 回报——reason 为
+     *  rule_sub_gkd* 时才计；1=点击执行成功 / 0=双通道全失败 / -1=被安全闸拦截）。 */
+    public static void countClickOutcome(String reason, int outcome) {
+        if (reason == null || !reason.startsWith("rule_sub_gkd")) return;
+        if (outcome > 0) subClickOk.incrementAndGet();
+        else if (outcome == 0) subClickFail.incrementAndGet();
+        else subBlocked.incrementAndGet();
+    }
 
     /* ═══ v5.6.0 订阅市场：活跃维护的第三方订阅注册表 ═══
      * v5.8.0 防呆版：只留 gkd-subscription 话题星数前三且当日活跃的源；
@@ -185,10 +219,19 @@ public final class SubscriptionManager {
         java.util.ArrayList<RuleEngine.Hit> out = new java.util.ArrayList<RuleEngine.Hit>(2);
         Subscription builtin = builtinSub;
         Subscription remote = remoteEnabled ? remoteSub : null;
+        /* v7.9.1 七分类统计入口：未加载 / 应用不匹配 / 页面不匹配 / 命中。 */
+        if (builtin == null && remote == null) {
+            subNotLoaded.incrementAndGet();
+            return out;
+        }
         boolean remoteCovers = remote != null && remote.covers(pkg);
+        boolean builtinCovers = builtin != null && builtin.covers(pkg);
+        if (!remoteCovers && !builtinCovers) {
+            subNoCover.incrementAndGet();
+        }
         String[] order = com.zai.adshield.core.RuleRouter.sourceOrder(
                 remoteEnabled, remote != null, remoteCovers,
-                builtin != null, builtin != null && builtin.covers(pkg));
+                builtin != null, builtinCovers);
         for (int i = 0; i < order.length; i++) {
             try {
                 boolean isRemote = com.zai.adshield.core.RuleRouter.SRC_REMOTE.equals(order[i]);
@@ -196,6 +239,7 @@ public final class SubscriptionManager {
                 if (sub == null) continue;
                 RuleEngine.Hit h = sub.match(pkg, root, ctx, 400, RUNTIME, isRemote ? "r|" : "b|");
                 if (h != null) {
+                    subRuleHit.incrementAndGet();
                     if (isRemote) remoteHits++;
                     else builtinHits++;
                     h.src = com.zai.adshield.core.RuleRouter.zh(order[i]) + "·" + (h.src == null ? "" : h.src);
@@ -203,6 +247,11 @@ public final class SubscriptionManager {
                 }
             } catch (Throwable ignored) {
             }
+        }
+        /* v7.9.1：有覆盖但本轮无命中（activityIds 限定/选择器链/形态闸/限流）——
+         * 与 noCover（两源都无该包规则）分开统计。 */
+        if (out.isEmpty() && (remoteCovers || builtinCovers)) {
+            subNoMatch.incrementAndGet();
         }
         return out;
     }
@@ -455,6 +504,16 @@ public final class SubscriptionManager {
         b.append(",\"updatedAt\":").append(lastUpdateAt);
         b.append(",\"remoteHits\":").append(remoteHits);
         b.append(",\"builtinHits\":").append(builtinHits);
+        /* v7.9.1 七分类统计（用户指令：订阅未命中必须分列——未加载/应用不
+         * 匹配/页面选择器不匹配/命中/被安全闸拦截/点击失败/点击成功）。 */
+        b.append(",\"subStat\":{\"notLoaded\":").append(subNotLoaded.get())
+                .append(",\"noCover\":").append(subNoCover.get())
+                .append(",\"noMatch\":").append(subNoMatch.get())
+                .append(",\"hit\":").append(subRuleHit.get())
+                .append(",\"blocked\":").append(subBlocked.get())
+                .append(",\"clickFail\":").append(subClickFail.get())
+                .append(",\"clickOk\":").append(subClickOk.get())
+                .append("}");
         b.append(",\"error\":").append(jsonStr(lastError == null ? "" : lastError));
         try {
             boolean snapPending = ctx.getSharedPreferences("adshield", Context.MODE_PRIVATE)

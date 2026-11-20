@@ -1208,6 +1208,17 @@ public final class AdDecisionCore {
              *  依旧绝不误认（红线不碰）。 */
             if (s.contains("mintegral") || s.contains("pangle")
                     || s.contains("topon") || s.contains("moloco")) return true;
+            /* v7.9.1 淘宝 TMS 营销容器指纹（用户实锤：taobao TMSActivity 12
+             * 节点 WebView 容器——广告语境/关闭钮均不在原生树（H5 内核渲染），
+             * 三路语境全空 → 插屏整窗漏拦）。TMS = 淘宝营销系统容器窗
+             *（TmsActivity/TMSActivity——阿里系广告/营销落地页约定命名，
+             * 业务 App 窗口绝无此命名）。收编收益：① wctx.sdkAdWin=true →
+             * 插屏闸⓪第三路在场证据接通（WebView+窗指纹双证据）；②
+             * 图标关闭钮路径语境闸放行（纯图标 × 钮可出手）；③ videoLike
+             * 的 sdkAdWin 路径（零候选 streak≥3 + 窗龄≥3.2s）接通。
+             * 误报面：段级 contains（tmsactivity）——普通业务窗命名
+             * TmsActivity 的概率极低且此类窗本身即营销容器。 */
+            if (s.contains("tmsactivity")) return true;
             /* v5.9.0 四轮激进（用户实锤：继续大胆激进——国内聚合漏网主力）：
              *  · ksad——快手 KSAdSDK 广告窗命名段（com.ksad.* 家族与
              *    com.kwad.* 并行的真实包段，LearnGovernor 泛化表已认、

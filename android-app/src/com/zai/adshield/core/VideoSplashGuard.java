@@ -129,6 +129,17 @@ public final class VideoSplashGuard {
         return lastPollAt == null || now - lastPollAt.longValue() >= VIDEO_POLL_MS;
     }
 
+    /** v7.9.1 终态降频档：任务已终态（广告已关/预算用尽/作废）后轮询针
+     *  3s/针继续观察但不出手（execute 任务门拒收终态点击）——「广告已关
+     *  后轮询针全量复扫再出手」根治；新实例冷却过后恢复 1.5s 节奏。 */
+    public static final long VIDEO_TERMINAL_POLL_MS = 3000;
+
+    /** v7.9.1：轮询针到期（终态任务降频版——taskTerminal=true 时按 3s 间隔）。 */
+    public static boolean pollDue(Long lastPollAt, long now, boolean taskTerminal) {
+        long gap = taskTerminal ? VIDEO_TERMINAL_POLL_MS : VIDEO_POLL_MS;
+        return lastPollAt == null || now - lastPollAt.longValue() >= gap;
+    }
+
     /** 门控期白点节流：视频窗角落/手势击距上击 ≥VIDEO_STRIKE_GAP_MS 才放行。 */
     public static boolean strikeGapOk(Long lastStrikeAt, long now) {
         return lastStrikeAt == null || now - lastStrikeAt.longValue() >= VIDEO_STRIKE_GAP_MS;
