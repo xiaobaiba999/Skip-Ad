@@ -22,7 +22,7 @@ from datetime import datetime, timezone, timedelta
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TZ = timezone(timedelta(hours=8))  # Asia/Shanghai
 NOW = datetime.now(TZ).isoformat(timespec="seconds")
-VERSION = "7.9.3"
+VERSION = "7.9.4"
 
 # ─── 引擎侧事实提取 ───────────────────────────────────────────────
 def builtin_sub_packages():

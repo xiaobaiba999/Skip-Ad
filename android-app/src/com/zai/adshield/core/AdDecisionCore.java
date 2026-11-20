@@ -895,10 +895,19 @@ public final class AdDecisionCore {
              *  · 新增假跳过手势候选——「跳过」文案+大容器可点祖先（微博实锤：isSmallClick
              *    判假→从不点击只返回键，返回键又被广告拦截）→ 手势直点标签自身坐标
              *    （clickCenter），performAction 大容器=点开广告绝不走；
-             *  · walk 内候选排序：自身可点/短文案/小面积优先，真键排前 */
+             *  · walk 内候选排序：自身可点/短文案/小面积优先，真键排前
+             * v7.9.4（FalsePositiveScenarioTest 实锤根治——孤立「跳过」词红线）：
+             *  · 旧版 R+F>0 即出手——零页面形态证据。开屏窗龄（12s）内的聊天窗/
+             *    内容列表页里孤立出现的「跳过」字样（聊天气泡/列表行文案）会被
+             *    直接当成跳过键点击（用户 20 类误触红线场景 10/孤立词红线）。
+             *  · 证据质量提升（不是关闭扫描）：出手需页面形态证据——
+             *    广告形态树 isAdLikeLoose（无滚动/无输入框/≤150 节点——真开屏
+             *    窗恒满足：静态图+跳过键从不带滚动容器或输入框）或 SDK 广告窗
+             *    指纹或学习指纹。内容页（可滚/可输入）与聊天窗的孤立词一律拒。
+             *    与 L1.6 关闭键路径（v3.7.0 起同款 isAdLikeLoose 门）口径对齐。 */
             int R = f.skipCands.size();
             int F = f.fakeCands.size();
-            if (R + F > 0) {
+            if (R + F > 0 && (isAdLikeLoose(f) || ctx.sdkAdWin || ctx.learnedCls)) {
                 int idx = Math.min(ctx.clickAttempts, R + F - 1);
                 if (idx < R) {
                     SkipCand c = f.skipCands.get(idx);

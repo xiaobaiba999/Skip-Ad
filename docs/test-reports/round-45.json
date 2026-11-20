@@ -1,0 +1,127 @@
+{
+  "round": 45,
+  "version": "7.9.4",
+  "date": "2026-11-21",
+  "theme": "FalsePositive 场景层（20 类误触红线）+ AdTask 时序压力（A-H 八组 + Case1/2/3 硬回归）+ 安全部署链整改（令牌出库/密钥扫描硬门）",
+  "user_directives": [
+    "持续自主迭代：每轮修改、测试、提交、推送 GitHub（正常开发分支直接执行，不逐轮等确认）",
+    "第四阶段：建立 FalsePositiveScenarioTest——目的不是证明「该点击」，而是证明「绝对不应该点击」（银行/政务/相机/支付/商品/购买/收藏/分享/评论/聊天/更新/权限/会员/PopupWindow/Dialog/悬浮按钮/多窗口/Launcher/小程序容器/反馈面板 20 场景）",
+    "特别测试：「关闭/×/取消/跳过/稍后/知道了」孤立词单独出现不得直接构成点击理由",
+    "第五阶段：把用户已确认的三种真实情况（Case1 成功后旧 actor 全拒 / Case2 失败后重试须重新获取一切 / Case3 click()=true ≠ 广告关闭）变成硬回归测试",
+    "第六阶段：AdTaskTimingTest 时序压力（A-H 八组竞态）",
+    "第七阶段：重审 AdTaskCore 生命周期——终态不可逆（SUCCESS/FAILED/CANCELLED 不得回到任何非终态）",
+    "第八阶段：不要为误触问题降低真实识别能力——禁止关闭某类扫描，必须提高证据质量（文本+描述+vid+角落候选+广告上下文+SDK/WebView 语境+几何+clickable+任务状态+SafetyGuard 综合证据）",
+    "第三阶段（最高优先级之一）：安全审计——检查仓库与构建产物中的 Token/密钥/凭据；发现即处置并披露",
+    "禁止把模拟测试写成真机测试 / NO_AD_OBSERVED 写成 SUCCESS / 规则覆盖写成真实兼容"
+  ],
+  "scope_of_change": {
+    "production_fixes": [
+      "AdDecisionCore.decide() L1 跳过键路径：出手条件从「R+F>0」收紧为「R+F>0 && (isAdLikeLoose(f) || sdkAdWin || learnedCls)」——FalsePositiveScenarioTest 实测揭出的真实误触缺陷（开屏窗龄内的聊天窗/内容页孤立「跳过」字样会被当成跳过键点击）；真开屏窗恒满足形态门（静态图+跳过键从不带滚动容器/输入框）零识别回退，与 L1.6 关闭键路径（v3.7.0 同款门）口径对齐",
+      "AdTaskCore 六个状态转移（onVerifyAdGone/onVerifyAdStill/onVerifyUncertain/onFeedbackSeen/onWindowChanged/onCancelled）增加 S_NONE 守卫——无任务时任何事件不得无中生有出状态（服务侧 null 守卫已保证不传 S_NONE，纯契约收紧）"
+    ],
+    "new_suites": [
+      "FalsePositiveScenarioTest（69 断言 · 九段断言面 S1-S9）",
+      "AdTaskTimingTest（95 断言 · A-H 八组时序竞态 + Case1/2/3 硬回归 + 无任务面真值表）"
+    ],
+    "security_remediation": [
+      "src/lib/credentials.ts 重写：内嵌「双层 XOR+Base64」混淆令牌完全移除 → 环境变量（SKIPAD_GH_TOKEN/GH_TOKEN/GITHUB_TOKEN）→ 仓库根未入库文件 local-gh-token 凭据链",
+      "scripts/gh-token.mjs 同款整改（git-push-once.sh/auto-log-sync 推送链凭据源）",
+      "新增 scripts/secret-scan.sh 密钥泄露扫描硬门（四道检查：令牌形态/credentials.ts 内嵌凭据形态/local-gh-token 入库/keystore 散落），接入 run-tests.sh 与 build.sh 双闸",
+      "build.sh 签名口令支持 KS_PASS/KEY_PASS 环境变量注入",
+      "docs/SECURITY.md 建立：R1 令牌暴露披露（需所有者撤销）+ R2 keystore 公开风险与迁移方案（不贸然换钥）"
+    ],
+    "runner_change": "run-tests.sh 新增 secret-scan 硬门 + 两套新套件入列（28 套件）",
+    "honest_note": "本轮生产修复均为收紧面（不点不该点的），零放宽任何安全闸——用户指令八「不得为降误触降低识别能力」以对照侧断言兑现（真广告语境同词照常出手）"
+  },
+  "false_positive_scenarios": {
+    "1_银行页面普通按钮": "守护名单+可滚轮播+长公告——右上消息图标确被收集为角落候选（风险面诚实记录）但内容形态闸拒之 → 零出手",
+    "2_政务页面普通按钮": "守护名单+公告列表可滚 → 零出手",
+    "3_相机页面": "模式条可滚+快门/闪光/翻转/相册角落图标在树 → 零出手",
+    "4_支付页面": "守护名单+密码输入框（editPresent 铁证）+确认付款按钮 → 零出手",
+    "5_商品详情页": "可滚+长文本+加购/购买按钮 → 零出手",
+    "6_商品购买按钮": "最小购买确认 Dialog +「立即购买」CTA（弹窗窗期最坏情形在场）→ 零出手（CTA 族永不成为点击目标）",
+    "7_8_收藏与分享按钮": "文章页右上图标确被收集为角落候选但可滚+长文本 → 零出手",
+    "9_评论按钮": "评论区可滚+输入框 → 零出手",
+    "10_聊天窗口": "可滚+输入框+孤立「跳过/关闭」聊天气泡（可点小气泡）——v7.9.4 生产修复的实测触发面 → 零出手",
+    "11_更新提示": "单信号「以后再说」（未双确认）→ 零出手",
+    "12_权限请求": "允许/拒绝均非广告关闭族（弹窗窗期最坏情形在场仍零出手）→ 零出手",
+    "13_会员弹窗": "非弹窗广告窗期零出手；最坏情形（弹窗窗期在场）只允许关「关闭」族节点、绝不对「立即领取」CTA 出手",
+    "14_普通PopupWindow": "收藏/举报/不感兴趣菜单（孤立「不感兴趣」是关闭族词）——弹窗窗期最坏情形仍零出手（无角标无 CTA 双信号）",
+    "15_普通Dialog": "表单输入框+确定/取消（弹窗窗期最坏情形）→ 零出手",
+    "16_普通悬浮按钮": "FAB 右缘中部 strongOnly 候选无强广告形态 → 零出手",
+    "17_多窗口": "分屏另一半银行内容窗 → 零出手",
+    "18_Launcher": "Workspace 可滚+图标标签零跳过候选 → 零出手（issue#12 桌面盲点毒链历史红线）",
+    "19_小程序/支付/团购容器": "真广告形态树（跳过键+×+角标俱全）在容器内 → walk 零候选 + decide 恒 NONE（L0 纵深防御三容器验证）",
+    "20_反馈面板": "面板内取消/关闭/× 全套关闭族词 → 零出手 + FEEDBACK 态不对原广告补刀"
+  },
+  "isolated_word_redline": {
+    "红线侧A": "普通设置页（非开屏窗/非弹窗窗期）上「关闭/×/取消/跳过/稍后/知道了」六词孤立按钮逐词零出手",
+    "红线侧B": "开屏窗龄内内容形态页（滚动列表行内孤立「跳过/关闭/×」）——不靠「过了 12s」兜底、内容形态本身拒绝（依赖 v7.9.4 L1 形态门）",
+    "对照侧": "真开屏形态窗「跳过」键照常出手（skip_text）+ 角标在场「×」照常出手（badge_close）——识别能力零回退（用户指令八兑现）"
+  },
+  "adtask_timing_cases": {
+    "A": "click → 100ms 广告消失 → 300ms 旧 callback：两轮确认未满不提前判关；450ms 确认 SUCCESS；500/1250/2000ms 旧回调全拒收；第二次点击=0",
+    "B": "click → 300ms 广告消失 → 500ms 旧 callback：200ms<350ms 不确认；680ms 第二轮零确认 → SUCCESS；回调与点击全拒",
+    "C": "click → 广告未消失 → 候选坐标改变：candidateAlive=false（旧候选消失）五要件拒 → RETRY_WAIT 观察；新候选五要件重验全真才出手（打在新坐标）；窗口也变时绝不出手",
+    "D": "click → 窗口切换 → 有出手 → SUCCESS 终局；之后一切转移原样（不续命/不覆盖/不进 FEEDBACK）；2.2s 冷却闸",
+    "E": "click → Activity 不变 → Dialog 消失（500+850 两轮零确认）→ SUCCESS；冷却期内残留「关闭/知道了」普通按钮不开新任务",
+    "F": "广告关闭（t=100）→ 反馈面板出现（关闭/取消/×）：冷却闸内不开新任务；终态不进 FEEDBACK；第二次点击=0；2.2s 边界含尾（差 1ms 拒/满放行）",
+    "G": "视频广告关闭（t=5000）→ videoPoll 未停：3s 终态降频（6500ms 不排/8000ms 排）；观察针发现 SUCCESS 零点击；残留候选不开新任务；白点节流 ≥1.5s",
+    "H": "延迟露头关闭键六档 100/300/500/800/2000/5000ms：文本键出现帧即出手（露头就跳）；角落图标键 300ms 时机闸（早于 300ms 等/过后即出手）；观察窗 12s/20s 双档与 arm-hint 免杀链"
+  },
+  "case123_hard_regressions": {
+    "Case1_第一次已成功": "旧 task（clickAllowed 拒）/旧 callback（callbackAllowed 拒）/旧 timer（onDispatch 拒）/旧 videoPoll（onVerifyAdStill 原样）/旧 TapGestureCallback（onFeedbackSeen 原样·零响应）→ 全拒；第二次点击 = 0（全程仅 1 击）；冷却闸挡残留标签复活",
+    "Case2_第一次失败合法重试": "五要件逐项缺失全拒（缺广告在场/缺同窗/缺候选存活/缺可见/缺语义各一断言）；全真才允许第二击；第二击成功后第三击拒（重试链闭环）",
+    "Case3_click_true_不等于广告关闭": "onDispatch 只到 VERIFYING 绝不直判 SUCCESS；广告仍在 → RETRY_WAIT（click()=true 不缩短验证）；3 击预算链（RETRY_WAIT→VERIFYING→…→SUCCESS 或 FAILED 优雅收手）；onDispatch 五种非终态源枚举均无 SUCCESS 出口 + onVerifyAdStill/onVerifyUncertain 均无 SUCCESS 出口——唯一成功通道是真验证（广告消失/面板收起/窗口切换有出手）"
+  },
+  "security_audit": {
+    "R1_github_token": {
+      "发现": "src/lib/credentials.ts 自 v2.0.0（commit 3f16c1c，2026-11-16）内嵌双层 XOR+Base64 混淆 classic PAT（ghp_ 40 字符）——公开仓库中混淆令牌=已泄露",
+      "处置": "HEAD 完全移除（凭据链改环境变量/未入库文件）；git 历史含令牌（禁 force push 不可原地清除——历史暴露事实不可撤销）；已标记需所有者撤销（GitHub Settings → Developer settings → PAT 删除）",
+      "防线": "secret-scan.sh 双闸（测试+打包）：令牌形态/内嵌凭据形态/本机凭据入库/keystore 散落四道检查；实测对旧形态样本命中（Base64 长串/KEY 数组/XOR 解码器均在扫描面）"
+    },
+    "R2_android_keystore": {
+      "发现": "android-app/keystore/adshield.keystore（v1.2.0 起入库）+ build.sh 明文口令——同签名覆盖安装冒充风险（供应链投毒面）",
+      "处置": "按发布安全规程不贸然换钥（直装分发换钥=断更）；v8.0 迁移方案立项（新钥安全存储+应用内迁移指引+过渡版本）；KS_PASS/KEY_PASS 环境变量注入已支持；keystore 材料散落由 secret-scan 拦截",
+      "风险接受": "现状由仓库所有者知情接受（覆盖升级连续性）——docs/SECURITY.md R2 完整披露"
+    },
+    "APK_产物扫描": "v7.9.4 APK classes.dex + assets（app.js）+ 原始二进制三面扫描：零令牌形态命中（ghp_/github_pat_/AKIA/私钥头/x-access-token 全无）"
+  },
+  "tests": {
+    "total_suites": 28,
+    "total_pass": 6487,
+    "total_fail": 0,
+    "delta_from_793": "+164（FalsePositiveScenarioTest 69 + AdTaskTimingTest 95；既有 6323 项零回退）",
+    "per_new_suite": { "FalsePositiveScenarioTest": 69, "AdTaskTimingTest": 95 },
+    "secret_scan_gate": "通过（四道检查全绿——run-tests.sh 与 build.sh 双闸接线实测）"
+  },
+  "apk": {
+    "versionName": "7.9.4", "versionCode": 79400,
+    "size": 861750, "md5": "09a9be9090f4e058f8f4b95269942e05",
+    "sha256_prefix": "742cf24c1b56a44e9e5d581b827e1c88",
+    "distribution": ["android-app/dist", "download", "upload"],
+    "signature": "apksigner verify 通过 · 同证书（Signer SHA-256 05ada6e3…——与 v7.9.3 同签名，覆盖安装即升级）"
+  },
+  "compatibility_metrics": {
+    "应用覆盖数量": 233,
+    "规则测试数量": "28 套件 6487 断言（L1 AppCatalogTest 43 + L2 PageScenarioTest 83 + FP FalsePositiveScenarioTest 69 + 时序 AdTaskTimingTest 95）",
+    "页面场景数量": "12 类 UI 样本 × 8 项场景行为 + 20 类误触红线场景（L2 扩容）",
+    "真机测试数量": 0, "广告样本数量": 0, "成功关闭数量": 0, "漏检数量": 0,
+    "误触数量": 0, "重复点击数量": 0, "安全拦截数量": 0,
+    "未验证数量": 233,
+    "口径声明": "L1/L2/FP/时序层全绿 ≠ 真机验证——无真机连接绝不虚报；REAL_DEVICE_TEST = NOT_AVAILABLE"
+  },
+  "unresolved": [
+    "L3 真机实测未开始（无真机连接——REAL_DEVICE_TEST = NOT_AVAILABLE）",
+    "原令牌需仓库所有者在 GitHub 撤销（docs/SECURITY.md R1——撤销前视为有效暴露凭据）",
+    "keystore 公开风险待 v8.0 迁移轮处置（R2 方案已立项）",
+    "知识库高置信包名 95 款待真机 adb 核验",
+    "GKD 远程订阅 932 款逐款覆盖交叉（当前为三源快照并集 148 款）"
+  ],
+  "next_round": [
+    "真机 L3 第一批 50 高频应用（待设备连接后执行——所有 finalResult 用固定枚举记录）",
+    "点击证据记录（decision evidence 结构化：text/description/resourceId/imageCorner/adContext/sdkContext/webViewContext/geometry/clickable/safetyGuard/taskState——本机脱敏存储）",
+    "视频开屏自适应观察窗（初始快速观察·零事件树静默降耗·广告画像成立延长·证据消失即止——20s ceiling 不变）",
+    "下一证据驱动修复轮（待真机日志回传后按证据选题）"
+  ]
+}

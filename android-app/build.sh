@@ -8,6 +8,11 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 
+# v7.9.4：密钥泄露扫描硬门——令牌/私钥形态进入被跟踪文件时直接拒绝打包
+if [ -x "$ROOT/../scripts/secret-scan.sh" ]; then
+  "$ROOT/../scripts/secret-scan.sh" || exit 1
+fi
+
 # 工具链定位：本地默认 android-tools/ 目录；CI（GitHub Actions）通过环境变量逐项覆盖。
 #   ANDROID_TOOLS        工具链根目录（build-tools/、android-34/、jdk/ 相对它解析）
 #   ANDROID_BUILD_TOOLS  aapt2/d8/zipalign/apksigner 所在目录（如 $SDK/build-tools/34.0.0）
@@ -91,10 +96,15 @@ echo "▶ 5/6 打包 dex 并对齐 (zip → zipalign)"
 zipalign -f 4 "$BUILD/base.apk" "$BUILD/aligned.apk"
 
 echo "▶ 6/6 签名 (apksigner, v1+v2)"
+# v7.9.4：签名口令经环境变量优先注入（KS_PASS/KEY_PASS——安全存储与 CI 用）；
+# 未注入时回退内置口令（见 docs/SECURITY.md R2：现钥公开为知情接受现状，
+# v8.0 起迁移新钥）。
+KS_PASS_VAL="${KS_PASS:-adshield2026}"
+KEY_PASS_VAL="${KEY_PASS:-adshield2026}"
 apksigner sign \
   --ks "$ROOT/keystore/adshield.keystore" \
   --ks-key-alias adshield \
-  --ks-pass pass:adshield2026 --key-pass pass:adshield2026 \
+  --ks-pass "pass:$KS_PASS_VAL" --key-pass "pass:$KEY_PASS_VAL" \
   --v1-signing-enabled true --v2-signing-enabled true \
   --out "$OUT" "$BUILD/aligned.apk"
 

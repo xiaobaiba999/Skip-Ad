@@ -3,6 +3,21 @@
 > 首页只保留当前版本要点；全部历史版本详情在本页归档。
 > 发布物（APK/报告/文档）见 [Releases](https://github.com/xiaobaiba999/Skip-Ad/releases) 与 `docs/test-reports/`。
 
+## v7.9.4（2026-11-21）—— FalsePositive 场景层（20 类误触红线）+ AdTask 时序压力（A-H + Case1/2/3）+ 安全部署链整改
+
+- **本轮定位（用户指令第四/五/六阶段 + 最高优先级安全审计）**：证明「绝对不应该点击」的 20 类误触红线场景 + 时序竞态硬回归 + 部署链密钥整改；**实测揭出并根治一个真实误触缺陷**。
+- **生产修复两处（证据质量提升——不是关闭扫描，零识别回退）**：
+  1. **L1 跳过键路径广告形态证据门**：`decide()` 出手条件从 `R+F>0` 收紧为 `R+F>0 && (isAdLikeLoose(f) || sdkAdWin || learnedCls)`。**FalsePositiveScenarioTest 实测揭出**：旧版在开屏窗龄（12s）内对聊天窗/内容列表页里孤立出现的「跳过」字样（可点小气泡/列表行）直接 `skip_text` 出手——零页面形态证据。真开屏窗恒满足形态门（静态图+跳过键从不带滚动容器/输入框，≤150 节点）零回退；与 L1.6 关闭键路径（v3.7.0 起同款 isAdLikeLoose 门）口径对齐。
+  2. **AdTaskCore 无任务 S_NONE 契约加固**：六个状态转移（onVerifyAdGone / onVerifyAdStill / onVerifyUncertain / onFeedbackSeen / onWindowChanged / onCancelled）增加 S_NONE 守卫——「无任务」时任何事件不得无中生有出状态（服务侧 null 守卫已保证不传 S_NONE，纯契约收紧——AdTaskTimingTest 无任务面真值表）。
+- **FalsePositiveScenarioTest 新套件（69 断言 · 九段断言面）**：用户 20 类误触红线场景逐类断言「绝对不点」——银行/政务/支付守护名单页（可滚+长文本+输入框形态铁证；风险面诚实记录：右上消息图标确被收集为角落候选但内容形态闸拒之）· 相机页面（模式条可滚+快门/闪光/翻转角落图标在树仍零出手）· **聊天窗口（孤立「跳过/关闭」气泡零出手——生产修复的实测触发面）**· Launcher 桌面（Workspace 可滚+图标标签零跳过候选——issue#12 桌面盲点毒链历史红线）· 商品详情页/购买确认弹窗（CTA 族永不成为点击目标）· 收藏/分享/评论 · 更新提示单信号 · 权限请求（允许/拒绝均不代点）· 会员弹窗（非弹窗广告窗期零出手；最坏情形只关「关闭」族、绝不对「立即领取」CTA 出手）· 普通 PopupWindow 菜单（孤立「不感兴趣」菜单项不是点击理由）· 表单 Dialog · 悬浮 FAB（strongOnly 无强广告形态不出手）· 多窗口分屏 · 小程序/支付/团购容器 L0 纵深防御（真广告形态树同拒·三容器）· 反馈面板；**孤立词红线**（「关闭/×/取消/跳过/稍后/知道了」普通页孤立出现 + 开屏窗龄内内容形态页孤立出现均零出手）+ **对照侧**（真开屏形态窗「跳过」键照常出手、角标在场「×」照常出手——识别能力零回退，用户指令八兑现）。
+- **AdTaskTimingTest 新套件（95 断言）**：**A-H 八组时序竞态**——A/B 旧 callback 100/300ms 两档（两轮零确认 350ms 间隔不提前判关；SUCCESS 后 500/1250/2000ms 全拒收）· C 候选坐标改变（candidateAlive=false 拒旧坐标；新候选五要件重验全真才出手；窗口也变绝不出手）· D 窗口切换终局（旧任务不续命不覆盖不进 FEEDBACK）· E Dialog 消失后普通按钮冷却闸（2.2s 残留期不点普通按钮）· F 反馈面板零补刀（2.2s 边界含尾）· G videoPoll 终态降频 3s 契约（观察在岗零点击）· H 延迟露头关闭键六档 100/300/500/800/2000/5000ms（文本键出现帧即出手；角落图标 300ms 时机闸）；**Case 1/2/3 三种真机实锤硬回归**——Case 1（成功后旧 task/callback/timer/videoPoll/TapGestureCallback 全拒·第二次点击=0）· Case 2（重试五要件逐项缺失全拒——重新获取广告状态/候选/安全闸/可点性/任务有效性）· Case 3（click()=true ≠ 广告关闭：onDispatch 五种非终态源枚举均无 SUCCESS 出口；唯一成功通道是真验证）。
+- **安全整改（最高优先级审计产出 · docs/SECURITY.md 披露）**：
+  - **R1 GitHub Token 出库**：`src/lib/credentials.ts` 自 v2.0.0 内嵌「双层 XOR+Base64」混淆 classic PAT——公开仓库中混淆令牌=已泄露，**已标记需所有者撤销**。HEAD 完全移除（凭据链改为环境变量 `SKIPAD_GH_TOKEN`/`GH_TOKEN`/`GITHUB_TOKEN` → 仓库根未入库文件 `local-gh-token`，`.gitignore` `local-*` 放行收集，权限 600）；`scripts/gh-token.mjs`（推送链）同款整改；git 历史含令牌（禁 force push 不可原地清除——历史暴露事实不可撤销，撤销动作归仓库所有者）。
+  - **新增密钥泄露扫描硬门 `scripts/secret-scan.sh`**（四道检查：被跟踪文件令牌形态 ghp_/github_pat_/AKIA/私钥头/x-access-token URL 凭据对 · credentials.ts 内嵌凭据形态 Base64 长串/KEY 数组/XOR 解码器 · local-gh-token 绝不入库 · keystore 材料散落），接入 `run-tests.sh` 与 `build.sh` **双闸**——测试与打包任一闸命中即拒。
+  - **R2 keystore 公开风险**：签名私钥+口令公开（v1.2.0 起）——按发布安全规程**不贸然换钥**（直装分发换钥=断更）；v8.0 迁移方案立项（新钥安全存储+迁移指引+过渡版本）；`build.sh` 签名口令支持 `KS_PASS`/`KEY_PASS` 环境变量注入。
+  - **APK 产物扫描**：v7.9.4 APK classes.dex + assets（app.js）+ 原始二进制三面扫描零令牌形态命中。
+- **测试（28 套件 6487 项全绿，v7.9.3 为 6323——+164 = FalsePositiveScenarioTest 69 + AdTaskTimingTest 95；既有 26 套件零回退·逐套件计数核对）**；APK 861750B · VC 79400（> 79300 覆盖安装即升级）三目录分发（android-app/dist / download / upload）· 同证书签名（apksigner verify 通过）· MD5 09a9be90 · SHA-256 742cf24c。
+
 ## v7.9.3（2026-11-21）—— L2 页面场景层：12 类 UI 独立样本 × 8 项场景行为 + 订阅七分类真实计数器断言
 
 - **本轮定位（第三阶段 L2 规格：不能要求所有 200+ 应用都装在一台手机上——用 12 类 UI 独立样本建页面结构兼容性层）**：本轮零生产逻辑改动——全部是测试与测试钩子（安全红线、点击行为面、性能面全部零变化）。

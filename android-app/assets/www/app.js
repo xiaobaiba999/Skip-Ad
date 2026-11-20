@@ -1,4 +1,4 @@
-/* 开屏卫士 v7.9.3 · L2 页面场景层：12 类 UI 独立样本 × 8 项场景行为 + 订阅七分类真实计数器 */
+/* 开屏卫士 v7.9.4 · FalsePositive 场景层 + AdTask 时序压力 + 安全整改（令牌出库/密钥扫描硬门） */
 "use strict";
 
 /* ══════════ 环境 ══════════ */
@@ -23,8 +23,8 @@ const store = {
 };
 
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "7.9.3"; }
-function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "79300"; }
+function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "7.9.4"; }
+function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "79400"; }
 
 /* ══════════ 吉祥物（v4.1.0 全新形象：白机器人小侠 + 绿披风跳跃） ══════════
  * 与启动器图标同源；state: on（跳跃浮动）/ off（灰度待命） */
@@ -35,17 +35,17 @@ function mascotImg(size, state, head) {
 
 $("#brand-logo").innerHTML = mascotImg(30, "on", true);
 
-/* ═══ v7.9.3 版本记录（L2 页面场景层）═══ */
+/* ═══ v7.9.4 版本记录（FalsePositive 场景层 + 时序压力 + 安全整改）═══ */
 const CURRENT_RELEASE = {
   date: "2026-11-21",
-  title: "L2 页面场景层：12 类 UI 独立样本 × 8 项场景行为 + 订阅七分类真实计数器",
+  title: "FalsePositive 场景层 + AdTask 时序压力 + 安全整改（令牌出库/密钥扫描硬门）",
   features: [
-    "L2 页面结构与场景兼容性套件（PageScenarioTest · 83 断言 · 八段断言面）：12 类 UI 独立样本逐类断言节点树可访问性与决策——native / WebView 容器 / Compose / Flutter desc-only / ReactNative / 自绘控件三态 / Canvas SurfaceView / 视频播放器 / 半屏 Dialog / PopupWindow 更新诱导 / 底部悬浮 overlay / 多窗口分屏",
-    "8 项场景行为全部建齐：内容延迟加载 · 关闭按钮延迟出现 · 候选消失（两轮零确认→SUCCESS 不可逆）· 广告与反馈面板切换（FEEDBACK 态不对原广告补刀）· 页面内部导航零出手 · 窗口切换任务终局 · 节点树可访问性 · 视频开屏画像调度契约",
-    "订阅七分类真实计数器断言（SubscriptionManager 生产实现首次纳入 JVM 测试面）：noCover / noMatch / hit / notLoaded / clickFail / clickOk / blocked 逐格断言——不再把所有未命中都归为订阅未命中",
-    "26 套件 6323 项 JVM 断言全绿（+83；既有 6240 项零回退）；安全红线零变化（本轮零生产逻辑改动）· APK 844KB · versionCode 79300（> 79200 覆盖安装即升级）",
+    "FalsePositiveScenarioTest 新套件（69 断言）：用户 20 类误触红线场景逐类断言「绝对不点」——银行/政务/支付守护名单页 · 相机 · 聊天窗（孤立「跳过/关闭」气泡零出手）· Launcher · 商品详情/购买/收藏/分享/评论 · 更新提示单信号 · 权限请求 · 会员弹窗 · 普通 PopupWindow/Dialog/悬浮 FAB · 多窗口 · 小程序容器 L0 纵深防御 · 反馈面板；附带孤立词红线（关闭/×/取消/跳过/稍后/知道了）与对照侧（真广告语境同词照常出手）",
+    "AdTaskTimingTest 新套件（95 断言）：A-H 八组时序竞态（旧回调拒收·坐标漂移不复用·窗口切换终局·普通按钮冷却闸·反馈面板零补刀·videoPoll 终态降频·延迟露头键六档 100/300/500/800/2000/5000ms）+ Case1/2/3 三种真机实锤硬回归（旧 actor 全拒第二次点击=0 · 重试五要件 · click()=true ≠ 广告关闭）",
+    "生产修复两处（证据质量提升非关闭扫描）：① L1 跳过键路径增加广告形态证据门 isAdLikeLoose（无滚动/无输入框/≤150 节点）或 SDK/学习指纹——聊天窗/内容页孤立「跳过」字样不再被当成跳过键点击（真开屏窗零回退）② AdTaskCore 无任务 S_NONE 契约加固——状态转移不得从「无任务」无中生有",
+    "安全整改：GitHub Token 从代码库完全移除（原混淆内嵌已标记需撤销·docs/SECURITY.md R1）→ 环境变量/本机未入库文件凭据链；新增密钥泄露扫描硬门 secret-scan.sh 接入测试与打包双闸；28 套件 6487 项断言全绿（+164；既有 6323 项零回退）· APK 844KB · versionCode 79400（> 79300 覆盖安装即升级）",
   ],
-  summary: "v7.9.3 L2 页面场景轮：建立 12 类 UI 独立样本（native/WebView/Compose/Flutter/RN/自绘/Canvas/视频播放器/Dialog/PopupWindow/overlay/多窗口）× 8 项场景行为（延迟加载/关闭按钮延迟出现/候选消失/反馈面板切换/内部导航/窗口切换/树可访问性/视频画像调度）的分层测试层，并把订阅七分类统计的真实生产计数器纳入 JVM 断言面。全部为测试与测试钩子改动，生产逻辑零变化。",
+  summary: "v7.9.4 误触红线与安全整合轮：FalsePositiveScenarioTest（20 类「绝对不点」场景）+ AdTaskTimingTest（A-H 时序竞态 + Case1/2/3 硬回归）两套新测试层；实测揭出并根治 L1 跳过键路径零形态证据缺陷（聊天窗/内容页孤立「跳过」词会被点击——现需广告形态证据门）；安全整改（Token 出库 + 密钥扫描硬门 + SECURITY.md 披露）。",
 };
 
 /* v7.0.0 新版功能描述（规范：≤5 个标题、带序号；检查更新发现新版本时就地渲染）。

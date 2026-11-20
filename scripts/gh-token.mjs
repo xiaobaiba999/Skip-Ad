@@ -1,28 +1,25 @@
 import { readFileSync } from "fs";
 import { join } from "path";
 
-// 凭证源优先级：本仓库 src/lib/credentials.ts → 沙箱主项目 /home/z/my-project/src/lib/credentials.ts
-// （历史会话中仓库曾位于主项目目录，两种布局都兼容）
-function firstExisting(paths) {
-  for (const p of paths) {
-    try { readFileSync(p); return p; } catch {}
-  }
-  return paths[0];
-}
-const src = readFileSync(firstExisting([
-  join(import.meta.dir, "../src/lib/credentials.ts"),
-  "/home/z/my-project/src/lib/credentials.ts",
-]), "utf-8");
+// v7.9.4 安全整改：凭据源 = 环境变量（SKIPAD_GH_TOKEN / GH_TOKEN / GITHUB_TOKEN）
+// → 仓库根【未入库】文件 local-gh-token（.gitignore 的 local-* 规则放行收集）。
+// 原实现从 src/lib/credentials.ts 解「双层 XOR + Base64」混淆令牌——公开仓库
+// 中的混淆令牌必须视为已泄露（详见 docs/SECURITY.md），已随本轮整改移除。
+const TOKEN_RE = /^[A-Za-z0-9_]{20,}$/;
 
-const m = src.match(/const L2 = "([^"]+)"/);
-const kbm = src.match(/const KEY_B = \[([^\]]+)\]/);
-function xorWith(input, key) {
-  let out = "";
-  for (let i = 0; i < input.length; i++) out += String.fromCharCode(input.charCodeAt(i) ^ key.charCodeAt(i % key.length));
-  return out;
+function readTokenFile(p) {
+  try {
+    const t = readFileSync(p, "utf-8").trim();
+    return t.length > 0 ? t : null;
+  } catch {
+    return null;
+  }
 }
+
 export function getGhToken() {
-  const kb = kbm[1].split(",").map((c) => String.fromCharCode(parseInt(c.trim(), 10))).join("");
-  const layer1 = xorWith(Buffer.from(m[1], "base64").toString("utf-8"), kb);
-  return xorWith(Buffer.from(layer1, "base64").toString("utf-8"), "SkipAd::2026::obf::k1");
+  const env = process.env.SKIPAD_GH_TOKEN || process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
+  if (env && TOKEN_RE.test(env)) return env;
+  const local = readTokenFile(join(import.meta.dir, "..", "local-gh-token"));
+  if (local && TOKEN_RE.test(local)) return local;
+  return "";
 }

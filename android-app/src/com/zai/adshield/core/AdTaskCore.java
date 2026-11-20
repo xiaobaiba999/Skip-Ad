@@ -129,8 +129,12 @@ public final class AdTaskCore {
      * 复验结果①广告已关（候选消失/目标窗变化/反馈面板收起）→ SUCCESS。
      * 不可逆：此后 onRetry/onDispatch 等一切非终态转移全部被
      * clickAllowed/callbackAllowed 拒收。
+     * v7.9.4：S_NONE（无任务）同拒——任何复验事件都不得从「无任务」
+     * 无中生有出状态（服务侧 null 守卫已保证不传 S_NONE，此处纯契约
+     * 加固——AdTaskTimingTest 无任务面真值表）。
      */
     public static int onVerifyAdGone(int state) {
+        if (state == S_NONE) return state;          // 无任务：不无中生有
         if (isTerminal(state)) return state;          // 终态不可逆
         if (state == S_FEEDBACK) return S_SUCCESS;    // 反馈面板收起=广告已关铁证
         return S_SUCCESS;
@@ -141,6 +145,7 @@ public final class AdTaskCore {
      * （合法有限重试）；预算用尽 → FAILED（优雅收手——绝不无限重试）。
      */
     public static int onVerifyAdStill(int state, int clicks, int maxClicks) {
+        if (state == S_NONE) return state;            // v7.9.4 无任务：不无中生有
         if (isTerminal(state)) return state;
         if (state == S_FEEDBACK) return S_FEEDBACK;   // 面板在场：先收面板，不重试广告
         return clicks < maxClicks ? S_RETRY_WAIT : S_FAILED;
@@ -152,6 +157,7 @@ public final class AdTaskCore {
      * 预算已尽则 FAILED。
      */
     public static int onVerifyUncertain(int state, int clicks, int maxClicks) {
+        if (state == S_NONE) return state;            // v7.9.4 无任务：不无中生有
         if (isTerminal(state)) return state;
         if (state == S_FEEDBACK) return S_FEEDBACK;
         return clicks < maxClicks ? S_RETRY_WAIT : S_FAILED;
@@ -163,6 +169,7 @@ public final class AdTaskCore {
      * 「取消」语义收起（绝不替用户提交反馈）。仅非终态可进入。
      */
     public static int onFeedbackSeen(int state) {
+        if (state == S_NONE) return state;            // v7.9.4 无任务：不无中生有
         if (isTerminal(state)) return state;
         return S_FEEDBACK;
     }
@@ -178,12 +185,14 @@ public final class AdTaskCore {
      * 窗口已切走=点击生效）；零出手 → CANCELLED（本窗任务作废）。
      */
     public static int onWindowChanged(int state, boolean hadClicks) {
+        if (state == S_NONE) return state;            // v7.9.4 无任务：不无中生有
         if (hadClicks) return S_SUCCESS;
         return S_CANCELLED;
     }
 
     /** 用户接管/任务作废 → CANCELLED。 */
     public static int onCancelled(int state) {
+        if (state == S_NONE) return state;            // v7.9.4 无任务：不无中生有
         if (isTerminal(state)) return state;
         return S_CANCELLED;
     }

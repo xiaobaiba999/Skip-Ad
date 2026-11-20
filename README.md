@@ -7,7 +7,7 @@
 [![Releases](https://img.shields.io/github/v/release/xiaobaiba999/Skip-Ad?style=flat-square&label=%E6%9C%80%E6%96%B0%E5%8F%91%E5%B8%83)](https://github.com/xiaobaiba999/Skip-Ad/releases/latest)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](#许可)
 [![APK](https://img.shields.io/badge/APK-844KB-orange?style=flat-square)](https://github.com/xiaobaiba999/Skip-Ad/releases/latest)
-[![Tests](https://img.shields.io/badge/JVM%E6%96%AD%E8%A8%80-6197%20%E2%9C%85-brightgreen?style=flat-square)](docs/test-reports/round-42.json)
+[![Tests](https://img.shields.io/badge/JVM%E6%96%AD%E8%A8%80-6487%20%E2%9C%85-brightgreen?style=flat-square)](docs/test-reports/round-45.json)
 [![Matrix](https://img.shields.io/badge/%E6%9C%BA%E5%9E%8B%E7%9F%A9%E9%98%B5-9%E5%93%81%E7%89%8C%E5%8F%8A%E5%AD%90%E5%93%81%E7%89%8C36%E6%9C%BA%E5%9E%8B-396-blue?style=flat-square)](android-app/tests/com/zai/adshield/test/BrandFocus396Test.java)
 [![HumanTap](https://img.shields.io/badge/1%3A1%E4%BA%BA%E6%89%8B%E6%A8%A1%E6%8B%9F-%E8%AF%AF%E7%82%B9%E5%A4%9A%E7%82%B9%E6%A0%B9%E6%B2%BB-ff7043?style=flat-square)](android-app/tests/com/zai/adshield/test/HumanTapMatrixTest.java)
 [![Topic](https://img.shields.io/badge/topic-gkd--subscription-8e8e8e?style=flat-square)](https://github.com/topics/gkd-subscription)
@@ -28,16 +28,17 @@ Java 引擎 · GKD 订阅生态兼容 · [Releases](https://github.com/xiaobaiba
 | **隐私与安全** | 数据仅存本机；联网仅日志上传（脱敏）与更新检查；零定位/通讯录/存储权限；更新包安装前 SHA-256 逐字节校验（镜像投毒/换包自动拦截）；订阅规则支付/诱导词双否决（注入防线） |
 | **体积** | APK 844KB（含三源离线订阅快照 ~520KB）· 冷启动毫秒级 · 典型日功耗 0.05mWh 级 |
 
-## 当前版本 v7.9.3（2026-11-21）· L2 页面场景层：12 类 UI 独立样本 × 8 项场景行为 + 订阅七分类真实计数器断言
+## 当前版本 v7.9.4（2026-11-21）· FalsePositive 场景层 + AdTask 时序压力 + 安全整改（令牌出库/密钥扫描硬门）
 
-**分层测试体系第二层落地轮**（第三阶段 L2 规格：12 类 UI 独立样本 + 8 项场景行为——「节点树可访问性 / 窗口切换 / 内容延迟加载 / 关闭按钮延迟出现 / 候选消失 / 广告与反馈面板切换 / 页面内部导航 / 无障碍事件触发」）：新 JVM 套件 PageScenarioTest（83 断言 · 八段断言面），本轮零生产逻辑改动（安全红线与性能零变化）：
+**误触红线与安全整合轮**（用户 20 类「绝对不应该点击」场景规格 + A-H 八组时序竞态 + Case1/2/3 三种真机实锤情况硬回归 + 安全部署链整改）：新 JVM 套件 FalsePositiveScenarioTest（69 断言）与 AdTaskTimingTest（95 断言），本轮实测揭出并根治 L1 跳过键路径零形态证据缺陷：
 
-1. **12 类 UI 独立样本逐类断言节点树可访问性与决策行为**：native-view（银行简洁原生开屏）/ WebView 容器（淘宝 TMS 营销窗 · sdkAdWin 指纹）/ Compose（semantics 文本）/ Flutter（desc-only 节点 label 回落）/ ReactNative（文本跳过键）/ 自绘控件三态（树极简合法出手 · 内容窗零出手 · SDK 指纹解禁）/ Canvas（SurfaceView 零文本零候选）/ 视频播放器（控制层跳过片头）/ 半屏 Dialog 插屏 / PopupWindow（更新诱导单信号零出手——误触红线）/ 底部悬浮 overlay / 多窗口分屏内容窗零出手
-2. **8 项场景行为全部建齐**：内容延迟加载（帧1 未到零出手→帧2 跳过键出现即出手）· 关闭按钮延迟出现（videoLike 画像 / 20s 观察窗 / arm-hint 免杀链）· 候选消失（DETECTED→VERIFYING→两轮零确认→SUCCESS 不可逆→2.2s 冷却闸）· 广告与反馈面板切换（面板文案零跳过候选 + FEEDBACK 态不对原广告补刀 + 面板链落终态）· 页面内部导航（同窗身份零出手 + 聊天窗零出手 + LauncherUI 不进 feed 扫描）· 窗口切换任务终局（有出手→SUCCESS / 零出手→CANCELLED / 验证中被打断→终局）· 节点树可访问性 · 视频开屏画像调度契约
-3. **订阅七分类真实计数器断言**（SubscriptionManager 生产实现首次纳入 JVM 测试面——run-tests.sh 编译闭包扩至 SubscriptionManager + Net + android.jar）：noCover / noMatch / hit / notLoaded / clickFail / clickOk / blocked 逐格断言 + 非订阅规则路径不计入——**不再把所有未命中都归为订阅未命中**（v7.9.1 七分类统计的 L1 自动化验证闭环）
-4. **26 套件 6323 项断言全绿（+83；既有 6240 项零回退）**：本轮零生产逻辑改动（SubscriptionManager 仅新增两个 JVM 测试钩子 primeForJvm / subStatSnapshot——生产永不调用）；性能零变化
+1. **FalsePositiveScenarioTest（20 类误触红线场景逐类断言「绝对不点」）**：银行/政务/支付守护名单页（可滚+长文本+输入框形态铁证——风险面诚实记录：右上消息图标确被收集为角落候选但内容形态闸拒之）· 相机页面（模式条可滚+快门/闪光/翻转角落图标在树仍零出手）· **聊天窗口（孤立「跳过/关闭」聊天气泡零出手——本轮实测揭出的真实缺陷：旧版 L1 路径会在开屏窗龄内点击孤立「跳过」字样，现需广告形态证据门根治）**· Launcher 桌面 · 商品详情/购买确认弹窗（CTA 族永不成为点击目标）/收藏/分享/评论 · 更新提示单信号 · 权限请求（允许/拒绝均不代点）· 会员弹窗（最坏情形只关「关闭」族、绝不对「立即领取」CTA 出手）· 普通 PopupWindow 菜单（孤立「不感兴趣」菜单项不是点击理由）/表单 Dialog/悬浮 FAB · 多窗口分屏 · 小程序/支付/团购容器 L0 纵深防御（真广告形态树同拒）· 反馈面板；附带**孤立词红线**（「关闭/×/取消/跳过/稍后/知道了」单独出现不构成点击理由）与**对照侧**（真广告语境同词照常出手——不为降误触一刀切关闭识别能力）
+2. **AdTaskTimingTest（A-H 八组时序竞态 + 三种真机实锤情况硬回归）**：旧 callback 100/300ms 两档拒收（两轮零确认 350ms 间隔不提前判关）· 候选坐标改变不得复用旧坐标（五要件对【新候选】重验全真才出手）· 窗口切换任务终局（旧任务不续命）· Dialog 消失后普通按钮冷却闸（2.2s 残留期不点普通按钮）· 反馈面板零补刀 · videoPoll 终态发现 SUCCESS 立即退出（3s 降频契约）· 延迟露头关闭键六档（100/300/500/800/2000/5000ms——出现前零出手·出现后首过安全闸即出手）；**Case 1**（成功后旧 task/callback/timer/videoPoll/TapGestureCallback 全拒·第二次点击=0）· **Case 2**（重试五要件逐项缺失全拒——重新获取广告状态/候选/安全闸/可点性/任务有效性）· **Case 3**（click()=true ≠ 广告关闭——onDispatch 无 SUCCESS 出口枚举断言，唯一成功通道是真验证）
+3. **生产修复两处（证据质量提升——不是关闭扫描）**：① **L1 跳过键路径广告形态证据门**（isAdLikeLoose：无滚动/无输入框/≤150 节点，或 SDK/学习指纹）——真开屏窗恒满足（静态图+跳过键从不带滚动容器/输入框）零识别回退，与 L1.6 关闭键路径（v3.7.0 同款门）口径对齐；② AdTaskCore 无任务 S_NONE 契约加固——一切状态转移不得从「无任务」无中生有（服务侧 null 守卫已保证，纯契约收紧）
+4. **安全整改（docs/SECURITY.md 披露 + 令牌出库 + 密钥扫描硬门）**：GitHub Token 从代码库完全移除（原双层 XOR+Base64 混淆内嵌自 v2.0.0 入库——混淆不等于加密，已标记**需撤销**；凭据链改为环境变量 SKIPAD_GH_TOKEN/GH_TOKEN/GITHUB_TOKEN → 仓库根未入库文件 local-gh-token，.gitignore 放行收集）；新增 `scripts/secret-scan.sh` 密钥泄露扫描硬门接入 run-tests.sh 与 build.sh 双闸（令牌形态/credentials.ts 内嵌凭据形态/本机凭据入库/keystore 散落四道检查）；签名口令支持 KS_PASS/KEY_PASS 环境变量注入；APK 内敏感字符串扫描通过（classes.dex 与 assets 零令牌形态）
+5. **28 套件 6487 项断言全绿（+164；既有 6323 项零回退）**：安全红线全保持（SafetyGuard 终闸零变化·语义断言零取消·预算 3/5 封顶·点击坐标面零扩大·宁漏勿误）；性能零变化（零新增扫描/订阅/轮询）
 
-历史版本全部归档在 [docs/CHANGELOG.md](docs/CHANGELOG.md)。v7.9.2 应用生态目录基线（233 款）、v7.9.1 任务状态机、v7.9.0 接线盲区根治、v7.8.0 视频开屏卫士全部保持。
+历史版本全部归档在 [docs/CHANGELOG.md](docs/CHANGELOG.md)。v7.9.3 L2 页面场景层、v7.9.2 应用生态目录基线（233 款）、v7.9.1 任务状态机、v7.9.0 接线盲区根治、v7.8.0 视频开屏卫士全部保持。
 
 ## App 截图（真实 UI 截取）
 
