@@ -1,7 +1,7 @@
 {
   "meta": {
-    "version": "7.9.2",
-    "updatedAt": "2026-11-20T19:48:38+08:00",
+    "version": "7.9.3",
+    "updatedAt": "2026-11-20T20:03:39+08:00",
     "totalApps": 233
   },
   "layers": {
@@ -48,7 +48,19 @@
         "overlay",
         "multi-window"
       ],
-      "status": "规划中（现有 23 套件已含 native/webview/dialog 场景，后续按 uiTypes 补齐标注）"
+      "suite": "PageScenarioTest",
+      "assertions": 83,
+      "scenarioBehaviors": [
+        "节点树可访问性",
+        "内容延迟加载",
+        "关闭按钮延迟出现",
+        "候选消失",
+        "广告与反馈面板切换",
+        "页面内部导航",
+        "窗口切换任务终局",
+        "视频开屏画像调度契约"
+      ],
+      "status": "v7.9.3 起持续运行（12 类 UI 样本与 8 项场景行为全部建齐；无障碍事件驱动面以「事件到达前后两次扫描行为差」等价表达）"
     },
     "L3": {
       "name": "真机实际应用测试",

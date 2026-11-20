@@ -1,4 +1,4 @@
-/* 开屏卫士 v7.9.2 · 200+ 应用生态兼容性基线：233 款应用目录 + L1 测试体系 + 引擎包名校准五项 */
+/* 开屏卫士 v7.9.3 · L2 页面场景层：12 类 UI 独立样本 × 8 项场景行为 + 订阅七分类真实计数器 */
 "use strict";
 
 /* ══════════ 环境 ══════════ */
@@ -23,8 +23,8 @@ const store = {
 };
 
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "7.9.2"; }
-function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "79200"; }
+function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "7.9.3"; }
+function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "79300"; }
 
 /* ══════════ 吉祥物（v4.1.0 全新形象：白机器人小侠 + 绿披风跳跃） ══════════
  * 与启动器图标同源；state: on（跳跃浮动）/ off（灰度待命） */
@@ -35,19 +35,17 @@ function mascotImg(size, state, head) {
 
 $("#brand-logo").innerHTML = mascotImg(30, "on", true);
 
-/* ═══ v7.9.2 版本记录（200+ 应用生态兼容性基线）═══ */
+/* ═══ v7.9.3 版本记录（L2 页面场景层）═══ */
 const CURRENT_RELEASE = {
   date: "2026-11-21",
-  title: "233 款应用兼容性目录 + L1 测试体系 + 引擎包名校准五项根治",
+  title: "L2 页面场景层：12 类 UI 独立样本 × 8 项场景行为 + 订阅七分类真实计数器",
   features: [
-    "233 款应用兼容性目录（目标 ≥200 达成）：包名三层来源严格区分（引擎自证 115 · 网络逐条核实 23 · 知识库高置信 95）· 12 分类配额全达标 · 包名格式/唯一性断言 · 每款记录引擎覆盖交叉（内置订阅 119 / Feed 名单 19 / GKD 快照 148）",
-    "引擎包名校准五项根治（目录核实直接揭出）：① 中国联通真实包名（旧条目把 Activity 类名当包名——规则从未命中过）② 网易新闻 Feed 名单补 .activity 后缀（信息流护栏对网易新闻全程无效的死因）③ 建行/中行名称互换更正 ④ 剪映/CapCut 包名混淆归位（补国内版 com.lemon.lv）⑤ 飞常准/航班管家名称归位（补 veryzhun.vzcom）",
-    "L1 分层测试体系（AppCatalogTest 新套件 43 断言·六段断言面）：目录完整性 · 内置订阅↔目录双向一致性 · Feed 名单全落座回归闸 · GKD 三源快照交叉 · 逐应用规则匹配仿真（119 款逐包开屏仿真全命中 + 正常窗零出手反例）· 包名校准回归闸",
-    "诚实口径测试矩阵：L1 规则/引擎自动化（全量 233 款）→ L2 页面结构场景 → L3 真机实测（分批 50/100/233）；统一指标口径（规则匹配成功 ≠ 广告关闭成功 · 自动化断言 ≠ 真机兼容性测试）",
-    "24 小时自动日志同步（3 次/天）：学习数据快照刷新 + 历史归档 + 变更即提交推送（无变更优雅跳过）",
-    "25 套件 6240 项 JVM 断言全绿（+43；既有 6197 项零回退）；安全红线零变化（本轮全部是数据级校准，零点击行为面变化）· APK 844KB · versionCode 79200（> 79100 覆盖安装即升级）",
+    "L2 页面结构与场景兼容性套件（PageScenarioTest · 83 断言 · 八段断言面）：12 类 UI 独立样本逐类断言节点树可访问性与决策——native / WebView 容器 / Compose / Flutter desc-only / ReactNative / 自绘控件三态 / Canvas SurfaceView / 视频播放器 / 半屏 Dialog / PopupWindow 更新诱导 / 底部悬浮 overlay / 多窗口分屏",
+    "8 项场景行为全部建齐：内容延迟加载 · 关闭按钮延迟出现 · 候选消失（两轮零确认→SUCCESS 不可逆）· 广告与反馈面板切换（FEEDBACK 态不对原广告补刀）· 页面内部导航零出手 · 窗口切换任务终局 · 节点树可访问性 · 视频开屏画像调度契约",
+    "订阅七分类真实计数器断言（SubscriptionManager 生产实现首次纳入 JVM 测试面）：noCover / noMatch / hit / notLoaded / clickFail / clickOk / blocked 逐格断言——不再把所有未命中都归为订阅未命中",
+    "26 套件 6323 项 JVM 断言全绿（+83；既有 6240 项零回退）；安全红线零变化（本轮零生产逻辑改动）· APK 844KB · versionCode 79300（> 79200 覆盖安装即升级）",
   ],
-  summary: "v7.9.2 应用生态基线轮：建立 233 款常用 Android 应用兼容性目录（包名经应用商店逐条核实 + 引擎自证 + 知识库高置信三层来源，12 分类配额全达标）与 L1/L2/L3 分层测试体系（诚实口径——L1 通过 ≠ 真机验证），目录核实直接揭出并根治引擎五项包名数据缺陷（联通死条目/网易新闻 Feed 名单漏配/银行互标/剪映-CapCut/飞常准-航班管家），新增 AppCatalogTest 套件把「引擎名单↔真实应用生态」一致性纳入回归闸。",
+  summary: "v7.9.3 L2 页面场景轮：建立 12 类 UI 独立样本（native/WebView/Compose/Flutter/RN/自绘/Canvas/视频播放器/Dialog/PopupWindow/overlay/多窗口）× 8 项场景行为（延迟加载/关闭按钮延迟出现/候选消失/反馈面板切换/内部导航/窗口切换/树可访问性/视频画像调度）的分层测试层，并把订阅七分类统计的真实生产计数器纳入 JVM 断言面。全部为测试与测试钩子改动，生产逻辑零变化。",
 };
 
 /* v7.0.0 新版功能描述（规范：≤5 个标题、带序号；检查更新发现新版本时就地渲染）。

@@ -123,6 +123,33 @@ public final class SubscriptionManager {
         else subBlocked.incrementAndGet();
     }
 
+    /* ═══ v7.9.3 JVM 测试钩子（纯静态 · 零 Android 依赖 · 生产永不调用）══
+     * 七分类统计的 L1 断言面（PageScenarioTest S8 段）：
+     *  primeForJvm()      —— 只加载内置订阅（与 ensureLoaded 第一段完全相同：
+     *                        BUILTIN_JSON5 → builtinSub；remote 保持 null——
+     *                        SharedPreferences/Context 一概不碰）；
+     *  subStatSnapshot()  —— 七计数器快照（stateJson 的 subStat 段同源数据）。
+     * 服务侧行为零影响：ensureLoaded 的幂等闸由 loaded 控制，本钩子不动它；
+     * remoteSub/remoteEnabled 只显式置「无远程」基线（matchSources 的
+     * notLoaded/noCover 分类面由此驱动）。 */
+    public static void primeForJvm() {
+        try {
+            builtinSub = Subscription.parse(Subscription.BUILTIN_JSON5, 0, 0);
+        } catch (Throwable e) {
+            builtinSub = null;
+        }
+        remoteSub = null;
+        remoteEnabled = false;
+    }
+
+    /** 七分类快照：[notLoaded, noCover, noMatch, hit, blocked, clickFail, clickOk]。 */
+    public static int[] subStatSnapshot() {
+        return new int[]{
+                subNotLoaded.get(), subNoCover.get(), subNoMatch.get(),
+                subRuleHit.get(), subBlocked.get(), subClickFail.get(), subClickOk.get(),
+        };
+    }
+
     /* ═══ v5.6.0 订阅市场：活跃维护的第三方订阅注册表 ═══
      * v5.8.0 防呆版：只留 gkd-subscription 话题星数前三且当日活跃的源；
      * v7.0.0 三个源的内容随 APK 离线快照内置（SubMirrors.SNAPSHOT_SOURCES

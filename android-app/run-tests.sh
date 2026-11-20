@@ -29,12 +29,27 @@ mkdir -p "$OUT/classes"
 
 find "$ROOT/src/com/zai/adshield/core" "$ROOT/tests" -name "*.java" > "$OUT/sources.txt"
 
-if command -v javac >/dev/null 2>&1; then
-  echo "==> [1/3] javac 编译（核心 + 测试）"
-  COMPILE_LOG=$(javac --release 8 -encoding UTF-8 -nowarn -d "$OUT/classes" @"$OUT/sources.txt" 2>&1) || true
+# v7.9.3：把 SubscriptionManager（七分类计数器与 matchSources 的真实生产实现）
+# 纳入 JVM 测试面——依赖闭包 = core/*（已编译）+ Net.java（org.json 在
+# android.jar）+ android.content.*。运行期只走纯静态路径（primeForJvm/
+# matchSources/countClickOutcome）——零 Android 运行时类加载。
+SUBMGR="$ROOT/src/com/zai/adshield/SubscriptionManager.java"
+NETJ="$ROOT/src/com/zai/adshield/Net.java"
+AJ="${ANDROID_PLATFORM_JAR:-/home/z/android-tools/pf/android-34/android.jar}"
+if [ -f "$SUBMGR" ] && [ -f "$AJ" ]; then
+  echo "$SUBMGR" >> "$OUT/sources.txt"
+  [ -f "$NETJ" ] && echo "$NETJ" >> "$OUT/sources.txt"
+  CP_FLAG="-cp $AJ"
 else
-  echo "==> [1/3] ECJ 编译（核心 + 测试）"
-  COMPILE_LOG=$(java -jar "$ECJ" -1.8 -encoding UTF-8 -warn:none \
+  CP_FLAG=""
+fi
+
+if command -v javac >/dev/null 2>&1; then
+  echo "==> [1/3] javac 编译（核心 + 测试 + SubscriptionManager）"
+  COMPILE_LOG=$(javac --release 8 -encoding UTF-8 -nowarn $CP_FLAG -d "$OUT/classes" @"$OUT/sources.txt" 2>&1) || true
+else
+  echo "==> [1/3] ECJ 编译（核心 + 测试 + SubscriptionManager）"
+  COMPILE_LOG=$(java -jar "$ECJ" -1.8 -encoding UTF-8 -warn:none $CP_FLAG \
     -d "$OUT/classes" @"$OUT/sources.txt" 2>&1) || true
 fi
 echo "$COMPILE_LOG" | head -30
@@ -48,7 +63,7 @@ echo "    编译产出: $OUT/classes"
 echo "==> [2/3] 运行测试套件"
 TOTAL_PASS=0
 TOTAL_FAIL=0
-for SUITE in MiniProgramGuardTest DecisionGuardTest SubscriptionBuiltinTest RegressionCoreTest MultiDeviceMatrixTest NonMainstreamAppTest RestoreGuardTest PowerGovernorTest RuleGovernorTest ComplianceGuardTest TapPointMatrixTest HumanTapMatrixTest BrandFocus396Test ReentrySplashTest ReleaseNotesTest SubMirrorTest FeedAdGuardTest RuleOrderTest InterstitialGuardTest SplashCountdownTest AggressiveModeTest VideoSplashTest InterstitialRoutingTest AdTaskTest AppCatalogTest; do
+for SUITE in MiniProgramGuardTest DecisionGuardTest SubscriptionBuiltinTest RegressionCoreTest MultiDeviceMatrixTest NonMainstreamAppTest RestoreGuardTest PowerGovernorTest RuleGovernorTest ComplianceGuardTest TapPointMatrixTest HumanTapMatrixTest BrandFocus396Test ReentrySplashTest ReleaseNotesTest SubMirrorTest FeedAdGuardTest RuleOrderTest InterstitialGuardTest SplashCountdownTest AggressiveModeTest VideoSplashTest InterstitialRoutingTest AdTaskTest AppCatalogTest PageScenarioTest; do
   echo ""
   echo "══ $SUITE ══"
   if java -cp "$OUT/classes" "com.zai.adshield.test.$SUITE" | tee "$OUT/$SUITE.log"; then

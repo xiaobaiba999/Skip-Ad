@@ -22,7 +22,7 @@ from datetime import datetime, timezone, timedelta
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TZ = timezone(timedelta(hours=8))  # Asia/Shanghai
 NOW = datetime.now(TZ).isoformat(timespec="seconds")
-VERSION = "7.9.2"
+VERSION = "7.9.3"
 
 # ─── 引擎侧事实提取 ───────────────────────────────────────────────
 def builtin_sub_packages():
@@ -435,7 +435,12 @@ matrix = {
             "uiTypes": ["native-view", "webview", "compose", "flutter", "react-native",
                         "custom-draw", "canvas", "video-player", "dialog", "popupwindow",
                         "overlay", "multi-window"],
-            "status": "规划中（现有 23 套件已含 native/webview/dialog 场景，后续按 uiTypes 补齐标注）",
+            "suite": "PageScenarioTest",
+            "assertions": 83,
+            "scenarioBehaviors": ["节点树可访问性", "内容延迟加载", "关闭按钮延迟出现",
+                                  "候选消失", "广告与反馈面板切换", "页面内部导航",
+                                  "窗口切换任务终局", "视频开屏画像调度契约"],
+            "status": "v7.9.3 起持续运行（12 类 UI 样本与 8 项场景行为全部建齐；无障碍事件驱动面以「事件到达前后两次扫描行为差」等价表达）",
         },
         "L3": {
             "name": "真机实际应用测试",
@@ -498,8 +503,8 @@ lines += [
     "",
     "| 层级 | 状态 | 说明 |",
     "|---|---|---|",
-    "| L1 规则/引擎自动化 | ✅ 全量 232 款（AppCatalogTest，随每轮测试跑） | 包名/分类/订阅加载/引擎一致性断言 |",
-    "| L2 页面结构场景 | 🔶 部分 | 现有 23 套件含 native/webview/dialog 仿真；12 类 UI 全量标注待补 |",
+    "| L1 规则/引擎自动化 | ✅ 全量 233 款（AppCatalogTest，随每轮测试跑） | 包名/分类/订阅加载/引擎一致性断言 |",
+    "| L2 页面结构场景 | ✅ v7.9.3 建齐 | PageScenarioTest 83 断言：12 类 UI 独立样本 × 8 项场景行为（含订阅七分类真实计数器） |",
     "| L3 真机实测 | ⛔ 未开始 | 无真机连接；待日志回传后录入，绝不虚报 |",
     "",
     "## 本轮（v7.9.2）由目录核实直接揪出的引擎数据缺陷（全部已修复）",

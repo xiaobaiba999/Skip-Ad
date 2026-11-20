@@ -1,6 +1,6 @@
 /** 版本与 GitHub 仓库信息（Web 端与发布节奏共用） */
-export const APP_VERSION = "7.9.2";
-export const VERSION_CODE = 79200; // major*10000 + minor*100 + patch，随版本单调递增
+export const APP_VERSION = "7.9.3";
+export const VERSION_CODE = 79300; // major*10000 + minor*100 + patch，随版本单调递增
 export const GITHUB_REPO = "xiaobaiba999/Skip-Ad";
 export const GITHUB_API = `https://api.github.com/repos/${GITHUB_REPO}`;
 export const GITHUB_HOME = `https://github.com/${GITHUB_REPO}`;
@@ -19,17 +19,15 @@ export interface VersionEntry {
  *  旧版本内容归档在 GitHub Releases 与 git 历史） */
 export const VERSION_HISTORY: VersionEntry[] = [
   {
-    version: "7.9.2",
-    code: 79200,
+    version: "7.9.3",
+    code: 79300,
     date: "2026-11-21",
-    tagline: "200+ 应用生态兼容性基线：233 款应用目录 + L1 测试体系 + 引擎包名校准五项根治",
+    tagline: "L2 页面场景层：12 类 UI 独立样本 × 8 项场景行为 + 订阅七分类真实计数器断言",
     notes: [
-      "233 款应用兼容性目录（compatibility/apps_catalog.json · 目标 ≥200 达成）：包名三层来源严格区分（引擎自证 115 · 网络逐条核实 23 · 知识库高置信 95）· 12 分类配额全达标（社交 25 / 短视频 25 / 资讯 20 / 电商 26 / 音乐 10 / 浏览器 11 / 工具 24 / 阅读 15 / 游戏 17 / 学习 15 / 金融生活 35 / 其他 10）· 包名格式/唯一性断言 · 每款记录 adTypes/uiFramework/优先级/引擎覆盖交叉（内置订阅 119 / Feed 名单 19 / GKD 快照 148）",
-      "引擎包名校准五项根治（目录核实直接揭出——全部应用商店上架信息实锤）：① 中国联通真实包名 com.sinovatech.unicom.ui（旧条目把 Activity 类名当包名——规则从未命中过任何真实设备）② 网易新闻 FeedAdGuard 名单补 .activity 后缀（旧值从未命中——信息流护栏对网易新闻全程无效）③ 建设银行/中国银行两行名称互换更正 ④ com.lemon.lvoverseas 误标剪映（实为 CapCut 海外版）——补剪映国内版 com.lemon.lv ⑤ com.flightmanager.view 误标飞常准（实为航班管家）——补飞常准真实包名 veryzhun.vzcom",
-      "L1 分层测试体系（AppCatalogTest 新套件 · 43 断言 · 六段断言面）：目录完整性（规模/配额/格式/唯一性）· 内置订阅↔目录双向一致性（零孤儿包 + 零虚标）· Feed 名单↔目录全落座（网易新闻类死条目缺陷的回归闸）· GKD 三源快照解析 + 覆盖交叉 · 逐应用规则匹配仿真（内置订阅 119 款逐包开屏仿真全命中 + rowsFor 路由面 + 正常主界面零出手反例）· 包名校准五项回归闸",
-      "诚实口径测试矩阵（compatibility/test_matrix.json）：L1 规则/引擎自动化（全量 233 款）→ L2 页面结构场景（12 类 UI 样本规划）→ L3 真机实测（分批 50/100/233）· 统一指标口径（广告关闭成功率/漏检率/误触率——规则匹配成功 ≠ 广告关闭成功 · 应用数量 ≠ 广告样本数量 · 自动化断言 ≠ 真机兼容性测试）· 结果词汇表（NOT INSTALLED / NO AD OBSERVED / MISS / FALSE CLICK / VERIFIED SUCCESS）",
-      "24 小时自动日志同步（3 次/天）：scripts/auto-log-sync.mjs 学习数据快照刷新 + 历史归档 + 变更即提交推送（无变更优雅跳过）——三项定时（01:20 / 09:20 / 17:20 Asia/Shanghai）",
-      "25 套件 6240 项 JVM 断言全绿（+43 = AppCatalogTest 新套件；既有 6197 项零回退）；安全红线零变化（SafetyGuard 终闸/语义断言/预算封顶/坐标面全保持——本轮全部是数据级校准，零点击行为面变化）；性能零变化（零新增扫描/零新增订阅/零新增轮询）· APK 844KB · VC 79200 覆盖安装即升级",
+      "L2 页面结构与场景兼容性套件（PageScenarioTest 新套件 · 83 断言 · 八段断言面）：12 类 UI 独立样本逐类断言节点树可访问性与决策行为——native-view（银行简洁原生开屏）/ WebView 容器（TMS 营销窗·sdkAdWin 指纹）/ Compose（semantics 文本）/ Flutter（desc-only 节点 label 回落）/ ReactNative（文本跳过键）/ 自绘控件三态（树极简合法出手·内容窗零出手·SDK 指纹解禁）/ Canvas（SurfaceView 零文本零候选）/ 视频播放器（控制层跳过片头）/ 半屏 Dialog 插屏 / PopupWindow（更新诱导单信号零出手——误触红线）/ 底部悬浮 overlay / 多窗口分屏内容窗零出手",
+      "8 项场景行为（用户目录规格全建齐）：内容延迟加载（帧1 未到零出手→帧2 跳过键出现即出手）· 关闭按钮延迟出现（videoLike 画像/20s 观察窗/arm-hint 免杀链——>12s 露头按钮可等到）· 候选消失（DETECTED→VERIFYING→两轮零确认→SUCCESS 不可逆→2.2s 冷却闸）· 广告与反馈面板切换（面板文案零跳过候选 + FEEDBACK 态不对原广告补刀 + 面板链落终态不恢复原任务）· 页面内部导航（同窗身份零出手 + 聊天窗特征齐全零出手 + LauncherUI 不进 feed 扫描）· 窗口切换任务终局（有出手→SUCCESS / 零出手→CANCELLED 不诬为成功 / 验证中被打断→终局）· 节点树可访问性（逐类样本 walk 全通过）· 视频开屏画像调度契约（videoLike 四因子/观察窗/轮询节奏/终态降频/白点节流/预算刷新）",
+      "订阅七分类真实计数器断言（SubscriptionManager 生产实现首次纳入 JVM 测试面——run-tests.sh 编译闭包扩至 SubscriptionManager+Net+android.jar）：noCover（未知包应用不匹配 +1）· noMatch（有覆盖页面不匹配 +1——与 noCover 分列）· hit（内置订阅跳过键规则命中 +1）· notLoaded（已加载零计数——归因诚实）· clickFail/clickOk/blocked（countClickOutcome 三分支）· 非订阅规则路径不计入（不虚标）——不再把所有未命中都归为订阅未命中",
+      "26 套件 6323 项 JVM 断言全绿（+83 = PageScenarioTest 新套件；既有 6240 项零回退）；安全红线零变化（本轮零生产逻辑改动——SubscriptionManager 仅新增两个 JVM 测试钩子 primeForJvm/subStatSnapshot，生产永不调用）；性能零变化（零新增扫描/订阅/轮询）· APK 844KB · VC 79300 覆盖安装即升级",
     ],
   },
 ];

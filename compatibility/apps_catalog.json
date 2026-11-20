@@ -1,7 +1,7 @@
 {
   "meta": {
-    "version": "7.9.2",
-    "updatedAt": "2026-11-20T19:48:38+08:00",
+    "version": "7.9.3",
+    "updatedAt": "2026-11-20T20:03:39+08:00",
     "timezone": "Asia/Shanghai",
     "totalApps": 233,
     "categoryQuotas": {
@@ -73,7 +73,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "朋友圈信息流+反馈面板主战场（FeedAdGuard 名单首位·sns 窗门）"
     },
@@ -99,7 +99,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "QQ浏览器/看点 feed 常见"
     },
@@ -126,7 +126,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "信息流广告+反馈面板（v5.5.1 issue#64 语义放行案例）"
     },
@@ -151,7 +151,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "轻量国际通道版"
     },
@@ -175,7 +175,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "办公IM"
     },
@@ -200,7 +200,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "办公IM"
     },
@@ -224,7 +224,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "办公IM"
     },
@@ -248,7 +248,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "QQ办公轻量版"
     },
@@ -275,7 +275,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "社区种草 feed+开屏"
     },
@@ -301,7 +301,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -324,7 +324,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -346,7 +346,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -373,7 +373,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "信息流+开屏（FeedAdGuard 名单）"
     },
@@ -398,7 +398,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -425,7 +425,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -448,7 +448,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "国际·Stories ads 形态与国内不同"
     },
@@ -467,7 +467,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "国际·无国内式开屏"
     },
@@ -488,7 +488,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "国际"
     },
@@ -507,7 +507,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "国际"
     },
@@ -532,7 +532,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "国际"
     },
@@ -554,7 +554,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "国际"
     },
@@ -573,7 +573,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "国际"
     },
@@ -592,7 +592,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "国际"
     },
@@ -617,7 +617,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "国际"
     },
@@ -640,7 +640,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "国际·日韩系开屏"
     },
@@ -667,7 +667,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -693,7 +693,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -719,7 +719,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -741,7 +741,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -767,7 +767,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -794,7 +794,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -821,7 +821,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -848,7 +848,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -874,7 +874,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -898,7 +898,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -924,7 +924,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -950,7 +950,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -976,7 +976,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -1000,7 +1000,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "watch",
       "notes": "v7.9.2 新增：内置订阅此前误把 CapCut 包名当剪映"
     },
@@ -1023,7 +1023,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "watch",
       "notes": "剪映海外版（v7.9.2 名称校准：原误标「剪映」）"
     },
@@ -1046,7 +1046,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "已停服（历史包名有效）"
     },
@@ -1073,7 +1073,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -1096,7 +1096,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -1119,7 +1119,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "国际"
     },
@@ -1138,7 +1138,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "国际·无第三方广告"
     },
@@ -1157,7 +1157,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "国际"
     },
@@ -1176,7 +1176,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "国际"
     },
@@ -1195,7 +1195,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "国际"
     },
@@ -1220,7 +1220,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "国际"
     },
@@ -1241,7 +1241,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "国际"
     },
@@ -1268,7 +1268,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -1294,7 +1294,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -1319,7 +1319,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "watch",
       "notes": "v7.9.2 修复：FeedAdGuard 名单旧值 com.netease.newsreader 从未命中"
     },
@@ -1341,7 +1341,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -1367,7 +1367,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -1389,7 +1389,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -1411,7 +1411,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -1437,7 +1437,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -1462,7 +1462,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -1487,7 +1487,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -1510,7 +1510,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -1536,7 +1536,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -1559,7 +1559,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "v7.4.0 收编：评论区信息流卡片广告"
     },
@@ -1585,7 +1585,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -1607,7 +1607,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "激励阅读系（ad 重）"
     },
@@ -1633,7 +1633,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -1652,7 +1652,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "国际"
     },
@@ -1671,7 +1671,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "国际"
     },
@@ -1692,7 +1692,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "国际"
     },
@@ -1711,7 +1711,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "国际"
     },
@@ -1738,7 +1738,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "TMSActivity 营销容器 v7.9.0 收编"
     },
@@ -1764,7 +1764,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -1791,7 +1791,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -1815,7 +1815,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -1842,7 +1842,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -1865,7 +1865,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -1891,7 +1891,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -1915,7 +1915,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -1936,7 +1936,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -1962,7 +1962,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -1983,7 +1983,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -2008,7 +2008,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -2029,7 +2029,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -2055,7 +2055,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -2079,7 +2079,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -2102,7 +2102,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -2129,7 +2129,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -2150,7 +2150,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "国际"
     },
@@ -2172,7 +2172,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "国际"
     },
@@ -2191,7 +2191,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "国际"
     },
@@ -2213,7 +2213,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "国际"
     },
@@ -2232,7 +2232,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "国际"
     },
@@ -2251,7 +2251,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "国际"
     },
@@ -2270,7 +2270,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "国际"
     },
@@ -2292,7 +2292,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "国际"
     },
@@ -2313,7 +2313,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "国际"
     },
@@ -2339,7 +2339,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -2365,7 +2365,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -2391,7 +2391,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -2415,7 +2415,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -2442,7 +2442,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -2467,7 +2467,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -2488,7 +2488,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "国际·音频广告形态不同"
     },
@@ -2507,7 +2507,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "国际"
     },
@@ -2526,7 +2526,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "国际"
     },
@@ -2549,7 +2549,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "国际"
     },
@@ -2576,7 +2576,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -2603,7 +2603,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -2630,7 +2630,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -2655,7 +2655,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -2676,7 +2676,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "国际"
     },
@@ -2697,7 +2697,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "国际"
     },
@@ -2720,7 +2720,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "国际"
     },
@@ -2739,7 +2739,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "国际"
     },
@@ -2762,7 +2762,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "极简·无开屏"
     },
@@ -2781,7 +2781,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "国际·自带拦截"
     },
@@ -2800,7 +2800,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "国际"
     },
@@ -2826,7 +2826,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -2852,7 +2852,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -2878,7 +2878,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -2903,7 +2903,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -2924,7 +2924,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -2951,7 +2951,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -2977,7 +2977,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -2999,7 +2999,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -3023,7 +3023,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -3048,7 +3048,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -3072,7 +3072,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -3093,7 +3093,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -3114,7 +3114,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -3140,7 +3140,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -3164,7 +3164,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -3187,7 +3187,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "极客工具·GKD 快照在列但默认禁用"
     },
@@ -3213,7 +3213,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -3238,7 +3238,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -3261,7 +3261,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "输入法弹窗形态"
     },
@@ -3285,7 +3285,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -3306,7 +3306,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -3329,7 +3329,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "国际"
     },
@@ -3351,7 +3351,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "国际"
     },
@@ -3372,7 +3372,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "国际"
     },
@@ -3399,7 +3399,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "免费阅读·广告最重门类"
     },
@@ -3426,7 +3426,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -3452,7 +3452,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -3474,7 +3474,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -3499,7 +3499,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -3524,7 +3524,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -3546,7 +3546,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -3567,7 +3567,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -3593,7 +3593,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -3619,7 +3619,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -3645,7 +3645,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -3670,7 +3670,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -3694,7 +3694,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -3713,7 +3713,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "国际"
     },
@@ -3732,7 +3732,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "国际"
     },
@@ -3755,7 +3755,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "游戏本体广告少"
     },
@@ -3774,7 +3774,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "游戏本体无第三方广告"
     },
@@ -3793,7 +3793,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -3815,7 +3815,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "休闲游戏 ad 重（应用宝渠道变体 .qq 后缀）"
     },
@@ -3834,7 +3834,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -3856,7 +3856,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -3878,7 +3878,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -3900,7 +3900,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -3922,7 +3922,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "国际服"
     },
@@ -3944,7 +3944,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -3963,7 +3963,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -3989,7 +3989,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "应用商店·开屏/插屏重灾区"
     },
@@ -4015,7 +4015,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "v7.4.0 收编：推荐卡片信息流"
     },
@@ -4041,7 +4041,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -4063,7 +4063,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -4089,7 +4089,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -4111,7 +4111,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "TapTap 国内版包名未核实（检索证据不足，宁缺毋滥）"
     },
@@ -4137,7 +4137,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -4162,7 +4162,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -4188,7 +4188,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -4212,7 +4212,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "官方包名即含「andriod」拼写（历史既定）"
     },
@@ -4237,7 +4237,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -4258,7 +4258,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -4277,7 +4277,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "国际"
     },
@@ -4299,7 +4299,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -4323,7 +4323,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "国际"
     },
@@ -4342,7 +4342,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "国际"
     },
@@ -4361,7 +4361,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "国际"
     },
@@ -4380,7 +4380,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "国际"
     },
@@ -4399,7 +4399,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "国际"
     },
@@ -4418,7 +4418,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "国际"
     },
@@ -4441,7 +4441,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "国际"
     },
@@ -4468,7 +4468,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "理财页 feed+开屏·守护名单（温和代点）"
     },
@@ -4494,7 +4494,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -4519,7 +4519,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "守护名单"
     },
@@ -4544,7 +4544,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "watch",
       "notes": "v7.9.2 名称校准：与 BOCMB 两行互换了（display 级）"
     },
@@ -4565,7 +4565,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "watch",
       "notes": "v7.9.2 名称校准（display 级）"
     },
@@ -4590,7 +4590,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -4615,7 +4615,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -4636,7 +4636,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -4657,7 +4657,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -4678,7 +4678,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -4703,7 +4703,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -4725,7 +4725,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -4744,7 +4744,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "国际"
     },
@@ -4771,7 +4771,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "DspActivity 开屏+DynamicDialog 弹窗 v5.1.0 专项"
     },
@@ -4798,7 +4798,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -4824,7 +4824,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -4849,7 +4849,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -4872,7 +4872,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -4894,7 +4894,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -4918,7 +4918,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -4940,7 +4940,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -4962,7 +4962,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -4984,7 +4984,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -5005,7 +5005,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -5030,7 +5030,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -5051,7 +5051,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -5072,7 +5072,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -5097,7 +5097,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -5118,7 +5118,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "watch",
       "notes": "v7.9.2 新增：旧条目把 com.flightmanager.view（航班管家）误标为飞常准"
     },
@@ -5142,7 +5142,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -5167,7 +5167,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -5193,7 +5193,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -5215,7 +5215,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -5237,7 +5237,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -5262,7 +5262,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -5286,7 +5286,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -5312,7 +5312,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -5338,7 +5338,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -5364,7 +5364,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "watch",
       "notes": "v7.9.2 修复：旧包名误带 Activity 类名后缀，规则从未命中"
     },
@@ -5386,7 +5386,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": ""
     },
@@ -5407,7 +5407,7 @@
         "gkdSources": []
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "watch",
       "notes": "v7.9.2 名称校准：此前误标「飞常准」"
     },
@@ -5432,7 +5432,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "MIUI 系统预装"
     },
@@ -5459,7 +5459,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "MIUI 系统预装"
     },
@@ -5485,7 +5485,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "MIUI 系统预装"
     },
@@ -5511,7 +5511,7 @@
         ]
       },
       "testStatus": "l1-tested",
-      "lastTestVersion": "7.9.2",
+      "lastTestVersion": "7.9.3",
       "regressionStatus": "none",
       "notes": "EMUI/HarmonyOS 预装"
     }
