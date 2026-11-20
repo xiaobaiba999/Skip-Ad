@@ -1,7 +1,7 @@
 {
   "meta": {
     "batchId": "l3-batch-1",
-    "version": "7.9.5",
+    "version": "7.9.6",
     "generatedAt": "2026-11-20T13:05:45+00:00",
     "timezone": "Asia/Shanghai",
     "totalApps": 50,
@@ -48,7 +48,11 @@
   },
   "realDeviceTest": {
     "status": "NOT_AVAILABLE",
-    "note": "本机无真实 Android 设备（REAL_DEVICE_TEST = NOT_AVAILABLE）——批次定义与记录字段已建齐，执行需真机 adb 环境；绝不虚报执行结果。"
+    "checkedAt": [
+      "2026-11-20 v7.9.5 建档",
+      "2026-11-20 v7.9.6 复查（adb/emulator/KVM 均不可用——无真机环境）"
+    ],
+    "note": "本机无真实 Android 设备（REAL_DEVICE_TEST = NOT_AVAILABLE）——批次定义与记录字段已建齐，执行需真机 adb 环境；v7.9.6 开轮时再次复查仍无真机：批次保持 PENDING_REAL_DEVICE，50 款记录字段一律真机回填，绝不预填执行结果。"
   },
   "categoryCoverage": {
     "video": 6,

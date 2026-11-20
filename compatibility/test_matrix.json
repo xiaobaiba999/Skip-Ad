@@ -1,7 +1,7 @@
 {
   "meta": {
-    "version": "7.9.5",
-    "updatedAt": "2026-11-21T12:00:00+08:00",
+    "version": "7.9.6",
+    "updatedAt": "2026-11-20T22:10:00+08:00",
     "totalApps": 233
   },
   "layers": {
@@ -92,9 +92,20 @@
       "batch1": "compatibility/l3_batch1.json（v7.9.5 定义：50 款 · 12/12 类 · video-splash 全收 6 · banner/rewarded/feedback 各 2 · 引擎四档覆盖 43/39/11/3）",
       "device": "Xiaomi 2410DPN6CC / Android 17 / SDK 37（目录登记目标机；本机未连接）",
       "recordFields": [
-        "app", "package", "appVersion", "device", "androidVersion", "date",
-        "adType", "uiFramework", "observedAd", "candidate", "decision",
-        "clicked", "verification", "finalResult"
+        "app",
+        "package",
+        "appVersion",
+        "device",
+        "androidVersion",
+        "date",
+        "adType",
+        "uiFramework",
+        "observedAd",
+        "candidate",
+        "decision",
+        "clicked",
+        "verification",
+        "finalResult"
       ],
       "resultVocabulary": {
         "VERIFIED_SUCCESS": "复验确认成功关闭（唯一成功证据=验证链）",
@@ -109,7 +120,16 @@
       },
       "samplesLibrary": "compatibility/samples/（v7.9.5 建库——失败样本沉淀与修复优先级 FALSE_CLICK > DUPLICATE_CLICK > MISS）",
       "realDeviceTest": "NOT_AVAILABLE",
-      "status": "批次已定义、未执行（REAL_DEVICE_TEST = NOT_AVAILABLE——本环境无真机连接；绝不虚报执行结果，真机数据必须回传日志后录入）"
+      "status": "批次已定义、未执行（REAL_DEVICE_TEST = NOT_AVAILABLE——本环境无真机连接；绝不虚报执行结果，真机数据必须回传日志后录入）",
+      "v796Bug001Regression": {
+        "suite": "Bug001RegressionTest",
+        "assertions": 52,
+        "covers": [
+          "Bug#001（v7.9.6 代码审读实锤）：预算耗尽于复验时刻的终局三漏——不落 endedAt（2.2s 冷却闸被绕过 → 新任务重置预算 → 同一存活广告无限重试循环）+ 不记 MISS（六态把任务终局整类漏记）+ 终局无日志",
+          "修复：AdTaskCore.onVerifyStillStep 纯函数（终局三件套 FAILED+endedAt=now+MISS 一次记账）+ 服务侧 taskOnScanOutcome 薄接线",
+          "S3 冷却闸闭环（无限重试循环结构性阻断）· S4 门语义取证（endedAt=0 即绕闸——防回退钉死）· S5 终态不重复记账 · S6 FEEDBACK 语义零变化 · S7 RETRY 仅首击复验计一次 · S8 六态计数端到端（RETRY=2·MISS=1·其余 0）"
+        ]
+      }
     }
   },
   "metrics": {

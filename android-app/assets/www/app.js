@@ -1,4 +1,4 @@
-/* 开屏卫士 v7.9.5 · 真实世界证据层：点击决策证据 + 点击结果六态闭环 + WebView 综合证据路径 */
+/* 开屏卫士 v7.9.6 · L3 真实世界验证轮：Bug#001 终局三漏根治（冷却闸绕过→无限重试循环阻断 + MISS 终局记账） */
 "use strict";
 
 /* ══════════ 环境 ══════════ */
@@ -23,8 +23,8 @@ const store = {
 };
 
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "7.9.5"; }
-function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "79500"; }
+function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "7.9.6"; }
+function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "79600"; }
 
 /* ══════════ 吉祥物（v4.1.0 全新形象：白机器人小侠 + 绿披风跳跃） ══════════
  * 与启动器图标同源；state: on（跳跃浮动）/ off（灰度待命） */
@@ -35,18 +35,18 @@ function mascotImg(size, state, head) {
 
 $("#brand-logo").innerHTML = mascotImg(30, "on", true);
 
-/* ═══ v7.9.5 版本记录（真实世界证据层）═══ */
+/* ═══ v7.9.6 版本记录（L3 真实世界验证轮 · Bug#001 终局三漏根治）═══ */
 const CURRENT_RELEASE = {
-  date: "2026-11-21",
-  title: "真实世界证据层：点击决策证据 + 点击结果六态闭环 + WebView 综合证据路径",
+  date: "2026-11-20",
+  title: "Bug#001 终局三漏根治：冷却闸绕过→无限重试循环阻断 + MISS 终局记账",
   features: [
-    "点击决策证据（最小结构化）：每次准备点击前记录包/Activity/任务ID/代际/任务状态 · 候选来源（text/contentDescription/resourceId/imageCorner）· 上下文四格（广告/SDK/WebView/订阅）· 归一化几何（位置/面积/屏幕区域/可点）· SafetyGuard 裁决——隐私红线结构性强制：不保存完整无障碍树、不上传截图、账号/手机号/支付/聊天内容一律白名单闸拒收",
-    "点击结果六态闭环：CLICK_DISPATCHED → VERIFYING → VERIFIED_SUCCESS/RETRY/MISS/FALSE_CLICK/SAFE_BLOCK/UNKNOWN——dispatchGesture 成功绝不等于广告关闭（唯一成功证据=验证链）；订阅证据链八格（咨询/匹配/候选过闸/已点击/确认关闭/点击失败/误触/被拦截）上传日志直接可读",
-    "WebView 综合证据路径（真广告+ScrollView/Input/WebView 专项）：isAdLikeLoose 对滚动容器/输入框/大树的过强阻断获得综合判断出口——WebView 容器在场且至少一个广告语境证据（角标/SDK 窗指纹/Dialog 形态/热区）同窗才出手；WebView 单独在场不构成证据（应用内浏览器普通页零出手——误触红线保持）",
-    "视频开屏自适应轮询：低证据降频（连续 ≥4 针探针零命中 → 1.5s→3s——不再高频扫整个 20s 观察窗）；探针命中/出手即恢复标准节拍；20s ceiling 与证据消失立即终止契约保持",
-    "L3 真机批次 1 定义（50 款 · 12 类配额 + video-splash 全收 + 引擎覆盖四档交叉 · REAL_DEVICE_TEST = NOT_AVAILABLE 诚实标记）+ 失败样本库建库（compatibility/samples/ · 修复优先级 FALSE_CLICK > DUPLICATE_CLICK > MISS）· 30 套件 6601 项断言全绿（+114；既有 6487 项零回退）· versionCode 79500（> 79400 覆盖安装即升级）",
+    "Bug#001（代码审读实锤）：预算耗尽于复验时刻的终局直接置 FAILED 三漏——不落 endedAt（taskAllowsNew(now,0) 恒放行 → 2.2s 冷却闸被绕过 → 立即开新任务重置预算 → 同一存活广告无限重试循环）；不记 MISS（六态把任务终局整类漏记）；终局无日志",
+    "修复：AdTaskCore.onVerifyStillStep 纯函数（服务侧薄接线）——预算耗尽 → FAILED + endedAt=now（冷却闸在岗：新任务须过 2.2s 闸才重置预算）+ MISS 终局一次记账；FEEDBACK 复验在场原态保持（零行为变化）；终态不可逆不重复记账",
+    "一个真实 Bug 一个回归测试：Bug001RegressionTest（52 断言 · 八段）——终局三件套/全生命周期/冷却闸闭环/门语义取证/不重复记账/FEEDBACK 语义/RETRY 仅首击计一次/六态计数端到端",
+    "本轮零识别/安全门改动：不新增关键词、不扩大点击区域、不降 SafetyGuard、不加轮询——唯一生产修改是终局记账/冷却闸 bookkeeping（安全 > 正确关闭 > 命中率 > 性能微优化）",
+    "L3 批次 1 保持 PENDING_REAL_DEVICE（REAL_DEVICE_TEST = NOT_AVAILABLE——v7.9.6 复查仍无真机，绝不预填）· 31 套件 6653 项断言全绿（+52；既有 6601 项零回退）· versionCode 79600（> 79500 覆盖安装即升级）",
   ],
-  summary: "v7.9.5 真实世界证据层：点击前最小结构化决策证据（隐私红线结构性强制——无树/无截图/白名单标签闸）+ 点击后六态结果闭环（dispatchGesture 成功 ≠ 广告关闭）+ 订阅证据链八格 + WebView 综合证据路径（真广告+ScrollView/Input/WebView——不取消安全门）+ 视频开屏自适应轮询低证据降频 + L3 批次 1 定义与失败样本库（真实设备数据绝不虚报）。",
+  summary: "v7.9.6 L3 真实世界验证轮：代码审读实锤 Bug#001——预算耗尽于复验时刻的终局三漏（不落 endedAt → 冷却闸被绕过 → 同一存活广告借「新任务重置预算」无限重试循环；不记 MISS → 六态把任务终局整类漏记；终局无日志）。终局裁决收进纯函数 AdTaskCore.onVerifyStillStep（服务侧薄接线），一个真实 Bug 一个回归测试（Bug001RegressionTest 52 断言）。本轮零识别/安全门改动；L3 批次 1 保持 PENDING_REAL_DEVICE（无真机绝不虚报）。",
 };
 
 /* v7.0.0 新版功能描述（规范：≤5 个标题、带序号；检查更新发现新版本时就地渲染）。

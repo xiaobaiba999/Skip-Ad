@@ -2,9 +2,14 @@
   "meta": {
     "libraryVersion": "1.0",
     "createdVersion": "7.9.5",
-    "updatedAt": "2026-11-21",
+    "updatedAt": "2026-11-20",
     "description": "真实世界证据层·失败样本库（v7.9.5 建库）——L3 真机测试的失败案例逐条沉淀，驱动下一轮修复（FALSE_CLICK 最高优先级 → DUPLICATE_CLICK → MISS → 命中率优化）。",
-    "priorityOrder": ["FALSE_CLICK", "DUPLICATE_CLICK", "MISS", "HIT_RATE"],
+    "priorityOrder": [
+      "FALSE_CLICK",
+      "DUPLICATE_CLICK",
+      "MISS",
+      "HIT_RATE"
+    ],
     "privacyRedlines": [
       "不保存账号、手机号、支付信息、聊天内容",
       "不保存原始屏幕截图",
@@ -24,7 +29,7 @@
       "failureReason": "失败归因（人工/日志诊断结论——一句话）",
       "fixedInVersion": "修复版本（未修复为 null——驱动下一轮 P0）"
     },
-    "honesty": "当前库为空（0 条）——本机无真机（REAL_DEVICE_TEST = NOT_AVAILABLE），绝不预填或伪造样本。"
+    "honesty": "当前库为空（0 条）——本机无真机（REAL_DEVICE_TEST = NOT_AVAILABLE，v7.9.6 复查仍无真机），绝不预填或伪造样本。Bug#001（v7.9.6 修复）为代码审读实锤的潜伏竞态（非真机失败样本），按「一个真实 Bug 一个回归测试」直接修复并回归（Bug001RegressionTest），不入真机样本库。"
   },
   "samples": []
 }

@@ -1,0 +1,161 @@
+{
+  "round": 47,
+  "version": "7.9.6",
+  "date": "2026-11-20",
+  "theme": "L3 真实世界验证轮：Bug#001 终局三漏根治（冷却闸绕过→无限重试循环阻断 + MISS 终局记账）——代码审读实锤 · 一个真实 Bug 一个回归测试",
+  "user_directives": [
+    "本轮不是继续堆功能——核心目标是 L3 第一批 50 款真实 Android 应用验证：真实 App → 真实广告 → Decision Evidence → SafetyGuard → HumanTap → VERIFY → 真实结果 → 失败样本 → 缺陷修复 → 回归测试 → 下一轮",
+    "第一原则：没有真实失败样本时不主动修改生产识别算法/规则/关键词/点击区域/SafetyGuard/无限轮询——只有明确生产 Bug、真实 FALSE_CLICK/DUPLICATE_CLICK/根因明确的 MISS、状态机竞态、安全问题、明显性能问题才允许修改生产代码",
+    "先检查安全状态：确认旧 GitHub PAT 是否已被撤销——仍未撤销则报告中明确 SECURITY ACTION REQUIRED；不得创建新的硬编码 Token；secret-scan 全面执行；检查公开 keystore 风险但不贸然更换签名密钥",
+    "读取 compatibility/l3_batch1.json 严格按该文件测试不自行替换名单——覆盖 12 类配额/video-splash/banner/rewarded/feedback/GKD/内置规则/Feed/零覆盖；每款 App 记录 14 项字段",
+    "真实结果枚举严格使用九词表；禁止 NO_AD_OBSERVED = SUCCESS / RULE_ONLY = SUCCESS / SIMULATED = SUCCESS",
+    "每款 App 按其测试类型实际场景测试（开屏/视频开屏/插屏/信息流/视频前贴/悬浮/反馈面板）；当前没有广告记 NO_AD_OBSERVED，绝不为制造广告进行危险操作",
+    "Decision Evidence 每次点击前保存最小结构化证据；禁止保存完整 Accessibility Tree/原始截图/账号/手机号/支付/聊天/长文本",
+    "必须区分 CLICK_DISPATCHED 与 VERIFIED_SUCCESS——dispatchGesture 成功不等于广告关闭；广告仍在 RETRY · 消失 VERIFIED_SUCCESS · 点到普通 UI FALSE_CLICK · 旧任务重复点击 DUPLICATE_CLICK",
+    "FALSE_CLICK 最高优先级：立即暂停扩张执行保存样本→定位→修复→回归→全量 JVM→构建→真机复测→commit→push→继续批次；禁止只通过降低所有扫描能力解决问题",
+    "DUPLICATE_CLICK 立即 P0：检查 taskId/generation/state/terminal/callback/timer/videoPoll/TapGestureCallback——确保 SUCCESS 不可逆",
+    "MISS 不立即修改——先判断真实广告+明确关闭控件+Accessibility 可访问+安全门应允许；根因明确才改，否则 UNKNOWN / NEED_MORE_EVIDENCE",
+    "GKD 真实数据统计八格——重点观察 matched → candidateAccepted → clicked → verifiedSuccess 链",
+    "视频真实数据：20s 是 ceiling 不默认高频扫描整个 20s——没有真实数据之前不继续修改参数",
+    "极简窗口重点测 FALSE_CLICK（更多/返回/收藏/分享/设置/头像不能因为在角落就被当广告关闭按钮）",
+    "ScrollView/Input/WebView 真广告专项不理论判断——记录真实样本发现真实 MISS 再修改",
+    "50 App 第一阶段建议 10 → 汇总 → 20 → 50；发现 P0 FALSE_CLICK 立即暂停扩张修复",
+    "失败样本库 compatibility/samples/：FALSE_CLICK/DUPLICATE_CLICK/MISS 逐条沉淀（含 decisionEvidence 最小结构化）禁止敏感数据",
+    "一个真实 Bug 一个回归测试——以后所有版本都必须保留",
+    "每次生产修改后全部 JVM + secret-scan + version-sync + build + APK integrity + SHA-256；不得删除旧测试、不降低测试标准",
+    "版本策略：无生产代码修改不制造空改动升级；有修改则 7.9.5 → 7.9.6（79500 → 79600）",
+    "Git：commit → push origin main；禁止 force push/删除远程分支/提交 Token/密钥/隐私；push 失败必须真实报告",
+    "完成后同步 GitHub 推送 Releases + 优化 GitHub 面板描述",
+    "如果没有真实设备：明确 REAL_DEVICE_TEST = NOT_AVAILABLE——不要伪造任何真实数据"
+  ],
+  "scope_of_change": {
+    "production_bug_fix": [
+      "Bug#001（代码审读实锤 · v7.9.5 六态闭环接线引入的潜伏终局竞态）：AdSkipService.taskOnScanOutcome 非零候选路径在「预算耗尽于复验时刻」直接置 S_FAILED 三漏——① 不落 endedAt（taskAllowsNew(now,0) 因无终态记录恒放行 → 2.2s 冷却闸被绕过 → 立即开新任务且 resetTaskForNewInstance 清空 clickTries/gaveUp → 同一存活广告借新任务重置预算无限重试循环；execute 预算闸因预算被重置永不触发，gaveUp MISS 记账路整流程失效；该路径是预算耗尽常见终点非长尾边角）② 不记 MISS（最后一击复验失败被膨胀记成 RETRY——六态把任务终局 MISS 整类漏记，真实漏检率证据链失真）③ 终局无日志",
+      "修复：AdTaskCore.onVerifyStillStep（纯函数 · VerifyStillStep{state,endedAt,outcome}）——预算耗尽 → FAILED+endedAt=now（冷却闸在岗：新任务须过 2.2s 闸才重置预算——无限重试循环结构性阻断）+ MISS 终局一次记账（本击复验不再计 RETRY——严格区分点击派发成功与任务终局）；预算内 VERIFYING → RETRY_WAIT+RETRY 既有行为零变化；FEEDBACK 复验在场原态保持零行为变化；终态不可逆不重复记账；服务侧 taskOnScanOutcome 仅应用步进结果 + 终局补日志行"
+    ],
+    "production_unchanged": [
+      "零识别改动：不新增关键词/不扩点击区域/不降 SafetyGuard/不加轮询——唯一生产修改是终局记账与冷却闸 bookkeeping（安全 > 正确关闭 > 命中率 > 性能微优化）",
+      "视频开屏 20s ceiling 与自适应三档轮询零改动（没有真实数据之前不修改参数——用户指令十二兑现）",
+      "WebView 综合证据路径（v7.9.5）零改动——等真实 ScrollView/Input/WebView MISS 样本再议",
+      "GKD 订阅八格（v7.9.5）零改动——等真机首批真实分布"
+    ],
+    "security_audit": [
+      "旧 GitHub PAT 实测未撤销（local-gh-token 未入库未提交历史；GET /user HTTP 200 → SECURITY ACTION REQUIRED——撤销需账号所有者操作；本轮只作仓库外未入库凭据文件使用，未创建任何新硬编码 Token）",
+      "公开 keystore 风险确认（入库为知情接受现状——docs/SECURITY.md R2 已载 v8.0 迁移计划；不贸然更换签名密钥——换钥断存量覆盖升级路径）",
+      "secret-scan 双闸全绿（令牌形态/credentials 结构红线/local-gh-token 未入库/keystore 材料面四道检查）"
+    ],
+    "compat_infra": [
+      "compatibility/l3_batch1.json：meta.version → 7.9.6 + realDeviceTest 增加 v7.9.6 复查记录（仍 NOT_AVAILABLE——adb/emulator/KVM 均不可用；50 款记录字段全部保持 null 绝不预填；分阶段推进诚实记录 NOT_STARTED_FOR_NO_DEVICE）",
+      "compatibility/samples/index.json：复查仍空库（0 条）+ Bug#001 归因说明（代码审读实锤非真机样本，不入真机样本库绝不伪造字段）",
+      "compatibility/test_matrix.json：meta 7.9.6 + L3 层 v796Bug001Regression 登记（52 断言覆盖面）"
+    ],
+    "new_suites": [
+      "Bug001RegressionTest（52 断言 · 八段：S1 终局三件套 FAILED+endedAt=now+MISS / S2 全生命周期三击梯子 RETRY=2·MISS=1·FAILED 后全拒 / S3 冷却闸闭环——终局后 2.2s 内新任务全拒·endedAt≠0 结构性不变式 / S4 门语义取证 taskAllowsNew(now,0)=true 正是绕过机制 / S5 终态不重复记账 / S6 FEEDBACK 语义零变化 / S7 RETRY 仅 VERIFYING 首击复验计一次+防御路径同根治 / S8 六态计数端到端）"
+    ],
+    "version_docs": [
+      "src/lib/version.ts 7.9.6/79600（VERSION_HISTORY 单条硬约束保持）· app.js 页头/版本记录/检查更新回落 · docs/CHANGELOG.md v7.9.6 全条目 · README 当前版本区+体积行 · reports/iteration-v7.9.6.md · docs/test-reports/round-47.json"
+    ]
+  },
+  "l3_batch1_execution": {
+    "definition": "compatibility/l3_batch1.json（50 款 · 12/12 类配额 · video-splash 全收 6 · banner 2/rewarded-video 2/feedback-sheet 4 · 引擎四档交叉 GKD 43/内置 39/Feed 11/零覆盖 3 · P0/P1/P2 = 40/8/2）",
+    "realDeviceTest": "NOT_AVAILABLE（v7.9.6 复查仍无真机：adb 不可用 · emulator 不可用 · /dev/kvm 不存在）",
+    "batchStatus": "PENDING_REAL_DEVICE（分阶段推进 NOT_STARTED_FOR_NO_DEVICE——不伪造任何进展）",
+    "recordsPolicy": "50 款 14 项记录字段全部 null 绝不预填（执行结果一律真机回填）",
+    "counts": {
+      "真实观察广告": "0（NOT_AVAILABLE——无设备即无观察无分母，非测了为零）",
+      "VERIFIED_SUCCESS": "0（NOT_AVAILABLE）",
+      "MISS": "0（NOT_AVAILABLE）",
+      "FALSE_CLICK": "0（NOT_AVAILABLE）",
+      "DUPLICATE_CLICK": "0（NOT_AVAILABLE）",
+      "SAFE_BLOCK": "0（NOT_AVAILABLE）",
+      "NO_AD_OBSERVED": "0（NOT_AVAILABLE——无设备时连无广告这一观察本身都不存在；绝不 NO_AD_OBSERVED=SUCCESS）",
+      "NOT_INSTALLED": "50 款批次级等效未在真机安装（词表语义记为 NOT_STARTED_FOR_NO_DEVICE）",
+      "CRASH": "0（NOT_AVAILABLE）",
+      "UNKNOWN": "0（NOT_AVAILABLE）"
+    }
+  },
+  "gkd_eight_cell_real_data": {
+    "fields": "consulted/matched/candidateAccepted/clicked/verifiedSuccess/clickFail/falseClick/blocked",
+    "value": "全部 0（NOT_AVAILABLE——真机环境不存在；证据链已于 v7.9.5 建成等待真机首批真实分布）"
+  },
+  "video_splash_real_data": {
+    "fields": "首次发现广告证据时间/首次候选时间/首次点击时间/成功率/poll 次数/低证据 miss streak/观察窗实际时长",
+    "value": "全部 NOT_AVAILABLE（20s ceiling 与三档轮询零改动——没有真实数据之前不修改参数）"
+  },
+  "minimal_window_real_data": {
+    "value": "NOT_AVAILABLE（无真机无真实 FALSE_CLICK 观察面；MinimalWindowBatchTest 32 断言继续全绿——8 类交互图标×四角普通 UI 全零出手契约零回退；在角落≠是广告关闭按钮原则未做任何放宽）"
+  },
+  "scrollview_input_real_data": {
+    "value": "NOT_AVAILABLE（无真机无真实 MISS 样本；WebView 综合证据路径零改动——不因理论判断再动安全门，等真实样本）"
+  },
+  "bug001_regression": {
+    "suite": "Bug001RegressionTest",
+    "assertions": 52,
+    "discovery": "代码审读实锤（v7.9.5 六态闭环接线逐路径审计：三个终态转移源逐一比对终局三件套 state+endedAt+六态计数——markTaskSuccess/markTaskFailed/markTaskWindowChanged 三件套齐全，唯 taskOnScanOutcome 非零候选路径三漏）",
+    "fix": "AdTaskCore.onVerifyStillStep 纯函数 + 服务侧薄接线（零识别/安全门改动）",
+    "lifecycle": "发现 → 定位 → 修复 → 回归测试（52 断言）→ 全量 JVM 6653 绿 → 构建 79600 → 真机复测待 L3 批次回填（JVM 全生命周期回归已绿——严格区分 AUTOMATED 与 REAL_DEVICE）"
+  },
+  "tests": {
+    "total_suites": 31,
+    "total_pass": 6653,
+    "total_fail": 0,
+    "delta_from_795": "+52（Bug001RegressionTest；既有 6601 项零回退——本轮新增仅对应真实缺陷 Bug#001，用户指令一/十八兑现）",
+    "secret_scan_gate": "通过（run-tests.sh 与 build.sh 双前置）",
+    "version_sync_gate": "通过（7.9.6/79600 双端统一）",
+    "appjs_symbol_gate": "通过（版本记录/扫描日志/使用报告/更新说明/解析器五符号在场）"
+  },
+  "apk": {
+    "versionName": "7.9.6",
+    "versionCode": 79600,
+    "size": 865846,
+    "md5": "432f1668b37831edb9699f22a4c99cd6",
+    "sha256": "bea90869273080e42c7f42f5c57ed8d7ffd9c31f1c2e8519d96801ddc2d88529",
+    "distribution": ["android-app/dist", "download", "upload"],
+    "signature": "apksigner verify 通过 · 同证书（Signer SHA-256 05ada6e3f7a4fc6bf77449611c24f51e1ef4caa0a91a5cdd02c4d877738e6f79——覆盖安装即升级）"
+  },
+  "compatibility_metrics": {
+    "应用覆盖数量": 233,
+    "规则测试数量": "31 套件 6653 断言",
+    "页面场景数量": "12 类 UI 样本 × 8 项场景行为 + 20 类误触红线 + 8 类交互图标 × 四角极简批次",
+    "真机测试数量": "0（NOT_AVAILABLE）",
+    "广告样本数量": "0（NOT_AVAILABLE）",
+    "成功关闭数量": "0（NOT_AVAILABLE）",
+    "漏检数量": "0（NOT_AVAILABLE）",
+    "误触数量": "0（NOT_AVAILABLE）",
+    "重复点击数量": "0（NOT_AVAILABLE）",
+    "安全拦截数量": "0（NOT_AVAILABLE）",
+    "未验证数量": 233,
+    "口径声明": "L1/L2/FP/时序/证据层/Bug001 回归全绿 ≠ 真机验证；REAL_DEVICE_TEST = NOT_AVAILABLE 绝不虚报（0 = NOT_AVAILABLE 计数，非测了且为零）"
+  },
+  "security_actions_required": [
+    "旧 GitHub PAT 未撤销（GET /user 实测 HTTP 200）——需账号所有者在 GitHub Settings 撤销；本轮未创建任何新硬编码 Token",
+    "公开 keystore + build.sh 内置口令回退（知情接受现状 · R2 v8.0 迁移计划 · 不贸然换钥）"
+  ],
+  "unresolved": [
+    "L3 真机实测未执行（无真机连接——REAL_DEVICE_TEST = NOT_AVAILABLE；批次 1 已定义待执行）",
+    "失败样本库空库（0 条）——无真机即无真实失败样本，绝不预填",
+    "旧令牌需仓库所有者在 GitHub 撤销（docs/SECURITY.md R1）——v7.9.6 复查仍未撤销",
+    "keystore 公开风险待 v8.0 迁移轮处置（R2）",
+    "知识库高置信包名 95 款待真机 adb 核验",
+    "WebView 综合证据路径的纯 WebView 无角标亚型（无第二语境）保持不点——待真机样本决策（宁漏勿误）",
+    "Bug#001 修复的最终真机确认待 L3 批次回填（JVM 全生命周期回归已绿）"
+  ],
+  "next_round": [
+    "真机 L3 批次 1 执行（50 款逐款回填 14 项记录字段——所有 finalResult 用固定词表；10 → 汇总 → 20 → 50 分阶段推进；P0 FALSE_CLICK 立即暂停扩张走修复流程）",
+    "失败样本入库驱动修复（FALSE_CLICK 最高优先级 → DUPLICATE_CLICK → MISS）——一个真实缺陷一个回归测试",
+    "真机回传后订阅八格/点击六态/视频开屏真实时间线的首份真实分布报告",
+    "PAT 撤销确认（账号所有者操作）"
+  ],
+  "git": {
+    "commit": "待补录（push 后回填）",
+    "push": "待补录",
+    "postPushVerify": "待补录"
+  },
+  "github_release": {
+    "tag": "v7.9.6",
+    "url": "待补录",
+    "releaseId": "待补录",
+    "asset": "待补录",
+    "repoDescription": "待补录"
+  }
+}

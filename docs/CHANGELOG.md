@@ -3,6 +3,20 @@
 > 首页只保留当前版本要点；全部历史版本详情在本页归档。
 > 发布物（APK/报告/文档）见 [Releases](https://github.com/xiaobaiba999/Skip-Ad/releases) 与 `docs/test-reports/`。
 
+## v7.9.6（2026-11-20）—— L3 真实世界验证轮：Bug#001 终局三漏根治（冷却闸绕过→无限重试循环阻断 + MISS 终局记账）· 一个真实 Bug 一个回归测试
+
+- **本轮定位（用户指令：L3 第一批 50 款真实 App 验证——真实 App → 真实广告 → Decision Evidence → SafetyGuard → HumanTap → VERIFY → 真实结果 → 失败样本 → 缺陷修复 → 回归测试）**：不以堆功能为目标。**真机复查仍无设备（adb/emulator/KVM 均不可用）→ REAL_DEVICE_TEST = NOT_AVAILABLE，L3 批次 1 保持 PENDING_REAL_DEVICE（50 款记录字段一律真机回填，绝不预填/不虚报）**。按用户指令第一原则，唯一允许的生产修改 = 「发现明确生产 Bug」——本轮以代码审读实锤 **Bug#001**（v7.9.5 六态闭环接线引入的潜伏终局竞态）并按「一个真实 Bug 一个回归测试」闭环。
+- **安全状态检查（用户指令二）**：旧 GitHub PAT 复查——`local-gh-token`（仓库外 · 未入库 · 未提交历史）经 `GET /user` 实测 **仍有效（HTTP 200）→ 未撤销 → SECURITY ACTION REQUIRED**（撤销需账号所有者在 GitHub Settings 操作，本轮继续只作仓库外凭据文件使用，绝不创建新的硬编码 Token）；公开 keystore 风险确认（`android-app/keystore/` 入库为知情接受现状——docs/SECURITY.md R2 已载 v8.0 迁移计划，按用户指令不贸然换钥）；secret-scan 双闸全绿（令牌形态/credentials 结构红线/local-gh-token 未入库/keystore 材料面四道检查）。
+- **Bug#001（代码审读实锤 · 生产缺陷 · v7.9.5 引入六态闭环接线时新增）**：`AdSkipService.taskOnScanOutcome` 非零候选路径在「预算耗尽于复验时刻」（最后一击派发后复验仍见候选且 tries ≥ maxClicks）直接置 `S_FAILED`，**三漏**：
+  1. **不落 endedAt**：`taskAllowsNew(now, 0)` 因「无终态记录恒放行」直接放行 → **2.2s 冷却闸被绕过** → 立即开新任务且 `resetTaskForNewInstance` 清空 clickTries/gaveUp → **同一存活广告借「新任务重置预算」无限重试循环**（「绝不无限重试/预算梯子」红线失守——DUPLICATE_CLICK 同族风险面；execute 预算闸因预算被重置永不触发，gaveUp MISS 记账路对整流程失效）；
+  2. **不记 MISS**：最后一击复验失败被膨胀记成 RETRY——六态把「任务终局 MISS」整类漏记（真实漏检率证据链失真，v7.9.6 起真实数据统计口径被破坏）；
+  3. **终局无日志**（用户无从知道本窗已收手）。
+- **修复（终局裁决收进纯函数 · 服务侧薄接线 · 零识别/安全门改动）**：新 `AdTaskCore.onVerifyStillStep`（纯 Java · 与 AdTaskCore 同规约）——预算耗尽 → `FAILED + endedAt=now`（冷却闸在岗：新任务须过 2.2s 闸才重置预算——无限重试循环结构性阻断）+ **MISS 终局一次记账**（本击复验不再计 RETRY——严格区分「点击派发成功」与「任务终局」）；预算内首击复验仍记 RETRY（既有行为零变化）；FEEDBACK 复验在场原态保持（面板流程在先，零行为变化）；终态不可逆不重复记账（旧任务绝不复活）；终局补「复验预算用尽」日志行。服务侧 `taskOnScanOutcome` 仅应用步进结果（识别/词表/形状门/SafetyGuard/轮询零改动）。
+- **一个真实 Bug 一个回归测试（用户指令十七）**：新套件 `Bug001RegressionTest`（52 断言 · 八段）——S1 预算耗尽终局三件套（FAILED+endedAt=now+MISS，对照预算内 RETRY_WAIT+RETRY）· S2 全生命周期（三击梯子 RETRY=2·MISS=1·FAILED 后点击/派发/回调全拒——第二次点击=0）· **S3 冷却闸闭环（Bug#001 核心——终局后 2.2s 内新任务全拒，+2.2s 放行；endedAt≠0 结构性不变式防回退）** · S4 门语义取证（`taskAllowsNew(now,0)=true`——正是 Bug#001 绕过机制，钉死「终局必须落账」的结构性原因）· S5 终态不重复记账 · S6 FEEDBACK 语义零变化 · S7 RETRY 仅 VERIFYING 首击复验计一次（防同一击多扫膨胀）+ RETRY_WAIT+预算耗尽防御路径同根治 · S8 六态计数端到端（RETRY=2·MISS=1·其余四态 0——FALSE_CLICK 自动化恒 0）。
+- **L3 批次与样本库诚实口径（用户指令三/十六）**：`compatibility/l3_batch1.json` meta 版本刷新 + realDeviceTest 增加 v7.9.6 复查记录（仍 NOT_AVAILABLE，记录字段全部保持 null 绝不预填）；`compatibility/samples/` 复查仍空库（0 条）——Bug#001 为代码审读实锤的潜伏竞态（非真机失败样本，无 device/adType 真实字段），按「一个真实 Bug 一个回归测试」直接修复并回归，不入真机样本库（绝不伪造样本字段）。
+- **测试（31 套件 6653 项全绿，v7.9.5 为 6601——+52 = Bug001RegressionTest；既有 30 套件零回退逐套件核对）**；secret-scan 双闸 · version-sync（7.9.6/79600 双端统一）· app.js 符号闸三绿；APK versionCode 79600（> 79500 覆盖安装即升级）三目录分发。
+- **下一轮 P0**：真机 L3 批次 1 执行（50 款逐款回填）——失败样本入库驱动修复（FALSE_CLICK 最高优先级）；PAT 撤销确认。
+
 ## v7.9.5（2026-11-21）—— 真实世界证据层：点击决策证据 + 点击结果六态闭环 + WebView 综合证据路径 + 自适应轮询 + L3 批次定义
 
 - **本轮定位（用户指令：真实 App → 真实广告 → 候选 → Decision Evidence → SafetyGuard → HumanTap → VERIFY → 真实结果 → 样本沉淀）**：本轮不以增加 JVM 断言数量为目标——把「证据层」建进生产链路，为 L3 真机回填与失败样本沉淀铺轨。

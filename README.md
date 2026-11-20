@@ -26,20 +26,19 @@ Java 引擎 · GKD 订阅生态兼容 · [Releases](https://github.com/xiaobaiba
 | **拦截范围** | 开屏广告（含**视频开屏**——静默画像归一 v7.9.1）· 插屏/激励弹窗 · 摇一摇诱导 · 悬浮广告球 · 视频前贴 · **App 内广告主动关闭（信息流三路 20 款名单 + 插屏卫士：语境三路并集 + 图标关闭钮路径 + 订阅反饥饿 v7.9.1——远程 GKD 订阅重新参与匹配）**（134 款内置 + 任意 GKD 订阅扩展）· **应用生态兼容性目录（v7.9.2：compatibility/apps_catalog.json 233 款常用应用——包名三层来源严格区分，12 分类配额，每轮迭代 L1 回归）** |
 | **不碰什么** | 小程序/支付/团购容器零扫描零点击；银行/政务/相机零干预；只点应用自带「跳过」键（合规红线） |
 | **隐私与安全** | 数据仅存本机；联网仅日志上传（脱敏）与更新检查；零定位/通讯录/存储权限；更新包安装前 SHA-256 逐字节校验（镜像投毒/换包自动拦截）；订阅规则支付/诱导词双否决（注入防线） |
-| **体积** | APK 844KB（含三源离线订阅快照 ~520KB）· 冷启动毫秒级 · 典型日功耗 0.05mWh 级 |
+| **体积** | APK 848KB（含三源离线订阅快照 ~520KB）· 冷启动毫秒级 · 典型日功耗 0.05mWh 级 |
 
-## 当前版本 v7.9.5（2026-11-21）· 真实世界证据层：点击决策证据 + 点击结果六态闭环 + WebView 综合证据路径
+## 当前版本 v7.9.6（2026-11-20）· L3 真实世界验证轮：Bug#001 终局三漏根治 · 一个真实 Bug 一个回归测试
 
-**真实世界证据层铺轨轮**（用户指令：真实 App → 真实广告 → 候选 → Decision Evidence → SafetyGuard → HumanTap → VERIFY → 真实结果 → 样本沉淀）：把「证据层」建进生产链路，为 L3 真机回填与失败样本沉淀铺轨——本轮不以增加 JVM 断言数量为目标：
+**L3 真实世界验证轮**（用户指令：真实 App → 真实广告 → Decision Evidence → SafetyGuard → HumanTap → VERIFY → 真实结果 → 失败样本 → 缺陷修复 → 回归测试）：真机复查仍无设备（adb/emulator/KVM 均不可用）→ **REAL_DEVICE_TEST = NOT_AVAILABLE，L3 批次 1 保持 PENDING_REAL_DEVICE（50 款记录字段一律真机回填，绝不预填/不虚报）**。按用户指令第一原则（无真实失败样本不主动修改生产识别算法），本轮唯一生产修改 = 代码审读实锤的**明确生产 Bug**：
 
-1. **点击决策证据（新核心模块 core/DecisionEvidence · 最小结构化）**：每次准备点击前记录——包/Activity/任务ID/代历/任务状态 · 候选来源（text/contentDescription/resourceId/imageCorner）· 上下文四格（广告语境/SDK 窗指纹/WebView 容器/订阅路径）· 归一化几何（位置/面积/屏幕区域/可点）· SafetyGuard 裁决 · finalDecision。**隐私红线结构性强制**：不保存完整 Accessibility Tree（模块无树容器）· 不上传原始截图（零位图）· 账号/手机号/支付/聊天内容一律白名单闸拒收（候选标签只保留 close/skip 词族成员）· 环形缓冲有界 12 条
-2. **点击结果六态闭环（dispatchGesture 成功 ≠ 广告关闭）**：CLICK_DISPATCHED → VERIFYING → `VERIFIED_SUCCESS / RETRY / MISS / FALSE_CLICK / SAFE_BLOCK / UNKNOWN`——唯一成功证据是验证链（两轮零候选/窗口切换/反馈面板收起）；六态计数与最近一击证据入上传日志（「点击结果」「点击证据」行）；FALSE_CLICK 自动化环境恒 0（真机样本回传唯一来源，绝不虚报）
-3. **订阅证据链八格**：consulted/matched/candidateAccepted/clicked/verifiedSuccess/clickFail/falseClick/blocked——订阅参与度与「点击→广告真关闭」闭环证据（上传日志「订阅证据链」行）；七分类统计兼容保持
-4. **WebView 综合证据路径（真广告+ScrollView/Input/WebView 专项）**：isAdLikeLoose 对滚动容器/输入框/大树（WebView 视频容器常态 >150 节点）的过强阻断获得综合判断出口——**WebView 容器在场且至少一个广告语境证据（角标/SDK 窗指纹/Dialog 形态/热区）同窗才出手**；WebView 单独在场不构成证据（应用内浏览器普通页零出手——误触红线保持）；SafetyGuard 终闸全在岗
-5. **视频开屏自适应轮询（20s ceiling 保持）**：低证据降频（连续 ≥4 针探针零命中 → 1.5s→3s，不再高频扫整个 20s 观察窗）；探针命中/出手恢复标准节拍；证据消失立即终止契约保持
-6. **L3 真机批次 1 定义 + 失败样本库**：`compatibility/l3_batch1.json`（50 款 · 12/12 类配额 · video-splash 全收 · 引擎覆盖四档交叉 · 全部 PENDING_REAL_DEVICE——**REAL_DEVICE_TEST = NOT_AVAILABLE 诚实标记，绝不虚报**）+ `compatibility/samples/` 失败样本库（修复优先级 FALSE_CLICK > DUPLICATE_CLICK > MISS > 命中率）；30 套件 6601 项断言全绿（+114；既有 6487 项零回退）
+1. **Bug#001（v7.9.5 六态闭环接线引入的潜伏终局竞态）**：`taskOnScanOutcome` 非零候选路径在「预算耗尽于复验时刻」直接置 FAILED，**三漏**——① 不落 endedAt：`taskAllowsNew(now, 0)` 因「无终态记录恒放行」直接放行 → **2.2s 冷却闸被绕过** → 立即开新任务且 `resetTaskForNewInstance` 清空 clickTries/gaveUp → **同一存活广告借「新任务重置预算」无限重试循环**（「绝不无限重试/预算梯子」红线失守——DUPLICATE_CLICK 同族风险面；execute 预算闸因预算被重置永不触发）；② 不记 MISS：六态把任务终局 MISS 整类漏记（最后一击复验失败被膨胀记成 RETRY——真实漏检率证据链失真）；③ 终局无日志
+2. **修复（终局裁决收进纯函数 · 零识别/安全门改动）**：`AdTaskCore.onVerifyStillStep`——预算耗尽 → `FAILED + endedAt=now`（冷却闸在岗：新任务须过 2.2s 闸才重置预算——**无限重试循环结构性阻断**）+ **MISS 终局一次记账**（严格区分「点击派发成功」与「任务终局」）；预算内首击复验仍记 RETRY（既有行为零变化）；FEEDBACK 复验在场原态保持（零行为变化）；终态不可逆不重复记账
+3. **一个真实 Bug 一个回归测试**：`Bug001RegressionTest`（52 断言 · 八段）——终局三件套 · 全生命周期（三击梯子 RETRY=2·MISS=1·FAILED 后全拒）· 冷却闸闭环（无限重试循环结构性阻断）· 门语义取证（`taskAllowsNew(now,0)=true`——正是 Bug#001 绕过机制，钉死防回退）· 终态不重复记账 · FEEDBACK 语义零变化 · RETRY 仅首击复验计一次 · 六态计数端到端
+4. **安全状态检查（用户指令二）**：旧 GitHub PAT 实测**仍有效未撤销 → SECURITY ACTION REQUIRED**（撤销需账号所有者操作；本轮继续只作仓库外未入库凭据文件使用，绝不创建新硬编码 Token）；公开 keystore 风险确认（知情接受现状 · docs/SECURITY.md R2 v8.0 迁移计划 · 不贸然换钥）；secret-scan 双闸全绿
+5. **L3 批次与样本库诚实口径**：`compatibility/l3_batch1.json` 增加 v7.9.6 复查记录（仍 NOT_AVAILABLE，记录字段绝不预填）；`compatibility/samples/` 复查仍空库（0 条——Bug#001 为代码审读实锤非真机样本，不入真机样本库绝不伪造字段）；**31 套件 6653 项断言全绿**（+52；既有 6601 项零回退）；versionCode 79600（> 79500 覆盖安装即升级）
 
-历史版本全部归档在 [docs/CHANGELOG.md](docs/CHANGELOG.md)。v7.9.4 误触红线与安全整合轮、v7.9.3 L2 页面场景层、v7.9.2 应用生态目录基线（233 款）、v7.9.1 任务状态机、v7.9.0 接线盲区根治、v7.8.0 视频开屏卫士全部保持。
+历史版本全部归档在 [docs/CHANGELOG.md](docs/CHANGELOG.md)。v7.9.5 真实世界证据层（Decision Evidence + 六态闭环 + 订阅八格 + WebView 综合路径 + L3 批次定义）、v7.9.4 误触红线与安全整合轮、v7.9.3 L2 页面场景层、v7.9.2 应用生态目录基线（233 款）、v7.9.1 任务状态机、v7.9.0 接线盲区根治、v7.8.0 视频开屏卫士全部保持。
 
 ## App 截图（真实 UI 截取）
 

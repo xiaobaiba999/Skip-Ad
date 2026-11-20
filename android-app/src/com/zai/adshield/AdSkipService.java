@@ -4782,16 +4782,33 @@ public class AdSkipService extends AccessibilityService {
         if (kindOfInterest != AdTaskCore.S_VERIFYING && kindOfInterest != AdTaskCore.S_RETRY_WAIT
                 && kindOfInterest != AdTaskCore.S_FEEDBACK) return;
         if (!zeroCand) {
-            /* v7.9.5 点击结果闭环：RETRY 六态计数——已出手（VERIFYING）后
-             * 复验仍见候选 → 合法重试等待（预算钳制——绝不无限重试）。 */
-            if (kindOfInterest == AdTaskCore.S_VERIFYING) {
-                com.zai.adshield.core.DecisionEvidence.recordOutcome(
-                        com.zai.adshield.core.DecisionEvidence.OUT_RETRY);
+            /* ═══ v7.9.6 Bug#001 根治：复验预算耗尽终局记账 ═══
+             * 旧代码直接置态三漏：① 不落 endedAt → taskAllowsNew(now, 0)
+             * 因「无终态记录恒放行」直接放行 → 2.2s 冷却闸被绕过 → 立即
+             * 开新任务且 resetTaskForNewInstance 清空 clickTries/gaveUp →
+             * 同一存活广告借「新任务重置预算」无限重试循环（「绝不无限
+             * 重试/预算梯子」红线失守）；② 不记 MISS → 六态计数把任务终局
+             * MISS 整类漏记（最后一击复验失败被膨胀记成 RETRY——真实漏检率
+             * 证据链失真）；③ 终局无日志。统一走 AdTaskCore.onVerifyStillStep
+             * （纯函数——Bug001RegressionTest 全生命周期回归）：预算耗尽 →
+             * endedAt 落 now（冷却闸在岗——旧任务不复活、新任务须过闸才
+             * 重置预算）+ MISS 终局一次记账（本击复验不再计 RETRY——严格
+             * 区分「点击派发成功」与「任务终局」）。 */
+            AdTaskCore.VerifyStillStep st = AdTaskCore.onVerifyStillStep(
+                    t.state, triesOfClick(pkg),
+                    com.zai.adshield.core.VideoSplashGuard.maxClicksFor(videoLikeActive(pkg, winStart)),
+                    now, t.endedAt);
+            if (st.outcome >= 0) {
+                com.zai.adshield.core.DecisionEvidence.recordOutcome(st.outcome);
             }
+            if (st.state == AdTaskCore.S_FAILED && !AdTaskCore.isTerminal(t.state)) {
+                appendLog("🤲 复验预算用尽（" + shortPkg(pkg) + "）：广告仍在场 → 任务终态（FAILED）"
+                        + "——2.2s 冷却闸在岗（新任务须过闸才重置预算；你的手动跳过仍会被学习）");
+            }
+            t.state = st.state;
+            t.endedAt = st.endedAt;
             // 候选/广告线索仍在场 → 合法重试等待（重试安全门在 execute 全量复验）
             t.firstZeroVerifyAt = 0;
-            t.state = AdTaskCore.onVerifyAdStill(t.state, triesOfClick(pkg),
-                    com.zai.adshield.core.VideoSplashGuard.maxClicksFor(videoLikeActive(pkg, winStart)));
             return;
         }
         // 零候选：第一轮记时刻+排确认针；第二轮（≥350ms 后仍零）→ 就地 SUCCESS

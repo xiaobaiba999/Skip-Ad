@@ -262,4 +262,61 @@ public final class AdTaskCore {
         if (!stillZero) return false;
         return firstZeroAt != null && now - firstZeroAt.longValue() >= VERIFY_CONFIRM_GAP_MS;
     }
+
+    /* ══ v7.9.6 Bug#001：复验预算耗尽终局的记账/冷却闸统一裁决 ══ */
+
+    /** 复验仍在场步进结果（新态 / 终态时刻 / 六态记账裁决——服务侧
+     *  taskOnScanOutcome 唯一接线点，终局记账与冷却闸不再散落服务侧）。 */
+    public static final class VerifyStillStep {
+        /** 转移后任务态（onVerifyAdStill 同源真值表）。 */
+        public final int state;
+        /** 转移后终态时刻（FAILED 终局 = now；其余保持 prevEndedAt 原值）。 */
+        public final long endedAt;
+        /** 六态记账裁决（DecisionEvidence.OUT_MISS / OUT_RETRY；-1 = 本次不计）。 */
+        public final int outcome;
+
+        VerifyStillStep(int state, long endedAt, int outcome) {
+            this.state = state;
+            this.endedAt = endedAt;
+            this.outcome = outcome;
+        }
+    }
+
+    /**
+     * 复验仍在场步进（v7.9.6 Bug#001 根治——代码审读实锤的生产缺陷，
+     * JVM 回归在 Bug001RegressionTest）。
+     * Bug#001 三漏（旧 taskOnScanOutcome 非零候选路径直接置 S_FAILED）：
+     *  · ① 不落 endedAt：taskAllowsNew(now, 0) 因「无终态记录恒放行」
+     *    直接放行 → 2.2s 冷却闸被绕过 → 立即开新任务且
+     *    resetTaskForNewInstance 清空 clickTries/gaveUp → 同一存活广告
+     *    借「新任务重置预算」无限重试循环（「绝不无限重试/预算梯子」
+     *    红线失守——DUPLICATE_CLICK 同族风险面）；
+     *  · ② 不记 MISS：最后一击的复验失败被膨胀记成 RETRY——六态计数
+     *    把「任务终局 MISS」整类漏记（真实漏检率证据链失真）；
+     *  · ③ 终局无日志（用户无从知道本窗已收手）。
+     * 本纯函数把该终局的全部裁决收进一处（服务侧薄接线）：
+     *  · 预算耗尽（clicks ≥ maxClicks）→ FAILED 终局：endedAt=now
+     *    （冷却闸在岗——taskAllowsNew 须 ≥TASK_NEW_COOLDOWN_MS 才放行
+     *    新任务）+ outcome=MISS（任务级终局一次记账——本击复验不再计
+     *    RETRY，严格区分「点击派发成功」与「任务终局」）；
+     *  · 预算未尽且原态 VERIFYING → RETRY_WAIT + outcome=RETRY（合法
+     *    重试等待——仅首击复验计一次；RETRY_WAIT/FEEDBACK 复验在场
+     *    不计，防同一击多扫膨胀）；
+     *  · FEEDBACK 复验在场 → 原态保持（面板流程在先——不算广告重试
+     *    证据，零行为变化）；
+     *  · 终态原态 → 原样返回不计账（SUCCESS/FAILED 不可逆——旧任务
+     *    绝不复活、绝不重复记账）。
+     * outcome = -1 表示本次复验不产生六态计数。
+     */
+    public static VerifyStillStep onVerifyStillStep(int state, int clicks, int maxClicks,
+                                                    long now, long prevEndedAt) {
+        int ns = onVerifyAdStill(state, clicks, maxClicks);
+        if (ns == S_FAILED && !isTerminal(state)) {
+            return new VerifyStillStep(S_FAILED, now, DecisionEvidence.OUT_MISS);
+        }
+        if (state == S_VERIFYING) {
+            return new VerifyStillStep(ns, prevEndedAt, DecisionEvidence.OUT_RETRY);
+        }
+        return new VerifyStillStep(ns, prevEndedAt, -1);
+    }
 }
