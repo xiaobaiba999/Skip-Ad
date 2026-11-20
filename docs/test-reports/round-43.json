@@ -1,0 +1,99 @@
+{
+  "round": 43,
+  "version": "7.9.2",
+  "date": "2026-11-21",
+  "theme": "200+ 应用生态兼容性基线：233 款应用目录 + L1/L2/L3 分层测试体系 + 引擎包名校准五项根治 + 24h×3 自动日志同步",
+  "user_directives": [
+    "改变开发模式：不再每轮等待用户确认 Push——持续自主迭代，每轮修改/测试/提交/推送（正常开发分支直接执行）",
+    "第一阶段：检查 v7.9.1 基线（Git/6197 测试/APK 重建）并推送 GitHub（远程无冲突安全整合，不覆盖不丢弃）",
+    "第二阶段：建立 200+ 应用测试目录（不得随意编造——包名必须核实；同一应用不同渠道版本区分；记录来源和更新时间；不凑数收录无人使用应用；重点收录真实有广告形态的应用）",
+    "第三阶段：L1 规则引擎自动化（全量）+ L2 页面结构场景（12 类 UI 独立样本）+ L3 真机实测（分批 50/100/200+，结果词汇表 NOT INSTALLED/NO AD OBSERVED/MISS/FALSE CLICK/VERIFIED SUCCESS，不存在标记 N/A 不虚构）",
+    "第四阶段：统一测试指标（应用覆盖/规则测试/页面场景/真机测试/广告样本/成功关闭/漏检/误触/重复点击/安全拦截/未验证——成功率/漏检率/误触率口径分列，规则匹配成功≠广告关闭成功）",
+    "第五阶段：持续迭代机制（收集问题→读日志→定位源码→根因→最小修改→回归测试→完整测试→构建→安全边界→版本号→Commit→Push→记录→下一轮——禁止无价值修改、禁止一次性大规模重构、优先有证据问题）",
+    "第七阶段重点模块持续检查 + 第八阶段安全性能红线（不降 SafetyGuard/不取消语义断言/不盲点坐标/不无限重试/不无限轮询/不允许已成功任务再执行/不允许过期回调执行——安全与命中冲突时优先安全）",
+    "第九阶段交付报告 reports/iteration-版本号.md + compatibility 四件套 + 所有数据可追溯",
+    "把 24 小时自动提交 3 次日志功能加上",
+    "所有实际测试与模拟测试必须严格区分，不得虚报兼容性"
+  ],
+  "baseline_push": {
+    "before": "本地 main 领先 origin/main 1 个提交（0fb5b04 v7.9.1）· 工作树干净 · 远程无新提交",
+    "verified": "6197/6197 JVM 断言重跑全绿 · APK 干净重建可复现（VC 79100 · 内容 22 文件 3151261 字节与已提交 APK 一致 · 同一签名证书 e8cd6a4d）",
+    "pushed": "61270d4..0fb5b04 main → main（无冲突安全快进）"
+  },
+  "catalog": {
+    "file": "compatibility/apps_catalog.json",
+    "total": 233,
+    "target": 200,
+    "name_sources": {
+      "engine_builtin": 115,
+      "web_verified": 23,
+      "knowledge_base": 95
+    },
+    "verification_evidence": "tool-results/pkg-*.json（20 轮应用商店检索：联通 com.sinovatech.unicom.ui / 网易新闻 com.netease.newsreader.activity / 咪咕音乐 cmccwm.mobilemusic / 咪咕视频 com.cmcc.cmvideo / 应用宝 com.tencent.android.qqdownloader / IT之家 com.ruanmei.ithome / 盒马 com.wudaokou.hippo / 1688 com.alibaba.wireless / Temu com.einnovation.temu / 书旗 com.shuqi.controller / QQ阅读 com.qq.reader / 腾讯动漫 com.qq.ac.android / 哔哩哔哩漫画 com.bilibili.comic / 得到 com.luojilab.player / 雪球 com.xueqiu.android / 剪映 com.lemon.lv / CapCut com.lemon.lvoverseas / 学习强国 cn.xuexi.android / 开心消消乐 com.happyelements.AndroidAnimal(.qq 渠道变体) / 同花顺至尊版 com.hexin.plat.android.supremacy / TapTap国际 com.taptap.global / 飞常准 veryzhun.vzcom / 搜狐视频 com.sohu.sohuvideo）",
+    "quotas": {
+      "社交与即时通讯": [25, 25], "短视频与视频播放": [25, 25], "新闻资讯与信息流": [20, 20],
+      "电商与购物": [26, 25], "音乐与音频": [10, 10], "浏览器与搜索": [11, 10],
+      "工具与系统应用": [24, 20], "阅读与小说": [15, 15], "游戏与游戏中心": [17, 15],
+      "学习与教育": [15, 15], "金融与生活服务": [35, 15], "其他常用": [10, 10]
+    },
+    "engine_coverage": { "builtin_sub": 119, "feed_list": 19, "gkd_snapshot_union": 148 },
+    "rejected_unverified": [
+      "TapTap 国内版（多轮检索证据不足）", "SHEIN（apkpure 结果均为仿冒名）",
+      "央视频 / 一点资讯 / 咪咕阅读 / 中国大学MOOC（包名证据不足）"
+    ]
+  },
+  "root_causes": {
+    "cause_unicom_dead_package": "引擎数据缺陷①·中国联通死条目：Subscription.java 旧包名 com.sinovatech.unicom.ui.welcome.WelcomeActivity 把 Activity 类名当包名——真实包名 com.sinovatech.unicom.ui（sj.qq.com/appdetail/com.sinovatech.unicom.ui + app.xiaomi.com/details?id=com.sinovatech.unicom.ui 双源核实）——规则从未命中过任何真实设备（开屏跳过保护对联通用户全程无效）",
+    "cause_netease_feed_dead": "引擎数据缺陷②·网易新闻 Feed 名单死值：FeedAdGuard FEED_APPS 旧值 com.netease.newsreader 缺 .activity 后缀——真实包名 com.netease.newsreader.activity（Google Play 上架核实）——信息流护栏（P1 角标/P2 关闭/反馈面板路径）对网易新闻全程无效",
+    "cause_bank_name_swap": "引擎数据缺陷③·建行/中行名称互换：com.chinamworld.main ↔ 中国银行（应为建设银行）、com.chinamworld.BOCMB ↔ 建设银行（应为中国银行）——显示级错误（规则按包名路由功能不受影响，但日志/面板/订阅页归因全错）",
+    "cause_jianying_mislabel": "引擎数据缺陷④·剪映/CapCut 包名混淆：com.lemon.lvoverseas 是 CapCut 海外版却被标为「剪映」——国内版剪映真实包名 com.lemon.lv（sj.qq.com + m.app.mi.com 双源核实）此前完全缺失",
+    "cause_variflight_mislabel": "引擎数据缺陷⑤·飞常准/航班管家互标：com.flightmanager.view 是航班管家却被标为「飞常准」——飞常准真实包名 veryzhun.vzcom（Google Play 上架核实）此前完全缺失"
+  },
+  "fixes": {
+    "subscription_package_calibration": "Subscription.java：联通包名更正 com.sinovatech.unicom.ui（规则从死条目复活）；com.chinamworld.main/BOCMB 名称互换更正（建设银行/中国银行各归其位）；com.lemon.lvoverseas 名称更正 CapCut + 新增 com.lemon.lv 剪映国内版条目（同规则族零变化）；com.flightmanager.view 名称更正航班管家 + 新增 veryzhun.vzcom 飞常准条目（同规则族零变化）",
+    "feedguard_package_fix": "FeedAdGuard.java FEED_APPS：com.netease.newsreader → com.netease.newsreader.activity（信息流护栏对网易新闻从全程无效到在岗）",
+    "apq_catalog_test_suite": "新 JVM 套件 AppCatalogTest（43 断言六段面）：S1 目录完整性（233 款/12 类配额/包名格式与唯一性/字段合法性）· S2 内置订阅↔目录双向一致性（零孤儿包+零虚标+v7.9.2 新增四包在场）· S3 Feed 名单↔目录一致性（引擎名单全落座+零漂移+网易新闻真实包名接纳/旧死值不复活）· S4 GKD 三源快照解析与覆盖交叉（148 款）· S5 逐应用规则匹配仿真（RuleEngine 分应用行路由 11 包全命中 + 233 款 rowsFor 零 null + 内置订阅 119 款逐包开屏仿真全命中 + 正常主界面零出手反例）· S6 包名校准五项回归闸（死包名不复活 + 五组包名↔名称精确对位）",
+    "feedguard_test_alignment": "FeedAdGuardTest S1 名单断言从旧死值 com.netease.newsreader 更正为真实包名 com.netease.newsreader.activity（旧断言固化了缺陷状态——测试与新事实对齐）",
+    "auto_log_sync": "scripts/auto-log-sync.mjs：24h×3（01:20/09:20/17:20 Asia/Shanghai）学习数据快照刷新 + 当日 history 归档 + data/ 变更即 commit+push（无变更幂等退出；推送失败原样报告不伪造）；实测已跑通一轮（d66b16e）",
+    "cron_jobs": "三项定时任务已建（job 2960378/2960379/2960380——0 20 1/9/17 * * ? Asia/Shanghai）"
+  },
+  "tests": {
+    "total_suites": 25,
+    "total_pass": 6240,
+    "total_fail": 0,
+    "delta_from_791": "+43（AppCatalogTest 新套件；既有 6197 项零回退——FeedAdGuardTest 1 项断言数据同步更正）",
+    "full_run_output": "android-app/run-tests.sh 全量重跑 6240/6240"
+  },
+  "apk": {
+    "versionName": "7.9.2", "versionCode": 79200,
+    "size": 861750, "md5": "54179018f3c601cd84cd2f703740e842",
+    "sha256_prefix": "14afc65bee17206af5893515d1fb12ac",
+    "distribution": ["android-app/dist", "dist", "download"],
+    "signer_md5": "e8cd6a4d1194cf081582e67a729917b9（与历史版本同证书——覆盖安装即升级）"
+  },
+  "compatibility_metrics": {
+    "应用覆盖数量": 233,
+    "规则测试数量": "25 套件 6240 断言（含 AppCatalogTest 43 项逐应用/目录断言）",
+    "页面场景数量": "既有 23 套件含 native/webview/dialog 仿真场景（L2 12 类 UI 全量标注待补）",
+    "真机测试数量": 0,
+    "广告样本数量": 0,
+    "成功关闭数量": 0,
+    "漏检数量": 0,
+    "误触数量": 0,
+    "重复点击数量": 0,
+    "安全拦截数量": 0,
+    "未验证数量": 233,
+    "口径声明": "L1 通过 ≠ 真机验证——本环境无真机连接，L3 数据必须回传日志后录入，绝不虚报"
+  },
+  "unresolved": [
+    "L2 12 类 UI 场景样本全量标注（现有套件已含 native/webview/dialog 仿真，Compose/Flutter/RN/Canvas/多窗口样本待后续轮补齐）",
+    "L3 真机实测未开始（无真机连接——第一批 50 高频应用待设备回传日志）",
+    "知识库高置信包名 95 款待真机 adb shell pm list packages 一次性核验后升级 verified",
+    "GKD 远程订阅 932 款的逐款覆盖交叉（当前只做了三源快照并集 148 款的交叉计算）"
+  ],
+  "next_round": [
+    "L2 页面结构场景样本补齐（12 类 UI 独立测试样本——节点树可访问性/窗口切换/内容延迟加载/关闭按钮延迟出现/候选消失/广告与反馈面板切换/页面内部导航/无障碍事件触发）",
+    "订阅统计细分落地验证（七分类统计的 L1 断言扩展）",
+    "真机 L3 第一批 50 高频应用（待设备连接后执行）"
+  ]
+}

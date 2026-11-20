@@ -41,7 +41,11 @@ public final class FeedAdGuardTest {
                 "com.ss.android.ugc.aweme", "com.smile.gifmaker", "com.xingin.xhs",
                 "tv.danmaku.bili", "com.zhihu.android", "com.baidu.searchbox",
                 "com.UCMobile", "com.tencent.mtt", "com.tencent.news",
-                "com.netease.newsreader", "com.sina.news", "com.quark.browser",
+                /* v7.9.2 包名校准：网易新闻真实包名带 .activity 后缀——
+                 * 旧值 com.netease.newsreader 从未命中任何真实设备（死条目），
+                 * 信息流护栏对网易新闻全程无效。此处同步更正（Google Play 上架
+                 * id=com.netease.newsreader.activity 核实）。 */
+                "com.netease.newsreader.activity", "com.sina.news", "com.quark.browser",
                 "com.snda.wifilocating", "com.hupu.games", "com.cubic.autohome",
                 "com.zol.android", "com.xiaomi.market",
         };

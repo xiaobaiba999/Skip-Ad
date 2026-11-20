@@ -1,0 +1,38 @@
+{
+  "meta": {
+    "updatedAt": "2026-11-21T12:00:00+08:00",
+    "purpose": "200+ 应用生态目录（apps_catalog.json）包名网络核实证据（v7.9.2 建档）。只收「包名出现在应用商店上架页 URL」的强证据：sj.qq.com（腾讯应用宝上架页）/ play.google.com（Google Play 上架页）/ app.xiaomi.com（小米应用商店）/ m.app.mi.com（小米商店移动页）/ a.app.qq.com（应用宝直链 pkgname 参数）/ apkpure.com。弱证据与知识库包名不在此列（见目录 source 字段）。检索原始证据保存在本地 tool-results/pkg-*.json（临时产物不入库），本文件为可提交的浓缩对账单。",
+    "verificationDate": "2026-11-21"
+  },
+  "verified": [
+    { "packageName": "com.sinovatech.unicom.ui", "appName": "中国联通", "hosts": ["sj.qq.com/appdetail/com.sinovatech.unicom.ui", "app.xiaomi.com/details?id=com.sinovatech.unicom.ui"], "note": "引擎旧死条目 com.sinovatech.unicom.ui.welcome.WelcomeActivity 的更正依据" },
+    { "packageName": "com.netease.newsreader.activity", "appName": "网易新闻", "hosts": ["play.google.com/store/apps/details?id=com.netease.newsreader.activity"], "note": "FeedAdGuard 名单旧值 com.netease.newsreader 的更正依据" },
+    { "packageName": "com.lemon.lv", "appName": "剪映", "hosts": ["sj.qq.com/appdetail/com.lemon.lv", "m.app.mi.com/details?id=com.lemon.lv"], "note": "国内版剪映——内置订阅此前误把 CapCut 包名当剪映" },
+    { "packageName": "com.lemon.lvoverseas", "appName": "CapCut", "hosts": ["play.google.com/store/apps/details?id=com.lemon.lvoverseas"], "note": "剪映海外版（引擎原误标「剪映」）" },
+    { "packageName": "veryzhun.vzcom", "appName": "飞常准", "hosts": ["play.google.com/store/apps/details?id=veryzhun.vzcom"], "note": "引擎旧条目 com.flightmanager.view 误标「飞常准」的更正依据" },
+    { "packageName": "cmccwm.mobilemusic", "appName": "咪咕音乐", "hosts": ["sj.qq.com/appdetail/cmccwm.mobilemusic"], "note": "" },
+    { "packageName": "com.cmcc.cmvideo", "appName": "咪咕视频", "hosts": ["sj.qq.com/appdetail/com.cmcc.cmvideo"], "note": "" },
+    { "packageName": "com.sohu.sohuvideo", "appName": "搜狐视频", "hosts": ["play.google.com/store/apps/details?id=com.sohu.sohuvideo"], "note": "" },
+    { "packageName": "com.ruanmei.ithome", "appName": "IT之家", "hosts": ["sj.qq.com/appdetail/com.ruanmei.ithome"], "note": "" },
+    { "packageName": "com.wudaokou.hippo", "appName": "盒马", "hosts": ["apkpure.com/he-ma/com.wudaokou.hippo"], "note": "" },
+    { "packageName": "com.alibaba.wireless", "appName": "1688(阿里巴巴)", "hosts": ["sj.qq.com/appdetail/com.alibaba.wireless", "play.google.com/store/apps/details?id=com.alibaba.wireless"], "note": "" },
+    { "packageName": "com.einnovation.temu", "appName": "Temu", "hosts": ["play.google.com/store/apps/details?id=com.einnovation.temu"], "note": "apkpure 检索出现的 com.tesamedia.temu / com.temusilat 等均为仿冒应用，拒收" },
+    { "packageName": "com.qq.reader", "appName": "QQ阅读", "hosts": ["sj.qq.com/appdetail/com.qq.reader"], "note": "" },
+    { "packageName": "com.qq.ac.android", "appName": "腾讯动漫", "hosts": ["sj.qq.com/appdetail/com.qq.ac.android"], "note": "" },
+    { "packageName": "com.bilibili.comic", "appName": "哔哩哔哩漫画", "hosts": ["sj.qq.com/appdetail/com.bilibili.comic"], "note": "" },
+    { "packageName": "com.shuqi.controller", "appName": "书旗小说", "hosts": ["sj.qq.com/appdetail/com.shuqi.controller"], "note": "海外版 com.shuqinovel.controller（Play 上架）另见" },
+    { "packageName": "com.luojilab.player", "appName": "得到", "hosts": ["play.google.com/store/apps/details?id=com.luojilab.player"], "note": "" },
+    { "packageName": "com.xueqiu.android", "appName": "雪球", "hosts": ["play.google.com/store/apps/details?id=com.xueqiu.android"], "note": "" },
+    { "packageName": "com.hexin.plat.android.supremacy", "appName": "同花顺(至尊版)", "hosts": ["play.google.com/store/apps/details?id=com.hexin.plat.android.supremacy"], "note": "主客户端 com.hexin.plat 与开户版 com.hexin.plat.kaihu（应用宝）同族" },
+    { "packageName": "cn.xuexi.android", "appName": "学习强国", "hosts": ["a.app.qq.com/o/simple.jsp?pkgname=cn.xuexi.android"], "note": "非 com.xuexi.android" },
+    { "packageName": "com.tencent.android.qqdownloader", "appName": "应用宝", "hosts": ["sj.qq.com/appdetail/com.tencent.android.qqdownloader"], "note": "" },
+    { "packageName": "com.happyelements.AndroidAnimal", "appName": "开心消消乐", "hosts": ["sj.qq.com/appdetail/com.happyelements.AndroidAnimal.qq"], "note": "主包 com.happyelements.AndroidAnimal；检索证据为应用宝渠道变体 .qq 后缀——渠道版本区分" },
+    { "packageName": "com.taptap.global", "appName": "TapTap(国际版)", "hosts": ["apkpure.com/taptap/com.taptap.global"], "note": "TapTap 国内版包名多轮检索无法核实——拒收（宁缺毋滥）" }
+  ],
+  "rejected": [
+    { "appName": "SHEIN", "reason": "apkpure 检索结果均为仿冒名（she.shopp.ingworld / kef.technology.sheinblack / com.sheinusa.comappsam 等），真实包名无法核实——拒收" },
+    { "appName": "TapTap 国内版", "reason": "taptap.cn 官方下载页为 JS 动态链接，多轮检索无法获得包名——拒收（只收国际版 com.taptap.global）" },
+    { "appName": "央视频 / 一点资讯 / 咪咕阅读 / 中国大学MOOC", "reason": "检索未返回包名证据——拒收" },
+    { "appName": "QQ邮箱", "note": "play.google.com 上架 id=com.tencent.androidqqmail（注意 androidqqmail 无点号分隔）——包名形态罕见，本轮暂不收录待真机核验" }
+  ]
+}

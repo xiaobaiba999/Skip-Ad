@@ -162,7 +162,7 @@ public final class FeedAdGuard {
             "com.UCMobile",                      // UC 浏览器
             "com.tencent.mtt",                   // QQ 浏览器
             "com.tencent.news",                   // 腾讯新闻
-            "com.netease.newsreader",            // 网易新闻
+            "com.netease.newsreader.activity",    // 网易新闻（v7.9.2 包名校准：真实包名带 .activity 后缀——旧值 com.netease.newsreader 从未命中，信息流护栏对网易新闻全程无效）
             "com.sina.news",                     // 新浪新闻
             "com.quark.browser",                 // 夸克浏览器
             "com.snda.wifilocating",             // WiFi 万能钥匙

@@ -3,6 +3,35 @@
 > 首页只保留当前版本要点；全部历史版本详情在本页归档。
 > 发布物（APK/报告/文档）见 [Releases](https://github.com/xiaobaiba999/Skip-Ad/releases) 与 `docs/test-reports/`。
 
+## v7.9.2（2026-11-21）—— 200+ 应用生态兼容性基线：233 款应用目录 + L1 测试体系 + 引擎包名校准五项根治
+
+- **本轮方法论（用户指令「从应用生态整体角度分析问题，不能只围绕微信/淘宝/ting.android 做定向修补」）**：建立覆盖 200+ 常用 Android 应用的兼容性目录与分层测试体系；包名必须经过核实（应用商店上架信息逐条网络核实，检索证据存 `tool-results/pkg-*.json`），宁缺毋滥不虚报。
+- **233 款应用兼容性目录（compatibility/apps_catalog.json）**：
+  - **包名三层来源严格区分**：引擎自证 115（内置订阅 Subscription.java 实时提取）/ 网络逐条核实 23（sj.qq.com / play.google.com / apkpure / app.xiaomi.com / a.app.qq.com）/ 知识库高置信 95（世界知名应用，待真机 adb 核验）。
+  - **12 分类配额全达标**：社交 25 / 短视频 25 / 资讯 20 / 电商 26 / 音乐 10 / 浏览器 11 / 工具 24 / 阅读 15 / 游戏 17 / 学习 15 / 金融生活 35 / 其他 10。
+  - **每款应用记录**：appName / packageName / category / source / priority / adTypes / uiFramework / subscriptionCoverage（内置订阅 119 / Feed 名单 19 / GKD 三源快照 148 交叉计算）/ testStatus / lastTestVersion / regressionStatus / notes。
+  - **诚实口径**：adTypes 为预期形态（L3 真机验证前的先验标注）；testStatus=l1-tested 仅指规则加载/包名/引擎通用逻辑断言通过，不代表真机广告识别已验证；未核实包名绝不收录（TapTap 国内版/SHEIN/央视频/一点资讯等证据不足者全部拒收）。
+- **引擎包名校准五项根治（目录核实直接揭出——全部数据级修复，零点击行为面变化，规则族不变）**：
+  1. **中国联通死条目**：旧包名 `com.sinovatech.unicom.ui.welcome.WelcomeActivity` 把 Activity 类名当包名——规则从未命中过任何真实设备（应用商店核实真实包名 `com.sinovatech.unicom.ui`，sj.qq.com + app.xiaomi.com 双源）。
+  2. **网易新闻 Feed 名单死值**：FeedAdGuard FEED_APPS 旧值 `com.netease.newsreader` 缺 `.activity` 后缀——信息流护栏对网易新闻全程无效（Google Play 上架 id=com.netease.newsreader.activity 核实）。
+  3. **建行/中行名称互换**：`com.chinamworld.main` ↔ 建设银行、`com.chinamworld.BOCMB` ↔ 中国银行（显示级更正，规则按包名路由不受影响）。
+  4. **剪映/CapCut 混淆**：`com.lemon.lvoverseas` 实为 CapCut 海外版（旧条目误标「剪映」）；补国内版剪映真实包名 `com.lemon.lv`（sj.qq.com + m.app.mi.com 双源）。
+  5. **飞常准/航班管家互标**：`com.flightmanager.view` 实为航班管家（旧条目误标「飞常准」）；补飞常准真实包名 `veryzhun.vzcom`（Google Play 核实）。
+- **L1 分层测试体系（AppCatalogTest 新套件 · 43 断言 · 六段断言面）**：
+  - S1 目录完整性：规模 ≥200（实际 233）/ 12 类配额 / 包名格式与唯一性 / 字段合法性。
+  - S2 内置订阅↔目录双向一致性：零孤儿包（引擎每个包名都有目录应用）+ 零虚标（目录 builtin 标注全部真实）+ v7.9.2 新增四包在场。
+  - S3 Feed 名单↔目录一致性：引擎名单全落座目录（网易新闻类死条目缺陷的回归闸）+ 目录 feed 标注与引擎名单零漂移 + 网易新闻真实包名接纳断言。
+  - S4 GKD 三源快照：三份 json5 快照全部可解析 + 目录 gkd 覆盖 ≥140（实际 148）。
+  - S5 逐应用规则匹配仿真：RuleEngine 分应用规则行路由（11 个已知包全命中）+ 233 款逐包 rowsFor 零 null + 内置订阅 119 款逐包开屏仿真全命中（walk+decide 必须产出动作）+ 同款应用正常主界面窗零出手反例（误触红线）。
+  - S6 包名校准五项回归闸：联通死包名不复活 + 五组包名↔名称精确对位断言。
+- **诚实口径测试矩阵（compatibility/test_matrix.json）**：L1 规则/引擎自动化（全量 233 款）→ L2 页面结构场景（12 类 UI 独立样本：native/WebView/Compose/Flutter/RN/自定义绘制/Canvas/视频播放器/Dialog/PopupWindow/悬浮覆盖层/多窗口分屏）→ L3 真机实测（分批 50/100/233，结果词汇表 NOT INSTALLED / NO AD OBSERVED / MISS / FALSE CLICK / VERIFIED SUCCESS）；统一指标口径（广告关闭成功率 = 确认成功关闭数/实际执行且符合条件的广告样本数——规则匹配成功 ≠ 广告关闭成功 · 应用数量 ≠ 广告样本数量 · 自动化断言 ≠ 真机兼容性测试）；L3 当前 0（无真机连接——绝不虚报）。
+- **24 小时自动日志同步（3 次/天 · scripts/auto-log-sync.mjs）**：学习数据快照刷新 + 当日 history 归档 + git 变更即提交推送（无变更幂等退出——不为凑提交制造噪声）；只 add data/ 目录（绝不提交密钥/Token/用户隐私日志）；推送失败原样报告绝不伪造成功。三项定时 01:20 / 09:20 / 17:20（Asia/Shanghai）。
+- **覆盖报告（compatibility/coverage_report.md）**：分类配额达成表 / 分层测试进度（L1 全量✅ · L2 部分🔶 · L3 未开始⛔）/ 本轮引擎数据缺陷五项表 / 未核实项清单（宁缺毋滥）/ 维护规则四条。
+- **测试（25 套件 6240 项全绿，v7.9.1 为 6197——+43 = AppCatalogTest 新套件；FeedAdGuardTest S1 名单断言同步更正为网易新闻真实包名）**；既有 24 套件零回退。
+- **安全红线零变化**：SafetyGuard 终闸/语义断言/预算封顶/点击坐标面全保持——本轮全部是数据级校准，零点击行为面变化。
+- **性能零变化**：零新增扫描 / 零新增事件订阅 / 零新增轮询。
+- **APK**：844KB · VC 79200（> 79100 覆盖安装即升级）· MD5 54179018 · SHA-256 14afc65b · 三目录分发（android-app/dist + dist + download）。
+
 ## v7.9.1（2026-11-20）—— 任务状态机轮：重复点击/误触/合法重试三难根治 + 订阅命中 0 根治 + 三 app 漏检修复
 
 - **本轮方法论（用户指令「先证明问题在哪里，再修改代码——不用关闭重试掩盖状态机问题、不用加扫描频率掩盖识别问题」）**：完整审计点击执行链路（任务创建 → 候选生成/评分 → SafetyGuard 终闸 → 无障碍代点/真实触点双通道 → 500ms 复验 → 候选轮换 → 重试调度 → 反馈面板 → 状态清理 → 异步取消），并做 v7.3.0/v7.6.0/v7.9.0 三版 git 回归考古。实锤根因四条（均有文件级证据）：
