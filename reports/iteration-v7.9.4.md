@@ -145,17 +145,19 @@ versionCode 单调守卫: 79400 > 79300（历史最大）✓
 ## 13. Git Commit
 
 ```
-本轮提交: fix(v7.9.4): 误触红线与时序硬回归轮——FalsePositiveScenarioTest 20场景+孤立词红线+对照侧 …
-         + AdTaskTimingTest A-H+Case1/2/3 + L1跳过键形态证据门根治(实测揭出) + S_NONE契约加固
-         + 安全部署链整改(Token出库/secret-scan双闸/SECURITY.md R1需撤销+R2迁移立项)
+commit: 5d4087b（24 files changed · 1887 insertions · 309 deletions）
+fix(v7.9.4): 误触红线与时序硬回归轮——FalsePositiveScenarioTest(20场景+孤立词红线+对照侧)
+  +AdTaskTimingTest(A-H+Case1/2/3) +L1跳过键形态证据门根治(实测揭出) +S_NONE契约加固
+  +安全部署链整改(Token出库/secret-scan双闸/SECURITY.md)
 ```
-
-（完整提交信息见 `git log -1`；commit 哈希在推送后补录 round-45.json 已含本轮全部变更清单。）
 
 ## 14. Git Push 状态
 
 ```
-PUSH: SUCCESS / FAILED —— 见文末【Push】状态（提交后执行 git-push-once.sh main）
+PUSH: SUCCESS
+  git-push-once.sh main → https://github.com/xiaobaiba999/Skip-Ad.git
+  39e5807..5d4087b  main -> main
+  推送后核对: git fetch origin → origin/main = 5d4087b ✓（本地与远程一致，无分叉）
 ```
 
 ## 15. 真机测试状态【REAL_DEVICE】

@@ -92,22 +92,36 @@
     "total_pass": 6487,
     "total_fail": 0,
     "delta_from_793": "+164（FalsePositiveScenarioTest 69 + AdTaskTimingTest 95；既有 6323 项零回退）",
-    "per_new_suite": { "FalsePositiveScenarioTest": 69, "AdTaskTimingTest": 95 },
+    "per_new_suite": {
+      "FalsePositiveScenarioTest": 69,
+      "AdTaskTimingTest": 95
+    },
     "secret_scan_gate": "通过（四道检查全绿——run-tests.sh 与 build.sh 双闸接线实测）"
   },
   "apk": {
-    "versionName": "7.9.4", "versionCode": 79400,
-    "size": 861750, "md5": "09a9be9090f4e058f8f4b95269942e05",
+    "versionName": "7.9.4",
+    "versionCode": 79400,
+    "size": 861750,
+    "md5": "09a9be9090f4e058f8f4b95269942e05",
     "sha256_prefix": "742cf24c1b56a44e9e5d581b827e1c88",
-    "distribution": ["android-app/dist", "download", "upload"],
+    "distribution": [
+      "android-app/dist",
+      "download",
+      "upload"
+    ],
     "signature": "apksigner verify 通过 · 同证书（Signer SHA-256 05ada6e3…——与 v7.9.3 同签名，覆盖安装即升级）"
   },
   "compatibility_metrics": {
     "应用覆盖数量": 233,
     "规则测试数量": "28 套件 6487 断言（L1 AppCatalogTest 43 + L2 PageScenarioTest 83 + FP FalsePositiveScenarioTest 69 + 时序 AdTaskTimingTest 95）",
     "页面场景数量": "12 类 UI 样本 × 8 项场景行为 + 20 类误触红线场景（L2 扩容）",
-    "真机测试数量": 0, "广告样本数量": 0, "成功关闭数量": 0, "漏检数量": 0,
-    "误触数量": 0, "重复点击数量": 0, "安全拦截数量": 0,
+    "真机测试数量": 0,
+    "广告样本数量": 0,
+    "成功关闭数量": 0,
+    "漏检数量": 0,
+    "误触数量": 0,
+    "重复点击数量": 0,
+    "安全拦截数量": 0,
     "未验证数量": 233,
     "口径声明": "L1/L2/FP/时序层全绿 ≠ 真机验证——无真机连接绝不虚报；REAL_DEVICE_TEST = NOT_AVAILABLE"
   },
@@ -123,5 +137,11 @@
     "点击证据记录（decision evidence 结构化：text/description/resourceId/imageCorner/adContext/sdkContext/webViewContext/geometry/clickable/safetyGuard/taskState——本机脱敏存储）",
     "视频开屏自适应观察窗（初始快速观察·零事件树静默降耗·广告画像成立延长·证据消失即止——20s ceiling 不变）",
     "下一证据驱动修复轮（待真机日志回传后按证据选题）"
-  ]
+  ],
+  "git": {
+    "commit": "5d4087b",
+    "push": "SUCCESS",
+    "pushDetail": "39e5807..5d4087b main -> main",
+    "postPushVerify": "origin/main = 5d4087b（fetch 核对一致）"
+  }
 }
