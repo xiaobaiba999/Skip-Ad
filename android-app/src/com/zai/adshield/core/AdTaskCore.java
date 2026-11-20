@@ -94,6 +94,23 @@ public final class AdTaskCore {
         return state == S_SUCCESS || state == S_FAILED || state == S_CANCELLED;
     }
 
+    /** v7.9.5 状态名（决策证据 Evidence.st 用——纯查表，非法值 UNKNOWN）。 */
+    public static String stateName(int state) {
+        switch (state) {
+            case S_NONE: return "NONE";
+            case S_DETECTED: return "DETECTED";
+            case S_READY: return "READY";
+            case S_CLICKING: return "CLICKING";
+            case S_VERIFYING: return "VERIFYING";
+            case S_RETRY_WAIT: return "RETRY_WAIT";
+            case S_FEEDBACK: return "FEEDBACK";
+            case S_SUCCESS: return "SUCCESS";
+            case S_FAILED: return "FAILED";
+            case S_CANCELLED: return "CANCELLED";
+            default: return "UNKNOWN";
+        }
+    }
+
     /** 成功终态（拒收一切点击与回调——「成功必须不可逆」）。 */
     public static boolean isSuccess(int state) {
         return state == S_SUCCESS;

@@ -478,6 +478,8 @@ public class AdSkipService extends AccessibilityService {
     /* ═══ v7.8.0 视频开屏画像 + 插屏延后复扫状态面 ═══ */
     private final java.util.HashMap<String, Long> contentAt = new java.util.HashMap<String, Long>();      // 内容事件时刻（树静默时长观测）
     private final java.util.HashMap<String, Long> videoPollAt = new java.util.HashMap<String, Long>();     // 视频轮询针时刻（1.5s/针节流）
+    /* ═══ v7.9.5 自适应轮询：连续探针零命中针数（低证据降频证据源）══ */
+    private final java.util.HashMap<String, Integer> videoProbeMiss = new java.util.HashMap<String, Integer>();
     private final java.util.HashMap<String, String> videoLoggedKey = new java.util.HashMap<String, String>(); // 视频画像日志（每窗一条）
     private final java.util.HashMap<String, Long> cornerStrikeAt = new java.util.HashMap<String, Long>();  // 视频窗白点节流（角落/手势击 ≥1.5s/击）
     private final java.util.HashMap<String, Long> interRetriedWin = new java.util.HashMap<String, Long>();  // 插屏首扫延后复扫守门（每窗一次）
@@ -535,6 +537,7 @@ public class AdSkipService extends AccessibilityService {
         long endedAt;                         // 终态时刻（新任务冷却闸用）
         long firstZeroVerifyAt;                // 复验第一轮零候选时刻（两轮零=就地 SUCCESS）
         boolean confirmQueued;                 // 确认针已排（每任务最多一针——防重复排队）
+        String lastReason = "";               // v7.9.5：本任务最后一击的决策 reason（证据与订阅 verifiedSuccess 归因用）
     }
 
     private final java.util.HashMap<String, AdTask> adTasks = new java.util.HashMap<String, AdTask>();
@@ -815,6 +818,27 @@ public class AdSkipService extends AccessibilityService {
                             .append(" · 点击失败 ").append(ss.optInt("clickFail", 0))
                             .append(" · 点击成功 ").append(ss.optInt("clickOk", 0));
                 }
+                /* v7.9.5 GKD 证据链八格诊断行（用户指令七：consulted/matched/
+                 * candidateAccepted/clicked/verifiedSuccess/clickFail/falseClick/
+                 * blocked——订阅参与度与出手-关闭闭环；falseClick 恒 0 即无真机
+                 * 误触样本的诚实表达）。 */
+                org.json.JSONObject sv2 = sub.optJSONObject("subStatV2");
+                if (sv2 != null) {
+                    b.append("\n- 订阅证据链（v7.9.5）：咨询 ").append(sv2.optInt("consulted", 0))
+                            .append(" · 匹配 ").append(sv2.optInt("matched", 0))
+                            .append(" · 候选过闸 ").append(sv2.optInt("candidateAccepted", 0))
+                            .append(" · 已点击 ").append(sv2.optInt("clicked", 0))
+                            .append(" · 确认关闭 ").append(sv2.optInt("verifiedSuccess", 0))
+                            .append(" · 点击失败 ").append(sv2.optInt("clickFail", 0))
+                            .append(" · 误触 ").append(sv2.optInt("falseClick", 0))
+                            .append(" · 被拦截 ").append(sv2.optInt("blocked", 0));
+                }
+                /* v7.9.5 点击结果六态诊断行（dispatchGesture 成功 ≠ 广告关闭——
+                 *  唯一成功证据是验证链；六态计数上传日志直接可读）。 */
+                b.append("\n- 点击结果（v7.9.5）：").append(
+                        com.zai.adshield.core.DecisionEvidence.outcomeJson());
+                b.append("\n- 点击证据（v7.9.5·最近一击）：").append(
+                        com.zai.adshield.core.DecisionEvidence.toJsonLine());
                 b.append("\n");
                 }
             } catch (Throwable ignored) {
@@ -1777,6 +1801,7 @@ public class AdSkipService extends AccessibilityService {
                 /* v7.8.0 视频画像/插屏复扫状态面新窗重置（旧窗轮询针/白点节流/
                  *  延后复扫守门绝不拖进新窗——代际护栏双保险）。 */
                 videoPollAt.remove(pkg);
+                videoProbeMiss.remove(pkg); // v7.9.5：低证据降频针数同窗重置
                 cornerStrikeAt.remove(pkg);
                 contentAt.remove(pkg);
                 if (isDialogClass(cls) && !isOemUtilityPkg(pkg)) {
@@ -3555,10 +3580,21 @@ public class AdSkipService extends AccessibilityService {
          * 新候选可经探针/全量复扫拉起新任务。旧任务绝不因轮询针复活。 */
         AdTask vTask = taskOf(pkg);
         boolean vTaskTerminal = vTask != null && AdTaskCore.isTerminal(vTask.state);
+        /* ═══ v7.9.5 自适应轮询（用户指令八：低证据降频——不再以 1.5s 高频
+         * 扫整个 20s 观察窗；证据增强恢复标准节拍；证据消失立即终止
+         * 由上方 videoLike 复核承担；20s ceiling 由上方观察窗到期承担）═══
+         * 连续 ≥VIDEO_LOW_EVIDENCE_MISS_STREAK 针探针零命中且零出手（≈6s
+         * 无任何证据增量）→ 降频 3s；任何探针命中（证据增强）或出手
+         * （recordClickEvidence）重置 miss streak 恢复 1.5s 标准节拍。 */
+        Integer missBox = videoProbeMiss.get(pkg);
+        int probeMiss = missBox == null ? 0 : missBox.intValue();
         if (!com.zai.adshield.core.VideoSplashGuard.pollDue(
-                videoPollAt.get(pkg), now, vTaskTerminal)) return;
+                videoPollAt.get(pkg), now, vTaskTerminal, probeMiss)) return;
         videoPollAt.put(pkg, now);
-        if (videoPollAt.size() > 24) videoPollAt.clear(); // 防膨胀
+        if (videoPollAt.size() > 24) {
+            videoPollAt.clear(); // 防膨胀
+            videoProbeMiss.clear();
+        }
         try {
             /* v7.9.0 每 3 针一次全量复扫（图片钮零文字零探针命中——walk
              *  角落候选是 12~20s 段纯图片键唯一路径；全量闸（L4 形态门 +
@@ -3577,6 +3613,7 @@ public class AdSkipService extends AccessibilityService {
                         java.util.List<android.view.accessibility.AccessibilityNodeInfo> found =
                                 r.findAccessibilityNodeInfosByText(w);
                         if (found != null && !found.isEmpty()) {
+                            videoProbeMiss.put(pkg, 0); // v7.9.5：证据增强——miss streak 重置
                             appendLog("🎞 视频开屏轮询命中（" + shortPkg(pkg) + "）：探针「" + w
                                     + "」露头 → 全量扫描出手（窗龄 " + (elapsed / 1000) + "s）");
                             tryScan(pkg, winStart, elapsed);
@@ -3588,8 +3625,12 @@ public class AdSkipService extends AccessibilityService {
             }
             // 未露头 → 继续排下一针（静默事件源兜底——固定梯子不覆盖 12~20s 段）
             // v7.9.1：终态任务降频 3s（观察在岗出手拒收；新实例冷却过后恢复 1.5s 节奏）
+            // v7.9.5：自适应节拍——低证据（连续零命中针数 ≥4）同档 3s；探针命中/
+            // 出手重置 miss streak 恢复 1.5s（adaptivePollGapMs 统一裁决三档）。
+            int missAfter = probeMiss + 1;
+            videoProbeMiss.put(pkg, missAfter);
             handler.postDelayed(() -> videoPoll(pkg, winStart, pollIdx + 1),
-                    vTaskTerminal ? 3000L : com.zai.adshield.core.VideoSplashGuard.VIDEO_POLL_MS);
+                    com.zai.adshield.core.VideoSplashGuard.adaptivePollGapMs(vTaskTerminal, missAfter));
         } catch (Throwable ignored) {
         }
     }
@@ -4015,8 +4056,17 @@ public class AdSkipService extends AccessibilityService {
             if (bnd != com.zai.adshield.core.ComplianceGuard.BND_OK) {
                 boundaryGuardLog(pkg, d.reason, bnd, bl.length() > 0 ? bl : bv);
                 SubscriptionManager.countClickOutcome(d.reason, -1); // v7.9.1 订阅七分类：被安全闸拦截
+                /* v7.9.5 点击结果闭环：SAFE_BLOCK 终局（宁漏勿误闸在岗证据——
+                 *  SafetyGuard 裁决被拒的候选计入六态计数器，绝不与出手混淆）。 */
+                com.zai.adshield.core.DecisionEvidence.recordSafeBlock(pkg, d.reason,
+                        "BND_" + bnd);
+                com.zai.adshield.core.DecisionEvidence.recordOutcome(
+                        com.zai.adshield.core.DecisionEvidence.OUT_SAFE_BLOCK);
                 return false;
             }
+            /* v7.9.5 订阅证据链第二格：候选被 SafetyGuard 终闸接受（进入后续
+             *  派发门——matched→candidateAccepted→clicked→verifiedSuccess）。 */
+            SubscriptionManager.countCandAccepted(d.reason);
         }
         // v4.2.0 用户意图让路：任何出手（点击/关闭/返回键/学习位置直点）
         // 前统一校验——用户 4s 内点击过或正浏览自己打开的页面，一律让路。
@@ -4168,7 +4218,8 @@ public class AdSkipService extends AccessibilityService {
             // v3.8.0：手势真实触点【首选】——performAction 首点常被应用无声吞掉
             //（喜马拉雅实锤）；派发失败才降级 performAction 兜底（见 clickNode）
             if (clickNode(d)) {
-                taskOnDispatch(pkg); // v7.9.1 两通道统一记账（真实触点/无障碍代点均 → VERIFYING）
+                recordClickEvidence(pkg, d, f, ctx); // v7.9.5 决策证据（最小结构化——派发前状态）
+                taskOnDispatch(pkg, d.reason); // v7.9.1 两通道统一记账（真实触点/无障碍代点均 → VERIFYING）
                 SubscriptionManager.countClickOutcome(d.reason, 1); // v7.9.1 订阅七分类：点击执行成功
                 lastClickAt.put(pkg, now);
                 lastAutoClickPkg = pkg;
@@ -4255,7 +4306,8 @@ public class AdSkipService extends AccessibilityService {
             /* v7.2.0 多点防线 I（学习位置直点同熙）：每窗 2 击封顶 */
             if (!HumanTap.targetStrikesOk(firedTargetCount.get(targetKey))) return false;
             if (gestureTap(d.x, d.y)) {
-                taskOnDispatch(pkg); // v7.9.1 学习位置直点也是本任务的一击
+                recordClickEvidence(pkg, d, null, ctx); // v7.9.5 决策证据（学习位置直点同熙）
+                taskOnDispatch(pkg, d.reason); // v7.9.1 学习位置直点也是本任务的一击
                 lastClickAt.put(pkg, now);
                 lastAutoClickPkg = pkg;
                 lastAutoClickAt = now;
@@ -4538,8 +4590,10 @@ public class AdSkipService extends AccessibilityService {
         backTries.put(pkg, 0);
     }
 
-    /** 出手派发成功记账（两通道统一入口——真实触点/无障碍代点都走这里）。 */
-    private void taskOnDispatch(String pkg) {
+    /** 出手派发成功记账（两通道统一入口——真实触点/无障碍代点都走这里）。
+     *  v7.9.5：携带决策 reason（任务最后一击归因——订阅 verifiedSuccess
+     *  证据链闭环用）。 */
+    private void taskOnDispatch(String pkg, String reason) {
         AdTask t = adTasks.get(pkg);
         if (t == null) { // 防御：无任务时补开（执行序保证 begin 在前，此路仅兜底）
             t = new AdTask();
@@ -4549,17 +4603,111 @@ public class AdSkipService extends AccessibilityService {
         }
         t.state = AdTaskCore.onDispatch(t.state);
         t.hadClick = true;
+        t.lastReason = reason == null ? "" : reason; // v7.9.5：最后一击归因
         t.firstZeroVerifyAt = 0;   // 新一击起两轮零候选复验重新起算
         t.confirmQueued = false;
     }
 
-    /** 不可逆 SUCCESS（就地/窗口切换/反馈面板收起三路汇合）——杀链+冷却+终态。 */
+    /**
+     * v7.9.5 点击决策证据（用户指令第一/第二优先级——最小结构化）。
+     * 每次准备 CLICK 前记录：包/Activity/任务ID/代际/任务状态 · 候选来源
+     * （text/contentDescription/resourceId/imageCorner）· 上下文（广告/
+     * SDK/WebView/订阅）· 几何（归一化位置/面积/屏幕区域/可点）· 安全裁决
+     * （终闸已过 = OK）· finalDecision（CLICK_DISPATCHED）。
+     * ══ 隐私红线（结构性强制）══ 不保存完整 Accessibility Tree（无树容器）
+     * · 不上传原始截图（零位图）· 不保存账号/手机号/支付/聊天内容（候选标签
+     * 经 DecisionEvidence.sanitizeToken 白名单闸——close/skip 词族之外一律空串）
+     * · 环形缓冲有界（12 条）。证据链任何异常都被吞掉——绝不影响点击主链。
+     */
+    private void recordClickEvidence(String pkg, Decision d, ScanFind f, Ctx ctx) {
+        try {
+            AdTask t = adTasks.get(pkg);
+            String taskId = t == null ? "" : taskIdOf(t);
+            String stName = t == null ? "NONE" : AdTaskCore.stateName(t.state);
+            Integer gBox = scanGen.get(pkg);
+            int gen = gBox == null ? -1 : gBox.intValue();
+            /* 候选来源判定：文本 → 描述 → 资源 id → 图标角（imageCorner 兜底） */
+            String src = com.zai.adshield.core.DecisionEvidence.SRC_IMAGE;
+            String rawLabel = null;
+            String rawResId = null;
+            boolean clk = false;
+            if (d != null) {
+                if (d.node != null) {
+                    try {
+                        String tx = cs(d.node.text());
+                        if (tx.length() > 0) {
+                            src = com.zai.adshield.core.DecisionEvidence.SRC_TEXT;
+                            rawLabel = tx;
+                        } else {
+                            String de = cs(d.node.desc());
+                            if (de.length() > 0) {
+                                src = com.zai.adshield.core.DecisionEvidence.SRC_DESC;
+                                rawLabel = de;
+                            }
+                        }
+                        String vid = d.node.viewId();
+                        if (vid != null && vid.length() > 0) rawResId = vid;
+                        if (src.equals(com.zai.adshield.core.DecisionEvidence.SRC_IMAGE)
+                                && rawResId != null) {
+                            src = com.zai.adshield.core.DecisionEvidence.SRC_RESID;
+                        }
+                        clk = d.node.clickable();
+                    } catch (Throwable ignored) {
+                    }
+                } else if (d.label != null && d.label.trim().length() > 0) {
+                    src = com.zai.adshield.core.DecisionEvidence.SRC_TEXT; // gestureOnly 命中文案
+                    rawLabel = d.label.trim();
+                }
+            }
+            /* 上下文四格：广告语境 / SDK 窗指纹 / WebView 容器 / 订阅路径 */
+            boolean adCtx = (f != null && (f.adBadge || f.dialogForm)) || (ctx != null && ctx.halfScreenAd);
+            boolean sdkCtx = ctx != null && ctx.sdkAdWin;
+            boolean wvCtx = f != null && f.webviewPresent;
+            boolean subCtx = d != null && d.reason != null && d.reason.startsWith("rule_sub_gkd");
+            /* 几何：归一化中心/面积/区域（bounds 优先，学习位置直点用坐标点） */
+            double cx = 0.5, cy = 0.5, area = 0.0;
+            int sw = screenWidth > 0 ? screenWidth : 1080;
+            int sh = screenHeight > 0 ? screenHeight : 2400;
+            int[] b = d != null ? d.bounds : null;
+            if (b != null && b.length == 4 && b[2] > b[0] && b[3] > b[1]) {
+                cx = ((double) (b[0] + b[2])) / 2.0 / sw;
+                cy = ((double) (b[1] + b[3])) / 2.0 / sh;
+                area = ((double) (b[2] - b[0])) * (b[3] - b[1]) / ((double) sw * sh);
+            } else if (d != null && d.x >= 0 && sw > 0 && sh > 0) {
+                cx = (double) d.x / sw;
+                cy = (double) d.y / sh;
+                area = (16.0 * 16.0) / ((double) sw * sh); // 坐标级触点（±8px 等价面积）
+            }
+            com.zai.adshield.core.DecisionEvidence.recordDecision(
+                    pkg, winClassOf(pkg), taskId, gen, stName,
+                    src, d != null && d.reason != null ? d.reason : "",
+                    rawLabel, rawResId, adCtx, sdkCtx, wvCtx, subCtx,
+                    cx, cy, area, clk, "BND_OK");
+            /* v7.9.5 自适应轮询证据增强：任何出手都重置探针 miss streak
+             * （低证据降频立即恢复标准节拍）。 */
+            Integer missBox = videoProbeMiss.get(pkg);
+            if (missBox != null && missBox.intValue() != 0) videoProbeMiss.put(pkg, 0);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** 不可逆 SUCCESS（就地/窗口切换/反馈面板收起三路汇合）——杀链+冷却+终态。
+     *  v7.9.5 点击结果闭环：VERIFIED_SUCCESS 六态计数（dispatchGesture 成功
+     *  ≠ 广告关闭——唯一成功证据是本路验证链）；本任务出手 reason 为订阅规则
+     *  时同步计入订阅证据链 verifiedSuccess（点击→广告真关闭闭环）。 */
     private void markTaskSuccess(String pkg, String howZh) {
         AdTask t = adTasks.get(pkg);
         if (t == null) return;
         if (AdTaskCore.isTerminal(t.state)) return; // 不可逆
+        boolean hadClick = t.hadClick;
+        String lastReason = t.lastReason;
         t.state = AdTaskCore.onVerifyAdGone(t.state);
         t.endedAt = System.currentTimeMillis();
+        if (hadClick) {
+            com.zai.adshield.core.DecisionEvidence.recordOutcome(
+                    com.zai.adshield.core.DecisionEvidence.OUT_VERIFIED_SUCCESS);
+            SubscriptionManager.countVerifiedSuccess(lastReason);
+        }
         if (adClosedAt.size() > 64) adClosedAt.clear();
         adClosedAt.put(pkg, t.endedAt);   // 静默期照常（未命中日志降噪）
         chainKilledAt.put(pkg, t.winStart); // 本窗剩余固定档全取消（新实例冷却后另议）
@@ -4567,11 +4715,16 @@ public class AdSkipService extends AccessibilityService {
                 + " → 任务终态（SUCCESS）——本任务后续点击/过期回调一律拒收");
     }
 
-    /** 不可逆 FAILED（预算用尽优雅收手——绝不无限重试）。 */
+    /** 不可逆 FAILED（预算用尽优雅收手——绝不无限重试）。
+     *  v7.9.5 点击结果闭环：MISS 六态计数（有出手但未关闭——预算收手）。 */
     private void markTaskFailed(String pkg) {
         AdTask t = adTasks.get(pkg);
         if (t == null) return;
         if (AdTaskCore.isTerminal(t.state)) return;
+        if (t.hadClick) {
+            com.zai.adshield.core.DecisionEvidence.recordOutcome(
+                    com.zai.adshield.core.DecisionEvidence.OUT_MISS);
+        }
         t.state = AdTaskCore.onVerifyAdStill(t.state, Integer.MAX_VALUE, 0);
         t.endedAt = System.currentTimeMillis();
     }
@@ -4583,15 +4736,23 @@ public class AdSkipService extends AccessibilityService {
         t.state = AdTaskCore.onFeedbackSeen(t.state);
     }
 
-    /** 窗口切换终局（原「复验通过」路径——任务层统一记账）。 */
+    /** 窗口切换终局（原「复验通过」路径——任务层统一记账）。
+     *  v7.9.5 点击结果闭环：有出手且终局 SUCCESS → VERIFIED_SUCCESS 计数
+     *  （窗口切走=点击生效的验证链证据——与 markTaskSuccess 同源六态）。 */
     private void markTaskWindowChanged(String pkg, String howZh) {
         AdTask t = adTasks.get(pkg);
         if (t == null) return;
         boolean had = t.hadClick;
+        String lastReason = t.lastReason;
         int ns = AdTaskCore.onWindowChanged(t.state, had);
         if (AdTaskCore.isTerminal(ns) && !AdTaskCore.isTerminal(t.state)) {
             t.state = ns;
             t.endedAt = System.currentTimeMillis();
+            if (had && ns == AdTaskCore.S_SUCCESS) {
+                com.zai.adshield.core.DecisionEvidence.recordOutcome(
+                        com.zai.adshield.core.DecisionEvidence.OUT_VERIFIED_SUCCESS);
+                SubscriptionManager.countVerifiedSuccess(lastReason);
+            }
             if (had && howZh != null) appendLog("✓ 复验通过（" + shortPkg(pkg) + "）：" + howZh);
         }
     }
@@ -4621,6 +4782,12 @@ public class AdSkipService extends AccessibilityService {
         if (kindOfInterest != AdTaskCore.S_VERIFYING && kindOfInterest != AdTaskCore.S_RETRY_WAIT
                 && kindOfInterest != AdTaskCore.S_FEEDBACK) return;
         if (!zeroCand) {
+            /* v7.9.5 点击结果闭环：RETRY 六态计数——已出手（VERIFYING）后
+             * 复验仍见候选 → 合法重试等待（预算钳制——绝不无限重试）。 */
+            if (kindOfInterest == AdTaskCore.S_VERIFYING) {
+                com.zai.adshield.core.DecisionEvidence.recordOutcome(
+                        com.zai.adshield.core.DecisionEvidence.OUT_RETRY);
+            }
             // 候选/广告线索仍在场 → 合法重试等待（重试安全门在 execute 全量复验）
             t.firstZeroVerifyAt = 0;
             t.state = AdTaskCore.onVerifyAdStill(t.state, triesOfClick(pkg),

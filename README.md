@@ -28,17 +28,18 @@ Java 引擎 · GKD 订阅生态兼容 · [Releases](https://github.com/xiaobaiba
 | **隐私与安全** | 数据仅存本机；联网仅日志上传（脱敏）与更新检查；零定位/通讯录/存储权限；更新包安装前 SHA-256 逐字节校验（镜像投毒/换包自动拦截）；订阅规则支付/诱导词双否决（注入防线） |
 | **体积** | APK 844KB（含三源离线订阅快照 ~520KB）· 冷启动毫秒级 · 典型日功耗 0.05mWh 级 |
 
-## 当前版本 v7.9.4（2026-11-21）· FalsePositive 场景层 + AdTask 时序压力 + 安全整改（令牌出库/密钥扫描硬门）
+## 当前版本 v7.9.5（2026-11-21）· 真实世界证据层：点击决策证据 + 点击结果六态闭环 + WebView 综合证据路径
 
-**误触红线与安全整合轮**（用户 20 类「绝对不应该点击」场景规格 + A-H 八组时序竞态 + Case1/2/3 三种真机实锤情况硬回归 + 安全部署链整改）：新 JVM 套件 FalsePositiveScenarioTest（69 断言）与 AdTaskTimingTest（95 断言），本轮实测揭出并根治 L1 跳过键路径零形态证据缺陷：
+**真实世界证据层铺轨轮**（用户指令：真实 App → 真实广告 → 候选 → Decision Evidence → SafetyGuard → HumanTap → VERIFY → 真实结果 → 样本沉淀）：把「证据层」建进生产链路，为 L3 真机回填与失败样本沉淀铺轨——本轮不以增加 JVM 断言数量为目标：
 
-1. **FalsePositiveScenarioTest（20 类误触红线场景逐类断言「绝对不点」）**：银行/政务/支付守护名单页（可滚+长文本+输入框形态铁证——风险面诚实记录：右上消息图标确被收集为角落候选但内容形态闸拒之）· 相机页面（模式条可滚+快门/闪光/翻转角落图标在树仍零出手）· **聊天窗口（孤立「跳过/关闭」聊天气泡零出手——本轮实测揭出的真实缺陷：旧版 L1 路径会在开屏窗龄内点击孤立「跳过」字样，现需广告形态证据门根治）**· Launcher 桌面 · 商品详情/购买确认弹窗（CTA 族永不成为点击目标）/收藏/分享/评论 · 更新提示单信号 · 权限请求（允许/拒绝均不代点）· 会员弹窗（最坏情形只关「关闭」族、绝不对「立即领取」CTA 出手）· 普通 PopupWindow 菜单（孤立「不感兴趣」菜单项不是点击理由）/表单 Dialog/悬浮 FAB · 多窗口分屏 · 小程序/支付/团购容器 L0 纵深防御（真广告形态树同拒）· 反馈面板；附带**孤立词红线**（「关闭/×/取消/跳过/稍后/知道了」单独出现不构成点击理由）与**对照侧**（真广告语境同词照常出手——不为降误触一刀切关闭识别能力）
-2. **AdTaskTimingTest（A-H 八组时序竞态 + 三种真机实锤情况硬回归）**：旧 callback 100/300ms 两档拒收（两轮零确认 350ms 间隔不提前判关）· 候选坐标改变不得复用旧坐标（五要件对【新候选】重验全真才出手）· 窗口切换任务终局（旧任务不续命）· Dialog 消失后普通按钮冷却闸（2.2s 残留期不点普通按钮）· 反馈面板零补刀 · videoPoll 终态发现 SUCCESS 立即退出（3s 降频契约）· 延迟露头关闭键六档（100/300/500/800/2000/5000ms——出现前零出手·出现后首过安全闸即出手）；**Case 1**（成功后旧 task/callback/timer/videoPoll/TapGestureCallback 全拒·第二次点击=0）· **Case 2**（重试五要件逐项缺失全拒——重新获取广告状态/候选/安全闸/可点性/任务有效性）· **Case 3**（click()=true ≠ 广告关闭——onDispatch 无 SUCCESS 出口枚举断言，唯一成功通道是真验证）
-3. **生产修复两处（证据质量提升——不是关闭扫描）**：① **L1 跳过键路径广告形态证据门**（isAdLikeLoose：无滚动/无输入框/≤150 节点，或 SDK/学习指纹）——真开屏窗恒满足（静态图+跳过键从不带滚动容器/输入框）零识别回退，与 L1.6 关闭键路径（v3.7.0 同款门）口径对齐；② AdTaskCore 无任务 S_NONE 契约加固——一切状态转移不得从「无任务」无中生有（服务侧 null 守卫已保证，纯契约收紧）
-4. **安全整改（docs/SECURITY.md 披露 + 令牌出库 + 密钥扫描硬门）**：GitHub Token 从代码库完全移除（原双层 XOR+Base64 混淆内嵌自 v2.0.0 入库——混淆不等于加密，已标记**需撤销**；凭据链改为环境变量 SKIPAD_GH_TOKEN/GH_TOKEN/GITHUB_TOKEN → 仓库根未入库文件 local-gh-token，.gitignore 放行收集）；新增 `scripts/secret-scan.sh` 密钥泄露扫描硬门接入 run-tests.sh 与 build.sh 双闸（令牌形态/credentials.ts 内嵌凭据形态/本机凭据入库/keystore 散落四道检查）；签名口令支持 KS_PASS/KEY_PASS 环境变量注入；APK 内敏感字符串扫描通过（classes.dex 与 assets 零令牌形态）
-5. **28 套件 6487 项断言全绿（+164；既有 6323 项零回退）**：安全红线全保持（SafetyGuard 终闸零变化·语义断言零取消·预算 3/5 封顶·点击坐标面零扩大·宁漏勿误）；性能零变化（零新增扫描/订阅/轮询）
+1. **点击决策证据（新核心模块 core/DecisionEvidence · 最小结构化）**：每次准备点击前记录——包/Activity/任务ID/代历/任务状态 · 候选来源（text/contentDescription/resourceId/imageCorner）· 上下文四格（广告语境/SDK 窗指纹/WebView 容器/订阅路径）· 归一化几何（位置/面积/屏幕区域/可点）· SafetyGuard 裁决 · finalDecision。**隐私红线结构性强制**：不保存完整 Accessibility Tree（模块无树容器）· 不上传原始截图（零位图）· 账号/手机号/支付/聊天内容一律白名单闸拒收（候选标签只保留 close/skip 词族成员）· 环形缓冲有界 12 条
+2. **点击结果六态闭环（dispatchGesture 成功 ≠ 广告关闭）**：CLICK_DISPATCHED → VERIFYING → `VERIFIED_SUCCESS / RETRY / MISS / FALSE_CLICK / SAFE_BLOCK / UNKNOWN`——唯一成功证据是验证链（两轮零候选/窗口切换/反馈面板收起）；六态计数与最近一击证据入上传日志（「点击结果」「点击证据」行）；FALSE_CLICK 自动化环境恒 0（真机样本回传唯一来源，绝不虚报）
+3. **订阅证据链八格**：consulted/matched/candidateAccepted/clicked/verifiedSuccess/clickFail/falseClick/blocked——订阅参与度与「点击→广告真关闭」闭环证据（上传日志「订阅证据链」行）；七分类统计兼容保持
+4. **WebView 综合证据路径（真广告+ScrollView/Input/WebView 专项）**：isAdLikeLoose 对滚动容器/输入框/大树（WebView 视频容器常态 >150 节点）的过强阻断获得综合判断出口——**WebView 容器在场且至少一个广告语境证据（角标/SDK 窗指纹/Dialog 形态/热区）同窗才出手**；WebView 单独在场不构成证据（应用内浏览器普通页零出手——误触红线保持）；SafetyGuard 终闸全在岗
+5. **视频开屏自适应轮询（20s ceiling 保持）**：低证据降频（连续 ≥4 针探针零命中 → 1.5s→3s，不再高频扫整个 20s 观察窗）；探针命中/出手恢复标准节拍；证据消失立即终止契约保持
+6. **L3 真机批次 1 定义 + 失败样本库**：`compatibility/l3_batch1.json`（50 款 · 12/12 类配额 · video-splash 全收 · 引擎覆盖四档交叉 · 全部 PENDING_REAL_DEVICE——**REAL_DEVICE_TEST = NOT_AVAILABLE 诚实标记，绝不虚报**）+ `compatibility/samples/` 失败样本库（修复优先级 FALSE_CLICK > DUPLICATE_CLICK > MISS > 命中率）；30 套件 6601 项断言全绿（+114；既有 6487 项零回退）
 
-历史版本全部归档在 [docs/CHANGELOG.md](docs/CHANGELOG.md)。v7.9.3 L2 页面场景层、v7.9.2 应用生态目录基线（233 款）、v7.9.1 任务状态机、v7.9.0 接线盲区根治、v7.8.0 视频开屏卫士全部保持。
+历史版本全部归档在 [docs/CHANGELOG.md](docs/CHANGELOG.md)。v7.9.4 误触红线与安全整合轮、v7.9.3 L2 页面场景层、v7.9.2 应用生态目录基线（233 款）、v7.9.1 任务状态机、v7.9.0 接线盲区根治、v7.8.0 视频开屏卫士全部保持。
 
 ## App 截图（真实 UI 截取）
 

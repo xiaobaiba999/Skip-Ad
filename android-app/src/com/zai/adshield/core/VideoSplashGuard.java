@@ -140,6 +140,13 @@ public final class VideoSplashGuard {
         return lastPollAt == null || now - lastPollAt.longValue() >= gap;
     }
 
+    /** v7.9.5：轮询针到期（自适应版——终态 3s / 低证据 3s / 标准 1.5s
+     *  三档由 adaptivePollGapMs 统一裁决；既有 3 参重载与断言面零破坏）。 */
+    public static boolean pollDue(Long lastPollAt, long now, boolean taskTerminal, int probeMissStreak) {
+        long gap = adaptivePollGapMs(taskTerminal, probeMissStreak);
+        return lastPollAt == null || now - lastPollAt.longValue() >= gap;
+    }
+
     /** 门控期白点节流：视频窗角落/手势击距上击 ≥VIDEO_STRIKE_GAP_MS 才放行。 */
     public static boolean strikeGapOk(Long lastStrikeAt, long now) {
         return lastStrikeAt == null || now - lastStrikeAt.longValue() >= VIDEO_STRIKE_GAP_MS;
@@ -149,6 +156,32 @@ public final class VideoSplashGuard {
      *  无文字零探针命中，全量 walk 角落候选是 12~20s 段图片键唯一路径）。 */
     public static boolean pollWalkDue(int pollIdx) {
         return pollIdx > 0 && pollIdx % VIDEO_POLL_WALK_EVERY == 0;
+    }
+
+    /* ══ v7.9.5 自适应轮询节拍（用户指令八：20s ceiling 保持 · 禁止固定高频
+     * 轮询整个 20s——低证据降频/证据增强保持观察/证据消失立即终止）══ */
+    /** 低证据降频门槛：连续探针零命中针数（4 针 ≈ 6s 无任何广告证据增量）。 */
+    public static final int VIDEO_LOW_EVIDENCE_MISS_STREAK = 4;
+    /** 低证据降频档（与终态降频同档 3s——尾段半频，功耗红线）。 */
+    public static final long VIDEO_LOW_EVIDENCE_POLL_MS = 3000;
+
+    /**
+     * v7.9.5 自适应轮询间隔（纯函数）——证据驱动节拍：
+     *  · 终态任务（广告已关/预算用尽/作废）→ 3s（v7.9.1 契约保持——观察
+     *    在岗出手拒收）；
+     *  · 低证据（连续 ≥VIDEO_LOW_EVIDENCE_MISS_STREAK 针探针零命中且零
+     *    出手——画像成立后的尾段无任何证据增量）→ 3s（降频——不再以
+     *    1.5s 高频扫整个 20s 观察窗）；
+     *  · 其余（证据在场/画像刚成立/近期有过探针或全量复扫增量）→ 1.5s
+     *    （标准节拍——候选一露头即有安全判断）。
+     * 证据消失→立即终止由调用方 videoLike 复核承担（每针头部重算画像：
+     * 候选出现/树动静即停针）；任何探针命中或出手都会重置 miss streak
+     * （证据增强→恢复标准节拍）。
+     */
+    public static long adaptivePollGapMs(boolean taskTerminal, int probeMissStreak) {
+        if (taskTerminal) return VIDEO_TERMINAL_POLL_MS;
+        if (probeMissStreak >= VIDEO_LOW_EVIDENCE_MISS_STREAK) return VIDEO_LOW_EVIDENCE_POLL_MS;
+        return VIDEO_POLL_MS;
     }
 
     /**

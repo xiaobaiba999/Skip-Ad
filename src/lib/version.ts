@@ -1,6 +1,6 @@
 /** 版本与 GitHub 仓库信息（Web 端与发布节奏共用） */
-export const APP_VERSION = "7.9.4";
-export const VERSION_CODE = 79400; // major*10000 + minor*1000 + patch*100，随版本单调递增
+export const APP_VERSION = "7.9.5";
+export const VERSION_CODE = 79500; // major*10000 + minor*1000 + patch*100，随版本单调递增
 export const GITHUB_REPO = "xiaobaiba999/Skip-Ad";
 export const GITHUB_API = `https://api.github.com/repos/${GITHUB_REPO}`;
 export const GITHUB_HOME = `https://github.com/${GITHUB_REPO}`;
@@ -19,15 +19,18 @@ export interface VersionEntry {
  *  旧版本内容归档在 GitHub Releases 与 git 历史） */
 export const VERSION_HISTORY: VersionEntry[] = [
   {
-    version: "7.9.4",
-    code: 79400,
+    version: "7.9.5",
+    code: 79500,
     date: "2026-11-21",
-    tagline: "FalsePositive 场景层 + AdTask 时序压力 + 安全整改（令牌出库/密钥扫描硬门）",
+    tagline: "真实世界证据层：点击决策证据 + 点击结果六态闭环 + WebView 综合证据路径 + L3 批次定义",
     notes: [
-      "FalsePositiveScenarioTest 新套件（69 断言）：用户 20 类误触红线场景逐类断言「绝对不点」——银行/政务/支付守护名单页（可滚+长文本+输入框形态铁证）· 相机（模式条可滚+快门/闪光/翻转角落图标在树仍零出手）· 聊天窗（孤立「跳过/关闭」气泡零出手——v7.9.4 L1 证据质量根治面）· Launcher 桌面 · 商品详情/购买/收藏/分享/评论 · 更新提示单信号 · 权限请求（允许/拒绝均不代点）· 会员弹窗（最坏情形只关关闭族、CTA 零出手）· 普通 PopupWindow 菜单/表单 Dialog/悬浮 FAB · 多窗口分屏 · 小程序/团购容器 L0 纵深防御 · 反馈面板——附带孤立词红线（关闭/×/取消/跳过/稍后/知道了）与对照侧（真广告语境同词照常出手——识别能力零回退）",
-      "AdTaskTimingTest 新套件（95 断言）：A-H 八组时序竞态（旧回调 100/300ms 两档拒收·候选坐标改变不得复用旧坐标·窗口切换终局·Dialog 消失后普通按钮冷却闸·反馈面板零补刀·videoPoll 终态降频 3s 契约·延迟露头键 100/300/500/800/2000/5000ms 六档出现前零出手出现后首过即出手）+ Case1/2/3 三种真机实锤硬回归（成功后旧 task/callback/timer/videoPoll/TapGestureCallback 全拒第二次点击=0·重试五要件逐项缺失全拒·click()=true ≠ 广告关闭——onDispatch 无 SUCCESS 出口枚举断言）",
-      "生产修复两处（证据质量提升非关闭扫描）：① L1 跳过键路径增加广告形态证据门 isAdLikeLoose（无滚动/无输入框/≤150 节点）或 SDK/学习指纹——开屏窗龄内的聊天窗/内容页孤立「跳过」字样不再被当成跳过键点击（真开屏窗恒满足形态门零回退，与 L1.6 关闭键口径对齐）② AdTaskCore 无任务 S_NONE 契约加固——一切状态转移不得从「无任务」无中生有（服务侧 null 守卫已保证，纯契约收紧）",
-      "安全整改：GitHub Token 从代码库完全移除（原双层 XOR+Base64 混淆内嵌自 v2.0.0 入库——已标记需撤销·docs/SECURITY.md R1）→ 环境变量/本机未入库文件凭据链；新增 scripts/secret-scan.sh 密钥泄露扫描硬门并接入 run-tests.sh 与 build.sh（令牌形态/内嵌凭据形态/本机凭据入库/keystore 散落四道检查）；APK 准则不变（三目录分发）· 28 套件 6487 项断言全绿（+164；既有 6323 项零回退）· APK 844KB · versionCode 79400（> 79300 覆盖安装即升级）",
+      "点击决策证据（最小结构化——用户指令第一优先级）：每次准备 CLICK 前记录包/Activity/任务ID/代际/任务状态 · 候选来源（text/contentDescription/resourceId/imageCorner）· 上下文四格（adContext/sdkContext/webViewContext/subscriptionContext）· 归一化几何（位置/面积/屏幕区域/可点）· SafetyGuard 裁决/finalDecision。隐私红线结构性强制：不保存完整 Accessibility Tree（模块无树容器）、不上传原始截图（零位图引用）、账号/手机号/支付/聊天内容一律白名单闸拒收（sanitizeToken 只保留 close/skip 词族成员 ≤12 字符）、有界环形缓冲（12 条绝不无限驻留）",
+      "点击结果六态闭环（用户指令第二优先级）：CLICK_DISPATCHED → VERIFYING → VERIFIED_SUCCESS / RETRY / MISS / FALSE_CLICK / SAFE_BLOCK / UNKNOWN——dispatchGesture 成功绝不等于广告关闭成功（唯一成功证据是验证链：两轮零候选/窗口切换/反馈面板收起）。六态计数与最近一击证据单行入上传日志（「点击结果」「点击证据」行）。FALSE_CLICK 自动化环境恒 0——真机样本回传唯一来源，绝不虚报",
+      "订阅证据链八格（用户指令七）：consulted / matched / candidateAccepted / clicked / verifiedSuccess / clickFail / falseClick / blocked——matchSources 被咨询即计数（含未加载/无覆盖——订阅参与度证据与命中解耦）；候选过 SafetyGuard 终闸计数；订阅出手的任务 VERIFIED_SUCCESS 计数（点击→广告真关闭闭环）。上传日志「订阅证据链」行直接可读；七分类 subStat 兼容保持零破坏",
+      "WebView 综合证据路径（用户指令六——真广告+ScrollView/Input/WebView 专项）：isAdLikeLoose 对滚动容器/输入框/大树（WebView 视频容器常态 >150 节点）形成过强阻断——真 H5 广告带跳过文本整窗漏拦。不取消安全门：综合判断 = WebView 容器在场【且】至少一个广告语境证据（角标/SDK 窗指纹/Dialog 形态/热区）同窗；WebView 单独在场不构成证据（应用内浏览器普通页零出手——误触红线）；候选语义+形状门+SafetyGuard 终闸全部在岗。L1 跳过键与 L1.5/L1.6 关闭键三路同步",
+      "视频开屏自适应轮询（用户指令八——20s ceiling 保持）：低证据降频（连续 ≥4 针探针零命中且零出手 → 1.5s→3s——不再以固定高频扫整个 20s 观察窗）；探针命中或出手立即恢复标准节拍（证据增强）；证据消失立即终止（每针头部 videoLike 复核既有契约保持）；既有 pollDue 3 参重载与终态 3s 契约零破坏",
+      "L3 真机批次 1 定义（用户指令四）：50 款 · 12/12 类配额（不按列表前 50）· video-splash 全收 6 + banner/rewarded-video/feedback-sheet 各 2 强制收录 · 引擎覆盖四档交叉（GKD 43/内置 39/Feed 11/零覆盖 3）· P0/P1/P2 混合 · 全部记录字段 14 项（app/…/finalResult）PENDING_REAL_DEVICE——REAL_DEVICE_TEST = NOT_AVAILABLE 诚实标记（本机无真机），绝不预填结果。失败样本库建库（compatibility/samples/ · 修复优先级 FALSE_CLICK > DUPLICATE_CLICK > MISS > 命中率）",
+      "测试（30 套件 6601 项全绿，v7.9.4 为 6487——+114 = DecisionEvidenceTest 82 + MinimalWindowBatchTest 32；既有 28 套件零回退）· 极简窗口专项批次（≤60 节点无文本四角 × 8 类交互图标普通 UI 全零出手 + 树极简兜底契约 + 中部边带 FAB 防线 + 时机闸 + vid 语义正信号）· APK versionCode 79500（> 79400 覆盖安装即升级）",
     ],
   },
 ];

@@ -114,6 +114,27 @@ public final class SubscriptionManager {
     static final java.util.concurrent.atomic.AtomicInteger subClickOk =
             new java.util.concurrent.atomic.AtomicInteger();
 
+    /* ══ v7.9.5 GKD 订阅证据链扩展（用户指令七：不追求规则加载条数——统计
+     *  consulted / matched / candidateAccepted / clicked / verifiedSuccess /
+     *  clickFail / falseClick / blocked 八格证据链；内置探针命中不得导致订阅
+     * 不再参与——consulted 独立计数即「每窗首轮无条件咨询」的反饥饿证据）══
+     * 口径：
+     *  · consulted       matchSources 被咨询次数（含未加载/无覆盖——被咨询
+     *                   本身就是参与证据）；
+     *  · candidateAccepted 候选被 SafetyGuard 终闸接受（过闸进入派发尝试）；
+     *  · verifiedSuccess 点击后任务 VERIFIED_SUCCESS 且本任务出手 reason 为
+     *                   订阅规则（点击→广告真关闭的证据链闭环）；
+     *  · falseClick      误触（真机样本回传唯一来源——自动化环境恒 0，
+     *                   绝不虚报）。 */
+    static final java.util.concurrent.atomic.AtomicInteger subConsulted =
+            new java.util.concurrent.atomic.AtomicInteger();
+    static final java.util.concurrent.atomic.AtomicInteger subCandAccepted =
+            new java.util.concurrent.atomic.AtomicInteger();
+    static final java.util.concurrent.atomic.AtomicInteger subVerifiedSuccess =
+            new java.util.concurrent.atomic.AtomicInteger();
+    static final java.util.concurrent.atomic.AtomicInteger subFalseClick =
+            new java.util.concurrent.atomic.AtomicInteger();
+
     /** v7.9.1：订阅出手结果计数（AdSkipService.execute 回报——reason 为
      *  rule_sub_gkd* 时才计；1=点击执行成功 / 0=双通道全失败 / -1=被安全闸拦截）。 */
     public static void countClickOutcome(String reason, int outcome) {
@@ -121,6 +142,21 @@ public final class SubscriptionManager {
         if (outcome > 0) subClickOk.incrementAndGet();
         else if (outcome == 0) subClickFail.incrementAndGet();
         else subBlocked.incrementAndGet();
+    }
+
+    /** v7.9.5：候选被安全闸接受（execute 出手前置门全过——进入派发尝试的
+     *  订阅候选。matched→candidateAccepted→clicked→verifiedSuccess 链上
+     *  的第二格；非订阅 reason 不计）。 */
+    public static void countCandAccepted(String reason) {
+        if (reason == null || !reason.startsWith("rule_sub_gkd")) return;
+        subCandAccepted.incrementAndGet();
+    }
+
+    /** v7.9.5：订阅出手的任务 VERIFIED_SUCCESS（AdSkipService.markTaskSuccess
+     *  回报——本任务出手 reason 为订阅规则的点击确实关闭了广告的证据链闭环格）。 */
+    public static void countVerifiedSuccess(String reason) {
+        if (reason == null || !reason.startsWith("rule_sub_gkd")) return;
+        subVerifiedSuccess.incrementAndGet();
     }
 
     /* ═══ v7.9.3 JVM 测试钩子（纯静态 · 零 Android 依赖 · 生产永不调用）══
@@ -142,11 +178,22 @@ public final class SubscriptionManager {
         remoteEnabled = false;
     }
 
-    /** 七分类快照：[notLoaded, noCover, noMatch, hit, blocked, clickFail, clickOk]。 */
+    /** 七分类快照：[notLoaded, noCover, noMatch, hit, blocked, clickFail, clickOk]。
+     *  v7.9.5 保持七格不变（既有 S8 断言的位置索引零破坏），扩展面走 subStatV2Snapshot。 */
     public static int[] subStatSnapshot() {
         return new int[]{
                 subNotLoaded.get(), subNoCover.get(), subNoMatch.get(),
                 subRuleHit.get(), subBlocked.get(), subClickFail.get(), subClickOk.get(),
+        };
+    }
+
+    /** v7.9.5 扩展快照：[consulted, matched, candidateAccepted, clicked,
+     *  verifiedSuccess, clickFail, falseClick, blocked]——GKD 证据链八格。 */
+    public static int[] subStatV2Snapshot() {
+        return new int[]{
+                subConsulted.get(), subRuleHit.get(), subCandAccepted.get(),
+                subClickOk.get(), subVerifiedSuccess.get(), subClickFail.get(),
+                subFalseClick.get(), subBlocked.get(),
         };
     }
 
@@ -246,6 +293,9 @@ public final class SubscriptionManager {
         java.util.ArrayList<RuleEngine.Hit> out = new java.util.ArrayList<RuleEngine.Hit>(2);
         Subscription builtin = builtinSub;
         Subscription remote = remoteEnabled ? remoteSub : null;
+        /* v7.9.5 consulted：被咨询即计数（含未加载/无覆盖——订阅参与的
+         *  前置证据，与命中与否解耦）。 */
+        subConsulted.incrementAndGet();
         /* v7.9.1 七分类统计入口：未加载 / 应用不匹配 / 页面不匹配 / 命中。 */
         if (builtin == null && remote == null) {
             subNotLoaded.incrementAndGet();
@@ -540,6 +590,19 @@ public final class SubscriptionManager {
                 .append(",\"blocked\":").append(subBlocked.get())
                 .append(",\"clickFail\":").append(subClickFail.get())
                 .append(",\"clickOk\":").append(subClickOk.get())
+                .append("}");
+        /* v7.9.5 GKD 证据链八格（用户指令七：consulted/matched/candidateAccepted/
+         *  clicked/verifiedSuccess/clickFail/falseClick/blocked——订阅参与度
+         *  与出手-关闭闭环的证据链；falseClick 恒 0 即「自动化环境无真机误触
+         *  样本」的诚实表达）。 */
+        b.append(",\"subStatV2\":{\"consulted\":").append(subConsulted.get())
+                .append(",\"matched\":").append(subRuleHit.get())
+                .append(",\"candidateAccepted\":").append(subCandAccepted.get())
+                .append(",\"clicked\":").append(subClickOk.get())
+                .append(",\"verifiedSuccess\":").append(subVerifiedSuccess.get())
+                .append(",\"clickFail\":").append(subClickFail.get())
+                .append(",\"falseClick\":").append(subFalseClick.get())
+                .append(",\"blocked\":").append(subBlocked.get())
                 .append("}");
         b.append(",\"error\":").append(jsonStr(lastError == null ? "" : lastError));
         try {

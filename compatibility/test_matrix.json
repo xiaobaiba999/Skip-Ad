@@ -1,7 +1,7 @@
 {
   "meta": {
-    "version": "7.9.4",
-    "updatedAt": "2026-11-20T20:42:35+08:00",
+    "version": "7.9.5",
+    "updatedAt": "2026-11-21T12:00:00+08:00",
     "totalApps": 233
   },
   "layers": {
@@ -60,20 +60,56 @@
         "窗口切换任务终局",
         "视频开屏画像调度契约"
       ],
-      "status": "v7.9.3 起持续运行（12 类 UI 样本与 8 项场景行为全部建齐；无障碍事件驱动面以「事件到达前后两次扫描行为差」等价表达）"
+      "status": "v7.9.3 起持续运行（12 类 UI 样本与 8 项场景行为全部建齐；无障碍事件驱动面以「事件到达前后两次扫描行为差」等价表达）",
+      "v795EvidenceLayer": {
+        "suite": "DecisionEvidenceTest",
+        "assertions": 82,
+        "covers": [
+          "最小结构化点击决策证据（候选来源/上下文四格/归一化几何/安全裁决）",
+          "隐私红线（白名单标签闸/有界环形缓冲/无树无位图）",
+          "点击结果六态闭环（dispatchGesture 成功 ≠ 广告关闭）",
+          "WebView 综合证据路径（真广告+ScrollView/Input/WebView——不取消安全门）",
+          "自适应轮询节拍（低证据降频 3s/终态 3s/标准 1.5s）",
+          "订阅证据链八格计数器"
+        ]
+      },
+      "v795MinimalWindowBatch": {
+        "suite": "MinimalWindowBatchTest",
+        "assertions": 32,
+        "covers": [
+          "≤60 节点无文本极简窗四角（TL/TR/BL/BR）",
+          "8 类交互图标（关闭/更多/返回/收藏/分享/设置/头像/普通按钮）×普通 UI 零出手",
+          "树极简兜底契约（设计行为——形态路径不挑 vid 语义）",
+          "中部边带 strongOnly（FAB 防线）",
+          "窗级门/时机闸（<300ms 零出手/超窗零出手）",
+          "vid 语义正信号（iv_skip 走跳过键路径）"
+        ]
+      }
     },
     "L3": {
       "name": "真机实际应用测试",
-      "scope": "按优先级分批：第一批 50 高频（P0 全量+P1 重点）",
-      "device": "Xiaomi 2410DPN6CC / Android 17 / SDK 37",
+      "scope": "按优先级分批：第一批 50（l3-batch-1 已定义——不按列表前 50，12 类配额+特殊广告形态+引擎覆盖交叉）",
+      "batch1": "compatibility/l3_batch1.json（v7.9.5 定义：50 款 · 12/12 类 · video-splash 全收 6 · banner/rewarded/feedback 各 2 · 引擎四档覆盖 43/39/11/3）",
+      "device": "Xiaomi 2410DPN6CC / Android 17 / SDK 37（目录登记目标机；本机未连接）",
+      "recordFields": [
+        "app", "package", "appVersion", "device", "androidVersion", "date",
+        "adType", "uiFramework", "observedAd", "candidate", "decision",
+        "clicked", "verification", "finalResult"
+      ],
       "resultVocabulary": {
-        "NOT INSTALLED": "设备未安装",
-        "NO AD OBSERVED": "观察期内未见广告",
+        "VERIFIED_SUCCESS": "复验确认成功关闭（唯一成功证据=验证链）",
         "MISS": "广告出现但未识别",
-        "FALSE CLICK": "误触普通按钮",
-        "VERIFIED SUCCESS": "复验确认成功关闭"
+        "FALSE_CLICK": "误触普通按钮",
+        "DUPLICATE_CLICK": "同任务重复动作",
+        "SAFE_BLOCK": "被 SafetyGuard 拒绝（宁漏勿误闸在岗）",
+        "NO_AD_OBSERVED": "观察期内未见广告（≠ SUCCESS）",
+        "NOT_INSTALLED": "设备未安装",
+        "CRASH": "目标应用崩溃",
+        "UNKNOWN": "无法归类（诚实占位）"
       },
-      "status": "待执行（本环境无真机连接——真机数据必须回传日志后录入，绝不虚报）"
+      "samplesLibrary": "compatibility/samples/（v7.9.5 建库——失败样本沉淀与修复优先级 FALSE_CLICK > DUPLICATE_CLICK > MISS）",
+      "realDeviceTest": "NOT_AVAILABLE",
+      "status": "批次已定义、未执行（REAL_DEVICE_TEST = NOT_AVAILABLE——本环境无真机连接；绝不虚报执行结果，真机数据必须回传日志后录入）"
     }
   },
   "metrics": {

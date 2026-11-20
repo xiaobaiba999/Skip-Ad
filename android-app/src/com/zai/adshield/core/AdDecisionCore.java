@@ -873,6 +873,16 @@ public final class AdDecisionCore {
         }
         /* ── 开屏/插屏窗内 ── */
         if (ctx.splashLive) {
+            /* ═══ v7.9.5 WebView 综合证据路径（真广告+ScrollView/Input/WebView 专项）══
+             * isAdLikeLoose 对滚动容器/输入框/大树（WebView 视频容器常态
+             * >150 节点）形成过强阻断——真 H5 广告带跳过文本时整窗漏拦。
+             * 用户指令六红线：不能简单取消安全门——综合判断 = WebView 容器
+             * 在场【且】至少一个广告语境证据（角标/SDK 窗指纹/Dialog 形态/
+             * 全屏热区）同窗。WebView 单独在场【不】构成证据（应用内浏览器
+             * 普通页面不因 WebView 使命中——误触红线）；候选语义（跳过词族）
+             * +形状门+SafetyGuard 终闸全部在岗不变。 */
+            boolean webviewAdEvidence = f.webviewPresent
+                    && (f.adBadge || ctx.sdkAdWin || f.dialogForm || f.hotZone);
             /* v3.7.0 学习位置【前置】到 L1 之前（issue#10 根因）：
              * 用户手动点通过的位置 = 真实手指触点真正生效的坐标——比盲点
              * 文本候选可靠得多（文本候选可能是广告图内假「跳过」文本）。
@@ -907,7 +917,7 @@ public final class AdDecisionCore {
              *    与 L1.6 关闭键路径（v3.7.0 起同款 isAdLikeLoose 门）口径对齐。 */
             int R = f.skipCands.size();
             int F = f.fakeCands.size();
-            if (R + F > 0 && (isAdLikeLoose(f) || ctx.sdkAdWin || ctx.learnedCls)) {
+            if (R + F > 0 && (isAdLikeLoose(f) || ctx.sdkAdWin || ctx.learnedCls || webviewAdEvidence)) {
                 int idx = Math.min(ctx.clickAttempts, R + F - 1);
                 if (idx < R) {
                     SkipCand c = f.skipCands.get(idx);
@@ -922,12 +932,12 @@ public final class AdDecisionCore {
             //     v7.5.0 前置 L1.5（角标在场关闭键）：角标替换「顶部 35%」成为
             //     第二证据——插屏×常在右下/中部，旧 L1.6 位置闸把它们全灭
             if (f.foundClose && f.closeBounds != null && f.adBadge && !f.longText
-                    && (isAdLikeLoose(f) || ctx.sdkAdWin || ctx.learnedCls)
+                    && (isAdLikeLoose(f) || ctx.sdkAdWin || ctx.learnedCls || webviewAdEvidence)
                     && ctx.elapsedMs >= SPLASH_CLOSE_MS) {
                 return click(f.closeNode, f.closeBounds, "badge_close");
             }
             if (f.foundClose && f.closeBounds != null && !f.longText
-                    && (isAdLikeLoose(f) || ctx.sdkAdWin || ctx.learnedCls)
+                    && (isAdLikeLoose(f) || ctx.sdkAdWin || ctx.learnedCls || webviewAdEvidence)
                     && inTopArea(f.closeBounds, ctx)
                     && ctx.elapsedMs >= SPLASH_CLOSE_MS) {
                 return click(f.closeNode, f.closeBounds, "splash_close");

@@ -3,6 +3,23 @@
 > 首页只保留当前版本要点；全部历史版本详情在本页归档。
 > 发布物（APK/报告/文档）见 [Releases](https://github.com/xiaobaiba999/Skip-Ad/releases) 与 `docs/test-reports/`。
 
+## v7.9.5（2026-11-21）—— 真实世界证据层：点击决策证据 + 点击结果六态闭环 + WebView 综合证据路径 + 自适应轮询 + L3 批次定义
+
+- **本轮定位（用户指令：真实 App → 真实广告 → 候选 → Decision Evidence → SafetyGuard → HumanTap → VERIFY → 真实结果 → 样本沉淀）**：本轮不以增加 JVM 断言数量为目标——把「证据层」建进生产链路，为 L3 真机回填与失败样本沉淀铺轨。
+- **新核心模块 `core/DecisionEvidence.java`（用户指令第一/第二优先级 · 纯 Java · 零 Android 依赖）**：
+  - **点击决策证据（最小结构化）**：每次准备 CLICK 前记录——包/Activity/任务ID（winStart#seq）/扫描代际/任务状态 · 候选来源（text / contentDescription / resourceId / imageCorner 四枚举）· 上下文四格（adContext 广告语境 / sdkContext SDK 窗指纹 / webViewContext WebView 容器 / subscriptionContext 订阅路径）· 归一化几何（中心位置/面积/屏幕区域 TL·TR·BL·BR·MID/可点）· 安全裁决（SafetyGuard 终闸结果）· finalDecision（CLICK_DISPATCHED / SAFE_BLOCK）。
+  - **隐私红线（结构性强制——不是约定而是模块能力面）**：不保存完整 Accessibility Tree（模块没有任何树容器/节点引用）· 不上传原始屏幕截图（零位图/字节引用）· 不保存账号/手机号/支付/聊天内容（候选标签白名单闸 `sanitizeToken`——只保留 close/skip 词族成员 ≤12 字符，其余一律空串；resourceId ≤32 字符且资源名形态校验）· 环形缓冲有界（12 条，绝不无限驻留）· 证据链异常全吞（绝不影响点击主链）。
+  - **点击结果六态闭环**：CLICK_DISPATCHED → VERIFYING → `VERIFIED_SUCCESS / RETRY / MISS / FALSE_CLICK / SAFE_BLOCK / UNKNOWN`（用户指令词表严格使用）——**dispatchGesture 成功绝不等于广告关闭**（唯一成功证据是验证链：两轮零候选/窗口切换/反馈面板收起三路汇合）。服务侧接线：markTaskSuccess/markTaskWindowChanged → VERIFIED_SUCCESS · taskOnScanOutcome（VERIFYING 仍见候选）→ RETRY · markTaskFailed → MISS · 终闸拒点 → SAFE_BLOCK · FALSE_CLICK 自动化环境恒 0（真机样本回传唯一来源——绝不虚报）· UNKNOWN 诚实占位。上传日志新增「点击结果（六态计数）」与「点击证据（最近一击最小结构化 JSON 行）」两行。
+- **GKD 订阅证据链八格（用户指令七——不追求规则加载条数）**：`consulted / matched / candidateAccepted / clicked / verifiedSuccess / clickFail / falseClick / blocked`——consulted：matchSources 被咨询即计数（含未加载/无覆盖——订阅参与度与命中解耦，「内置探针命中导致订阅不再参与」的反饥饿证据面）；candidateAccepted：候选过 SafetyGuard 终闸；verifiedSuccess：本任务出手 reason 为订阅规则且任务 VERIFIED_SUCCESS（点击→广告真关闭闭环，markTaskSuccess/markTaskWindowChanged 双路回报）。订阅页 stateJson 新增 `subStatV2` 段 + 上传日志「订阅证据链」行；七分类 subStat 与既有 S8 断言零破坏。
+- **WebView 综合证据路径（用户指令六——真广告+ScrollView/Input/WebView 专项）**：v7.9.4 已知 isAdLikeLoose 对滚动容器/输入框形成过强阻断；WebView 视频容器大树（>150 节点）同被拒——真 H5 广告带跳过文本整窗漏拦。**不能简单取消安全门**：综合判断 = `webviewPresent && (adBadge || sdkAdWin || dialogForm || hotZone)`——WebView 容器在场【且】至少一个广告语境证据同窗才解锁 L1 跳过键与 L1.5/L1.6 关闭键三路。**WebView 单独在场不构成证据**（应用内浏览器普通页零出手——误触红线保持）；候选语义（跳过/关闭词族）+形状门+SafetyGuard 终闸全部在岗。
+- **视频开屏自适应轮询（用户指令八——20s ceiling 保持）**：低证据降频——连续 ≥4 针探针零命中且零出手（≈6s 无证据增量）→ 轮询 1.5s→3s（不再以固定高频扫整个 20s 观察窗）；探针命中或出手立即恢复标准节拍（证据增强）；证据消失立即终止（每针头部 videoLike 复核——既有契约保持）；终态 3s 契约（v7.9.1）保持；`adaptivePollGapMs` 纯函数统一裁决三档，既有 pollDue 3 参重载零破坏。
+- **L3 真机批次 1 定义（用户指令四——不按列表前 50）**：`compatibility/l3_batch1.json`（scripts/gen-l3-batch.py 可复现生成）——50 款 · **12/12 类配额**（社交 5/短视频 5/电商 5/视频 6/音乐 3/新闻 4/阅读 4/浏览器 4/工具 6/游戏 4/学习 3/金融生活 5/其他 1）· **特殊广告形态强制收录**（video-splash 全收 6 + banner 2 + rewarded-video 2 + feedback-sheet 4）· **引擎覆盖四档交叉**（GKD 快照 43/内置订阅 39/Feed 名单 11/零覆盖 3——零覆盖长尾优先补位诚实测盲区）· P0/P1/P2 混合 · 每款 14 项记录字段（app/package/appVersion/device/androidVersion/date/adType/uiFramework/observedAd/candidate/decision/clicked/verification/finalResult）全部 PENDING_REAL_DEVICE。**REAL_DEVICE_TEST = NOT_AVAILABLE**（本机无真机）——绝不虚报执行结果。
+- **失败样本库建库（用户指令十/十一）**：`compatibility/samples/`（index.json + SCHEMA.md）——每条失败样本必填 sampleId/package/appVersion/androidVersion/device/adType/uiFramework/result/decisionEvidence（最小结构化）/failureReason/fixedInVersion；**修复优先级 FALSE_CLICK > DUPLICATE_CLICK > MISS > 命中率**；隐私红线与入库流程成文。当前库为空（0 条）——诚实标记。
+- **极简窗口专项批次 + 证据层测试（用户指令五/九——真实缺陷与新安全边界才新增测试，不为数字加测试）**：
+  - `MinimalWindowBatchTest`（32 断言 · 八段）：≤60 节点无文本极简窗——8 类交互图标（关闭/更多/返回/收藏/分享/设置/头像/普通按钮）× 四角（TL/TR/BL/BR）在普通 UI（滚动容器在场）**全部零出手**；树极简兜底契约（形态路径——与 PageScenarioTest custom-draw A 同口径）；内容丰富窗（>60 节点）8 类图标全零出手；中部边带 strongOnly（FAB 防线——树极简兜底不越权）；窗级门/时机闸（<300ms 零出手 · 7s 超窗零出手 · 300ms 首过即出手）；vid 语义正信号（iv_skip 走跳过键路径）；对照侧（角标在场照常出手——识别零回退）。
+  - `DecisionEvidenceTest`（82 断言 · 六段）：证据模式与 JSON 字段 · 隐私红线（手机号/账号/支付/长文本/非整词全部空串拒收 · resourceId 超长与非资源名形态拒收 · 有界缓冲 24 条记录后仍 12）· 六态计数与非法值拒收 · stateName 映射 · WebView 综合证据路径（真广告+ScrollView 出手 · 真广告+输入框出手 · 真广告+WebView 大树出手 · 应用内浏览器普通页零出手 · 原生滚动孤立跳过词零出手——v7.9.4 契约零回退 · badge_close WebView+角标+滚动出手 · 无第二语境 WebView 窗 × 键零出手）· 自适应轮询节拍三档与到期判定 · 订阅证据链八格计数口径与兼容面。
+- **测试（30 套件 6601 项全绿，v7.9.4 为 6487——+114；既有 28 套件零回退逐套件核对）**；APK versionCode 79500（> 79400 覆盖安装即升级）三目录分发。
+
 ## v7.9.4（2026-11-21）—— FalsePositive 场景层（20 类误触红线）+ AdTask 时序压力（A-H + Case1/2/3）+ 安全部署链整改
 
 - **本轮定位（用户指令第四/五/六阶段 + 最高优先级安全审计）**：证明「绝对不应该点击」的 20 类误触红线场景 + 时序竞态硬回归 + 部署链密钥整改；**实测揭出并根治一个真实误触缺陷**。

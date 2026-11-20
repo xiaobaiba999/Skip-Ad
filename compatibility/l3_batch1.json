@@ -1,0 +1,2016 @@
+{
+  "meta": {
+    "batchId": "l3-batch-1",
+    "version": "7.9.5",
+    "generatedAt": "2026-11-20T13:05:45+00:00",
+    "timezone": "Asia/Shanghai",
+    "totalApps": 50,
+    "selectionRules": [
+      "12 类配额（社交5/短视频5/电商5/视频5/工具6/金融生活5/新闻4/阅读4/浏览器4/游戏4/学习3/其他2——不按列表前50）",
+      "特殊广告形态强制收录：video-splash 全收 6 款 · banner 2 · rewarded-video 2 · feedback-sheet 2",
+      "优先级混合：P0/P1/P2 全在场（高危高频优先，长尾不缺席）",
+      "引擎覆盖交叉：GKD 快照/内置订阅/Feed 名单/零覆盖四档全进场（零覆盖长尾优先补位——诚实测盲区）",
+      "稳定排序：优先级 → 应用名（批次可复现）"
+    ],
+    "recordFields": [
+      "app",
+      "package",
+      "appVersion",
+      "device",
+      "androidVersion",
+      "date",
+      "adType",
+      "uiFramework",
+      "observedAd",
+      "candidate",
+      "decision",
+      "clicked",
+      "verification",
+      "finalResult"
+    ],
+    "finalResultVocabulary": [
+      "VERIFIED_SUCCESS",
+      "MISS",
+      "FALSE_CLICK",
+      "DUPLICATE_CLICK",
+      "SAFE_BLOCK",
+      "NO_AD_OBSERVED",
+      "NOT_INSTALLED",
+      "CRASH",
+      "UNKNOWN"
+    ],
+    "honesty": [
+      "NO_AD_OBSERVED 绝不等于 SUCCESS（无广告就是无广告——不算命中率分母的命中）",
+      "RULE_ONLY（规则匹配成功）绝不等于 VERIFIED_SUCCESS（广告必须真消失）",
+      "dispatchGesture 成功绝不等于广告关闭（必须复验）",
+      "本文件只定义要测什么——执行结果一律真机回填，绝不预填"
+    ]
+  },
+  "realDeviceTest": {
+    "status": "NOT_AVAILABLE",
+    "note": "本机无真实 Android 设备（REAL_DEVICE_TEST = NOT_AVAILABLE）——批次定义与记录字段已建齐，执行需真机 adb 环境；绝不虚报执行结果。"
+  },
+  "categoryCoverage": {
+    "video": 6,
+    "ecommerce": 5,
+    "games": 4,
+    "social-im": 5,
+    "news-feed": 4,
+    "music-audio": 3,
+    "browser-search": 4,
+    "tools-system": 6,
+    "reading": 4,
+    "education": 3,
+    "finance-life": 5,
+    "misc": 1
+  },
+  "adTypeCoverage": {
+    "splash": 46,
+    "video-splash": 6,
+    "feed": 29,
+    "interstitial": 29,
+    "banner": 2,
+    "rewarded-video": 2,
+    "feedback-sheet": 4
+  },
+  "engineCoverage": {
+    "gkdSnapshot": 43,
+    "builtinSub": 39,
+    "feedList": 11,
+    "noEngineCoverage": 3
+  },
+  "priorityCoverage": {
+    "P0": 40,
+    "P1": 8,
+    "P2": 2
+  },
+  "apps": [
+    {
+      "appName": "QQ浏览器",
+      "packageName": "com.tencent.mtt",
+      "category": "browser-search",
+      "priority": "P0",
+      "adTypes": [
+        "splash",
+        "interstitial",
+        "feed"
+      ],
+      "uiFramework": "unknown",
+      "subscriptionCoverage": {
+        "builtin": true,
+        "feed": true,
+        "gkd": true,
+        "gkdSources": [
+          "ganlin",
+          "linarm",
+          "xnx"
+        ]
+      },
+      "catalogSource": "engine-builtin-sub",
+      "record": {
+        "app": "QQ浏览器",
+        "package": "com.tencent.mtt",
+        "appVersion": null,
+        "device": null,
+        "androidVersion": null,
+        "date": null,
+        "adType": null,
+        "uiFramework": null,
+        "observedAd": null,
+        "candidate": null,
+        "decision": null,
+        "clicked": null,
+        "verification": null,
+        "finalResult": null
+      },
+      "status": "PENDING_REAL_DEVICE"
+    },
+    {
+      "appName": "UC浏览器",
+      "packageName": "com.UCMobile",
+      "category": "browser-search",
+      "priority": "P0",
+      "adTypes": [
+        "splash",
+        "interstitial",
+        "feed"
+      ],
+      "uiFramework": "unknown",
+      "subscriptionCoverage": {
+        "builtin": true,
+        "feed": true,
+        "gkd": true,
+        "gkdSources": [
+          "ganlin",
+          "linarm",
+          "xnx"
+        ]
+      },
+      "catalogSource": "engine-builtin-sub",
+      "record": {
+        "app": "UC浏览器",
+        "package": "com.UCMobile",
+        "appVersion": null,
+        "device": null,
+        "androidVersion": null,
+        "date": null,
+        "adType": null,
+        "uiFramework": null,
+        "observedAd": null,
+        "candidate": null,
+        "decision": null,
+        "clicked": null,
+        "verification": null,
+        "finalResult": null
+      },
+      "status": "PENDING_REAL_DEVICE"
+    },
+    {
+      "appName": "夸克",
+      "packageName": "com.quark.browser",
+      "category": "browser-search",
+      "priority": "P0",
+      "adTypes": [
+        "splash"
+      ],
+      "uiFramework": "unknown",
+      "subscriptionCoverage": {
+        "builtin": true,
+        "feed": true,
+        "gkd": true,
+        "gkdSources": [
+          "ganlin",
+          "linarm",
+          "xnx"
+        ]
+      },
+      "catalogSource": "engine-builtin-sub",
+      "record": {
+        "app": "夸克",
+        "package": "com.quark.browser",
+        "appVersion": null,
+        "device": null,
+        "androidVersion": null,
+        "date": null,
+        "adType": null,
+        "uiFramework": null,
+        "observedAd": null,
+        "candidate": null,
+        "decision": null,
+        "clicked": null,
+        "verification": null,
+        "finalResult": null
+      },
+      "status": "PENDING_REAL_DEVICE"
+    },
+    {
+      "appName": "百度",
+      "packageName": "com.baidu.searchbox",
+      "category": "browser-search",
+      "priority": "P0",
+      "adTypes": [
+        "splash",
+        "interstitial",
+        "feed"
+      ],
+      "uiFramework": "unknown",
+      "subscriptionCoverage": {
+        "builtin": true,
+        "feed": true,
+        "gkd": true,
+        "gkdSources": [
+          "ganlin",
+          "linarm",
+          "xnx"
+        ]
+      },
+      "catalogSource": "engine-builtin-sub",
+      "record": {
+        "app": "百度",
+        "package": "com.baidu.searchbox",
+        "appVersion": null,
+        "device": null,
+        "androidVersion": null,
+        "date": null,
+        "adType": null,
+        "uiFramework": null,
+        "observedAd": null,
+        "candidate": null,
+        "decision": null,
+        "clicked": null,
+        "verification": null,
+        "finalResult": null
+      },
+      "status": "PENDING_REAL_DEVICE"
+    },
+    {
+      "appName": "1688(阿里巴巴)",
+      "packageName": "com.alibaba.wireless",
+      "category": "ecommerce",
+      "priority": "P0",
+      "adTypes": [
+        "splash",
+        "interstitial",
+        "feed"
+      ],
+      "uiFramework": "unknown",
+      "subscriptionCoverage": {
+        "builtin": false,
+        "feed": false,
+        "gkd": true,
+        "gkdSources": [
+          "ganlin",
+          "linarm",
+          "xnx"
+        ]
+      },
+      "catalogSource": "web-verified:sj.qq.com",
+      "record": {
+        "app": "1688(阿里巴巴)",
+        "package": "com.alibaba.wireless",
+        "appVersion": null,
+        "device": null,
+        "androidVersion": null,
+        "date": null,
+        "adType": null,
+        "uiFramework": null,
+        "observedAd": null,
+        "candidate": null,
+        "decision": null,
+        "clicked": null,
+        "verification": null,
+        "finalResult": null
+      },
+      "status": "PENDING_REAL_DEVICE"
+    },
+    {
+      "appName": "AliExpress",
+      "packageName": "com.alibaba.aliexpresshd",
+      "category": "ecommerce",
+      "priority": "P2",
+      "adTypes": [
+        "interstitial",
+        "banner"
+      ],
+      "uiFramework": "unknown",
+      "subscriptionCoverage": {
+        "builtin": false,
+        "feed": false,
+        "gkd": false,
+        "gkdSources": []
+      },
+      "catalogSource": "knowledge-base",
+      "record": {
+        "app": "AliExpress",
+        "package": "com.alibaba.aliexpresshd",
+        "appVersion": null,
+        "device": null,
+        "androidVersion": null,
+        "date": null,
+        "adType": null,
+        "uiFramework": null,
+        "observedAd": null,
+        "candidate": null,
+        "decision": null,
+        "clicked": null,
+        "verification": null,
+        "finalResult": null
+      },
+      "status": "PENDING_REAL_DEVICE"
+    },
+    {
+      "appName": "Amazon Shopping",
+      "packageName": "com.amazon.mShop.android.shopping",
+      "category": "ecommerce",
+      "priority": "P2",
+      "adTypes": [
+        "interstitial",
+        "banner"
+      ],
+      "uiFramework": "unknown",
+      "subscriptionCoverage": {
+        "builtin": false,
+        "feed": false,
+        "gkd": false,
+        "gkdSources": []
+      },
+      "catalogSource": "knowledge-base",
+      "record": {
+        "app": "Amazon Shopping",
+        "package": "com.amazon.mShop.android.shopping",
+        "appVersion": null,
+        "device": null,
+        "androidVersion": null,
+        "date": null,
+        "adType": null,
+        "uiFramework": null,
+        "observedAd": null,
+        "candidate": null,
+        "decision": null,
+        "clicked": null,
+        "verification": null,
+        "finalResult": null
+      },
+      "status": "PENDING_REAL_DEVICE"
+    },
+    {
+      "appName": "京东",
+      "packageName": "com.jingdong.app.mall",
+      "category": "ecommerce",
+      "priority": "P0",
+      "adTypes": [
+        "splash",
+        "interstitial",
+        "feed"
+      ],
+      "uiFramework": "unknown",
+      "subscriptionCoverage": {
+        "builtin": true,
+        "feed": false,
+        "gkd": true,
+        "gkdSources": [
+          "ganlin",
+          "linarm",
+          "xnx"
+        ]
+      },
+      "catalogSource": "engine-builtin-sub",
+      "record": {
+        "app": "京东",
+        "package": "com.jingdong.app.mall",
+        "appVersion": null,
+        "device": null,
+        "androidVersion": null,
+        "date": null,
+        "adType": null,
+        "uiFramework": null,
+        "observedAd": null,
+        "candidate": null,
+        "decision": null,
+        "clicked": null,
+        "verification": null,
+        "finalResult": null
+      },
+      "status": "PENDING_REAL_DEVICE"
+    },
+    {
+      "appName": "天猫",
+      "packageName": "com.tmall.wireless",
+      "category": "ecommerce",
+      "priority": "P0",
+      "adTypes": [
+        "splash",
+        "interstitial"
+      ],
+      "uiFramework": "unknown",
+      "subscriptionCoverage": {
+        "builtin": true,
+        "feed": false,
+        "gkd": true,
+        "gkdSources": [
+          "ganlin",
+          "linarm",
+          "xnx"
+        ]
+      },
+      "catalogSource": "engine-builtin-sub",
+      "record": {
+        "app": "天猫",
+        "package": "com.tmall.wireless",
+        "appVersion": null,
+        "device": null,
+        "androidVersion": null,
+        "date": null,
+        "adType": null,
+        "uiFramework": null,
+        "observedAd": null,
+        "candidate": null,
+        "decision": null,
+        "clicked": null,
+        "verification": null,
+        "finalResult": null
+      },
+      "status": "PENDING_REAL_DEVICE"
+    },
+    {
+      "appName": "作业帮",
+      "packageName": "com.baidu.homework",
+      "category": "education",
+      "priority": "P1",
+      "adTypes": [
+        "splash",
+        "interstitial"
+      ],
+      "uiFramework": "unknown",
+      "subscriptionCoverage": {
+        "builtin": false,
+        "feed": false,
+        "gkd": true,
+        "gkdSources": [
+          "linarm",
+          "xnx"
+        ]
+      },
+      "catalogSource": "knowledge-base",
+      "record": {
+        "app": "作业帮",
+        "package": "com.baidu.homework",
+        "appVersion": null,
+        "device": null,
+        "androidVersion": null,
+        "date": null,
+        "adType": null,
+        "uiFramework": null,
+        "observedAd": null,
+        "candidate": null,
+        "decision": null,
+        "clicked": null,
+        "verification": null,
+        "finalResult": null
+      },
+      "status": "PENDING_REAL_DEVICE"
+    },
+    {
+      "appName": "学习强国",
+      "packageName": "cn.xuexi.android",
+      "category": "education",
+      "priority": "P1",
+      "adTypes": [
+        "splash"
+      ],
+      "uiFramework": "unknown",
+      "subscriptionCoverage": {
+        "builtin": false,
+        "feed": false,
+        "gkd": true,
+        "gkdSources": [
+          "ganlin",
+          "linarm",
+          "xnx"
+        ]
+      },
+      "catalogSource": "web-verified:a.app.qq.com",
+      "record": {
+        "app": "学习强国",
+        "package": "cn.xuexi.android",
+        "appVersion": null,
+        "device": null,
+        "androidVersion": null,
+        "date": null,
+        "adType": null,
+        "uiFramework": null,
+        "observedAd": null,
+        "candidate": null,
+        "decision": null,
+        "clicked": null,
+        "verification": null,
+        "finalResult": null
+      },
+      "status": "PENDING_REAL_DEVICE"
+    },
+    {
+      "appName": "驾考宝典",
+      "packageName": "com.handsgo.jiakao.android",
+      "category": "education",
+      "priority": "P0",
+      "adTypes": [
+        "splash",
+        "interstitial",
+        "feed"
+      ],
+      "uiFramework": "unknown",
+      "subscriptionCoverage": {
+        "builtin": true,
+        "feed": false,
+        "gkd": true,
+        "gkdSources": [
+          "ganlin",
+          "linarm"
+        ]
+      },
+      "catalogSource": "engine-builtin-sub",
+      "record": {
+        "app": "驾考宝典",
+        "package": "com.handsgo.jiakao.android",
+        "appVersion": null,
+        "device": null,
+        "androidVersion": null,
+        "date": null,
+        "adType": null,
+        "uiFramework": null,
+        "observedAd": null,
+        "candidate": null,
+        "decision": null,
+        "clicked": null,
+        "verification": null,
+        "finalResult": null
+      },
+      "status": "PENDING_REAL_DEVICE"
+    },
+    {
+      "appName": "58同城",
+      "packageName": "com.wuba",
+      "category": "finance-life",
+      "priority": "P0",
+      "adTypes": [
+        "splash",
+        "interstitial",
+        "feed"
+      ],
+      "uiFramework": "unknown",
+      "subscriptionCoverage": {
+        "builtin": true,
+        "feed": false,
+        "gkd": true,
+        "gkdSources": [
+          "linarm"
+        ]
+      },
+      "catalogSource": "engine-builtin-sub",
+      "record": {
+        "app": "58同城",
+        "package": "com.wuba",
+        "appVersion": null,
+        "device": null,
+        "androidVersion": null,
+        "date": null,
+        "adType": null,
+        "uiFramework": null,
+        "observedAd": null,
+        "candidate": null,
+        "decision": null,
+        "clicked": null,
+        "verification": null,
+        "finalResult": null
+      },
+      "status": "PENDING_REAL_DEVICE"
+    },
+    {
+      "appName": "BOSS直聘",
+      "packageName": "com.hpbr.bosszhipin",
+      "category": "finance-life",
+      "priority": "P0",
+      "adTypes": [
+        "splash",
+        "interstitial",
+        "feed"
+      ],
+      "uiFramework": "unknown",
+      "subscriptionCoverage": {
+        "builtin": true,
+        "feed": false,
+        "gkd": true,
+        "gkdSources": [
+          "ganlin",
+          "linarm"
+        ]
+      },
+      "catalogSource": "engine-builtin-sub",
+      "record": {
+        "app": "BOSS直聘",
+        "package": "com.hpbr.bosszhipin",
+        "appVersion": null,
+        "device": null,
+        "androidVersion": null,
+        "date": null,
+        "adType": null,
+        "uiFramework": null,
+        "observedAd": null,
+        "candidate": null,
+        "decision": null,
+        "clicked": null,
+        "verification": null,
+        "finalResult": null
+      },
+      "status": "PENDING_REAL_DEVICE"
+    },
+    {
+      "appName": "去哪儿旅行",
+      "packageName": "com.Qunar",
+      "category": "finance-life",
+      "priority": "P0",
+      "adTypes": [
+        "splash",
+        "interstitial"
+      ],
+      "uiFramework": "unknown",
+      "subscriptionCoverage": {
+        "builtin": true,
+        "feed": false,
+        "gkd": true,
+        "gkdSources": [
+          "linarm"
+        ]
+      },
+      "catalogSource": "engine-builtin-sub",
+      "record": {
+        "app": "去哪儿旅行",
+        "package": "com.Qunar",
+        "appVersion": null,
+        "device": null,
+        "androidVersion": null,
+        "date": null,
+        "adType": null,
+        "uiFramework": null,
+        "observedAd": null,
+        "candidate": null,
+        "decision": null,
+        "clicked": null,
+        "verification": null,
+        "finalResult": null
+      },
+      "status": "PENDING_REAL_DEVICE"
+    },
+    {
+      "appName": "哈啰",
+      "packageName": "com.jingyao.easybike",
+      "category": "finance-life",
+      "priority": "P0",
+      "adTypes": [
+        "splash",
+        "interstitial"
+      ],
+      "uiFramework": "unknown",
+      "subscriptionCoverage": {
+        "builtin": true,
+        "feed": false,
+        "gkd": true,
+        "gkdSources": [
+          "ganlin",
+          "linarm"
+        ]
+      },
+      "catalogSource": "engine-builtin-sub",
+      "record": {
+        "app": "哈啰",
+        "package": "com.jingyao.easybike",
+        "appVersion": null,
+        "device": null,
+        "androidVersion": null,
+        "date": null,
+        "adType": null,
+        "uiFramework": null,
+        "observedAd": null,
+        "candidate": null,
+        "decision": null,
+        "clicked": null,
+        "verification": null,
+        "finalResult": null
+      },
+      "status": "PENDING_REAL_DEVICE"
+    },
+    {
+      "appName": "大众点评",
+      "packageName": "com.dianping.v1",
+      "category": "finance-life",
+      "priority": "P0",
+      "adTypes": [
+        "splash",
+        "feed"
+      ],
+      "uiFramework": "unknown",
+      "subscriptionCoverage": {
+        "builtin": true,
+        "feed": false,
+        "gkd": true,
+        "gkdSources": [
+          "ganlin",
+          "linarm",
+          "xnx"
+        ]
+      },
+      "catalogSource": "engine-builtin-sub",
+      "record": {
+        "app": "大众点评",
+        "package": "com.dianping.v1",
+        "appVersion": null,
+        "device": null,
+        "androidVersion": null,
+        "date": null,
+        "adType": null,
+        "uiFramework": null,
+        "observedAd": null,
+        "candidate": null,
+        "decision": null,
+        "clicked": null,
+        "verification": null,
+        "finalResult": null
+      },
+      "status": "PENDING_REAL_DEVICE"
+    },
+    {
+      "appName": "OPPO软件商店",
+      "packageName": "com.oppo.market",
+      "category": "games",
+      "priority": "P0",
+      "adTypes": [
+        "splash",
+        "feed"
+      ],
+      "uiFramework": "unknown",
+      "subscriptionCoverage": {
+        "builtin": true,
+        "feed": false,
+        "gkd": false,
+        "gkdSources": []
+      },
+      "catalogSource": "engine-builtin-sub",
+      "record": {
+        "app": "OPPO软件商店",
+        "package": "com.oppo.market",
+        "appVersion": null,
+        "device": null,
+        "androidVersion": null,
+        "date": null,
+        "adType": null,
+        "uiFramework": null,
+        "observedAd": null,
+        "candidate": null,
+        "decision": null,
+        "clicked": null,
+        "verification": null,
+        "finalResult": null
+      },
+      "status": "PENDING_REAL_DEVICE"
+    },
+    {
+      "appName": "vivo应用商店",
+      "packageName": "com.bbk.appstore",
+      "category": "games",
+      "priority": "P0",
+      "adTypes": [
+        "splash",
+        "feed"
+      ],
+      "uiFramework": "unknown",
+      "subscriptionCoverage": {
+        "builtin": true,
+        "feed": false,
+        "gkd": true,
+        "gkdSources": [
+          "ganlin",
+          "linarm",
+          "xnx"
+        ]
+      },
+      "catalogSource": "engine-builtin-sub",
+      "record": {
+        "app": "vivo应用商店",
+        "package": "com.bbk.appstore",
+        "appVersion": null,
+        "device": null,
+        "androidVersion": null,
+        "date": null,
+        "adType": null,
+        "uiFramework": null,
+        "observedAd": null,
+        "candidate": null,
+        "decision": null,
+        "clicked": null,
+        "verification": null,
+        "finalResult": null
+      },
+      "status": "PENDING_REAL_DEVICE"
+    },
+    {
+      "appName": "开心消消乐",
+      "packageName": "com.happyelements.AndroidAnimal",
+      "category": "games",
+      "priority": "P1",
+      "adTypes": [
+        "interstitial",
+        "rewarded-video"
+      ],
+      "uiFramework": "unknown",
+      "subscriptionCoverage": {
+        "builtin": false,
+        "feed": false,
+        "gkd": false,
+        "gkdSources": []
+      },
+      "catalogSource": "web-verified:sj.qq.com",
+      "record": {
+        "app": "开心消消乐",
+        "package": "com.happyelements.AndroidAnimal",
+        "appVersion": null,
+        "device": null,
+        "androidVersion": null,
+        "date": null,
+        "adType": null,
+        "uiFramework": null,
+        "observedAd": null,
+        "candidate": null,
+        "decision": null,
+        "clicked": null,
+        "verification": null,
+        "finalResult": null
+      },
+      "status": "PENDING_REAL_DEVICE"
+    },
+    {
+      "appName": "王者荣耀",
+      "packageName": "com.tencent.tmgp.sgame",
+      "category": "games",
+      "priority": "P1",
+      "adTypes": [
+        "rewarded-video"
+      ],
+      "uiFramework": "unknown",
+      "subscriptionCoverage": {
+        "builtin": false,
+        "feed": false,
+        "gkd": true,
+        "gkdSources": [
+          "linarm"
+        ]
+      },
+      "catalogSource": "knowledge-base",
+      "record": {
+        "app": "王者荣耀",
+        "package": "com.tencent.tmgp.sgame",
+        "appVersion": null,
+        "device": null,
+        "androidVersion": null,
+        "date": null,
+        "adType": null,
+        "uiFramework": null,
+        "observedAd": null,
+        "candidate": null,
+        "decision": null,
+        "clicked": null,
+        "verification": null,
+        "finalResult": null
+      },
+      "status": "PENDING_REAL_DEVICE"
+    },
+    {
+      "appName": "中国电信",
+      "packageName": "com.ct.client",
+      "category": "misc",
+      "priority": "P1",
+      "adTypes": [
+        "splash",
+        "interstitial"
+      ],
+      "uiFramework": "unknown",
+      "subscriptionCoverage": {
+        "builtin": true,
+        "feed": false,
+        "gkd": true,
+        "gkdSources": [
+          "ganlin",
+          "linarm",
+          "xnx"
+        ]
+      },
+      "catalogSource": "engine-builtin-sub",
+      "record": {
+        "app": "中国电信",
+        "package": "com.ct.client",
+        "appVersion": null,
+        "device": null,
+        "androidVersion": null,
+        "date": null,
+        "adType": null,
+        "uiFramework": null,
+        "observedAd": null,
+        "candidate": null,
+        "decision": null,
+        "clicked": null,
+        "verification": null,
+        "finalResult": null
+      },
+      "status": "PENDING_REAL_DEVICE"
+    },
+    {
+      "appName": "QQ音乐",
+      "packageName": "com.tencent.qqmusic",
+      "category": "music-audio",
+      "priority": "P0",
+      "adTypes": [
+        "splash",
+        "interstitial"
+      ],
+      "uiFramework": "unknown",
+      "subscriptionCoverage": {
+        "builtin": true,
+        "feed": false,
+        "gkd": true,
+        "gkdSources": [
+          "ganlin",
+          "linarm",
+          "xnx"
+        ]
+      },
+      "catalogSource": "engine-builtin-sub",
+      "record": {
+        "app": "QQ音乐",
+        "package": "com.tencent.qqmusic",
+        "appVersion": null,
+        "device": null,
+        "androidVersion": null,
+        "date": null,
+        "adType": null,
+        "uiFramework": null,
+        "observedAd": null,
+        "candidate": null,
+        "decision": null,
+        "clicked": null,
+        "verification": null,
+        "finalResult": null
+      },
+      "status": "PENDING_REAL_DEVICE"
+    },
+    {
+      "appName": "喜马拉雅",
+      "packageName": "com.ximalaya.ting.android",
+      "category": "music-audio",
+      "priority": "P0",
+      "adTypes": [
+        "splash",
+        "interstitial",
+        "feed"
+      ],
+      "uiFramework": "unknown",
+      "subscriptionCoverage": {
+        "builtin": true,
+        "feed": false,
+        "gkd": true,
+        "gkdSources": [
+          "ganlin",
+          "linarm",
+          "xnx"
+        ]
+      },
+      "catalogSource": "engine-builtin-sub",
+      "record": {
+        "app": "喜马拉雅",
+        "package": "com.ximalaya.ting.android",
+        "appVersion": null,
+        "device": null,
+        "androidVersion": null,
+        "date": null,
+        "adType": null,
+        "uiFramework": null,
+        "observedAd": null,
+        "candidate": null,
+        "decision": null,
+        "clicked": null,
+        "verification": null,
+        "finalResult": null
+      },
+      "status": "PENDING_REAL_DEVICE"
+    },
+    {
+      "appName": "网易云音乐",
+      "packageName": "com.netease.cloudmusic",
+      "category": "music-audio",
+      "priority": "P0",
+      "adTypes": [
+        "splash",
+        "interstitial"
+      ],
+      "uiFramework": "unknown",
+      "subscriptionCoverage": {
+        "builtin": true,
+        "feed": false,
+        "gkd": true,
+        "gkdSources": [
+          "ganlin",
+          "linarm",
+          "xnx"
+        ]
+      },
+      "catalogSource": "engine-builtin-sub",
+      "record": {
+        "app": "网易云音乐",
+        "package": "com.netease.cloudmusic",
+        "appVersion": null,
+        "device": null,
+        "androidVersion": null,
+        "date": null,
+        "adType": null,
+        "uiFramework": null,
+        "observedAd": null,
+        "candidate": null,
+        "decision": null,
+        "clicked": null,
+        "verification": null,
+        "finalResult": null
+      },
+      "status": "PENDING_REAL_DEVICE"
+    },
+    {
+      "appName": "今日头条",
+      "packageName": "com.ss.android.article.news",
+      "category": "news-feed",
+      "priority": "P0",
+      "adTypes": [
+        "splash",
+        "feed",
+        "interstitial"
+      ],
+      "uiFramework": "unknown",
+      "subscriptionCoverage": {
+        "builtin": true,
+        "feed": true,
+        "gkd": true,
+        "gkdSources": [
+          "ganlin",
+          "linarm",
+          "xnx"
+        ]
+      },
+      "catalogSource": "engine-builtin-sub",
+      "record": {
+        "app": "今日头条",
+        "package": "com.ss.android.article.news",
+        "appVersion": null,
+        "device": null,
+        "androidVersion": null,
+        "date": null,
+        "adType": null,
+        "uiFramework": null,
+        "observedAd": null,
+        "candidate": null,
+        "decision": null,
+        "clicked": null,
+        "verification": null,
+        "finalResult": null
+      },
+      "status": "PENDING_REAL_DEVICE"
+    },
+    {
+      "appName": "今日头条极速版",
+      "packageName": "com.ss.android.article.lite",
+      "category": "news-feed",
+      "priority": "P0",
+      "adTypes": [
+        "splash",
+        "feed"
+      ],
+      "uiFramework": "unknown",
+      "subscriptionCoverage": {
+        "builtin": true,
+        "feed": false,
+        "gkd": true,
+        "gkdSources": [
+          "ganlin",
+          "linarm",
+          "xnx"
+        ]
+      },
+      "catalogSource": "engine-builtin-sub",
+      "record": {
+        "app": "今日头条极速版",
+        "package": "com.ss.android.article.lite",
+        "appVersion": null,
+        "device": null,
+        "androidVersion": null,
+        "date": null,
+        "adType": null,
+        "uiFramework": null,
+        "observedAd": null,
+        "candidate": null,
+        "decision": null,
+        "clicked": null,
+        "verification": null,
+        "finalResult": null
+      },
+      "status": "PENDING_REAL_DEVICE"
+    },
+    {
+      "appName": "新浪新闻",
+      "packageName": "com.sina.news",
+      "category": "news-feed",
+      "priority": "P0",
+      "adTypes": [
+        "splash",
+        "feed"
+      ],
+      "uiFramework": "unknown",
+      "subscriptionCoverage": {
+        "builtin": true,
+        "feed": true,
+        "gkd": false,
+        "gkdSources": []
+      },
+      "catalogSource": "engine-builtin-sub",
+      "record": {
+        "app": "新浪新闻",
+        "package": "com.sina.news",
+        "appVersion": null,
+        "device": null,
+        "androidVersion": null,
+        "date": null,
+        "adType": null,
+        "uiFramework": null,
+        "observedAd": null,
+        "candidate": null,
+        "decision": null,
+        "clicked": null,
+        "verification": null,
+        "finalResult": null
+      },
+      "status": "PENDING_REAL_DEVICE"
+    },
+    {
+      "appName": "网易新闻",
+      "packageName": "com.netease.newsreader.activity",
+      "category": "news-feed",
+      "priority": "P0",
+      "adTypes": [
+        "splash",
+        "feed"
+      ],
+      "uiFramework": "unknown",
+      "subscriptionCoverage": {
+        "builtin": true,
+        "feed": true,
+        "gkd": true,
+        "gkdSources": [
+          "ganlin",
+          "linarm"
+        ]
+      },
+      "catalogSource": "web-verified:play.google.com",
+      "record": {
+        "app": "网易新闻",
+        "package": "com.netease.newsreader.activity",
+        "appVersion": null,
+        "device": null,
+        "androidVersion": null,
+        "date": null,
+        "adType": null,
+        "uiFramework": null,
+        "observedAd": null,
+        "candidate": null,
+        "decision": null,
+        "clicked": null,
+        "verification": null,
+        "finalResult": null
+      },
+      "status": "PENDING_REAL_DEVICE"
+    },
+    {
+      "appName": "QQ阅读",
+      "packageName": "com.qq.reader",
+      "category": "reading",
+      "priority": "P1",
+      "adTypes": [
+        "splash",
+        "interstitial"
+      ],
+      "uiFramework": "unknown",
+      "subscriptionCoverage": {
+        "builtin": false,
+        "feed": false,
+        "gkd": true,
+        "gkdSources": [
+          "ganlin",
+          "linarm",
+          "xnx"
+        ]
+      },
+      "catalogSource": "web-verified:sj.qq.com",
+      "record": {
+        "app": "QQ阅读",
+        "package": "com.qq.reader",
+        "appVersion": null,
+        "device": null,
+        "androidVersion": null,
+        "date": null,
+        "adType": null,
+        "uiFramework": null,
+        "observedAd": null,
+        "candidate": null,
+        "decision": null,
+        "clicked": null,
+        "verification": null,
+        "finalResult": null
+      },
+      "status": "PENDING_REAL_DEVICE"
+    },
+    {
+      "appName": "七猫免费小说",
+      "packageName": "com.kmxs.reader",
+      "category": "reading",
+      "priority": "P0",
+      "adTypes": [
+        "splash",
+        "interstitial",
+        "feed"
+      ],
+      "uiFramework": "unknown",
+      "subscriptionCoverage": {
+        "builtin": true,
+        "feed": false,
+        "gkd": true,
+        "gkdSources": [
+          "ganlin",
+          "linarm",
+          "xnx"
+        ]
+      },
+      "catalogSource": "engine-builtin-sub",
+      "record": {
+        "app": "七猫免费小说",
+        "package": "com.kmxs.reader",
+        "appVersion": null,
+        "device": null,
+        "androidVersion": null,
+        "date": null,
+        "adType": null,
+        "uiFramework": null,
+        "observedAd": null,
+        "candidate": null,
+        "decision": null,
+        "clicked": null,
+        "verification": null,
+        "finalResult": null
+      },
+      "status": "PENDING_REAL_DEVICE"
+    },
+    {
+      "appName": "番茄小说",
+      "packageName": "com.dragon.read",
+      "category": "reading",
+      "priority": "P0",
+      "adTypes": [
+        "splash",
+        "interstitial",
+        "feed"
+      ],
+      "uiFramework": "unknown",
+      "subscriptionCoverage": {
+        "builtin": true,
+        "feed": false,
+        "gkd": true,
+        "gkdSources": [
+          "ganlin",
+          "linarm",
+          "xnx"
+        ]
+      },
+      "catalogSource": "engine-builtin-sub",
+      "record": {
+        "app": "番茄小说",
+        "package": "com.dragon.read",
+        "appVersion": null,
+        "device": null,
+        "androidVersion": null,
+        "date": null,
+        "adType": null,
+        "uiFramework": null,
+        "observedAd": null,
+        "candidate": null,
+        "decision": null,
+        "clicked": null,
+        "verification": null,
+        "finalResult": null
+      },
+      "status": "PENDING_REAL_DEVICE"
+    },
+    {
+      "appName": "番茄畅听",
+      "packageName": "com.xs.fm",
+      "category": "reading",
+      "priority": "P0",
+      "adTypes": [
+        "splash",
+        "interstitial"
+      ],
+      "uiFramework": "unknown",
+      "subscriptionCoverage": {
+        "builtin": true,
+        "feed": false,
+        "gkd": false,
+        "gkdSources": []
+      },
+      "catalogSource": "engine-builtin-sub",
+      "record": {
+        "app": "番茄畅听",
+        "package": "com.xs.fm",
+        "appVersion": null,
+        "device": null,
+        "androidVersion": null,
+        "date": null,
+        "adType": null,
+        "uiFramework": null,
+        "observedAd": null,
+        "candidate": null,
+        "decision": null,
+        "clicked": null,
+        "verification": null,
+        "finalResult": null
+      },
+      "status": "PENDING_REAL_DEVICE"
+    },
+    {
+      "appName": "QQ",
+      "packageName": "com.tencent.mobileqq",
+      "category": "social-im",
+      "priority": "P0",
+      "adTypes": [
+        "splash",
+        "feed"
+      ],
+      "uiFramework": "unknown",
+      "subscriptionCoverage": {
+        "builtin": true,
+        "feed": false,
+        "gkd": true,
+        "gkdSources": [
+          "ganlin",
+          "linarm",
+          "xnx"
+        ]
+      },
+      "catalogSource": "engine-builtin-sub",
+      "record": {
+        "app": "QQ",
+        "package": "com.tencent.mobileqq",
+        "appVersion": null,
+        "device": null,
+        "androidVersion": null,
+        "date": null,
+        "adType": null,
+        "uiFramework": null,
+        "observedAd": null,
+        "candidate": null,
+        "decision": null,
+        "clicked": null,
+        "verification": null,
+        "finalResult": null
+      },
+      "status": "PENDING_REAL_DEVICE"
+    },
+    {
+      "appName": "小红书",
+      "packageName": "com.xingin.xhs",
+      "category": "social-im",
+      "priority": "P0",
+      "adTypes": [
+        "splash",
+        "feed",
+        "feedback-sheet"
+      ],
+      "uiFramework": "unknown",
+      "subscriptionCoverage": {
+        "builtin": true,
+        "feed": true,
+        "gkd": true,
+        "gkdSources": [
+          "ganlin",
+          "linarm",
+          "xnx"
+        ]
+      },
+      "catalogSource": "engine-builtin-sub",
+      "record": {
+        "app": "小红书",
+        "package": "com.xingin.xhs",
+        "appVersion": null,
+        "device": null,
+        "androidVersion": null,
+        "date": null,
+        "adType": null,
+        "uiFramework": null,
+        "observedAd": null,
+        "candidate": null,
+        "decision": null,
+        "clicked": null,
+        "verification": null,
+        "finalResult": null
+      },
+      "status": "PENDING_REAL_DEVICE"
+    },
+    {
+      "appName": "微信",
+      "packageName": "com.tencent.mm",
+      "category": "social-im",
+      "priority": "P0",
+      "adTypes": [
+        "splash",
+        "feed",
+        "feedback-sheet"
+      ],
+      "uiFramework": "unknown",
+      "subscriptionCoverage": {
+        "builtin": false,
+        "feed": false,
+        "gkd": true,
+        "gkdSources": [
+          "ganlin",
+          "linarm",
+          "xnx"
+        ]
+      },
+      "catalogSource": "engine-builtin-sub",
+      "record": {
+        "app": "微信",
+        "package": "com.tencent.mm",
+        "appVersion": null,
+        "device": null,
+        "androidVersion": null,
+        "date": null,
+        "adType": null,
+        "uiFramework": null,
+        "observedAd": null,
+        "candidate": null,
+        "decision": null,
+        "clicked": null,
+        "verification": null,
+        "finalResult": null
+      },
+      "status": "PENDING_REAL_DEVICE"
+    },
+    {
+      "appName": "微博",
+      "packageName": "com.sina.weibo",
+      "category": "social-im",
+      "priority": "P0",
+      "adTypes": [
+        "splash",
+        "feed",
+        "feedback-sheet"
+      ],
+      "uiFramework": "unknown",
+      "subscriptionCoverage": {
+        "builtin": true,
+        "feed": true,
+        "gkd": true,
+        "gkdSources": [
+          "ganlin",
+          "linarm",
+          "xnx"
+        ]
+      },
+      "catalogSource": "engine-builtin-sub",
+      "record": {
+        "app": "微博",
+        "package": "com.sina.weibo",
+        "appVersion": null,
+        "device": null,
+        "androidVersion": null,
+        "date": null,
+        "adType": null,
+        "uiFramework": null,
+        "observedAd": null,
+        "candidate": null,
+        "decision": null,
+        "clicked": null,
+        "verification": null,
+        "finalResult": null
+      },
+      "status": "PENDING_REAL_DEVICE"
+    },
+    {
+      "appName": "知乎",
+      "packageName": "com.zhihu.android",
+      "category": "social-im",
+      "priority": "P0",
+      "adTypes": [
+        "splash",
+        "feed",
+        "feedback-sheet"
+      ],
+      "uiFramework": "unknown",
+      "subscriptionCoverage": {
+        "builtin": true,
+        "feed": true,
+        "gkd": true,
+        "gkdSources": [
+          "ganlin",
+          "linarm",
+          "xnx"
+        ]
+      },
+      "catalogSource": "engine-builtin-sub",
+      "record": {
+        "app": "知乎",
+        "package": "com.zhihu.android",
+        "appVersion": null,
+        "device": null,
+        "androidVersion": null,
+        "date": null,
+        "adType": null,
+        "uiFramework": null,
+        "observedAd": null,
+        "candidate": null,
+        "decision": null,
+        "clicked": null,
+        "verification": null,
+        "finalResult": null
+      },
+      "status": "PENDING_REAL_DEVICE"
+    },
+    {
+      "appName": "WPS",
+      "packageName": "cn.wps.moffice_eng",
+      "category": "tools-system",
+      "priority": "P0",
+      "adTypes": [
+        "splash",
+        "interstitial"
+      ],
+      "uiFramework": "unknown",
+      "subscriptionCoverage": {
+        "builtin": true,
+        "feed": false,
+        "gkd": true,
+        "gkdSources": [
+          "ganlin",
+          "linarm",
+          "xnx"
+        ]
+      },
+      "catalogSource": "engine-builtin-sub",
+      "record": {
+        "app": "WPS",
+        "package": "cn.wps.moffice_eng",
+        "appVersion": null,
+        "device": null,
+        "androidVersion": null,
+        "date": null,
+        "adType": null,
+        "uiFramework": null,
+        "observedAd": null,
+        "candidate": null,
+        "decision": null,
+        "clicked": null,
+        "verification": null,
+        "finalResult": null
+      },
+      "status": "PENDING_REAL_DEVICE"
+    },
+    {
+      "appName": "WiFi万能钥匙",
+      "packageName": "com.snda.wifilocating",
+      "category": "tools-system",
+      "priority": "P0",
+      "adTypes": [
+        "splash",
+        "interstitial",
+        "feed"
+      ],
+      "uiFramework": "unknown",
+      "subscriptionCoverage": {
+        "builtin": true,
+        "feed": true,
+        "gkd": true,
+        "gkdSources": [
+          "ganlin",
+          "linarm",
+          "xnx"
+        ]
+      },
+      "catalogSource": "engine-builtin-sub",
+      "record": {
+        "app": "WiFi万能钥匙",
+        "package": "com.snda.wifilocating",
+        "appVersion": null,
+        "device": null,
+        "androidVersion": null,
+        "date": null,
+        "adType": null,
+        "uiFramework": null,
+        "observedAd": null,
+        "candidate": null,
+        "decision": null,
+        "clicked": null,
+        "verification": null,
+        "finalResult": null
+      },
+      "status": "PENDING_REAL_DEVICE"
+    },
+    {
+      "appName": "墨迹天气",
+      "packageName": "com.moji.mjweather",
+      "category": "tools-system",
+      "priority": "P0",
+      "adTypes": [
+        "splash",
+        "interstitial"
+      ],
+      "uiFramework": "unknown",
+      "subscriptionCoverage": {
+        "builtin": true,
+        "feed": false,
+        "gkd": false,
+        "gkdSources": []
+      },
+      "catalogSource": "engine-builtin-sub",
+      "record": {
+        "app": "墨迹天气",
+        "package": "com.moji.mjweather",
+        "appVersion": null,
+        "device": null,
+        "androidVersion": null,
+        "date": null,
+        "adType": null,
+        "uiFramework": null,
+        "observedAd": null,
+        "candidate": null,
+        "decision": null,
+        "clicked": null,
+        "verification": null,
+        "finalResult": null
+      },
+      "status": "PENDING_REAL_DEVICE"
+    },
+    {
+      "appName": "百度地图",
+      "packageName": "com.baidu.BaiduMap",
+      "category": "tools-system",
+      "priority": "P0",
+      "adTypes": [
+        "splash"
+      ],
+      "uiFramework": "unknown",
+      "subscriptionCoverage": {
+        "builtin": true,
+        "feed": false,
+        "gkd": true,
+        "gkdSources": [
+          "ganlin",
+          "linarm",
+          "xnx"
+        ]
+      },
+      "catalogSource": "engine-builtin-sub",
+      "record": {
+        "app": "百度地图",
+        "package": "com.baidu.BaiduMap",
+        "appVersion": null,
+        "device": null,
+        "androidVersion": null,
+        "date": null,
+        "adType": null,
+        "uiFramework": null,
+        "observedAd": null,
+        "candidate": null,
+        "decision": null,
+        "clicked": null,
+        "verification": null,
+        "finalResult": null
+      },
+      "status": "PENDING_REAL_DEVICE"
+    },
+    {
+      "appName": "百度网盘",
+      "packageName": "com.baidu.netdisk",
+      "category": "tools-system",
+      "priority": "P0",
+      "adTypes": [
+        "splash",
+        "interstitial"
+      ],
+      "uiFramework": "unknown",
+      "subscriptionCoverage": {
+        "builtin": true,
+        "feed": false,
+        "gkd": true,
+        "gkdSources": [
+          "ganlin",
+          "linarm",
+          "xnx"
+        ]
+      },
+      "catalogSource": "engine-builtin-sub",
+      "record": {
+        "app": "百度网盘",
+        "package": "com.baidu.netdisk",
+        "appVersion": null,
+        "device": null,
+        "androidVersion": null,
+        "date": null,
+        "adType": null,
+        "uiFramework": null,
+        "observedAd": null,
+        "candidate": null,
+        "decision": null,
+        "clicked": null,
+        "verification": null,
+        "finalResult": null
+      },
+      "status": "PENDING_REAL_DEVICE"
+    },
+    {
+      "appName": "迅雷",
+      "packageName": "com.xunlei.downloadprovider",
+      "category": "tools-system",
+      "priority": "P0",
+      "adTypes": [
+        "splash",
+        "interstitial",
+        "feed"
+      ],
+      "uiFramework": "unknown",
+      "subscriptionCoverage": {
+        "builtin": true,
+        "feed": false,
+        "gkd": true,
+        "gkdSources": [
+          "ganlin",
+          "linarm"
+        ]
+      },
+      "catalogSource": "engine-builtin-sub",
+      "record": {
+        "app": "迅雷",
+        "package": "com.xunlei.downloadprovider",
+        "appVersion": null,
+        "device": null,
+        "androidVersion": null,
+        "date": null,
+        "adType": null,
+        "uiFramework": null,
+        "observedAd": null,
+        "candidate": null,
+        "decision": null,
+        "clicked": null,
+        "verification": null,
+        "finalResult": null
+      },
+      "status": "PENDING_REAL_DEVICE"
+    },
+    {
+      "appName": "优酷",
+      "packageName": "com.youku.phone",
+      "category": "video",
+      "priority": "P0",
+      "adTypes": [
+        "splash",
+        "video-splash",
+        "feed"
+      ],
+      "uiFramework": "unknown",
+      "subscriptionCoverage": {
+        "builtin": true,
+        "feed": false,
+        "gkd": true,
+        "gkdSources": [
+          "ganlin",
+          "linarm",
+          "xnx"
+        ]
+      },
+      "catalogSource": "engine-builtin-sub",
+      "record": {
+        "app": "优酷",
+        "package": "com.youku.phone",
+        "appVersion": null,
+        "device": null,
+        "androidVersion": null,
+        "date": null,
+        "adType": null,
+        "uiFramework": null,
+        "observedAd": null,
+        "candidate": null,
+        "decision": null,
+        "clicked": null,
+        "verification": null,
+        "finalResult": null
+      },
+      "status": "PENDING_REAL_DEVICE"
+    },
+    {
+      "appName": "咪咕视频",
+      "packageName": "com.cmcc.cmvideo",
+      "category": "video",
+      "priority": "P1",
+      "adTypes": [
+        "splash",
+        "video-splash"
+      ],
+      "uiFramework": "unknown",
+      "subscriptionCoverage": {
+        "builtin": false,
+        "feed": false,
+        "gkd": true,
+        "gkdSources": [
+          "ganlin",
+          "linarm",
+          "xnx"
+        ]
+      },
+      "catalogSource": "web-verified:sj.qq.com",
+      "record": {
+        "app": "咪咕视频",
+        "package": "com.cmcc.cmvideo",
+        "appVersion": null,
+        "device": null,
+        "androidVersion": null,
+        "date": null,
+        "adType": null,
+        "uiFramework": null,
+        "observedAd": null,
+        "candidate": null,
+        "decision": null,
+        "clicked": null,
+        "verification": null,
+        "finalResult": null
+      },
+      "status": "PENDING_REAL_DEVICE"
+    },
+    {
+      "appName": "搜狐视频",
+      "packageName": "com.sohu.sohuvideo",
+      "category": "video",
+      "priority": "P1",
+      "adTypes": [
+        "splash",
+        "video-splash"
+      ],
+      "uiFramework": "unknown",
+      "subscriptionCoverage": {
+        "builtin": false,
+        "feed": false,
+        "gkd": true,
+        "gkdSources": [
+          "ganlin",
+          "linarm",
+          "xnx"
+        ]
+      },
+      "catalogSource": "web-verified:play.google.com",
+      "record": {
+        "app": "搜狐视频",
+        "package": "com.sohu.sohuvideo",
+        "appVersion": null,
+        "device": null,
+        "androidVersion": null,
+        "date": null,
+        "adType": null,
+        "uiFramework": null,
+        "observedAd": null,
+        "candidate": null,
+        "decision": null,
+        "clicked": null,
+        "verification": null,
+        "finalResult": null
+      },
+      "status": "PENDING_REAL_DEVICE"
+    },
+    {
+      "appName": "爱奇艺",
+      "packageName": "com.qiyi.video",
+      "category": "video",
+      "priority": "P0",
+      "adTypes": [
+        "splash",
+        "video-splash",
+        "feed"
+      ],
+      "uiFramework": "unknown",
+      "subscriptionCoverage": {
+        "builtin": true,
+        "feed": false,
+        "gkd": true,
+        "gkdSources": [
+          "ganlin",
+          "linarm",
+          "xnx"
+        ]
+      },
+      "catalogSource": "engine-builtin-sub",
+      "record": {
+        "app": "爱奇艺",
+        "package": "com.qiyi.video",
+        "appVersion": null,
+        "device": null,
+        "androidVersion": null,
+        "date": null,
+        "adType": null,
+        "uiFramework": null,
+        "observedAd": null,
+        "candidate": null,
+        "decision": null,
+        "clicked": null,
+        "verification": null,
+        "finalResult": null
+      },
+      "status": "PENDING_REAL_DEVICE"
+    },
+    {
+      "appName": "腾讯视频",
+      "packageName": "com.tencent.qqlive",
+      "category": "video",
+      "priority": "P0",
+      "adTypes": [
+        "splash",
+        "video-splash",
+        "feed"
+      ],
+      "uiFramework": "unknown",
+      "subscriptionCoverage": {
+        "builtin": true,
+        "feed": false,
+        "gkd": true,
+        "gkdSources": [
+          "ganlin",
+          "linarm",
+          "xnx"
+        ]
+      },
+      "catalogSource": "engine-builtin-sub",
+      "record": {
+        "app": "腾讯视频",
+        "package": "com.tencent.qqlive",
+        "appVersion": null,
+        "device": null,
+        "androidVersion": null,
+        "date": null,
+        "adType": null,
+        "uiFramework": null,
+        "observedAd": null,
+        "candidate": null,
+        "decision": null,
+        "clicked": null,
+        "verification": null,
+        "finalResult": null
+      },
+      "status": "PENDING_REAL_DEVICE"
+    },
+    {
+      "appName": "芒果TV",
+      "packageName": "com.hunantv.imgo.activity",
+      "category": "video",
+      "priority": "P0",
+      "adTypes": [
+        "splash",
+        "video-splash",
+        "feed"
+      ],
+      "uiFramework": "unknown",
+      "subscriptionCoverage": {
+        "builtin": true,
+        "feed": false,
+        "gkd": true,
+        "gkdSources": [
+          "ganlin",
+          "linarm"
+        ]
+      },
+      "catalogSource": "engine-builtin-sub",
+      "record": {
+        "app": "芒果TV",
+        "package": "com.hunantv.imgo.activity",
+        "appVersion": null,
+        "device": null,
+        "androidVersion": null,
+        "date": null,
+        "adType": null,
+        "uiFramework": null,
+        "observedAd": null,
+        "candidate": null,
+        "decision": null,
+        "clicked": null,
+        "verification": null,
+        "finalResult": null
+      },
+      "status": "PENDING_REAL_DEVICE"
+    }
+  ]
+}

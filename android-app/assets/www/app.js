@@ -1,4 +1,4 @@
-/* 开屏卫士 v7.9.4 · FalsePositive 场景层 + AdTask 时序压力 + 安全整改（令牌出库/密钥扫描硬门） */
+/* 开屏卫士 v7.9.5 · 真实世界证据层：点击决策证据 + 点击结果六态闭环 + WebView 综合证据路径 */
 "use strict";
 
 /* ══════════ 环境 ══════════ */
@@ -23,8 +23,8 @@ const store = {
 };
 
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "7.9.4"; }
-function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "79400"; }
+function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "7.9.5"; }
+function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "79500"; }
 
 /* ══════════ 吉祥物（v4.1.0 全新形象：白机器人小侠 + 绿披风跳跃） ══════════
  * 与启动器图标同源；state: on（跳跃浮动）/ off（灰度待命） */
@@ -35,17 +35,18 @@ function mascotImg(size, state, head) {
 
 $("#brand-logo").innerHTML = mascotImg(30, "on", true);
 
-/* ═══ v7.9.4 版本记录（FalsePositive 场景层 + 时序压力 + 安全整改）═══ */
+/* ═══ v7.9.5 版本记录（真实世界证据层）═══ */
 const CURRENT_RELEASE = {
   date: "2026-11-21",
-  title: "FalsePositive 场景层 + AdTask 时序压力 + 安全整改（令牌出库/密钥扫描硬门）",
+  title: "真实世界证据层：点击决策证据 + 点击结果六态闭环 + WebView 综合证据路径",
   features: [
-    "FalsePositiveScenarioTest 新套件（69 断言）：用户 20 类误触红线场景逐类断言「绝对不点」——银行/政务/支付守护名单页 · 相机 · 聊天窗（孤立「跳过/关闭」气泡零出手）· Launcher · 商品详情/购买/收藏/分享/评论 · 更新提示单信号 · 权限请求 · 会员弹窗 · 普通 PopupWindow/Dialog/悬浮 FAB · 多窗口 · 小程序容器 L0 纵深防御 · 反馈面板；附带孤立词红线（关闭/×/取消/跳过/稍后/知道了）与对照侧（真广告语境同词照常出手）",
-    "AdTaskTimingTest 新套件（95 断言）：A-H 八组时序竞态（旧回调拒收·坐标漂移不复用·窗口切换终局·普通按钮冷却闸·反馈面板零补刀·videoPoll 终态降频·延迟露头键六档 100/300/500/800/2000/5000ms）+ Case1/2/3 三种真机实锤硬回归（旧 actor 全拒第二次点击=0 · 重试五要件 · click()=true ≠ 广告关闭）",
-    "生产修复两处（证据质量提升非关闭扫描）：① L1 跳过键路径增加广告形态证据门 isAdLikeLoose（无滚动/无输入框/≤150 节点）或 SDK/学习指纹——聊天窗/内容页孤立「跳过」字样不再被当成跳过键点击（真开屏窗零回退）② AdTaskCore 无任务 S_NONE 契约加固——状态转移不得从「无任务」无中生有",
-    "安全整改：GitHub Token 从代码库完全移除（原混淆内嵌已标记需撤销·docs/SECURITY.md R1）→ 环境变量/本机未入库文件凭据链；新增密钥泄露扫描硬门 secret-scan.sh 接入测试与打包双闸；28 套件 6487 项断言全绿（+164；既有 6323 项零回退）· APK 844KB · versionCode 79400（> 79300 覆盖安装即升级）",
+    "点击决策证据（最小结构化）：每次准备点击前记录包/Activity/任务ID/代际/任务状态 · 候选来源（text/contentDescription/resourceId/imageCorner）· 上下文四格（广告/SDK/WebView/订阅）· 归一化几何（位置/面积/屏幕区域/可点）· SafetyGuard 裁决——隐私红线结构性强制：不保存完整无障碍树、不上传截图、账号/手机号/支付/聊天内容一律白名单闸拒收",
+    "点击结果六态闭环：CLICK_DISPATCHED → VERIFYING → VERIFIED_SUCCESS/RETRY/MISS/FALSE_CLICK/SAFE_BLOCK/UNKNOWN——dispatchGesture 成功绝不等于广告关闭（唯一成功证据=验证链）；订阅证据链八格（咨询/匹配/候选过闸/已点击/确认关闭/点击失败/误触/被拦截）上传日志直接可读",
+    "WebView 综合证据路径（真广告+ScrollView/Input/WebView 专项）：isAdLikeLoose 对滚动容器/输入框/大树的过强阻断获得综合判断出口——WebView 容器在场且至少一个广告语境证据（角标/SDK 窗指纹/Dialog 形态/热区）同窗才出手；WebView 单独在场不构成证据（应用内浏览器普通页零出手——误触红线保持）",
+    "视频开屏自适应轮询：低证据降频（连续 ≥4 针探针零命中 → 1.5s→3s——不再高频扫整个 20s 观察窗）；探针命中/出手即恢复标准节拍；20s ceiling 与证据消失立即终止契约保持",
+    "L3 真机批次 1 定义（50 款 · 12 类配额 + video-splash 全收 + 引擎覆盖四档交叉 · REAL_DEVICE_TEST = NOT_AVAILABLE 诚实标记）+ 失败样本库建库（compatibility/samples/ · 修复优先级 FALSE_CLICK > DUPLICATE_CLICK > MISS）· 30 套件 6601 项断言全绿（+114；既有 6487 项零回退）· versionCode 79500（> 79400 覆盖安装即升级）",
   ],
-  summary: "v7.9.4 误触红线与安全整合轮：FalsePositiveScenarioTest（20 类「绝对不点」场景）+ AdTaskTimingTest（A-H 时序竞态 + Case1/2/3 硬回归）两套新测试层；实测揭出并根治 L1 跳过键路径零形态证据缺陷（聊天窗/内容页孤立「跳过」词会被点击——现需广告形态证据门）；安全整改（Token 出库 + 密钥扫描硬门 + SECURITY.md 披露）。",
+  summary: "v7.9.5 真实世界证据层：点击前最小结构化决策证据（隐私红线结构性强制——无树/无截图/白名单标签闸）+ 点击后六态结果闭环（dispatchGesture 成功 ≠ 广告关闭）+ 订阅证据链八格 + WebView 综合证据路径（真广告+ScrollView/Input/WebView——不取消安全门）+ 视频开屏自适应轮询低证据降频 + L3 批次 1 定义与失败样本库（真实设备数据绝不虚报）。",
 };
 
 /* v7.0.0 新版功能描述（规范：≤5 个标题、带序号；检查更新发现新版本时就地渲染）。

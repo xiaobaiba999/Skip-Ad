@@ -1,0 +1,142 @@
+{
+  "round": 46,
+  "version": "7.9.5",
+  "date": "2026-11-21",
+  "theme": "真实世界证据层：点击决策证据（最小结构化·隐私红线）+ 点击结果六态闭环 + 订阅证据链八格 + WebView 综合证据路径 + 视频开屏自适应轮询 + L3 批次 1 定义 + 失败样本库",
+  "user_directives": [
+    "本轮不要以增加 JVM 断言数量为目标——核心目标是真实世界证据层：真实 App → 真实广告 → 候选 → Decision Evidence → SafetyGuard → HumanTap → VERIFY → 真实结果 → 样本沉淀 → 失败案例进入下一轮修复",
+    "第一优先级：Decision Evidence——每次准备 CLICK 前记录 package/activity/taskId/generation/taskState + 候选来源（text/contentDescription/resourceId/imageCorner）+ 上下文（adContext/sdkContext/webViewContext/subscriptionContext）+ 几何（position/size/screenRegion/clickable）+ 安全（SafetyGuard/finalDecision）；不保存完整 Accessibility Tree、不上传原始屏幕截图、不保存账号/手机号/支付/聊天隐私——默认只保留最小结构化证据",
+    "点击后的结果闭环：CLICK_DISPATCHED → VERIFYING → 结果只能是 VERIFIED_SUCCESS/RETRY/MISS/FALSE_CLICK/SAFE_BLOCK/UNKNOWN；禁止 dispatchGesture 成功 = 广告关闭成功——必须检查广告是否真的消失",
+    "L3 真机第一批 50 App：不能简单按列表前 50——必须 12 类覆盖 + 引擎形态优先覆盖；每款真实测试记录 14 项字段；finalResult 严格用词表；绝对不能 NO_AD_OBSERVED = SUCCESS / RULE_ONLY = VERIFIED_SUCCESS",
+    "专门建立极简窗口测试批次：≤60 节点无文本角落图标——测试关闭/更多/返回/收藏/分享/设置/头像/普通按钮，证明角落图标路径不会误触普通 UI；禁止为了提高命中率放宽安全门",
+    "专项测试真广告 + ScrollView/Input/WebView：isAdLikeLoose 可能形成过强阻断——不能简单取消安全门，必须增加广告上下文+候选语义+几何+SDK/WebView+SafetyGuard 综合判断",
+    "GKD 订阅：不追求单纯规则加载条数——统计 consulted/matched/candidateAccepted/clicked/verifiedSuccess/clickFail/falseClick/blocked；内置探针命中不能导致订阅不再参与",
+    "视频开屏：20s = ceiling 保持；禁止固定高频轮询整个 20s——低证据降频/结束、证据增强继续观察、候选出现立即安全判断、证据消失立即终止、禁止无限 poll",
+    "不继续无意义增加 JVM 测试（当前 6487 已足够）——只有真实设备测试发现 bug 或发现新竞态/安全边界才新增；一个真实缺陷 → 一个回归测试",
+    "真实测试失败必须进入样本库 compatibility/samples/——每条失败样本必填字段齐备且不能保存敏感用户数据",
+    "每轮真实失败优先修复：FALSE_CLICK 最高优先级 → DUPLICATE_CLICK → MISS → 最后才命中率优化（安全 > 正确关闭 > 命中率 > 性能微优化）",
+    "没有真机时明确 REAL_DEVICE_TEST = NOT_AVAILABLE，不得虚报",
+    "完成后同步 GitHub 推送 Releases + 优化 GitHub 面板描述"
+  ],
+  "scope_of_change": {
+    "production_new_module": [
+      "core/DecisionEvidence.java（纯 Java · 零 Android 依赖 · JVM 可单测）：点击决策证据（最小结构化）+ 点击结果六态计数 + 隐私红线结构性强制（sanitizeToken 白名单闸 close/skip 词族 ≤12 字符 · sanitizeResId 资源名形态 ≤32 字符 · 环形缓冲有界 12 条 · 无树容器/无位图）"
+    ],
+    "production_wiring": [
+      "AdSkipService.recordClickEvidence：两通道派发成功点统一记录（候选来源判定 text→desc→resid→imageCorner · 上下文四格 · 归一化几何 · 任务ID/代际/派发前状态 · BND_OK）",
+      "点击结果闭环接线：markTaskSuccess/markTaskWindowChanged → VERIFIED_SUCCESS · taskOnScanOutcome（VERIFYING 仍见候选）→ RETRY · markTaskFailed → MISS · 终闸拒点 → SAFE_BLOCK（recordSafeBlock + recordOutcome）；AdTask 新增 lastReason（任务最后一击归因）",
+      "SubscriptionManager：subStatV2 八格（consulted/candidateAccepted/verifiedSuccess/falseClick 新计数器）+ countCandAccepted/countVerifiedSuccess 入口 + matchSources 咨询计数 + stateJson subStatV2 段（七分类 subStat 兼容零破坏）",
+      "AdDecisionCore：WebView 综合证据路径 webviewAdEvidence = webviewPresent && (adBadge || sdkAdWin || dialogForm || hotZone)——L1 跳过键与 L1.5/L1.6 关闭键三路解锁（WebView 单独在场不构成证据）",
+      "VideoSplashGuard：adaptivePollGapMs 三档节拍（终态 3s/低证据 3s/标准 1.5s）+ VIDEO_LOW_EVIDENCE_MISS_STREAK=4 + pollDue 4 参重载；AdSkipService.videoPoll 探针 miss streak 记账（命中/出手重置——证据增强恢复标准节拍）",
+      "上传日志新增三行：订阅证据链（八格）· 点击结果（六态计数）· 点击证据（最近一击最小结构化 JSON）"
+    ],
+    "compat_infra": [
+      "compatibility/l3_batch1.json：50 款 L3 批次 1（scripts/gen-l3-batch.py 可复现）——12/12 类配额 · video-splash 全收 6 · banner 2/rewarded-video 2/feedback-sheet 4 强制收录 · 引擎四档覆盖（GKD 43/内置 39/Feed 11/零覆盖 3）· P0/P1/P2 混合 · 14 项记录字段全部 PENDING_REAL_DEVICE",
+      "compatibility/samples/：失败样本库建库（index.json + SCHEMA.md）——修复优先级 FALSE_CLICK > DUPLICATE_CLICK > MISS > 命中率；隐私红线与入库流程成文；当前空库 0 条（诚实）",
+      "compatibility/test_matrix.json：L3 批次 1 定义与 REAL_DEVICE_TEST=NOT_AVAILABLE 标记 + L2 证据层/极简批次套件登记"
+    ],
+    "new_suites": [
+      "DecisionEvidenceTest（82 断言 · 六段：证据模式/隐私红线/六态计数/stateName/WebView 综合路径/自适应节拍/订阅八格）",
+      "MinimalWindowBatchTest（32 断言 · 八段：普通 UI 8 类交互图标×四角全零出手/窗级门/树极简兜底契约/丰富窗/对照侧/中部边带 FAB 防线/时机闸/vid 语义正信号）"
+    ],
+    "runner_change": "run-tests.sh 套件列表 +2（30 套件）",
+    "honest_note": "本轮不以断言数量为目标——新增测试全部对应新生产面（证据层/综合路径/自适应节拍/八格计数）与用户指令五极简批次；既有 28 套件零回退"
+  },
+  "decision_evidence": {
+    "fields": "pkg/activity/task(winStart#seq)/gen/state + src(text/contentDescription/resourceId/imageCorner) + ctx(adContext/sdkContext/webViewContext/subscriptionContext) + geo(cx/cy/area/region TL·TR·BL·BR·MID/clickable) + safe(BND_OK/BND_*) + fin(CLICK_DISPATCHED/SAFE_BLOCK)",
+    "privacy_redlines": [
+      "不保存完整 Accessibility Tree（模块无树容器/无节点引用——结构性强制）",
+      "不上传原始屏幕截图（零位图/字节引用）",
+      "不保存账号/手机号/支付/聊天内容（sanitizeToken 白名单闸——只保留 close/skip 词族成员 ≤12 字符，实测手机号/账号文本/支付文本/长文本/非整词全部空串拒收）",
+      "resourceId 只保留 ≤32 字符开发者资源名形态（超长/含中文一律空串）",
+      "环形缓冲有界 12 条（24 条记录后仍 12——绝不无限驻留）",
+      "证据链异常全吞（绝不影响点击主链）"
+    ],
+    "outcome_loop": "CLICK_DISPATCHED → VERIFYING → VERIFIED_SUCCESS/RETRY/MISS/FALSE_CLICK/SAFE_BLOCK/UNKNOWN；dispatchGesture 成功 ≠ 广告关闭（唯一成功证据 = 验证链）；FALSE_CLICK 自动化环境恒 0（真机样本回传唯一来源）"
+  },
+  "gkd_subscription_evidence_chain": {
+    "eight_fields": "consulted/matched/candidateAccepted/clicked/verifiedSuccess/clickFail/falseClick/blocked",
+    "wiring": "matchSources 咨询即计（含未加载/无覆盖——参与度与命中解耦）· 候选过终闸计 candidateAccepted · 订阅出手任务 VERIFIED_SUCCESS 计 verifiedSuccess（markTaskSuccess/markTaskWindowChanged 双路）",
+    "compatibility": "七分类 subStat 与 PageScenarioTest S8 断言零破坏（subStatSnapshot 7 格不变，扩展走 subStatV2Snapshot）"
+  },
+  "webview_composite_gate": {
+    "formula": "webviewPresent && (adBadge || sdkAdWin || dialogForm || hotZone)",
+    "positive_cases": "真广告+ScrollView（WebView+角标+滚动+跳过键）出手 · 真广告+输入框（WebView+SDK 窗+EditText）出手 · 真广告+WebView 大树 >150 节点出手 · badge_close（WebView+角标+滚动 × 键）出手",
+    "redline_cases": "应用内浏览器普通页（WebView 单独在场+大树+跳过字样）零出手 · 无第二语境 WebView 窗 × 键零出手 · 原生滚动页孤立跳过词零出手（v7.9.4 契约零回退）",
+    "principle": "不取消安全门——综合判断；WebView 单独在场不构成证据（宁漏勿误）"
+  },
+  "video_splash_adaptive_polling": {
+    "cadence": "标准 1.5s（证据在场/画像刚成立）· 低证据 3s（连续 ≥4 针探针零命中且零出手）· 终态 3s（v7.9.1 契约）",
+    "reset_rules": "探针命中 → miss streak 归零（证据增强恢复标准节拍）· 任何出手（recordClickEvidence）→ 归零",
+    "ceiling": "20s 观察窗上限保持 · 证据消失立即终止（每针头部 videoLike 复核）· 禁止无限 poll"
+  },
+  "l3_batch1": {
+    "total": 50,
+    "category_coverage": "12/12（社交5/短视频5/电商5/视频6/音乐3/新闻4/阅读4/浏览器4/工具6/游戏4/学习3/金融生活5/其他1）",
+    "adtype_coverage": "splash 46 · video-splash 6（全收）· feed 29 · interstitial 29 · banner 2 · rewarded-video 2 · feedback-sheet 4",
+    "engine_coverage": "GKD 快照 43 · 内置订阅 39 · Feed 名单 11 · 零覆盖 3（长尾优先补位——诚实测盲区）",
+    "priority_mix": "P0 40 · P1 8 · P2 2",
+    "record_status": "全部 PENDING_REAL_DEVICE（14 项记录字段不预填）",
+    "REAL_DEVICE_TEST": "NOT_AVAILABLE（本机无真机——绝不虚报执行结果）"
+  },
+  "samples_library": {
+    "path": "compatibility/samples/",
+    "schema_fields": "sampleId/package/appVersion/androidVersion/device/adType/uiFramework/result/decisionEvidence/failureReason/fixedInVersion",
+    "current_count": 0,
+    "priority_order": "FALSE_CLICK > DUPLICATE_CLICK > MISS > 命中率"
+  },
+  "minimal_window_batch": {
+    "suite": "MinimalWindowBatchTest",
+    "assertions": 32,
+    "coverage": "8 类交互图标（关闭/更多/返回/收藏/分享/设置/头像/普通按钮）× 四角（TL/TR/BL/BR）在普通 UI（滚动容器）全部零出手 · 树极简兜底契约（形态路径——不挑 vid 语义，防误触由滚动/输入框/窗龄/节点数四道证据承担）· 内容丰富窗 >60 节点 8 类全零出手 · 中部边带 strongOnly（FAB 防线）· 窗级门/时机闸（<300ms 零出手/7s 超窗零出手/300ms 首过即出手）· vid 语义正信号（iv_skip 走跳过键路径）· 对照侧（角标在场照常出手）",
+    "honesty": "零安全门放宽——每条断言对应既有闸的在场性"
+  },
+  "tests": {
+    "total_suites": 30,
+    "total_pass": 6601,
+    "total_fail": 0,
+    "delta_from_794": "+114（DecisionEvidenceTest 82 + MinimalWindowBatchTest 32；既有 6487 项零回退——本轮不以断言数量为目标，新增全部对应新生产面与用户指令五批次）",
+    "per_new_suite": {
+      "DecisionEvidenceTest": 82,
+      "MinimalWindowBatchTest": 32
+    },
+    "secret_scan_gate": "通过（run-tests.sh 与 build.sh 双闸）"
+  },
+  "apk": {
+    "versionName": "7.9.5",
+    "versionCode": 79500,
+    "size": 865846,
+    "md5": "bed29adc43bc1769c44c7c5a588fa86c",
+    "sha256": "118ab150b47149ab83b19ed53ee3c71c1a208b6740d501177b1472900e6c137c",
+    "distribution": ["android-app/dist", "download", "upload"],
+    "signature": "apksigner verify 通过 · 同证书（Signer SHA-256 05ada6e3…——与 v7.9.4 同签名，覆盖安装即升级）"
+  },
+  "compatibility_metrics": {
+    "应用覆盖数量": 233,
+    "规则测试数量": "30 套件 6601 断言",
+    "页面场景数量": "12 类 UI 样本 × 8 项场景行为 + 20 类误触红线 + 8 类交互图标 × 四角极简批次",
+    "真机测试数量": 0,
+    "广告样本数量": 0,
+    "成功关闭数量": 0,
+    "漏检数量": 0,
+    "误触数量": 0,
+    "重复点击数量": 0,
+    "安全拦截数量": 0,
+    "未验证数量": 233,
+    "口径声明": "L1/L2/FP/时序/证据层全绿 ≠ 真机验证；REAL_DEVICE_TEST = NOT_AVAILABLE 绝不虚报"
+  },
+  "unresolved": [
+    "L3 真机实测未执行（无真机连接——REAL_DEVICE_TEST = NOT_AVAILABLE；批次 1 已定义待执行）",
+    "失败样本库空库（0 条）——无真机即无真实失败样本，绝不预填",
+    "原令牌需仓库所有者在 GitHub 撤销（docs/SECURITY.md R1）",
+    "keystore 公开风险待 v8.0 迁移轮处置（R2）",
+    "知识库高置信包名 95 款待真机 adb 核验",
+    "WebView 综合证据路径的纯 WebView 无角标亚型（无第二语境）保持不点——待真机样本决策（宁漏勿误）"
+  ],
+  "next_round": [
+    "真机 L3 批次 1 执行（50 款逐款回填 14 项记录字段——所有 finalResult 用固定词表）",
+    "失败样本入库驱动修复（FALSE_CLICK 最高优先级 → DUPLICATE_CLICK → MISS）——一个真实缺陷一个回归测试",
+    "真机回传后订阅证据链八格与点击结果六态的首份真实分布报告",
+    "证据驱动下一轮选题（不再以断言数量为目标）"
+  ]
+}
