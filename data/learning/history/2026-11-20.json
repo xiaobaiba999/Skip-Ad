@@ -1,0 +1,89 @@
+{
+  "meta": {
+    "version": "3.1.0",
+    "generatedAt": "2026-11-20T01:58:46.529Z",
+    "timezone": "Asia/Shanghai",
+    "purpose": "学习中心夜间自动同步——为后续版本迭代提供规则与画像参考"
+  },
+  "stats": {
+    "totalBlocks": 0,
+    "totalMisses": 0,
+    "guardBlocks": 0,
+    "avgLatencyMs": 0,
+    "successRate": 1
+  },
+  "learnedRules": [],
+  "habitProfile": {
+    "perApp": [],
+    "hourHistogram": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "scenarioDistribution": {}
+  },
+  "hotPresetRules": [
+    {
+      "appName": "*",
+      "pattern": "「跳过 | 跳过广告 | Skip」文本匹配（GKD 快照选择器同源）",
+      "hitCount": 0
+    },
+    {
+      "appName": "*",
+      "pattern": "启动 3.5s 时间窗内 + TYPE_WINDOW_CONTENT_CHANGED 持续监听（延迟出现的跳过键一出现即点）",
+      "hitCount": 0
+    },
+    {
+      "appName": "*",
+      "pattern": "面积安全阀：只代点 <35% 屏面积控件，全屏热区/假关闭 × 直接忽略",
+      "hitCount": 0
+    },
+    {
+      "appName": "*",
+      "pattern": "加速度阈值 <15m/s²、转角 <35°、持续 <3s 的传感器事件视为激进广告 → 挂起监听",
+      "hitCount": 0
+    },
+    {
+      "appName": "*",
+      "pattern": "广告窗口内发起的 Scheme / Universal Link 一律拦截，跳转链系统层断开",
+      "hitCount": 0
+    },
+    {
+      "appName": "守护名单",
+      "pattern": "支付、银行、政务类应用：广告照常拦截，但绝不终止进程/服务，仅温和代点",
+      "hitCount": 0
+    },
+    {
+      "appName": "极选商城",
+      "pattern": "极选商城：viewId 精确定位跳过控件（无障碍快照）",
+      "hitCount": 0
+    },
+    {
+      "appName": "喜马拉雅",
+      "pattern": "喜马拉雅：viewId 精确定位跳过控件（无障碍快照）",
+      "hitCount": 0
+    }
+  ],
+  "recentEvents": []
+}
