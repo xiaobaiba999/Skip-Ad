@@ -214,9 +214,11 @@ public final class RuleEngine {
     /* ── 第2层：倒计时形态（严格正则，营销话术数学上无法混入） ──
        P1：跳过5 / 跳过 5 / 跳过广告3 / 跳过广告 5s / 跳過廣告 5秒
        P2：3s后可跳过 / 5 秒后可跳过广告 / 3秒后可跳过廣告
-       注意：广告/廣告是两字词——必须用分组 (广告)? 而非单字类 [广告]? */
+       注意：广告/廣告是两字词——必须用分组 (广告)? 而非单字类 [广告]?
+       v7.8.0：P2 「后」改可选（视频开屏实锤：「5s 跳过」「5秒跳过」无
+       「后」字变体全被拒——视频开屏词典扩容配套）。 */
     static final String P_COUNTDOWN_TAIL = "^跳[过過](广告|廣告)?\\s*\\d{1,2}\\s*[s秒]?$";
-    static final String P_COUNTDOWN_HEAD = "^\\d{1,2}\\s*[s秒]?\\s*后後?\\s*可?\\s*跳[过過](广告|廣告)?$";
+    static final String P_COUNTDOWN_HEAD = "^\\d{1,2}\\s*[s秒]?\\s*(后後)?\\s*可?\\s*跳[过過](广告|廣告)?$";
     /* v5.6.0 热路径优化三件套之一（4.9× 提速）：String.matches 每调用隐式
      * Pattern.compile（含锁+分配）→ 类加载期一次预编译，语义零变化（475 断言全绿） */
     static final java.util.regex.Pattern RE_COUNTDOWN_TAIL =

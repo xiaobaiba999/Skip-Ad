@@ -13,10 +13,15 @@ echo "[compile] Java (ECJ → Java 8 bytecode)"
 rm -rf "$SRC/classes"; mkdir -p "$SRC/classes"
 java -jar /home/z/android-tools/ecj.jar -1.8 -warn:none -d "$SRC/classes" "$SRC/Bench.java" >/dev/null 2>&1 || { echo "Java compile failed"; exit 1; }
 
-echo "[compile] Kotlin (K2 → JVM 1.8 bytecode)"
-rm -rf "$SRC/classes-kt"; mkdir -p "$SRC/classes-kt"
-java -cp "$KT_CP" org.jetbrains.kotlin.cli.jvm.K2JVMCompiler -jvm-target 1.8 -no-stdlib \
-  -cp /home/z/bench-tools/kotlin-stdlib.jar -d "$SRC/classes-kt" "$SRC/BenchKt.kt" >/dev/null 2>&1 || { echo "Kotlin compile failed"; exit 1; }
+# Kotlin：编译器不在场则整语言跳过（历史值由 aggregate.py 合并）
+if [ -f /home/z/bench-tools/kotlin-compiler.jar ]; then
+  echo "[compile] Kotlin (K2 → JVM 1.8 bytecode)"
+  rm -rf "$SRC/classes-kt"; mkdir -p "$SRC/classes-kt"
+  java -cp "$KT_CP" org.jetbrains.kotlin.cli.jvm.K2JVMCompiler -jvm-target 1.8 -no-stdlib \
+    -cp /home/z/bench-tools/kotlin-stdlib.jar -d "$SRC/classes-kt" "$SRC/BenchKt.kt" >/dev/null 2>&1 || { echo "Kotlin compile failed"; exit 1; }
+else
+  echo "[compile] Kotlin skipped（kotlin-compiler.jar 不在场——历史值合并）"
+fi
 
 # ── 运行配置 ──
 declare -A RUN_BENCH RUN_BOOT
@@ -28,20 +33,26 @@ RUN_BOOT[js]="node $SRC/bench.js boot"
 RUN_BENCH[js]="node $SRC/bench.js bench"
 RUN_BOOT[python]="python3 $SRC/bench.py boot"
 RUN_BENCH[python]="python3 $SRC/bench.py bench"
+RUN_BOOT[c]="$SRC/bench boot"
+RUN_BENCH[c]="$SRC/bench bench"
 
 RUNS=9
 rm -f "$OUT"/raw_*.jsonl
 
-for lang in java kotlin js python; do
+echo "[compile] C (gcc -O2)"
+gcc -O2 -o "$SRC/bench" "$SRC/bench.c" || { echo "C compile failed"; exit 1; }
+
+# ── 语言面（工具缺失自动跳过：如 Kotlin 编译器不在场则跳过该语言）──
+LANGS="java js python c"
+if [ -f /home/z/bench-tools/kotlin-compiler.jar ]; then LANGS="java kotlin js python c"; fi
+for lang in $LANGS; do
   echo "── $lang ──"
-  # boot 外测（进程冷启动：spawn → READY）
   for i in $(seq 1 $RUNS); do
     t0=$(date +%s%N)
     eval "${RUN_BOOT[$lang]}" >/dev/null 2>&1
     t1=$(date +%s%N)
     echo "$(( (t1 - t0) / 1000 ))" >> "$OUT/boot_${lang}.txt"
   done
-  # bench（内部计时 JSON）
   for i in $(seq 1 $RUNS); do
     eval "${RUN_BENCH[$lang]}" >> "$OUT/raw_${lang}.jsonl" 2>/dev/null
   done

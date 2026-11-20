@@ -370,6 +370,7 @@ public final class AdDecisionCore {
         public final java.util.ArrayList<CornerCand> corners = new java.util.ArrayList<CornerCand>(); // 角落候选（v3.5.0 多候选）
         public final java.util.ArrayList<CdDigit> cdDigits = new java.util.ArrayList<CdDigit>(); // v7.5.0 独立倒计时数字（walk 后并入门控）
         public boolean dialogForm;     // 根节点 Dialog/Popup 形态
+        public boolean webviewPresent; // v7.8.0：窗内存在 WebView 容器（H5 插屏语境铁证——插屏闸⓪第二在场证据）
     }
 
     /* ───────── 决策上下文（服务侧填充） ───────── */
@@ -400,6 +401,10 @@ public final class AdDecisionCore {
         public boolean halfScreenAd;
         public boolean updateDialog;
         public boolean videoApp;
+        /* v7.8.0 视频开屏画像（VideoSplashGuard.videoLike 服务侧扫描前判定填入）：
+         * 观察窗 12s→20s 延长 + 轮询针 + 白点节流 + L4 形态门放宽 +
+         * 新键预算刷新——「开屏广告带视频的全部未命中」根治。 */
+        public boolean videoLike;
         /* v7.1.0 底层算法优化：分应用规则行预筛结果（服务侧每窗一次
          * RuleEngine.rowsFor(pkg) 填入；null = matchText 回落全表扫描——
          * 探针/DFS 双路径共享，每窗省下 ~340 节点 × 50 行前缀比对）。 */
@@ -496,6 +501,10 @@ public final class AdDecisionCore {
             if (node.editable() || cls.contains("edittext")) f.editPresent = true;
             if (node.scrollable() || cls.contains("scrollview") || cls.contains("recyclerview")
                     || cls.contains("viewpager") || cls.contains("listview")) f.scrollPresent = true;
+            /* v7.8.0 WebView 容器铁证（插屏闸⓪扩容配套）：H5 插屏/视频开屏
+             * 的文字在网页内核里非原生文本节点（角标探不到）——WebView 在场
+             * + 关闭钮在场即插屏签名（李跳跳同款 H5 广告关闭面）。 */
+            if (!f.webviewPresent && cls.contains("webview")) f.webviewPresent = true;
 
             int[] b = node.bounds();
             boolean clickable = node.clickable();
@@ -925,8 +934,9 @@ public final class AdDecisionCore {
             //     有可点目标绝不先按返回键
             if (!f.corners.isEmpty() && ctx.clickAttempts < f.corners.size()
                     && !f.scrollPresent && !f.editPresent
-                    && f.nodeCount <= CORNER_TREE_MAX_NODES
-                    && ctx.elapsedMs >= CORNER_MIN_MS && ctx.elapsedMs <= CORNER_MAX_MS
+                    && f.nodeCount <= (ctx.videoLike ? com.zai.adshield.core.VideoSplashGuard.VIDEO_CORNER_TREE_MAX : CORNER_TREE_MAX_NODES)
+                    && ctx.elapsedMs >= CORNER_MIN_MS
+                    && ctx.elapsedMs <= (ctx.videoLike ? com.zai.adshield.core.VideoSplashGuard.VIDEO_EXT_WINDOW_MS : CORNER_MAX_MS)
                     // v3.9.0 广告形态确认门（不乱点红线）：角落无字控件必须
                     // 同时具备广告信号（热区/角标/SDK 窗/学习窗）或树极简
                     //（≤60 节点）才出手——普通主页角落图标绝不误点
@@ -934,9 +944,11 @@ public final class AdDecisionCore {
                     // 仅强广告形态（热区/角标/SDK窗/学习窗）可出手（FAB 防线）。
                     // 逐候选分层门控：从第 clickAttempts 个起取首个过闸的候选
                     //（无 strongOnly 候选时与旧「第 N 击第 N 候选」逐字等价）
-                    && (f.hotZone || f.adBadge || ctx.sdkAdWin || ctx.learnedCls
+                    // v7.8.0 视频画像入强广告形态位（视频开屏窗 + 零候选连环 +
+                    // 树静默——非广告窗零候选时轮询针不接管，画像不成立）
+                    && (f.hotZone || f.adBadge || ctx.sdkAdWin || ctx.learnedCls || ctx.videoLike
                         || f.nodeCount <= CORNER_CONFIRM_NODES)) {
-                boolean strongAdForm = f.hotZone || f.adBadge || ctx.sdkAdWin || ctx.learnedCls;
+                boolean strongAdForm = f.hotZone || f.adBadge || ctx.sdkAdWin || ctx.learnedCls || ctx.videoLike;
                 for (int ci = ctx.clickAttempts; ci < f.corners.size(); ci++) {
                     CornerCand c = f.corners.get(ci);
                     boolean tierOk = !c.strongOnly || strongAdForm;

@@ -1,6 +1,6 @@
 /** 版本与 GitHub 仓库信息（Web 端与发布节奏共用） */
-export const APP_VERSION = "7.7.0";
-export const VERSION_CODE = 77000; // major*10000 + minor*100 + patch，随版本单调递增
+export const APP_VERSION = "7.8.0";
+export const VERSION_CODE = 78000; // major*10000 + minor*100 + patch，随版本单调递增
 export const GITHUB_REPO = "xiaobaiba999/Skip-Ad";
 export const GITHUB_API = `https://api.github.com/repos/${GITHUB_REPO}`;
 export const GITHUB_HOME = `https://github.com/${GITHUB_REPO}`;
@@ -19,8 +19,8 @@ export interface VersionEntry {
  *  旧版本内容归档在 GitHub Releases 与 git 历史） */
 export const VERSION_HISTORY: VersionEntry[] = [
   {
-    version: "7.7.0",
-    code: 77000,
+    version: "7.8.0",
+    code: 78000,
     date: "2026-11-19",
     tagline: "回切开屏根治 + Toast 常驻修复 + 机型矩阵 352（九维）",
     notes: [

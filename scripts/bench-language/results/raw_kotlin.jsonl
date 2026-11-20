@@ -1,9 +1,0 @@
-{"lang":"kotlin","compile_us":329,"sel_sink":731,"match_linear_first1000_ns":70278,"match_linear_ns":6073.0,"match_optimized_ns":2677.5,"hits":20000,"sink":485562,"rss_kb":97804}
-{"lang":"kotlin","compile_us":285,"sel_sink":731,"match_linear_first1000_ns":47258,"match_linear_ns":5306.4,"match_optimized_ns":2509.6,"hits":20000,"sink":485562,"rss_kb":99200}
-{"lang":"kotlin","compile_us":278,"sel_sink":731,"match_linear_first1000_ns":88749,"match_linear_ns":5588.4,"match_optimized_ns":2341.2,"hits":20000,"sink":485562,"rss_kb":98904}
-{"lang":"kotlin","compile_us":289,"sel_sink":731,"match_linear_first1000_ns":56550,"match_linear_ns":5349.0,"match_optimized_ns":1288.9,"hits":20000,"sink":485562,"rss_kb":97772}
-{"lang":"kotlin","compile_us":317,"sel_sink":731,"match_linear_first1000_ns":45971,"match_linear_ns":7167.7,"match_optimized_ns":1151.5,"hits":20000,"sink":485562,"rss_kb":96356}
-{"lang":"kotlin","compile_us":354,"sel_sink":731,"match_linear_first1000_ns":59159,"match_linear_ns":6696.3,"match_optimized_ns":929.0,"hits":20000,"sink":485562,"rss_kb":96208}
-{"lang":"kotlin","compile_us":223,"sel_sink":731,"match_linear_first1000_ns":55489,"match_linear_ns":6130.5,"match_optimized_ns":1158.8,"hits":20000,"sink":485562,"rss_kb":96472}
-{"lang":"kotlin","compile_us":260,"sel_sink":731,"match_linear_first1000_ns":73421,"match_linear_ns":6183.8,"match_optimized_ns":903.7,"hits":20000,"sink":485562,"rss_kb":94884}
-{"lang":"kotlin","compile_us":289,"sel_sink":731,"match_linear_first1000_ns":85484,"match_linear_ns":6005.3,"match_optimized_ns":1557.6,"hits":20000,"sink":485562,"rss_kb":96988}

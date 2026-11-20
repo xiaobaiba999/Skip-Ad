@@ -12,17 +12,19 @@
       "text_exact": 19,
       "gkd_selectors": 24
     },
-    "protocol": "MATCH: cold1000 → warmup2000 → steady20000 ×(linear=引擎现状, optimized=哈希索引+预编译正则)"
+    "protocol": "MATCH: cold1000 → warmup2000 → steady20000 ×(linear=引擎现状, optimized=哈希索引+预编译正则)",
+    "c": "gcc 14.2.0 -O2 (v7.8.0 新增·五语言同构)",
+    "c_verdict": "C 稳态 optimized 261.8ns（快 Java 4.1×）但均为 µs 级——事件面节流 80ms 级，5 个数量级余量下语言性能差异对命中率零贡献；AccessibilityNodeInfo 是 Java API，C 必须经 JNI 回 Java 才能摸到无障碍树（重写全引擎换不到任何命中率收益）。linear 慢 5× 是 glibc regcomp 每次 ~13µs 比 Java Pattern.compile 慢——诚实记录"
   },
   "languages": {
     "java": {
       "name": "Java 8 字节码 (ECJ · OpenJDK 21)",
-      "boot_ms": 55.4,
-      "compile_us_per_set": 214,
-      "match_linear_first1000_ns": 45754,
-      "match_linear_ns": 4747.8,
-      "match_optimized_ns": 968.2,
-      "rss_mb": 90.4
+      "boot_ms": 58.7,
+      "compile_us_per_set": 219,
+      "match_linear_first1000_ns": 48901,
+      "match_linear_ns": 5051.5,
+      "match_optimized_ns": 1070.9,
+      "rss_mb": 89.2
     },
     "kotlin": {
       "name": "Kotlin 2.0.21 (JVM 1.8 目标)",
@@ -31,25 +33,35 @@
       "match_linear_first1000_ns": 45971,
       "match_linear_ns": 5306.4,
       "match_optimized_ns": 903.7,
-      "rss_mb": 94.7
+      "rss_mb": 94.7,
+      "historical": true
     },
     "js": {
       "name": "JavaScript (Node 24 · V8 = WebView 代理)",
-      "boot_ms": 31.5,
-      "compile_us_per_set": 61,
-      "match_linear_first1000_ns": 2919,
-      "match_linear_ns": 1107.8,
-      "match_optimized_ns": 484.4,
-      "rss_mb": 58.6
+      "boot_ms": 28.9,
+      "compile_us_per_set": 52,
+      "match_linear_first1000_ns": 2649,
+      "match_linear_ns": 1050.6,
+      "match_optimized_ns": 476.9,
+      "rss_mb": 56.8
     },
     "python": {
       "name": "Python 3.12 (CPython)",
-      "boot_ms": 30.2,
+      "boot_ms": 29.6,
       "compile_us_per_set": 119,
-      "match_linear_first1000_ns": 6854,
-      "match_linear_ns": 9494.1,
-      "match_optimized_ns": 5575.4,
-      "rss_mb": 12.9
+      "match_linear_first1000_ns": 6842,
+      "match_linear_ns": 9501.9,
+      "match_optimized_ns": 5542.7,
+      "rss_mb": 12.8
+    },
+    "c": {
+      "name": "C (gcc 14.2 -O2 · v7.8.0 新增)",
+      "boot_ms": 1.7,
+      "compile_us_per_set": 7,
+      "match_linear_first1000_ns": 24976,
+      "match_linear_ns": 26758.7,
+      "match_optimized_ns": 261.8,
+      "rss_mb": 1.9
     }
   }
 }

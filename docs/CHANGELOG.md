@@ -3,6 +3,24 @@
 > 首页只保留当前版本要点；全部历史版本详情在本页归档。
 > 发布物（APK/报告/文档）见 [Releases](https://github.com/xiaobaiba999/Skip-Ad/releases) 与 `docs/test-reports/`。
 
+## v7.8.0（2026-11-20）—— 视频开屏卫士 + 插屏重扫路由根治 + C 语言基准实测（五语言同构）+ 机型矩阵 396（十维）
+
+- **视频开屏卫士（用户十八轮实锤原话：「很多没命中，只要是开屏广告带视频的你都未命中」）——四死因链一起根治**：
+  - **死因①（12s 观察窗天花板）**：视频开屏（穿山甲/优量汇/快手视频开屏）跳过钮常在视频末 5~15s 才露头，WINDOW_MS=12000 硬封顶——>12s 露头的按钮引擎已出窗判 CLEAN「不再扫」。**根治**：观察窗自适应延长 `VideoSplashGuard.windowDeadlineMs(videoLike)` → 20s（VIDEO_EXT_WINDOW_MS——晚露头按钮有人扫；普通开屏窗 12s 契约零变化）
+  - **死因②（静默事件源）**：视频在 SurfaceView/TextureView 里播放、进度环 Canvas 自绘——零 TYPE_WINDOW_CONTENT_CHANGED → 零候选退避（3 次+2.6s）杀链后零事件零复活。**根治**：视频画像 `videoLike`（窗龄 ≥2.2s + 连续零候选 ≥3 + 树静默 ≥1.6s——SurfaceView 在放的观测面；或 SDK 广告窗 + 零候选 ≥3）+ **1.5s 轮询针**（探针直查零 DFS——静默事件源兜底，12~20s 段 ≥5 针覆盖固定梯子 18 档止于 12s 的盲区）+ 退避豁免（videoLike 窗零候选退避/内容页早退双双豁免）
+  - **死因③（预算烧穿）**：图片跳过键（进度环无数字 → cdN=0 → 门控直通）从 300ms 起 3 击连发 1 秒烧光预算，按钮真激活（视频播完）时引擎已 gaveUp 收手。**根治**：白点节流 ≥1.5s/击（VIDEO_STRIKE_GAP_MS）+ 预算 3→5（VIDEO_MAX_CLICKS——预算拉长 ≥7.5s 覆盖门控期）+ **新键预算刷新** `budgetRefresh`（文本键新指纹目标 → 点击梯子重置——视频末露头的真「跳过」键是新按钮不是白点；角落/手势候选永不刷新——防移动目标无限预算）
+  - **死因④（L4 形态确认门）**：第一方视频开屏窗无角标/无热区/非 SDK 指纹、树 >60（WebView 视频容器常态 >150）→ 角落候选收集了永不出手；CORNER_MAX_MS=6500 关门。**根治**：videoLike 入强广告形态位 + 树上限 150→260（VIDEO_CORNER_TREE_MAX）+ 时机窗 6.5s→20s
+  - 视频开屏键词典：「5s 跳过」「5秒跳过」无「后」变体收编（P_COUNTDOWN_HEAD 后改可选——旧正则「后」必填全拒）；画像/轮询命中/新键三类日志进扫描日志（归因面闭环）
+- **插屏重扫路由根治（用户实锤原话：「app内插入广告也不会拦截关闭」第 N 轮——四轮 v7.4~v7.7 全在词表/闸门打转，扫描调度从未动过）——五死因链一起根治**：
+  - **死因①（重扫路由黑洞）**：内容事件在开屏窗期（<12s）全部改道 nudgeScan 后 break、弹窗窗期改道 nudgePopupScan 后 break——插屏常在 App 打开后 3~5s 弹出（恰在开屏窗期内！）首扫后同窗再无第二次扫描。**根治**：路由黑洞解除（两个分支内直接加 maybeInterstitialScan——自带 1.5s 节流）+ INTER_SCAN_THROTTLE_MS 2500→1500（插屏生命周期内 4~6 眼）
+  - **死因②（首扫太早）**：窗切换帧插层刚创建、文字节点 200~800ms 后才进树——首扫空手后无复扫。**根治**：延后复扫 +450ms（INTER_RETRY_DELAY_MS·清节流记录立即可扫·每窗仅一次 interRetriedWin 守门 + 代际护栏）
+  - **死因③（同窗插层无人扫）**：无焦点 Dialog/PopupWindow/overlay 挂载不产生任何被订阅事件。**根治**：补订 typeWindowsChanged（服务配置 + onAccessibilityEvent 新 case——新窗挂载拉起插屏扫描，前台包限定）
+  - **死因④（闸⓪语境面窄）**：必须 ≤10 字原生文字节点——H5 插屏（角标在网页内核）、SDK 插屏窗（窗类即铁证）、11 字披露标签全拒。**根治**：语境三路并集（①语境词 contains ≤16 字 + 繁体廣告 ②WebView 容器在场 walk 收集 f.webviewPresent——李跳跳同款 H5 广告关闭面 ③SDK 插屏窗指纹）
+  - **死因⑤（闸①②杀变体）**：拉丁 X 单字符/「点击关闭/立即关闭」带帽变体被精确等值拒；宽扁横条钮（残忍离开 40~60% 宽但极扁）被 closeFormOk 双杀。**根治**：词族收编（X/x 单字符 + 后缀族 ≤6 字 + 前缀族 ≤3 字——「取消」仍拒）+ 形态三路并集（原版 + 宽扁 ≤55%×≤7% + 小面积 ≤4% 屏——大容器仍全拒）+ 终闸一致性（双杀解除）+ feed 名单 20 款插屏孤儿化解除（P1X 语境词收编裸「广告/廣告/推广」）
+- **C 语言基准实测（用户问：「卫士用c语言写的话会不会更好呢」——五语言同构基准以数据回答）**：bench.c 与 Java/Kotlin/JS/Python 完全同构（xorshift31 同树同规则同命中），**校验和逐位一致（sel_sink=731 · hits=20000 · sink=485562）**。结果：C 稳态 optimized **261.8ns（快 Java 4.1×）**、boot 1.7ms、RSS 1.9MB（常驻优势）；但均为 µs 级——事件面节流 80ms 级，**5 个数量级余量下语言性能差异对命中率零贡献**；linear 模式 C 反比 Java 慢 5×（glibc regcomp 每次 ~13µs 比 Java Pattern.compile 慢——诚实记录）；AccessibilityNodeInfo 是 Java API——**C 必须经 JNI 回 Java 才能摸到无障碍树，重写全引擎换不到任何命中率收益。结论：保持 Java**（本轮命中率修复全在 Java 层完成即明证）
+- **机型矩阵 352→396 + 第十维视频开屏（「拓展设备型号和品牌以及系统」）**：11 组 × 36 机型（每品牌 +4 · 2027-2028 世代：小米 19 系/HyperOS 5 · Redmi K130/Turbo 7/Note 19 Pro+ · POCO F12/X12/M8 · Mate 90/Pura 90/HarmonyOS 6 · Magic10/荣耀 500/MagicOS 13 · Find X11/Reno 15/ColorOS 19 · 真我 GT10/Neo8 · vivo X320/S31/OriginOS 9 · iQOO 23/Neo 15/Z15 · S28/A17/Z Fold 8/One UI 11 · 一加 19/Ace 10/Nord 8）；**第十维视频开屏逐机型验证**（4 项：画像真值表/观察窗延长/视频窗角落键 1:1 缩放命中（200 节点树 + 8s 时机——L4 放宽）/白点节流+新键刷新）；品牌面保持用户点名九品牌 + 子品牌（OPPO/vivo/小米/三星/华为/荣耀/红米/一加/iQOO + POCO/真我）
+- 工程化：全仓 **23 套件 6063 项 JVM 断言全绿（v7.7.0 为 5099 · +964：BrandFocus396Test 4476（+848）+ VideoSplashTest 51 + InterstitialRoutingTest 56 + InterstitialGuardTest 93→102）**；APK 833KB（853,558 B）· VC 78000（>77000 覆盖安装即升级）· MD5 `5fba91c1a1e34d7dfc96c0b4725bf584` · SHA-256 `59761b7e58df33e1eedae8b3bb5619439f09a529e0708102b51d20a96d2cd96a` 三目录分发（包内资产抽出后语义闸同验）；GitHub tag v7.8.0 + Release + 仓库描述同步 v7.8.0 主题 + 免责声明保持 · 实录见 round-40.json
+
 ## v7.7.0（2026-11-19）—— 回切开屏根治 + Toast 常驻修复 + 机型矩阵 352（九维）
 
 - **回切开屏根治（用户十七轮实锤原话：「扫描日志从另一个app切回这个app，期间会弹广告，这个没有拦截到」）——两个死因一起根治**：

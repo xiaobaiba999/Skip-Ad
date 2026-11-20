@@ -448,9 +448,16 @@ public final class FeedAdGuardTest {
         }
         TestHost.check(closeWordsOk && FeedAdGuard.CLOSE_ICON_WORDS.length == 6,
                 "CLOSE_ICON_WORDS 6 词全过精确等值闸（× 家族 5 + 关闭）");
-        boolean ctxWordsOk = FeedAdGuard.AD_CONTEXT_WORDS.length == 3
+        boolean ctxWordsOk = FeedAdGuard.AD_CONTEXT_WORDS.length == 6
                 && FeedAdGuard.AD_CONTEXT_WORDS[0].equals("来自广告推荐");
-        TestHost.check(ctxWordsOk, "AD_CONTEXT_WORDS 3 词在场（来自广告推荐真机文案置首）");
+        boolean bareAd = false, tradAd = false, promo = false;
+        for (String w : FeedAdGuard.AD_CONTEXT_WORDS) {
+            if (w.equals("广告")) bareAd = true;
+            if (w.equals("廣告")) tradAd = true;
+            if (w.equals("推广")) promo = true;
+        }
+        TestHost.check(ctxWordsOk && bareAd && tradAd && promo,
+                "AD_CONTEXT_WORDS 6 词在场（v7.8.0 裸「广告/廣告/推广」收编——feed 名单插屏孤儿化解除·来自广告推荐真机文案置首保持）");
         // 不可见直关钮拒
         SimNode invX = new SimNode("×", 1000, 700, 1060, 760);
         invX.visible = false;

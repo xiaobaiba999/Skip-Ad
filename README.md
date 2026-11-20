@@ -2,13 +2,13 @@
 
 # Skip-Ad · 开屏卫士
 
-**安卓开屏广告秒跳引擎 —— 露头就跳（首击零门控）+ 回切开屏根治（从另一个 App 切回期间弹的广告不再漏拦：同包离开 ≥6s 判回切等价新进入 + 进入期 4s CLEAN 档案让路全量）、弹窗自动关、App 内广告主动关闭，白名单全量应用列表、1:1 人手模拟触点、Toast 关键帧动画（真机常驻 bug 根治）**
+**安卓开屏广告秒跳引擎 —— 露头就跳（首击零门控）+ 视频开屏卫士（带视频的开屏广告不再全漏：视频画像 → 观察窗 12s→20s + 1.5s 轮询针 + 白点节流/新键预算刷新）、插屏重扫路由根治（App 内插入广告主动关闭：路由黑洞解除 + 延后复扫 + 语境三路并集）、弹窗自动关、白名单全量应用列表、1:1 人手模拟触点、C 语言基准实测（五语言同构）**
 
 [![Releases](https://img.shields.io/github/v/release/xiaobaiba999/Skip-Ad?style=flat-square&label=%E6%9C%80%E6%96%B0%E5%8F%91%E5%B8%83)](https://github.com/xiaobaiba999/Skip-Ad/releases/latest)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](#许可)
 [![APK](https://img.shields.io/badge/APK-832KB-orange?style=flat-square)](https://github.com/xiaobaiba999/Skip-Ad/releases/latest)
 [![Tests](https://img.shields.io/badge/JVM%E6%96%AD%E8%A8%80-5099%20%E2%9C%85-brightgreen?style=flat-square)](docs/test-reports/round-39.json)
-[![Matrix](https://img.shields.io/badge/%E6%9C%BA%E5%9E%8B%E7%9F%A9%E9%98%B5-9%E5%93%81%E7%89%8C%E5%8F%8A%E5%AD%90%E5%93%81%E7%89%8C32%E6%9C%BA%E5%9E%8B-352-blue?style=flat-square)](android-app/tests/com/zai/adshield/test/BrandFocus352Test.java)
+[![Matrix](https://img.shields.io/badge/%E6%9C%BA%E5%9E%8B%E7%9F%A9%E9%98%B5-9%E5%93%81%E7%89%8C%E5%8F%8A%E5%AD%90%E5%93%81%E7%89%8C36%E6%9C%BA%E5%9E%8B-396-blue?style=flat-square)](android-app/tests/com/zai/adshield/test/BrandFocus396Test.java)
 [![HumanTap](https://img.shields.io/badge/1%3A1%E4%BA%BA%E6%89%8B%E6%A8%A1%E6%8B%9F-%E8%AF%AF%E7%82%B9%E5%A4%9A%E7%82%B9%E6%A0%B9%E6%B2%BB-ff7043?style=flat-square)](android-app/tests/com/zai/adshield/test/HumanTapMatrixTest.java)
 [![Topic](https://img.shields.io/badge/topic-gkd--subscription-8e8e8e?style=flat-square)](https://github.com/topics/gkd-subscription)
 
@@ -22,23 +22,23 @@ Java 引擎 · GKD 订阅生态兼容 · [Releases](https://github.com/xiaobaiba
 
 | | |
 | --- | --- |
-| **怎么工作** | 无障碍服务读屏找到「跳过」控件（文本/描述/控件 ID/图片角落键四通道），0ms 露头即点；**1:1 人手模拟触点**（人手参数域+人手复验节奏+dp 密度归一+实时人眼追踪+轨迹去重+同目标/结果双静默防线——不同设备上零误触零多点）；点击冷却 300ms · 倒计时将尽提前 0.38s 开火 |
-| **拦截范围** | 开屏广告 · 插屏/激励弹窗 · 摇一摇诱导 · 悬浮广告球 · 视频前贴 · **App 内广告主动关闭（v7.4 信息流三路：微信原因面板「直接关闭」直通 / 「来自广告推荐」卡片「×/关闭」直关 / 空闲巡检 2.5s——20 款名单；v7.5 插屏卫士：「广告」角标+关闭钮同场即收，名单外 App 全量兜底）**（134 款内置 + 任意 GKD 订阅扩展） |
+| **怎么工作** | 无障碍服务读屏找到「跳过」控件（文本/描述/控件 ID/图片角落键四通道），0ms 露头即点；视频开屏画像（零候选连环+树静默 → 观察窗 20s + 轮询针）；**1:1 人手模拟触点**（人手参数域+人手复验节奏+dp 密度归一+实时人眼追踪+轨迹去重+同目标/结果双静默防线——不同设备上零误触零多点）；点击冷却 300ms · 倒计时将尽提前 0.38s 开火 |
+| **拦截范围** | 开屏广告（含**视频开屏**——v7.8.0 视频卫士）· 插屏/激励弹窗 · 摇一摇诱导 · 悬浮广告球 · 视频前贴 · **App 内广告主动关闭（v7.4 信息流三路 20 款名单 + v7.5~v7.8 插屏卫士：语境三路并集（语境词/WebView 容器/SDK 插屏窗指纹）+ 重扫路由黑洞解除 + 延后复扫 + typeWindowsChanged 新窗挂载，名单外 App 全量兜底 + feed 名单内插屏孤儿化解除）**（134 款内置 + 任意 GKD 订阅扩展） |
 | **不碰什么** | 小程序/支付/团购容器零扫描零点击；银行/政务/相机零干预；只点应用自带「跳过」键（合规红线） |
 | **隐私与安全** | 数据仅存本机；联网仅日志上传（脱敏）与更新检查；零定位/通讯录/存储权限；更新包安装前 SHA-256 逐字节校验（镜像投毒/换包自动拦截）；订阅规则支付/诱导词双否决（注入防线） |
 | **体积** | APK 832KB（含三源离线订阅快照 ~520KB）· 冷启动毫秒级 · 典型日功耗 0.05mWh 级 |
 
-## 当前版本 v7.7.0（2026-11-19）· 回切开屏根治 + Toast 常驻修复 + 机型矩阵 352（九维）
+## 当前版本 v7.8.0（2026-11-20）· 视频开屏卫士 + 插屏重扫路由根治 + 机型矩阵 396（十维）
 
-**第十七轮实锤驱动的双 bug 根治**（用户原话：「点击开启弹窗广告屏蔽，下方弹窗屏蔽已开启几个字一直保持在底部，这是个bug」「扫描日志从另一个app切回这个app，期间会弹广告，这个没有拦截到」）。①回切开屏两个死因一起根治：卫士自家包事件被整体丢弃致 lastFgPkg 从未登记自家包名（「目标 App → 卫士 → 目标 App」往返后切回 entering=false 不按新进入处理）；回切开屏常叠在被宿主窗档案判 CLEAN 的主界面窗类上（同窗类盖开屏层，扫描链被抑制只剩探针哨兵，晚到/图标式跳过键整窗漏拦）——ReentryGuard 纯函数（同包离开 ≥6s 判回切等价新进入 + 进入期 4s CLEAN 档案让路全量）+ 自家包前台边界登记 + 探针词扩容（关闭广告/繁体關閉廣告）+ 回切日志记账。②Toast 常驻修复：旧实现收尾纯靠 JS setTimeout（真机上同步桥调用卡 JS 线程时计时器不触发）+ 内联 transition 在部分 OEM WebView 渲染失灵——改 CSS 关键帧动画（合成器线程驱动，JS 阻塞免疫）+ opacity/visibility 双终态 + JS 兜底计时器三重保险。
+**第十八轮实锤驱动的双死症根治**（用户原话：「扫描最新日志进行修复，很多没命中，只要是开屏广告带视频的你都未命中，且app内插入广告也不会拦截关闭，卫士用c语言写的话会不会更好呢」）。①**视频开屏四死因链**：12s 观察窗天花板（视频开屏跳过钮常在视频末 5~15s 才露头，>12s 按钮引擎已出窗「不再扫」）+ 静默事件源（SurfaceView 视频播放零内容事件，零候选退避杀链后零事件零复活）+ 预算烧穿（图片键门控期 3 击 1 秒烧光预算，按钮真激活时引擎已优雅收手）+ L4 形态确认门（WebView 视频容器树 >150 被拒）——VideoSplashGuard 纯函数根治（画像驱动：观察窗 20s + 1.5s 轮询针 + 白点节流 + 新键预算刷新 + 树上限 260）+ 视频开屏键词典（「5s 跳过」无「后」变体收编）。②**插屏五死因链**：重扫路由黑洞（开屏窗期内容事件全改道 nudgeScan——插屏常在 App 打开后 3~5s 弹出恰在黑洞内，首扫一眼后整个生命周期无人再看）+ 首扫太早（窗切换帧树未长成空手后无复扫）+ 同窗插层无人扫（无焦点 Dialog/overlay 挂载不产生任何被订阅事件）+ 闸⓪语境面窄（H5 插屏角标在网页内核非原生节点、SDK 插屏窗类即铁证全被拒）+ 闸①②杀变体（拉丁 X/点击关闭/宽扁横条钮被双杀）——路由黑洞解除 + 延后复扫 +450ms + typeWindowsChanged 补订 + 语境三路并集 + 词族收编 + 宽扁放行 + 终闸一致性 + feed 名单孤儿化解除。
 
-1. **回切开屏根治**：自家包 WINDOW_STATE_CHANGED 登记前台边界 + ReentryGuard.isEntering（同包离开 ≥6s 等价新进入——息屏回亮/白名单边界/ROM 漏网全兜住）+ rootWinCls 刷新 + 回切日志记账（30s 节流·「离开 Ns 后回前台→进入期全量扫描」）
-2. **进入期全量门（4s）**：回切开屏常叠在判 CLEAN 的主界面窗类上——进入期 CLEAN 档案让路全量扫描（激进档·宁多扫绝不漏；进入是低频事件，典型日几十次 × 一轮全量梯子，功耗代价可忽略）
-3. **Toast 常驻修复**：CSS 关键帧动画 toastFade（合成器线程驱动——JS 线程被桥调用卡住动画也照常走完）+ opacity:0/visibility:hidden 双终态 + JS 兜底计时器 2600ms 三重保险；三连点重放动画（强制回流）真机语义不变
-4. **命中跳过率拓宽**：探针词扩「关闭广告/關閉廣告」（切回期间插层常以整词作键）+ 繁体词典补收（TEXT_EXACT/SKIP_TEXTS）+ 机型矩阵 308→352（11 组 × 32 · 2027 世代）+ 新增第九维回切开屏逐机型验证
-5. **全量测试**：21 套件 5099 项 JVM 断言全绿（v7.6.1 为 4314 · +785）；新增 ReentrySplashTest 专项套件（S1~S7：真值表/进入期门/自家包边界时间线/全分辨率回切命中/插层键词典/离开时长记账/九品牌几何投影）+ 包内资产语义闸同验
+1. **视频开屏卫士**：视频画像（窗龄 ≥2.2s + 零候选连环 ≥3 + 树静默 ≥1.6s）→ 观察窗 12s→20s + 1.5s 轮询针（探针直查零 DFS——静默事件源兜底，12~20s 段 ≥5 针覆盖固定梯子盲区）+ 退避豁免
+2. **视频窗预算根治**：白点节流 ≥1.5s/击 + 预算 3→5（拉长 ≥7.5s 覆盖门控期）+ 新键预算刷新（视频末露头真按钮 ≠ 白点）+ L4 形态门放宽（树上限 260/时机窗 20s）
+3. **插屏重扫路由根治**：路由黑洞解除（开屏窗期/弹窗期内容事件同步拉起插屏扫描 · 节流 2.5s→1.5s）+ 延后复扫 +450ms + typeWindowsChanged 新窗挂载事件补订
+4. **插屏闸扩容**：闸⓪语境三路并集（语境词 16 字上限 + WebView 容器铁证 + SDK 插屏窗指纹）+ 关闭词族收编（拉丁 X 单字符/点击关闭/立即关闭）+ 宽扁钮形态放行（≤55%×≤7% 横条钮）+ 终闸双杀解除 + feed 名单 20 款插屏孤儿化解除
+5. **C 语言基准实测 + 全量测试**：五语言同构基准（校验和逐位一致：sel_sink=731/hits=20000/sink=485562）——C 稳态 261.8ns 快 Java 4.1× 但均为 µs 级（事件面 80ms 节流下 5 个数量级余量，语言性能对命中率零贡献；C 摸不到 AccessibilityNodeInfo 必须 JNI 回 Java——保持 Java）；23 套件 6063 项断言全绿（+964，新增 VideoSplashTest 51 + InterstitialRoutingTest 56 + 第十维视频开屏逐机型验证）
 
-历史版本全部归档在 [docs/CHANGELOG.md](docs/CHANGELOG.md)；本轮实录：[round-39.json](docs/test-reports/round-39.json)（双 bug 死因链与浏览器端实测实录）。v7.6.1 热修复、v7.6.0 激进模式、v7.5.0 插屏卫士、v7.4.0 信息流三路、v7.3.0 安全加固全部保持。
+历史版本全部归档在 [docs/CHANGELOG.md](docs/CHANGELOG.md)；本轮实录：[round-40.json](docs/test-reports/round-40.json)（双死症死因链与五语言基准数据）。v7.7.0 回切开屏、v7.6.0 激进模式、v7.5.0 插屏卫士、v7.4.0 信息流三路全部保持。
 
 ## App 截图（真实 UI 截取）
 

@@ -13,9 +13,21 @@ import com.zai.adshield.core.RuleEngine;
 import com.zai.adshield.core.RuleEngine.Hit;
 import com.zai.adshield.core.Subscription;
 import com.zai.adshield.core.TapPoint;
+import com.zai.adshield.core.VideoSplashGuard;
 import com.zai.adshield.test.TestHost.SimNode;
 
 /**
+ * v7.8.0 扩容（用户指令：拓展设备型号和品牌以及系统——每品牌 32→36 机型 +
+ * 第十维「视频开屏」逐机型验证）：新增 2027-2028 世代机型（小米 19 系/HyperOS 5 ·
+ * Redmi K130/Turbo 7/Note 19 · POCO F12/X12/M8 · Mate 90/Pura 90/HarmonyOS 6 ·
+ * Magic10/荣耀 500/MagicOS 13 · Find X11/Reno 15/ColorOS 19 · 真我 GT10/Neo8 ·
+ * X320/S31/OriginOS 9 · iQOO 23/Neo 15/Z15 · S28/A17/Z Fold 8/One UI 11 ·
+ * 一加 19/Ace 10/Nord 8）· 11 组 × 36 = 396 机型【十维】全 396/396——第十维
+ * 「视频开屏」（用户十八轮实锤「只要是开屏广告带视频的你都未命中」）：
+ * VideoSplashGuard 视频画像真值表 + 观察窗延长（12s→20s）+ 视频窗角落键
+ * 1:1 缩放命中（200 节点树 + 8s 时机——L4 形态门放宽）+ 白点节流/新键
+ * 预算刷新（预算烧穿根治）逐机型验证。
+ *
  * v7.7.0 扩容（用户指令：优化模拟各个品牌和机型进行测试修复，拓展设备型号和
  * 品牌以及系统——每品牌 28→32 机型）：新增 2027 世代机型（小米 19 系/HyperOS 5 ·
  * Redmi K120/Turbo 6/Note 18 · POCO F11/X11 · Mate 90/HarmonyOS 8 · Magic9/
@@ -88,7 +100,7 @@ import com.zai.adshield.test.TestHost.SimNode;
  *    期 4s CLEAN 档案让路/主界面窗类叠开屏层仍命中/「关闭广告/關閉廣告」
  *    整词键匹配，4 项全过）
  */
-public final class BrandFocus352Test {
+public final class BrandFocus396Test {
 
     /* 机型表四列：{名称, 宽px, 高px, 系统版本}——系统拓展：同一机型跨系统版本
      * 如 HyperOS 2→3 的演化在品牌层代表（组内 HyperOS 2 与 3 并存 = 数字系列
@@ -129,6 +141,10 @@ public final class BrandFocus352Test {
             {"小米 19 Ultra", "1440", "3200", "HyperOS 5"},
             {"Civi 6 Pro", "1236", "2750", "HyperOS 5"},
             {"小米平板 9 Pro", "2128", "3200", "HyperOS 5"},
+            {"小米 19 Ultra", "1440", "3200", "HyperOS 5"},
+            {"小米 19 Pro", "1440", "3200", "HyperOS 5"},
+            {"小米 19", "1200", "2670", "HyperOS 5"},
+            {"小米平板 8 Pro", "2112", "3200", "HyperOS 5"},
     };
     /* 红米单列品牌（用户点名）——制造商仍为 Xiaomi，K/Note/Turbo/数字全系列 */
     static final String[][] REDMI = {
@@ -166,6 +182,10 @@ public final class BrandFocus352Test {
             {"Redmi Turbo 6", "1260", "2772", "HyperOS 5"},
             {"Redmi Note 18 Pro", "1220", "2712", "HyperOS 5"},
             {"Redmi 17", "1080", "2400", "HyperOS 5"},
+            {"Redmi K130 Ultra", "1220", "2712", "HyperOS 5"},
+            {"Redmi K130 Pro", "1220", "2712", "HyperOS 5"},
+            {"Redmi Turbo 7", "1220", "2712", "HyperOS 5"},
+            {"Redmi Note 19 Pro+", "1080", "2400", "HyperOS 5"},
     };
     /* POCO——小米子品牌（用户点名小米含子品牌）独立成组，F/X/M 全系列 */
     static final String[][] POCO = {
@@ -203,6 +223,10 @@ public final class BrandFocus352Test {
             {"POCO X11 Pro", "1220", "2712", "HyperOS 5"},
             {"POCO M9 Pro", "1080", "2400", "HyperOS 5"},
             {"POCO C80", "720", "1650", "HyperOS 5"},
+            {"POCO F12 Pro", "1220", "2712", "HyperOS 5"},
+            {"POCO F12", "1220", "2712", "HyperOS 5"},
+            {"POCO X12 Pro", "1080", "2400", "HyperOS 5"},
+            {"POCO M8 Pro", "720", "1650", "HyperOS 5"},
     };
     static final String[][] HUAWEI = {
             {"Mate 70 Pro+", "1260", "2844", "HarmonyOS 4.2"},
@@ -239,6 +263,10 @@ public final class BrandFocus352Test {
             {"Mate 90", "1200", "2688", "HarmonyOS 8"},
             {"Pura 95", "1260", "2844", "HarmonyOS 8"},
             {"nova 16", "1080", "2376", "HarmonyOS 8"},
+            {"Mate 90 Pro+", "1260", "2844", "HarmonyOS 6"},
+            {"Mate 90", "1260", "2844", "HarmonyOS 6"},
+            {"Pura 90 Ultra", "1256", "2800", "HarmonyOS 6"},
+            {"华为畅享 90", "720", "1600", "HarmonyOS 6"},
     };
     static final String[][] HONOR = {
             {"Magic8 至臻版", "1280", "2800", "MagicOS 10"},
@@ -275,6 +303,10 @@ public final class BrandFocus352Test {
             {"荣耀 600", "1200", "2664", "MagicOS 12"},
             {"Magic Pad 3", "2032", "3056", "MagicOS 12"},
             {"荣耀 X80", "1080", "2436", "MagicOS 12"},
+            {"Magic10 至臻版", "1280", "2800", "MagicOS 13"},
+            {"Magic10 Pro", "1280", "2800", "MagicOS 13"},
+            {"荣耀 500 Pro", "1220", "2700", "MagicOS 13"},
+            {"荣耀 X70", "1080", "2400", "MagicOS 13"},
     };
     static final String[][] OPPO = {
             {"Find X9 Ultra", "1260", "2760", "ColorOS 16"},
@@ -311,6 +343,10 @@ public final class BrandFocus352Test {
             {"Find X10", "1260", "2780", "ColorOS 18"},
             {"Reno 16", "1080", "2412", "ColorOS 18"},
             {"OPPO A6", "720", "1612", "ColorOS 18"},
+            {"Find X11 Pro", "1264", "2780", "ColorOS 19"},
+            {"Find X11", "1264", "2780", "ColorOS 19"},
+            {"OPPO Reno 15 Pro", "1080", "2412", "ColorOS 19"},
+            {"OPPO A90", "720", "1611", "ColorOS 19"},
     };
     /* 真我——OPPO 子品牌独立成组（用户点名 oppo 含子品牌） */
     static final String[][] REALME = {
@@ -348,6 +384,10 @@ public final class BrandFocus352Test {
             {"真我 GT9", "1260", "2780", "ColorOS 18"},
             {"真我 Neo11", "1080", "2412", "ColorOS 18"},
             {"真我 V80", "1080", "2400", "ColorOS 18"},
+            {"真我 GT10 Pro", "1264", "2780", "ColorOS 19"},
+            {"真我 GT10", "1264", "2780", "ColorOS 19"},
+            {"真我 Neo8", "1080", "2400", "ColorOS 19"},
+            {"真我 V7", "720", "1611", "ColorOS 19"},
     };
     static final String[][] VIVO = {
             {"X300 Ultra", "1440", "3200", "OriginOS 6"},
@@ -384,6 +424,10 @@ public final class BrandFocus352Test {
             {"vivo X310", "1260", "2800", "OriginOS 8"},
             {"vivo S41", "1080", "2376", "OriginOS 8"},
             {"vivo Pad 4 Pro", "1848", "2800", "OriginOS 8"},
+            {"X320 Pro", "1260", "2800", "OriginOS 9"},
+            {"X320", "1260", "2800", "OriginOS 9"},
+            {"vivo S31 Pro", "1080", "2400", "OriginOS 9"},
+            {"vivo Y31", "720", "1611", "OriginOS 9"},
     };
     /* iQOO 单列品牌（用户点名）——制造商仍为 vivo，数字/Neo/Z/Turbo 全系列 */
     static final String[][] IQOO = {
@@ -421,6 +465,10 @@ public final class BrandFocus352Test {
             {"iQOO Neo 14", "1260", "2800", "OriginOS 8"},
             {"iQOO Z14", "1080", "2400", "OriginOS 8"},
             {"iQOO Z14 Turbo", "720", "1612", "OriginOS 8"},
+            {"iQOO 23 Pro", "1440", "3200", "OriginOS 9"},
+            {"iQOO 23", "1260", "2800", "OriginOS 9"},
+            {"iQOO Neo 15", "1260", "2800", "OriginOS 9"},
+            {"iQOO Z15", "1080", "2400", "OriginOS 9"},
     };
     static final String[][] SAMSUNG = {
             {"Galaxy S25 Ultra", "1440", "3120", "One UI 7"},
@@ -457,6 +505,10 @@ public final class BrandFocus352Test {
             {"Galaxy S27", "1080", "2340", "One UI 10"},
             {"Galaxy Z Flip9 外屏", "1080", "2640", "One UI 10"},
             {"Galaxy Tab S12", "1600", "2560", "One UI 10"},
+            {"Galaxy S28 Ultra", "1440", "3120", "One UI 11"},
+            {"Galaxy S28+", "1080", "2340", "One UI 11"},
+            {"Galaxy A17", "1080", "2340", "One UI 11"},
+            {"Galaxy Z Fold 8 外屏", "1080", "2316", "One UI 11"},
     };
     /* 一加——ColorOS（国行）/OxygenOS 15（海外 Nord 系）双线在场 */
     static final String[][] ONEPLUS = {
@@ -494,6 +546,10 @@ public final class BrandFocus352Test {
             {"一加 Ace 8 Pro", "1216", "2640", "ColorOS 18"},
             {"一加 Ace 8V", "1080", "2400", "ColorOS 18"},
             {"一加 Nord 7", "1080", "2400", "OxygenOS 18"},
+            {"一加 19 Pro", "1440", "3168", "ColorOS 19"},
+            {"一加 19", "1264", "2780", "ColorOS 19"},
+            {"一加 Ace 10 Pro", "1264", "2780", "ColorOS 19"},
+            {"一加 Nord 8", "1080", "2400", "OxygenOS 19"},
     };
     static final String[][][] BRANDS = {
             XIAOMI, REDMI, POCO, HUAWEI, HONOR, OPPO, REALME, VIVO, IQOO, SAMSUNG, ONEPLUS,
@@ -582,12 +638,12 @@ public final class BrandFocus352Test {
 
         int brandHitTotal = 0, brandMultiTotal = 0, brandSpeedTotal = 0, brandBugTotal = 0,
                 brandPowerTotal = 0, brandPrecTotal = 0, brandAlgoTotal = 0, brandFeedTotal = 0,
-                brandReentryTotal = 0;
+                brandReentryTotal = 0, brandVideoTotal = 0;
 
         for (int bi = 0; bi < BRANDS.length; bi++) {
             String[][] models = BRANDS[bi];
             TestHost.suite("品牌 " + BRAND_NAMES[bi] + "（" + models.length + " 机型）");
-            int hitN = 0, multiN = 0, speedN = 0, bugN = 0, powN = 0, precN = 0, algoN = 0, feedN = 0, reN = 0;
+            int hitN = 0, multiN = 0, speedN = 0, bugN = 0, powN = 0, precN = 0, algoN = 0, feedN = 0, reN = 0, vidN = 0;
 
             for (int mi = 0; mi < models.length; mi++) {
                 String model = models[mi][0];
@@ -1029,6 +1085,53 @@ public final class BrandFocus352Test {
                 if (reLex == reWords.length) reOk++;
                 TestHost.check(reOk == 4, "⑨ 回切开屏 " + model + "（" + os + " · 回切判定/进入期全量门/主界面叠开屏层命中/插层键词典 " + reOk + "/4）");
                 if (reOk == 4) reN++;
+
+                /* ⑩ v7.8.0 视频开屏维（用户十八轮实锤「只要是开屏广告带视频的你
+                 * 都未命中」）：视频画像真值表 + 观察窗延长（12s→20s）+ 视频窗
+                 * 角落键 1:1 缩放命中（200 节点树 + 8s 时机）+ 白点节流/新键
+                 * 预算刷新——按机型分辨率 w/h 1:1 缩放，4 项全过。 */
+                int vidOk = 0;
+                // ⑩a 视频画像真值表（第一方静默路 + SDK 窗路 + 门槛反例）
+                if (VideoSplashGuard.videoLike(3000, 3, 2000, false)
+                        && !VideoSplashGuard.videoLike(2000, 3, 2000, false)
+                        && !VideoSplashGuard.videoLike(3000, 3, 1000, false)
+                        && VideoSplashGuard.videoLike(3500, 3, 500, true)) vidOk++;
+                // ⑩b 观察窗延长：videoLike → 20s；普通窗 → 12s 保持；15s 露头
+                //     按钮在观察（旧 12s 封顶 = 出窗死因①对照）
+                if (VideoSplashGuard.windowDeadlineMs(true) == 20000L
+                        && VideoSplashGuard.windowDeadlineMs(false) == 12000L
+                        && 15000 <= VideoSplashGuard.windowDeadlineMs(true)
+                        && 15000 > VideoSplashGuard.windowDeadlineMs(false)) vidOk++;
+                // ⑩c 视频窗角落键 1:1 缩放命中：右上图片跳过键（无字可点小控件，
+                //     几何按机型 w/h 缩放）+ 200 节点树（WebView 视频容器常态）+
+                //     8s 时机（> 旧 CORNER_MAX_MS 6.5s）→ L4 放宽出手
+                SimNode vsTree = new SimNode();
+                vsTree.cls = "com.matrix.VideoSplashActivity";
+                vsTree.boundsArr = new int[]{0, 0, w, h};
+                SimNode vsCorner = new SimNode("", (int) (w * 0.90), (int) (h * 0.025),
+                        (int) (w * 0.955), (int) (h * 0.05));
+                vsCorner.clickable = true;
+                vsTree.add(vsCorner);
+                for (int fi = 0; fi < 198; fi++) { // 200 节点树（>150 旧树上限）
+                    vsTree.add(new SimNode("", (int) (w * 0.05), (int) (h * 0.18) + (fi % 40) * 40,
+                            (int) (w * 0.95), (int) (h * 0.18) + (fi % 40) * 40 + 40));
+                }
+                Ctx vsCtx = ctx(pkg, "com.matrix.VideoSplashActivity", w, h);
+                vsCtx.elapsedMs = 8000;
+                vsCtx.videoLike = true;
+                ScanFind vsFind = AdDecisionCore.walk(vsTree, vsCtx);
+                Decision vsDec = AdDecisionCore.decide(vsFind, vsCtx);
+                if ("corner_image_skip".equals(vsDec.reason)) vidOk++;
+                // ⑩d 白点节流 + 新键预算刷新：1.5s/击（500ms 连发拒）+ 预算 5 +
+                //     文本新键刷新（角落/手势候选永不刷新——防移动目标无限预算）
+                if (!VideoSplashGuard.strikeGapOk(0L, 500L)
+                        && VideoSplashGuard.strikeGapOk(0L, 1500L)
+                        && VideoSplashGuard.maxClicksFor(true) == 5
+                        && VideoSplashGuard.maxClicksFor(false) == 3
+                        && VideoSplashGuard.budgetRefresh(true, true, true)
+                        && !VideoSplashGuard.budgetRefresh(true, true, false)) vidOk++;
+                TestHost.check(vidOk == 4, "⑩ 视频开屏 " + model + "（" + os + " · 画像真值表/观察窗延长/角落键 1:1 缩放命中/白点节流+新键刷新 " + vidOk + "/4）");
+                if (vidOk == 4) vidN++;
             }
 
             TestHost.suite("品牌汇总 " + BRAND_NAMES[bi]);
@@ -1041,6 +1144,7 @@ public final class BrandFocus352Test {
             TestHost.check(algoN == models.length, BRAND_NAMES[bi] + " 算法优化 " + algoN + "/" + models.length);
             TestHost.check(feedN == models.length, BRAND_NAMES[bi] + " 信息流广告 " + feedN + "/" + models.length);
             TestHost.check(reN == models.length, BRAND_NAMES[bi] + " 回切开屏 " + reN + "/" + models.length);
+            TestHost.check(vidN == models.length, BRAND_NAMES[bi] + " 视频开屏 " + vidN + "/" + models.length);
             brandHitTotal += hitN;
             brandMultiTotal += multiN;
             brandSpeedTotal += speedN;
@@ -1050,22 +1154,24 @@ public final class BrandFocus352Test {
             brandAlgoTotal += algoN;
             brandFeedTotal += feedN;
             brandReentryTotal += reN;
+            brandVideoTotal += vidN;
         }
 
-        /* ══ 矩阵总检（9 品牌+子品牌 11 组 × 32 机型 = 352 · 九维全 352/352）══ */
-        TestHost.suite("矩阵总检（9 品牌+子品牌 11 组 × 32 机型）");
-        TestHost.check(brandHitTotal == 352, "开屏命中总 " + brandHitTotal + "/352");
-        TestHost.check(brandMultiTotal == 352, "多点误点总 " + brandMultiTotal + "/352");
-        TestHost.check(brandSpeedTotal == 352, "屏蔽速度总 " + brandSpeedTotal + "/352");
-        TestHost.check(brandBugTotal == 352, "bug 防线总 " + brandBugTotal + "/352");
-        TestHost.check(brandPowerTotal == 352, "功耗总 " + brandPowerTotal + "/352");
-        TestHost.check(brandPrecTotal == 352, "精准度总 " + brandPrecTotal + "/352");
-        TestHost.check(brandAlgoTotal == 352, "算法优化总 " + brandAlgoTotal + "/352");
-        TestHost.check(brandFeedTotal == 352, "信息流广告总 " + brandFeedTotal + "/352");
-        TestHost.check(brandReentryTotal == 352, "回切开屏总 " + brandReentryTotal + "/352");
+        /* ══ 矩阵总检（9 品牌+子品牌 11 组 × 36 机型 = 396 · 十维全 396/396）══ */
+        TestHost.suite("矩阵总检（9 品牌+子品牌 11 组 × 36 机型）");
+        TestHost.check(brandHitTotal == 396, "开屏命中总 " + brandHitTotal + "/396");
+        TestHost.check(brandMultiTotal == 396, "多点误点总 " + brandMultiTotal + "/396");
+        TestHost.check(brandSpeedTotal == 396, "屏蔽速度总 " + brandSpeedTotal + "/396");
+        TestHost.check(brandBugTotal == 396, "bug 防线总 " + brandBugTotal + "/396");
+        TestHost.check(brandPowerTotal == 396, "功耗总 " + brandPowerTotal + "/396");
+        TestHost.check(brandPrecTotal == 396, "精准度总 " + brandPrecTotal + "/396");
+        TestHost.check(brandAlgoTotal == 396, "算法优化总 " + brandAlgoTotal + "/396");
+        TestHost.check(brandFeedTotal == 396, "信息流广告总 " + brandFeedTotal + "/396");
+        TestHost.check(brandReentryTotal == 396, "回切开屏总 " + brandReentryTotal + "/396");
+        TestHost.check(brandVideoTotal == 396, "视频开屏总 " + brandVideoTotal + "/396");
         System.out.println("  矩阵: " + brandHitTotal + "/" + brandMultiTotal + "/" + brandSpeedTotal
                 + "/" + brandBugTotal + "/" + brandPowerTotal + "/" + brandPrecTotal
-                + "/" + brandAlgoTotal + "/" + brandFeedTotal + "/" + brandReentryTotal + "（九维各 /352）");
+                + "/" + brandAlgoTotal + "/" + brandFeedTotal + "/" + brandReentryTotal + "/" + brandVideoTotal + "（十维各 /396）");
 
         TestHost.done();
     }

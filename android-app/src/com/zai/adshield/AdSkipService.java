@@ -474,6 +474,13 @@ public class AdSkipService extends AccessibilityService {
     private final java.util.HashMap<String, Long> interScanAt = new java.util.HashMap<String, Long>();
     private final java.util.HashMap<String, Long> interMissAt = new java.util.HashMap<String, Long>();
     private final java.util.HashMap<String, Long> interWinAt = new java.util.HashMap<String, Long>(); // v7.6.0：新窗提速（窗切换重置节流）
+    /* ═══ v7.8.0 视频开屏画像 + 插屏延后复扫状态面 ═══ */
+    private final java.util.HashMap<String, Long> contentAt = new java.util.HashMap<String, Long>();      // 内容事件时刻（树静默时长观测）
+    private final java.util.HashMap<String, Long> videoPollAt = new java.util.HashMap<String, Long>();     // 视频轮询针时刻（1.5s/针节流）
+    private final java.util.HashMap<String, String> videoLoggedKey = new java.util.HashMap<String, String>(); // 视频画像日志（每窗一条）
+    private final java.util.HashMap<String, Long> cornerStrikeAt = new java.util.HashMap<String, Long>();  // 视频窗白点节流（角落/手势击 ≥1.5s/击）
+    private final java.util.HashMap<String, Long> interRetriedWin = new java.util.HashMap<String, Long>();  // 插屏首扫延后复扫守门（每窗一次）
+    private final java.util.HashMap<String, Long> interRetryAt = new java.util.HashMap<String, Long>();    // 延后复扫排队标记（防重复排队）
     private long interMisses;
     /* ═══ v7.7.0 回切开屏：进入期全量门 + 回切日志节流 ═══
      * entryFullUntil：包 → 进入期（冷启/回切判 entering 的时刻 + 4s）到期
@@ -1695,6 +1702,11 @@ public class AdSkipService extends AccessibilityService {
                 chainKilledAt.remove(pkg); // v4.3.0：新窗重置内容页早退
                 nudgeAt.remove(pkg);      // v4.3.0：新窗重置补扫节流
                 rescueAt.remove(pkg);     // v4.4.0：新窗重置救回节流（旧窗时间戳不得拖慢新窗首救）
+                /* v7.8.0 视频画像/插屏复扫状态面新窗重置（旧窗轮询针/白点节流/
+                 *  延后复扫守门绝不拖进新窗——代际护栏双保险）。 */
+                videoPollAt.remove(pkg);
+                cornerStrikeAt.remove(pkg);
+                contentAt.remove(pkg);
                 if (isDialogClass(cls) && !isOemUtilityPkg(pkg)) {
                     /* ═══ v4.5.0 用户打开的弹窗/抽屉守护（乱点根治第二道闸）═══
                      * issue#42-44 实锤：用户点开右侧抽屉（BaseCustomDialogFragment
@@ -1745,6 +1757,11 @@ public class AdSkipService extends AccessibilityService {
                     if (now < popupUntilGet(pkg)) nudgePopupScan(pkg, now);
                     break;
                 }
+                /* v7.8.0 视频开屏画像观测面：内容事件时刻记账（树静默时长 =
+                 *  距最后一次内容事件的时长——SurfaceView 视频在放时零内容
+                 *  事件，静默 ≥1.6s 是视频容器的可观测铁证）。 */
+                contentAt.put(pkg, now);
+                if (contentAt.size() > 96) contentAt.clear(); // 防膨胀
                 /* ═══ v5.3.0 位置学习验证钩子②：树体缩水（同窗广告容器
                  * 卸载/Dialog 消散）——零文本点击挂起中，缩水 ≥40% 即提交 ═══ */
                 posVerifyOnContentChange(pkg, now);
@@ -1753,12 +1770,24 @@ public class AdSkipService extends AccessibilityService {
                  * 不重置）；名单门 + 微信 sns 窗门 + 1.2s 节流 + 300 节点预算
                  * 双闸（功耗红线）；开屏窗期内让路（开屏路径优先）。 ═══ */
                 maybeFeedScan(pkg, now);
+                /* ═══ v7.8.0 插屏重扫路由黑洞解除（用户实锤「app内插入广告也不会
+                 *  拦截关闭」第 N 轮根治）═══
+                 *  旧路由：开屏窗期内（<12s）内容事件全部改道 nudgeScan 后 break、
+                 *  弹窗窗期内改道 nudgePopupScan 后 break——插屏卫士只在「窗后
+                 *  12s 且不在弹窗期」才被拉起：插屏常在 App 打开后 3~5s 弹出
+                 *（恰在开屏窗期内！）首扫（窗切换帧、树未长成）空手后，插屏
+                 *  在其整个 5~10s 生命周期内再无第二次扫描——首扫太早 + 重扫
+                 *  被路由吞掉 = 插屏永远只被看一眼。
+                 *  v7.8.0：两个分支内直接加 maybeInterstitialScan（自带 1.5s
+                 *  包级节流——开屏补扫与插屏扫描同窗并行，互不干扰）。 */
                 if (now - winAt(pkg) < WINDOW_MS) {
                     nudgeScan(pkg, now);
+                    maybeInterstitialScan(pkg, now);
                     break;
                 }
                 if (now < popupUntilGet(pkg)) {
                     nudgePopupScan(pkg, now);
+                    maybeInterstitialScan(pkg, now);
                     break;
                 }
                 /* v7.5.0：插屏卫士——开屏窗/弹窗窗都不在期时（窗已落定）的
@@ -1775,6 +1804,19 @@ public class AdSkipService extends AccessibilityService {
                 userActAt.put(pkg, now);
                 learnFromManualClick(pkg, event, now);
                 observeMisclick(pkg, event, now);
+                break;
+            }
+            case AccessibilityEvent.TYPE_WINDOWS_CHANGED: {
+                /* ═══ v7.8.0 新窗挂载事件（插屏扫描死因③：同窗插层无人扫）═══
+                 * 无焦点变化的 Dialog/PopupWindow/View overlay 插层挂载（window
+                 * id 新增）此前不产生任何被订阅事件——同窗内 Fragment/overlay
+                 * 插屏完全无人扫（v7.6.0「winAt 变化即重置节流」只覆盖窗切
+                 * 换路径）。v7.8.0 补订 typeWindowsChanged：新窗挂载事件拉起
+                 * 插屏扫描（前台包限定——后台窗列表变化零拉起；1.5s 节流内控
+                 * 功耗，零插屏签名时零出手）。 */
+                if (pkg != null && pkg.length() > 0 && pkg.equals(lastFgPkg)) {
+                    maybeInterstitialScan(pkg, now);
+                }
                 break;
             }
         }
@@ -2812,9 +2854,13 @@ public class AdSkipService extends AccessibilityService {
                         nativeFindTexts(r, com.zai.adshield.core.InterstitialGuard.INTER_CONTEXT_WORDS);
                 java.util.ArrayList<com.zai.adshield.core.AdDecisionCore.NodeView> closeCands =
                         nativeFindTexts(r, com.zai.adshield.core.InterstitialGuard.INTER_SEARCH_WORDS);
+                /* v7.8.0 闸⓪扩容接线：WebView 容器在场（walk 收集）+ SDK 插屏
+                 * 窗指纹（窗类即广告窗）——H5 插屏角标在网页内核非原生节点、
+                 * SDK 插屏窗类即铁证，两路语境在场证据扩容。 */
                 com.zai.adshield.core.FeedAdGuard.FeedDecision fd =
                         com.zai.adshield.core.InterstitialGuard.decideFromCandidates(
-                                ctxCands, closeCands, screenWidth, screenHeight, f.scrollPresent);
+                                ctxCands, closeCands, screenWidth, screenHeight, f.scrollPresent,
+                                f.webviewPresent, wctx.sdkAdWin);
                 if (fd != null && executeInterstitial(pkg, fd, now)) return;
                 if (missSamples == null) {
                     // v7.6.0：语境词与关闭词命中样本都登（被闸也照登）——上传日志
@@ -2827,8 +2873,47 @@ public class AdSkipService extends AccessibilityService {
                 }
             }
             logInterMiss(pkg, cls, now, missSamples);
+            /* ═══ v7.8.0 首扫延后复扫（插屏扫描死因②：首扫太早）═══
+             * 窗切换帧插层刚创建、文字节点 200~800ms 后才进树——首扫空手后
+             * +450ms 复扫一次（清节流记录立即可扫）；每窗仅一次（interRetriedWin
+             * 守门——防无限排队）。 */
+            scheduleInterRetry(pkg, wAt);
         } catch (Throwable ignored) {
         }
+    }
+
+    /** v7.8.0 插屏首扫延后复扫：+450ms 后清节流记录并复扫一次（每窗一次）。 */
+    private void scheduleInterRetry(String pkg, long wAt) {
+        if (handler == null || pkg == null) return;
+        Long retried = interRetriedWin.get(pkg);
+        if (retried != null && retried.longValue() == wAt) return; // 本窗已复扫过
+        Long queued = interRetryAt.get(pkg);
+        long now0 = System.currentTimeMillis();
+        if (queued != null && now0 - queued.longValue() < 2000L) return; // 已在队列（防重复排队）
+        interRetryAt.put(pkg, now0);
+        if (interRetryAt.size() > 24) interRetryAt.clear(); // 防膨胀
+        handler.postDelayed(() -> {
+            try {
+                if (instance == null || !masterOn) return;
+                if (winAt(pkg) != wAt) return; // 代际护栏：窗已切，复扫作废
+                interRetriedWin.put(pkg, wAt);
+                if (interRetriedWin.size() > 24) interRetriedWin.clear(); // 防膨胀
+                interScanAt.remove(pkg); // 清节流 → 复扫立即执行
+                maybeInterstitialScan(pkg, System.currentTimeMillis());
+            } catch (Throwable ignored) {
+            }
+        }, com.zai.adshield.core.InterstitialGuard.INTER_RETRY_DELAY_MS);
+    }
+
+    /** v7.8.0 新指纹目标判定：本决策 targetKey 从未出手过（新键——视频末
+     *  才露头的真按钮）返回 targetKey；旧键（白点复击面）返回 null。 */
+    private String targetKeyForNew(String pkg, com.zai.adshield.core.AdDecisionCore.Decision d) {
+        if (d.bounds == null || d.bounds.length < 4) return "";
+        String key = HumanTap.sameTargetKey(pkg, (d.bounds[0] + d.bounds[2]) / 2,
+                (d.bounds[1] + d.bounds[3]) / 2, d.reason,
+                HumanTap.dupTolPx(screenDensity));
+        if (key == null) return null;
+        return firedTargetAt.containsKey(key) ? null : key;
     }
 
     /** v7.6.0 插屏决策执行：构造 Decision 走既有 execute()（插屏专用终闸
@@ -2868,6 +2953,10 @@ public class AdSkipService extends AccessibilityService {
         interMisses++;
         StringBuilder sb = new StringBuilder("🔍 插屏未命中（").append(shortPkg(pkg));
         if (cls != null && cls.length() > 0) sb.append(" · ").append(shortCls(cls));
+        /* v7.8.0 窗龄字段：插屏扫描时机归因面（首扫太早/重扫被吞的观测证据）。
+         */
+        long wAge = System.currentTimeMillis() - winAt(pkg);
+        if (wAge > 0 && wAge < 600000L) sb.append(" · 窗龄 ").append(wAge).append("ms");
         sb.append("）：广告语境/关闭钮未同场过闸");
         if (samples != null && samples.length() > 0) {
             sb.append("（样本：").append(samples).append("——均未过闸）");
@@ -2900,16 +2989,36 @@ public class AdSkipService extends AccessibilityService {
         }
         long now = System.currentTimeMillis();
         long elapsed = now - winStart;
+        /* ═══ v7.8.0 视频开屏画像（用户实锤「只要是开屏广告带视频的你都未
+         *  命中」根治）：窗龄 ≥2.2s 且连续零候选 ≥3 且树静默 ≥1.6s（视频在
+         *  SurfaceView 里放零内容事件）→ 观察窗 12s→20s + 轮询针 1.5s/针 +
+         *  退避豁免 + 白点节流 + L4 形态门放宽（决策核心 ctx.videoLike）。═══ */
+        int zeroStreakNow = 0;
+        {
+            Integer zBox = zeroCandScans.get(pkg + "|" + winStart);
+            zeroStreakNow = zBox == null ? 0 : zBox.intValue();
+        }
+        Long lastContent = contentAt.get(pkg);
+        long silenceMs = lastContent == null ? -1 : now - lastContent.longValue();
+        boolean videoLike = com.zai.adshield.core.VideoSplashGuard.videoLike(
+                elapsed, zeroStreakNow, silenceMs,
+                AdDecisionCore.isAdActivityClass(winClassOf(pkg)));
         // v4.1.0 前台门：开屏扫描链只对前台应用生效（非前台包的扫描
         // 请求一律降级为弹窗路径——绝不拿灵岛/悬浮窗树走开屏决策阶梯）
-        boolean splashLive = learningEnabled() && elapsed <= WINDOW_MS && pkg.equals(lastFgPkg);
+        // v7.8.0：观察窗效自适应——videoLike → 20s（视频开屏按钮常在视频末
+        // 5~15s 才露头，12s 硬封顶 = 字面意义的「不再扫」）
+        boolean splashLive = learningEnabled()
+                && elapsed <= com.zai.adshield.core.VideoSplashGuard.windowDeadlineMs(videoLike)
+                && pkg.equals(lastFgPkg);
         boolean popupLive = popupShieldEnabled() && now < popupUntilGet(pkg) && popupCooldownOK(pkg, now);
         if (!splashLive && !popupLive) return;
         // v4.3.0 功耗：内容页早退后本窗固定扫描链已取消（nudge 补扫同步让路；
         // 内容变化里的晚出跳过键若真出现，walk 会重新发现候选并复活扫描）
+        // v7.8.0：视频画像窗豁免——静默事件源（SurfaceView 视频零内容事件）
+        // 下「晚出键复活」依赖的 nudge 通道零事件零复活；轮询针接管观察义务
         Long killed = chainKilledAt.get(pkg);
         boolean chainDead = killed != null && killed.longValue() == winStart;
-        if (chainDead && atMs >= 0) return;
+        if (chainDead && atMs >= 0 && !videoLike) return;
 
         try {
             /* 多窗口扫描：活动窗口优先，其次 getWindows() 同包窗口（弹窗/覆盖层） */
@@ -2961,6 +3070,7 @@ public class AdSkipService extends AccessibilityService {
                 ctx.elapsedMs = Math.max(0, elapsed - ri * 30);
                 ctx.splashLive = splashLive;
                 ctx.popupLive = popupLive;
+                ctx.videoLike = videoLike; // v7.8.0：视频开屏画像（决策核心 L4/角落门放宽用）
                 ctx.guard = AdDecisionCore.isGuardPkg(pkg);
                 // v3.6.0 毒链① 根治：sdkAdWin 只认【当前窗口类名】是 SDK 广告窗
                 //（v3.5.0 的 12s TTL 让主页还拿着 SDK 资格按返回键 → 退出应用）
@@ -3110,7 +3220,7 @@ public class AdSkipService extends AccessibilityService {
                 if (!d.action.equals(AdDecisionCore.A_NONE)) {
                     if (execute(pkg, d, f, ctx, clickCoolOK, now)) return; // 命中即熔断
                     acted = true;
-                } else if (splashLive && !acted && elapsed >= 2000 && chainCanQuit(pkg, f)) {
+                } else if (splashLive && !acted && elapsed >= 2000 && !videoLike && chainCanQuit(pkg, f)) {
                     /* ═══ v4.3.0 功耗：内容页早退（v4.4.0 收紧）═══
                      * 可滚动/有输入框/长文本且零跳过候选 = 正常内容页（信息流/
                      * 聊天/文章）——本窗剩余固定扫描档全部取消（省 10+ 次整树
@@ -3143,6 +3253,7 @@ public class AdSkipService extends AccessibilityService {
                     String zCls = winClassOf(pkg);
                     boolean exempt = AdDecisionCore.isAdActivityClass(zCls)
                             || isDialogClass(zCls)
+                            || videoLike // v7.8.0：视频画像窗绝不退避（轮询针接管观察——静默事件源下退避 = 主动放弃视频开屏）
                             || (winClsLearned.get(pkg) != null && winClsLearned.get(pkg).booleanValue());
                     if (!exempt) {
                         if (zeroCandScans.size() > 96) zeroCandScans.clear(); // 防膨胀
@@ -3171,7 +3282,77 @@ public class AdSkipService extends AccessibilityService {
              * （下次全量梯子）；首次全量扫描刷新 72h 复查闸。Dialog/SDK 广告窗
              * /学习窗不参与（suppressLadder 已永久放行，无需记账）。 */
             profileRecordOutcome(pkg, winClassOf(pkg), winStart, acted, lastFind, lastCtx);
+            /* ═══ v7.8.0 视频开屏轮询针（静默事件源兜底）═══
+             * 视频画像窗且本轮未出手 → 排 1.5s 轮询针（探针直查零 DFS）；视频
+             * 播放期零内容事件，固定梯子 + nudge 通道全部静默——轮询针是视频
+             * 开屏按钮晚露头的唯一兜底观察。画像日志每窗一条（扫描日志上传
+             * 可定位「视频开屏未命中」归因面）。 */
+            if (videoLike && !acted && elapsed < com.zai.adshield.core.VideoSplashGuard.VIDEO_EXT_WINDOW_MS) {
+                String vLogKey = pkg + "|" + winStart;
+                if (!vLogKey.equals(videoLoggedKey.get(pkg))) {
+                    videoLoggedKey.put(pkg, vLogKey);
+                    if (videoLoggedKey.size() > 24) videoLoggedKey.clear(); // 防膨胀
+                    appendLog("🎞 视频开屏画像（" + shortPkg(pkg) + "）：窗龄 " + (elapsed / 1000)
+                            + "s 零候选 ×" + zeroStreakNow + " 树静默 "
+                            + (silenceMs < 0 ? ("≥" + elapsed) : silenceMs)
+                            + "ms → 观察窗延至 20s · 1.5s 轮询针在岗（视频末露头按钮有人扫）");
+                }
+                handler.postDelayed(() -> videoPoll(pkg, winStart),
+                        com.zai.adshield.core.VideoSplashGuard.VIDEO_POLL_MS);
+            }
         } catch (Exception ignored) {
+        }
+    }
+
+    /** v7.8.0 视频开屏轮询针：探针直查（零 DFS——findAccessibilityNode
+     *  InfosByText 5 词）——视频播放期零内容事件，轮询是按钮晚露头的唯一
+     *  兜底观察。命中即全量 tryScan（重走决策梯）；未露头 → 继续排下一针
+     * （代际护栏：窗已切即停；观察窗 20s 到期即停）。 */
+    private void videoPoll(String pkg, long winStart) {
+        if (instance == null || !masterOn) return;
+        if (whitelistSet.contains(pkg) || !pkg.equals(lastFgPkg)) return;
+        if (AdDecisionCore.isChatMainUi(pkg, winClassOf(pkg))) return;
+        if (MiniProgramGuard.isMiniProgramWindow(pkg, winClassOf(pkg))) return;
+        if (winAt(pkg) != winStart) return; // 代际护栏：窗已切，针作废
+        long now = System.currentTimeMillis();
+        long elapsed = now - winStart;
+        if (elapsed > com.zai.adshield.core.VideoSplashGuard.VIDEO_EXT_WINDOW_MS) return; // 观察窗到期
+        Integer zBox = zeroCandScans.get(pkg + "|" + winStart);
+        Long lastContent = contentAt.get(pkg);
+        long silenceMs = lastContent == null ? -1 : now - lastContent.longValue();
+        boolean videoLike = com.zai.adshield.core.VideoSplashGuard.videoLike(
+                elapsed, zBox == null ? 0 : zBox.intValue(), silenceMs,
+                AdDecisionCore.isAdActivityClass(winClassOf(pkg)));
+        if (!videoLike) return; // 画像已失效（候选出现/树动静）→ 停针
+        if (!com.zai.adshield.core.VideoSplashGuard.pollDue(videoPollAt.get(pkg), now)) return;
+        videoPollAt.put(pkg, now);
+        if (videoPollAt.size() > 24) videoPollAt.clear(); // 防膨胀
+        try {
+            android.view.accessibility.AccessibilityNodeInfo[] roots = collectRoots(pkg);
+            if (roots.length == 0) return;
+            for (int ri = 0; ri < roots.length; ri++) {
+                android.view.accessibility.AccessibilityNodeInfo r = roots[ri];
+                if (r == null) continue;
+                for (int probe = 0; probe < 5; probe++) {
+                    String w = probe == 0 ? "跳过" : (probe == 1 ? "跳過" : (probe == 2 ? "skip"
+                            : (probe == 3 ? "关闭广告" : "關閉廣告")));
+                    try {
+                        java.util.List<android.view.accessibility.AccessibilityNodeInfo> found =
+                                r.findAccessibilityNodeInfosByText(w);
+                        if (found != null && !found.isEmpty()) {
+                            appendLog("🎞 视频开屏轮询命中（" + shortPkg(pkg) + "）：探针「" + w
+                                    + "」露头 → 全量扫描出手（窗龄 " + (elapsed / 1000) + "s）");
+                            tryScan(pkg, winStart, elapsed);
+                            return;
+                        }
+                    } catch (Throwable ignored) {
+                    }
+                }
+            }
+            // 未露头 → 继续排下一针（静默事件源兜底——固定梯子不覆盖 12~20s 段）
+            handler.postDelayed(() -> videoPoll(pkg, winStart),
+                    com.zai.adshield.core.VideoSplashGuard.VIDEO_POLL_MS);
+        } catch (Throwable ignored) {
         }
     }
 
@@ -3233,6 +3414,16 @@ public class AdSkipService extends AccessibilityService {
             sb.append(f != null ? "树 " + f.nodeCount + " 节点" : "树 ?");
             String cls = winClassOf(pkg);
             if (cls.length() > 0) sb.append(" · 窗口 ").append(shortCls(cls));
+            /* v7.8.0 视频画像观测字段（「开屏广告带视频的全未命中」归因面）：
+             * 树静默时长 + 内容事件计数是视频容器的唯一可观测铁证——旧日志
+             * 无视频字段，视频开屏未命中无从归因（扫描日志驱动迭代闭环）。 */
+            Long lastContent = contentAt.get(pkg);
+            if (lastContent != null) {
+                sb.append(" · 树静默 ").append(now - lastContent.longValue()).append("ms");
+            } else {
+                sb.append(" · 零内容事件");
+            }
+            sb.append(f != null && f.webviewPresent ? " · WebView 容器在岗" : "");
             String samples = collectNodeSamples(roots.length > 0 ? roots[0] : null);
             if (samples.length() > 0) sb.append(" · 候选样本：").append(samples);
             /* v7.1.0 订阅两源覆盖诊断（使用顺序问题可见化：该应用市场/内置
@@ -3591,13 +3782,16 @@ public class AdSkipService extends AccessibilityService {
         lastGesturePkg = pkg; // v3.7.0：手势取消诊断日志用
         // v3.6.0：点击梯子预算——同窗点击 ≥MAX_CLICKS_PER_WIN 即优雅收手
         //（绝不无限重试，更绝不升级返回键；等用户手动跳过，手动点击仍会被学习）
+        // v7.8.0：视频画像窗预算 3→5 + 新键预算刷新（见下方 targetKey 处——
+        // 视频末才露头的真按钮是【新指纹目标】，新键 ≠ 旧键的白点）
+        int maxClicksWin = com.zai.adshield.core.VideoSplashGuard.maxClicksFor(ctx.videoLike);
         if ((d.action.equals(AdDecisionCore.A_CLICK_BOUNDS) || d.action.equals(AdDecisionCore.A_CLOSE)
                 || d.action.equals(AdDecisionCore.A_TAP_POINT))
-                && triesOfClick(pkg) >= AdDecisionCore.MAX_CLICKS_PER_WIN) {
+                && triesOfClick(pkg) >= maxClicksWin) {
             Boolean done = gaveUp.get(pkg);
             if (done == null || !done.booleanValue()) {
                 gaveUp.put(pkg, Boolean.TRUE);
-                appendLog("🤲 点击梯子已用尽（" + shortPkg(pkg) + "）：" + AdDecisionCore.MAX_CLICKS_PER_WIN
+                appendLog("🤲 点击梯子已用尽（" + shortPkg(pkg) + "）：" + maxClicksWin
                         + " 次尝试未关闭广告 → 优雅收手（本窗不再动作；你的手动跳过仍会被学习）");
             }
             return false;
@@ -3658,6 +3852,31 @@ public class AdSkipService extends AccessibilityService {
             int attemptsPre = triesOfClick(pkg);
             if (lcGap != null && now - lcGap
                     < Math.max(COOLDOWN_MS, HumanTap.verifyDelayMs(attemptsPre))) return false;
+            /* ═══ v7.8.0 视频开屏白点节流（预算烧穿根治）═══
+             * 视频画像窗内角落/手势候选（无文本——门控期白点高发面：进度环
+             * 无数字 → cdN=0 → 门控直通）从 300ms 起 3 击连发烧穿预算，按钮
+             * 真激活（视频播完）时引擎已收手——视频窗角落/手势击 ≥1.5s/击，
+             * 5 击预算拉长到 ≥7.5s 覆盖门控期。文本键（真「跳过」文字）不受
+             * 此节流——文本键出手即真键（词典 + 形状门双闸在岗）。 */
+            boolean textKeyed = d.label != null && d.label.trim().length() > 0;
+            if (ctx.videoLike && !textKeyed
+                    && ("corner_image_skip".equals(d.reason) || "fake_skip_tap".equals(d.reason))) {
+                Long lastStrike = cornerStrikeAt.get(pkg);
+                if (!com.zai.adshield.core.VideoSplashGuard.strikeGapOk(lastStrike, now)) return false;
+                cornerStrikeAt.put(pkg, now);
+                if (cornerStrikeAt.size() > 24) cornerStrikeAt.clear(); // 防膨胀
+            }
+            /* ═══ v7.8.0 新键预算刷新（视频末露头真按钮 ≠ 白点）═══
+             * 视频窗内【文本键】新指纹目标（从未出手过的 targetKey + 决策带
+             * 文本 label）→ 点击梯子预算重置——视频末才渲染的激活「跳过」
+             * 键是新按钮不是旧键的复击；同旧键的白点不刷新（防移动目标无限
+             * 预算——角落/手势候选永不刷新）。 */
+            if (ctx.videoLike && textKeyed && gaveUp.get(pkg) != null
+                    && gaveUp.get(pkg).booleanValue() && targetKeyForNew(pkg, d) != null) {
+                clickTries.put(pkg, 0);
+                gaveUp.put(pkg, Boolean.FALSE);
+                appendLog("🎞 视频开屏新键（" + shortPkg(pkg) + "）：文本跳过键露头（新指纹目标）→ 点击梯子预算刷新出手");
+            }
             /* v6.1.0 F/H 多点防线（用户实锤：点击已生效但广告跳转动画期
              * 复验看到「按钮还在」再点一次=用户肉眼的多点；机器连发也是
              * 反自动化 SDK 触点检测的直接特征）：
