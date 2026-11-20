@@ -108,13 +108,12 @@
 - 版本策略（用户指令十九）：本轮**有生产代码修改（Bug#001）** → v7.9.5 → **v7.9.6**，versionCode 79500 → **79600**（> 79500 覆盖安装即升级）；
 - 更新面：`src/lib/version.ts`（单一数据源）· `android-app/assets/www/app.js`（页头/版本记录/检查更新回落）· `docs/CHANGELOG.md`（v7.9.6 全条目）· `README.md`（当前版本区 + 体积行）· 本报告 · `docs/test-reports/round-47.json` · `compatibility/l3_batch1.json`（meta 复查记录）· `compatibility/samples/index.json`（复查归因）· `compatibility/test_matrix.json`（Bug#001 回归层登记）。
 
-## 十、Git 与发布（用户指令二十）
+## 十、Git 与发布（用户指令二十 · 实测补录）
 
-- commit → push `origin main`（**禁止 force push / 禁止删除远程分支**；diff 复查——无 Token/密钥/keystore 密文/隐私/原始截图/完整 Accessibility Tree 入库）；
-- GitHub Release `v7.9.6` + APK 上传 + GitHub digest 与本地 SHA-256 比对 + 面板描述同步 v7.9.6 主题；
-- 实测结果（commit 哈希 / push 区间 / release 编号 / digest 比对）——**待 push 后补录于本节**（沿用 v7.9.5 双提交惯例：feat 提交 → push → release → 实测补录 docs 提交 → push）。
-
-> 【补录区 · push 后回填】Commit：____ · Push：____ · Release：____ · 面板描述：____
+- **commit**：`920b10c`（fix(v7.9.6)：Bug#001 终局三漏根治——预算耗尽于复验时刻的记账/冷却闸统一裁决 + 一个真实 Bug 一个回归测试）· 19 文件（源 2 · 测试 1 · 文档 6 · compatibility 3 · 版本 2 · APK 三目录分发 3 + idsig 2）——diff 复查无 Token/密钥/keystore 密文/隐私/原始截图/完整 Accessibility Tree 入库；
+- **push**：`ea6d615..920b10c main -> main` **SUCCESS**（git-push-once.sh token 注入内存 URL，无 force push；post-push fetch 核对 origin/main = 920b10c 一致）。诚实记录：首次 push 因脚本用法错误（`git-push-once.sh origin main`——脚本已内嵌远程 URL，正确用法仅传 refspec `main`）报 `fatal: refs/remotes/origin/HEAD cannot be resolved to branch` 且未推出任何提交；修正用法后成功——非网络/凭据故障，未产生任何远端变更；
+- **Release**：`v7.9.6` **#452768731** https://github.com/xiaobaiba999/Skip-Ad/releases/tag/v7.9.6 （draft=false · prerelease=false · tag 指向 920b10c）· APK 资产上传成功（865846B · state=uploaded · GitHub digest `sha256:bea90869273080e42c7f42f5c57ed8d7ffd9c31f1c2e8519d96801ddc2d88529` 与本地 SHA-256 比对 **MATCH=YES**——发布侧校验闭环）；
+- **面板描述**：PATCH 成功（**304 字符 ≤ 350 限** · 远端 GET 核对与本地完全一致 MATCH=YES——v7.9.6 L3 真实世界验证轮主题 + 真机诚实口径入文案）；`scripts/publish-v796.mjs` 入库（发布过程可复现）。
 
 ## 十一、诚实声明（用户指令最终原则）
 

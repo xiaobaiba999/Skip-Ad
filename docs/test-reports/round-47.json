@@ -110,7 +110,11 @@
     "size": 865846,
     "md5": "432f1668b37831edb9699f22a4c99cd6",
     "sha256": "bea90869273080e42c7f42f5c57ed8d7ffd9c31f1c2e8519d96801ddc2d88529",
-    "distribution": ["android-app/dist", "download", "upload"],
+    "distribution": [
+      "android-app/dist",
+      "download",
+      "upload"
+    ],
     "signature": "apksigner verify 通过 · 同证书（Signer SHA-256 05ada6e3f7a4fc6bf77449611c24f51e1ef4caa0a91a5cdd02c4d877738e6f79——覆盖安装即升级）"
   },
   "compatibility_metrics": {
@@ -147,15 +151,17 @@
     "PAT 撤销确认（账号所有者操作）"
   ],
   "git": {
-    "commit": "待补录（push 后回填）",
-    "push": "待补录",
-    "postPushVerify": "待补录"
+    "commit": "920b10c",
+    "push": "SUCCESS",
+    "pushDetail": "ea6d615..920b10c main -> main（git-push-once.sh token 注入内存 URL，无 force push；post-push fetch 核对 origin/main = 920b10c 一致）",
+    "pushHonestNote": "首次 push 因脚本用法错误（误传 origin main——脚本已内嵌远程 URL 正确用法仅传 refspec main）报 fatal: refs/remotes/origin/HEAD cannot be resolved to branch 且未推出任何提交；修正用法后成功——非网络/凭据故障，未产生任何远端变更",
+    "postPushVerify": "origin/main = 920b10c（fetch 核对一致）"
   },
   "github_release": {
     "tag": "v7.9.6",
-    "url": "待补录",
-    "releaseId": "待补录",
-    "asset": "待补录",
-    "repoDescription": "待补录"
+    "url": "https://github.com/xiaobaiba999/Skip-Ad/releases/tag/v7.9.6",
+    "releaseId": 452768731,
+    "asset": "adshield-v7.9.6.apk 上传成功（865846B · state=uploaded · GitHub digest sha256:bea90869273080e42c7f42f5c57ed8d7ffd9c31f1c2e8519d96801ddc2d88529 与本地 SHA-256 比对 MATCH=YES——发布侧校验闭环）",
+    "repoDescription": "PATCH 成功（304 字符 ≤ 350 限 · 远端 GET 核对与本地完全一致 MATCH=YES——v7.9.6 L3 真实世界验证轮主题 + 真机诚实口径入文案）· scripts/publish-v796.mjs 入库（发布过程可复现）"
   }
 }
