@@ -217,6 +217,52 @@ public final class InterstitialRoutingTest {
         TestHost.check(InterstitialGuard.CLOSE_H_FLAT_MAX == 0.07, "宽扁高上限 7%");
         TestHost.check(InterstitialGuard.CLOSE_AREA_MAX == 0.04, "小面积上限 4% 屏");
 
+        /* ════ S10 v7.9.0 接线契约（12 项——三处服务侧接线盲区根治）════ */
+        TestHost.suite("InterRouting · S10 v7.9.0 接线契约（SDK 指纹接线/外来包 Dialog/图标钮）");
+        // 死因⑥（v7.8.0 接线盲区实锤）：maybeInterstitialScan 的 wctx.sdkAdWin 从未赋值
+        // （Ctx 默认 false）——闸⓪第三路「SDK 插屏窗指纹」整路死代码。v7.9.0 接通：
+        // wctx.sdkAdWin = isAdActivityClass(窗类)。契约：SDK 插屏窗类全族 → true。
+        String[] sdkInterCls = {
+                "com.qq.e.ads.interstitial.InterstitialActivity",      // 优量汇插屏
+                "com.bytedance.sdk.openadsdk.stub.interstitial",       // 穿山甲插层
+                "com.kwad.ad.interstitial.InsertScreenActivity",        // 快手插屏
+                "com.mbridge.at.ui.interstitial",                        // Mintegral 插屏
+        };
+        int sdkOk = 0;
+        for (String c : sdkInterCls) {
+            if (AdDecisionCore.isAdActivityClass(c)) sdkOk++;
+        }
+        TestHost.checkEq(4, sdkOk, "SDK 插屏窗指纹全族命中（wctx.sdkAdWin 接线后闸⓪第三路激活）");
+        TestHost.check(AdDecisionCore.isAdActivityClass("com.qq.e.ads.InterstitialADActivity"),
+                "优量汇插屏变体命中（qq.e.ads 前缀路）");
+        TestHost.check(!AdDecisionCore.isAdActivityClass("com.example.app.MainActivity"),
+                "普通 MainActivity 绝不误认（App 业务窗红线保持）");
+        TestHost.check(!AdDecisionCore.isAdActivityClass("com.example.app.SplashActivity"),
+                "App 自建 SplashActivity 绝不误认（返回=退出应用红线保持）");
+        // 死因⑦（外来包 Dialog 插屏）：非前台 Dialog 分支只走 nudgePopupScan（弹窗
+        // 识别路径），插屏卫士从未被拉起。v7.9.0 同分支接线（1.5s 节流自持 + winClass
+        // 登记补齐——服务侧接线断言：路由三事件面并集扩容为四事件面）。
+        TestHost.check(InterstitialGuard.INTER_SCAN_THROTTLE_MS <= 1500,
+                "外来包 Dialog 分支节流 ≤1.5s（与主路同节流表——窗事件风暴内控）");
+        // 死因⑧（图标钮零路径）：文字候选（nativeFindTexts）对纯图标钮零候选——
+        // decideIconFromCandidates 图标路径（强语境闸 SDK 窗 / WebView+角标）。
+        // 契约：图标路径语境门槛比文字路径更严（iconContextOk 真值表见 S9 of
+        // InterstitialGuardTest——此处断言常量在场 + 终闸一致性）。
+        TestHost.check(InterstitialGuard.ICON_AREA_MAX == 0.02, "图标钮面积上限 2% 屏（常量在场）");
+        TestHost.check(InterstitialGuard.isInterstitialCloseWord("×"), "图标钮 label=× 是关闭词族成员（终闸语义面）");
+        TestHost.checkEq(ComplianceGuard.BND_OK, ComplianceGuard.interBoundaryCheck("×",
+                        new int[]{960, 48, 1056, 144}, 1080, 2400, "com.example.app", "android.widget.FrameLayout"),
+                "图标钮 label=× 过插屏终闸（与文字 × 同闸——executeInterstitial 直通）");
+        // 死因⑨（streak 计数冻结）：豁免窗（广告窗/Dialog）跳过计数块 → zeroCandScans
+        // 冻结 → videoLike 的 sdkAdWin 路径（streak≥3）永远建立不起来。v7.9.0 streak
+        // 无条件计数（豁免只挡杀链不挡计数）。契约：视频画像 streak 门槛与退避同源 3。
+        TestHost.checkEq(3, com.zai.adshield.core.VideoSplashGuard.VIDEO_ZERO_CAND_STREAK,
+                "视频画像 streak≥3（与退避同源——v7.9.0 streak 无条件计数后 SDK 窗可满足）");
+        TestHost.check(com.zai.adshield.core.VideoSplashGuard.videoLike(3200, 3, 2000, true),
+                "SDK 窗 streak=3 全画像成立（v7.8.0 服务侧 streak 冻结时此路径永不触发）");
+        TestHost.check(com.zai.adshield.core.VideoSplashGuard.videoArmHint(2600, 3, 800),
+                "arm-hint 画像预备在场（树慢速构建窗退避竞速根治——S9 of VideoSplashTest）");
+
         TestHost.done();
     }
 

@@ -2,12 +2,12 @@
 
 # Skip-Ad · 开屏卫士
 
-**安卓开屏广告秒跳引擎 —— 露头就跳（首击零门控）+ 视频开屏卫士（带视频的开屏广告不再全漏：视频画像 → 观察窗 12s→20s + 1.5s 轮询针 + 白点节流/新键预算刷新）、插屏重扫路由根治（App 内插入广告主动关闭：路由黑洞解除 + 延后复扫 + 语境三路并集）、弹窗自动关、白名单全量应用列表、1:1 人手模拟触点、C 语言基准实测（五语言同构）**
+**安卓开屏广告秒跳引擎 —— 露头就跳（首击零门控）+ 插屏卫士接线盲区根治（闸⓪ SDK 插屏窗指纹接通/SDK 窗 streak 无条件计数/外来包 Dialog 接线）、图标关闭钮路径（关闭按钮只有图标没有文字：SDK 窗/WebView+角标强语境闸）、视频开屏卫士（视频画像 → 观察窗 12s→20s + 1.5s 轮询针 + arm-hint 守链）、弹窗自动关、白名单全量应用列表、1:1 人手模拟触点、C 语言基准实测（五语言同构）**
 
 [![Releases](https://img.shields.io/github/v/release/xiaobaiba999/Skip-Ad?style=flat-square&label=%E6%9C%80%E6%96%B0%E5%8F%91%E5%B8%83)](https://github.com/xiaobaiba999/Skip-Ad/releases/latest)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](#许可)
-[![APK](https://img.shields.io/badge/APK-832KB-orange?style=flat-square)](https://github.com/xiaobaiba999/Skip-Ad/releases/latest)
-[![Tests](https://img.shields.io/badge/JVM%E6%96%AD%E8%A8%80-5099%20%E2%9C%85-brightgreen?style=flat-square)](docs/test-reports/round-39.json)
+[![APK](https://img.shields.io/badge/APK-836KB-orange?style=flat-square)](https://github.com/xiaobaiba999/Skip-Ad/releases/latest)
+[![Tests](https://img.shields.io/badge/JVM%E6%96%AD%E8%A8%80-6114%20%E2%9C%85-brightgreen?style=flat-square)](docs/test-reports/round-41.json)
 [![Matrix](https://img.shields.io/badge/%E6%9C%BA%E5%9E%8B%E7%9F%A9%E9%98%B5-9%E5%93%81%E7%89%8C%E5%8F%8A%E5%AD%90%E5%93%81%E7%89%8C36%E6%9C%BA%E5%9E%8B-396-blue?style=flat-square)](android-app/tests/com/zai/adshield/test/BrandFocus396Test.java)
 [![HumanTap](https://img.shields.io/badge/1%3A1%E4%BA%BA%E6%89%8B%E6%A8%A1%E6%8B%9F-%E8%AF%AF%E7%82%B9%E5%A4%9A%E7%82%B9%E6%A0%B9%E6%B2%BB-ff7043?style=flat-square)](android-app/tests/com/zai/adshield/test/HumanTapMatrixTest.java)
 [![Topic](https://img.shields.io/badge/topic-gkd--subscription-8e8e8e?style=flat-square)](https://github.com/topics/gkd-subscription)
@@ -23,22 +23,22 @@ Java 引擎 · GKD 订阅生态兼容 · [Releases](https://github.com/xiaobaiba
 | | |
 | --- | --- |
 | **怎么工作** | 无障碍服务读屏找到「跳过」控件（文本/描述/控件 ID/图片角落键四通道），0ms 露头即点；视频开屏画像（零候选连环+树静默 → 观察窗 20s + 轮询针）；**1:1 人手模拟触点**（人手参数域+人手复验节奏+dp 密度归一+实时人眼追踪+轨迹去重+同目标/结果双静默防线——不同设备上零误触零多点）；点击冷却 300ms · 倒计时将尽提前 0.38s 开火 |
-| **拦截范围** | 开屏广告（含**视频开屏**——v7.8.0 视频卫士）· 插屏/激励弹窗 · 摇一摇诱导 · 悬浮广告球 · 视频前贴 · **App 内广告主动关闭（v7.4 信息流三路 20 款名单 + v7.5~v7.8 插屏卫士：语境三路并集（语境词/WebView 容器/SDK 插屏窗指纹）+ 重扫路由黑洞解除 + 延后复扫 + typeWindowsChanged 新窗挂载，名单外 App 全量兜底 + feed 名单内插屏孤儿化解除）**（134 款内置 + 任意 GKD 订阅扩展） |
+| **拦截范围** | 开屏广告（含**视频开屏**——v7.8.0 视频卫士 + v7.9.0 竞速根治）· 插屏/激励弹窗 · 摇一摇诱导 · 悬浮广告球 · 视频前贴 · **App 内广告主动关闭（v7.4 信息流三路 20 款名单 + v7.5~v7.9 插屏卫士：语境三路并集（语境词/WebView 容器/SDK 插屏窗指纹 v7.9.0 接通）+ 图标关闭钮路径（v7.9.0 无文字钮）+ 重扫路由黑洞解除 + 延后复扫 + typeWindowsChanged + 外来包 Dialog 接线，名单外 App 全量兜底 + feed 名单内插屏孤儿化解除）**（134 款内置 + 任意 GKD 订阅扩展） |
 | **不碰什么** | 小程序/支付/团购容器零扫描零点击；银行/政务/相机零干预；只点应用自带「跳过」键（合规红线） |
 | **隐私与安全** | 数据仅存本机；联网仅日志上传（脱敏）与更新检查；零定位/通讯录/存储权限；更新包安装前 SHA-256 逐字节校验（镜像投毒/换包自动拦截）；订阅规则支付/诱导词双否决（注入防线） |
-| **体积** | APK 832KB（含三源离线订阅快照 ~520KB）· 冷启动毫秒级 · 典型日功耗 0.05mWh 级 |
+| **体积** | APK 836KB（含三源离线订阅快照 ~520KB）· 冷启动毫秒级 · 典型日功耗 0.05mWh 级 |
 
-## 当前版本 v7.8.0（2026-11-20）· 视频开屏卫士 + 插屏重扫路由根治 + 机型矩阵 396（十维）
+## 当前版本 v7.9.0（2026-11-20）· 源码审计轮：三处接线盲区根治 + 图标关闭钮路径 + 视频画像竞速根治
 
-**第十八轮实锤驱动的双死症根治**（用户原话：「扫描最新日志进行修复，很多没命中，只要是开屏广告带视频的你都未命中，且app内插入广告也不会拦截关闭，卫士用c语言写的话会不会更好呢」）。①**视频开屏四死因链**：12s 观察窗天花板（视频开屏跳过钮常在视频末 5~15s 才露头，>12s 按钮引擎已出窗「不再扫」）+ 静默事件源（SurfaceView 视频播放零内容事件，零候选退避杀链后零事件零复活）+ 预算烧穿（图片键门控期 3 击 1 秒烧光预算，按钮真激活时引擎已优雅收手）+ L4 形态确认门（WebView 视频容器树 >150 被拒）——VideoSplashGuard 纯函数根治（画像驱动：观察窗 20s + 1.5s 轮询针 + 白点节流 + 新键预算刷新 + 树上限 260）+ 视频开屏键词典（「5s 跳过」无「后」变体收编）。②**插屏五死因链**：重扫路由黑洞（开屏窗期内容事件全改道 nudgeScan——插屏常在 App 打开后 3~5s 弹出恰在黑洞内，首扫一眼后整个生命周期无人再看）+ 首扫太早（窗切换帧树未长成空手后无复扫）+ 同窗插层无人扫（无焦点 Dialog/overlay 挂载不产生任何被订阅事件）+ 闸⓪语境面窄（H5 插屏角标在网页内核非原生节点、SDK 插屏窗类即铁证全被拒）+ 闸①②杀变体（拉丁 X/点击关闭/宽扁横条钮被双杀）——路由黑洞解除 + 延后复扫 +450ms + typeWindowsChanged 补订 + 语境三路并集 + 词族收编 + 宽扁放行 + 终闸一致性 + feed 名单孤儿化解除。
+**完整源码审计驱动轮**（用户指令：源码审计 → 找根因 → 修改 → 编译 → 测试 → Git 提交 → 推送 GitHub → 新版本说明）：完整审计 AdSkipService（5236 行）/ InterstitialGuard / VideoSplashGuard / AdDecisionCore 全链路，实锤 v7.8.0 的**三处「纯函数单测全绿、服务侧零接线」盲区**——纯函数层被 6063 项单测保护得很好，服务侧装配层无断言覆盖，三处死线全是装配缺陷。①**闸⓪第三路「SDK 插屏窗指纹」从未被接通**（wctx.sdkAdWin 恒 false——无语境词无 WebView 的原生 SDK 插屏三路语境全空永不出手；纯函数单测直传 true 全绿，服务侧恒 false——测试盲区实锤）；②**SDK 窗零候选 streak 冻结在 0**（豁免窗跳过计数块——videoLike 的 sdkAdWin 路径（streak≥3）在 SDK 广告窗上永远建立不起来：SDK 视频开屏观察窗不延长、轮询针不排）；③**外来包 Dialog 插屏卫士从未被拉起**（非前台 Dialog 分支只走弹窗识别路径——广告 SDK 独立包 Dialog 插窗整窗漏拦）。三路全接通：`wctx.sdkAdWin = isAdActivityClass(窗类)` + streak 无条件计数（豁免只挡杀链不挡计数）+ 同分支接线 maybeInterstitialScan + winClass 登记。
 
-1. **视频开屏卫士**：视频画像（窗龄 ≥2.2s + 零候选连环 ≥3 + 树静默 ≥1.6s）→ 观察窗 12s→20s + 1.5s 轮询针（探针直查零 DFS——静默事件源兜底，12~20s 段 ≥5 针覆盖固定梯子盲区）+ 退避豁免
-2. **视频窗预算根治**：白点节流 ≥1.5s/击 + 预算 3→5（拉长 ≥7.5s 覆盖门控期）+ 新键预算刷新（视频末露头真按钮 ≠ 白点）+ L4 形态门放宽（树上限 260/时机窗 20s）
-3. **插屏重扫路由根治**：路由黑洞解除（开屏窗期/弹窗期内容事件同步拉起插屏扫描 · 节流 2.5s→1.5s）+ 延后复扫 +450ms + typeWindowsChanged 新窗挂载事件补订
-4. **插屏闸扩容**：闸⓪语境三路并集（语境词 16 字上限 + WebView 容器铁证 + SDK 插屏窗指纹）+ 关闭词族收编（拉丁 X 单字符/点击关闭/立即关闭）+ 宽扁钮形态放行（≤55%×≤7% 横条钮）+ 终闸双杀解除 + feed 名单 20 款插屏孤儿化解除
-5. **C 语言基准实测 + 全量测试**：五语言同构基准（校验和逐位一致：sel_sink=731/hits=20000/sink=485562）——C 稳态 261.8ns 快 Java 4.1× 但均为 µs 级（事件面 80ms 节流下 5 个数量级余量，语言性能对命中率零贡献；C 摸不到 AccessibilityNodeInfo 必须 JNI 回 Java——保持 Java）；23 套件 6063 项断言全绿（+964，新增 VideoSplashTest 51 + InterstitialRoutingTest 56 + 第十维视频开屏逐机型验证）
+1. **三处接线盲区根治**：闸⓪ SDK 插屏窗指纹接通（一行接线激活整路在场证据）+ SDK 窗 streak 无条件计数（画像观测源解冻）+ 外来包 Dialog 插屏接线（含 winClass 登记连带缺陷补齐）
+2. **图标关闭钮路径（用户实锤「关闭按钮是图片/只有图标没有文字」）**：无文字角落小可点控件在强广告语境窗（SDK 插屏窗指纹 / WebView+广告角标）内收为图标钮候选——语境门槛比文字路径更严（仅语境词在场的普通窗角落图标绝不点）；顶带优先 + 面积 ≤2% 屏 + 中部 tabBar 高发区全拒；label=× 走既有终闸零改动
+3. **视频画像竞速根治（树慢速构建窗）**：arm-hint（streak≥3 + 窗龄≥2.2s + 静默≥0.8s）窗免杀链——WebView/H5 视频容器树慢速构建时退避杀链早于静默≥1.6s 的全画像成立，链连续活到全画像接管（旧版链死等固定档自愈最长 2s 空档；静默持续 <0.8s 照杀——功耗红线）
+4. **视频轮询针探针词 5→10 + 每 3 针全量复扫**：+关闭/close/×/✕/✖（图内纯图标钮与拉丁关闭词旧探针探不到；裸 X/x 不收防 contains 噪声面）+ 每 3 针一次全量 tryScan（12~20s 段纯图片钮零文字零探针命中——walk 角落候选是唯一路径；20s 窗内 ≤5 次——功耗契约）
+5. **性能契约全保持 + 23 套件 6114 项断言全绿（+51）**：图标钮零新增扫描（既有 1.5s 节流内纯函数判定）/arm-hint 零新增档位/全量复扫只在 videoLike 窗/事件订阅零变化；新增 VideoSplashTest S9 竞速仿真 + S10 探针词契约、InterstitialGuardTest S9 图标钮真值表、InterstitialRoutingTest S10 接线契约（MainActivity/SplashActivity 红线不破）
 
-历史版本全部归档在 [docs/CHANGELOG.md](docs/CHANGELOG.md)；本轮实录：[round-40.json](docs/test-reports/round-40.json)（双死症死因链与五语言基准数据）。v7.7.0 回切开屏、v7.6.0 激进模式、v7.5.0 插屏卫士、v7.4.0 信息流三路全部保持。
+历史版本全部归档在 [docs/CHANGELOG.md](docs/CHANGELOG.md)；本轮实录：[round-41.json](docs/test-reports/round-41.json)（三处接线盲区死因链与图标钮真值表）。v7.7.0 回切开屏、v7.6.0 激进模式、v7.5.0 插屏卫士、v7.4.0 信息流三路全部保持。
 
 ## App 截图（真实 UI 截取）
 

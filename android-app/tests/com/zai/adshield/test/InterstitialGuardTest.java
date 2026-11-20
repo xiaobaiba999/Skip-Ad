@@ -285,6 +285,79 @@ public final class InterstitialGuardTest {
         }
         TestHost.checkEq(9, brandReject, "九品牌无语境反例零出手（宁漏勿误基线保持）");
 
+        /* ════ S9 v7.9.0 图标关闭钮真值表（14 项——用户实锤「关闭按钮只有图标没有文字」）════ */
+        TestHost.suite("InterstitialGuard · S9 图标关闭钮真值表（v7.9.0 无文字钮路径）");
+        // 语境闸（iconContextOk）：SDK 插屏窗指纹在场 → 放行；WebView+角标 → 放行；
+        // 仅语境词（无 WebView/无 SDK 窗）→ 拒（普通窗角落图标误触面不可控）。
+        TestHost.check(InterstitialGuard.iconContextOk(false, true, false),
+                "语境闸：SDK 插屏窗指纹在场放行（窗类即广告窗——无需角标）");
+        TestHost.check(InterstitialGuard.iconContextOk(true, false, true),
+                "语境闸：WebView+角标双证据放行（H5 插屏签名）");
+        TestHost.check(!InterstitialGuard.iconContextOk(true, false, false),
+                "语境闸：WebView 无角标拒（H5 普通页面角落导航图标误触面）");
+        TestHost.check(!InterstitialGuard.iconContextOk(false, false, true),
+                "语境闸：仅语境词拒（普通窗角落菜单/分享图标——图标路径门槛比文字路径更严）");
+        TestHost.check(!InterstitialGuard.iconContextOk(false, false, false),
+                "语境闸：零语境拒（基线）");
+        // 图标钮决策（decideIconFromCandidates）——1080×2400 基准几何：
+        // 顶角小图标钮（96×96 @ 右上 (960,48)~(1056,144) = 0.36% 屏）：
+        java.util.ArrayList<AdDecisionCore.NodeView> icons = new java.util.ArrayList<>();
+        boolean[] noStrong = {false};
+        icons.add(new SimNode("", 960, 48, 1056, 144)); // 右上角纯图标钮（零文本零 desc）
+        FeedAdGuard.FeedDecision iconHit = InterstitialGuard.decideIconFromCandidates(
+                icons, noStrong, 1080, 2400, false, true, false);
+        TestHost.check(iconHit != null && "×".equals(iconHit.label),
+                "SDK 插屏窗内顶角纯图标钮出手（label=× 图标语义——终闸零改动）");
+        TestHost.check(iconHit != null && iconHit.tapBounds != null
+                        && iconHit.tapBounds[0] == 960 && iconHit.tapBounds[1] == 48
+                        && iconHit.tapBounds[2] == 1056 && iconHit.tapBounds[3] == 144,
+                "图标钮 tapBounds=图标自身 bounds（960,48,1056,144 逐位——绝不广告主体）");
+        // WebView+角标路径同几何出手：
+        FeedAdGuard.FeedDecision iconH5 = InterstitialGuard.decideIconFromCandidates(
+                icons, noStrong, 1080, 2400, true, false, true);
+        TestHost.check(iconH5 != null, "WebView+角标窗内顶角纯图标钮出手（H5 插屏签名）");
+        // 中部图标绝不收（tabBar/菜单高发区）：cy 在 25%~75% 之外拒
+        java.util.ArrayList<AdDecisionCore.NodeView> midIcon = new java.util.ArrayList<>();
+        midIcon.add(new SimNode("", 960, 1200, 1056, 1296)); // 中部右缘图标（tabBar 高发）
+        FeedAdGuard.FeedDecision midHit = InterstitialGuard.decideIconFromCandidates(
+                midIcon, noStrong, 1080, 2400, false, true, false);
+        TestHost.check(midHit == null, "中部图标拒（cy 50%——tabBar/菜单图标高发区零出手）");
+        // strongOnly（中部边带候选）绝不收
+        boolean[] strongMark = {true};
+        FeedAdGuard.FeedDecision strongHit = InterstitialGuard.decideIconFromCandidates(
+                icons, strongMark, 1080, 2400, false, true, false);
+        TestHost.check(strongHit == null, "strongOnly（中部边带）候选拒（边带中部图标误触面最大）");
+        // 面积 >2% 屏拒（菜单容器/广告缩略图）：242×352 = 3.3% 屏 → 拒
+        java.util.ArrayList<AdDecisionCore.NodeView> bigIcon = new java.util.ArrayList<>();
+        bigIcon.add(new SimNode("", 830, 48, 1072, 400));  // 242×352 = 3.3% 屏（>2% 拒）
+        FeedAdGuard.FeedDecision bigHit = InterstitialGuard.decideIconFromCandidates(
+                bigIcon, new boolean[]{false}, 1080, 2400, false, true, false);
+        TestHost.check(bigHit == null, "面积 >2% 屏图标拒（242×352=3.3% 屏——菜单容器/广告缩略图闸）");
+        // 面积 ≤2% 屏放行（对照）：192×192 = 1.42% 屏 → 收
+        java.util.ArrayList<AdDecisionCore.NodeView> smallIcon = new java.util.ArrayList<>();
+        smallIcon.add(new SimNode("", 880, 48, 1072, 240)); // 192×192 = 1.42% 屏
+        FeedAdGuard.FeedDecision smallHit = InterstitialGuard.decideIconFromCandidates(
+                smallIcon, new boolean[]{false}, 1080, 2400, false, true, false);
+        TestHost.check(smallHit != null, "面积 ≤2% 屏图标收（192×192=1.42% 屏——图标级面积对照）");
+        // 顶带优先：两个候选（顶带 vs 底带）→ 顶带胜出（关闭图标钮常态在窗顶角）
+        java.util.ArrayList<AdDecisionCore.NodeView> twoBand = new java.util.ArrayList<>();
+        twoBand.add(new SimNode("", 120, 2200, 216, 2296)); // 底带图标（cy≈2248=94%）
+        twoBand.add(new SimNode("", 960, 48, 1056, 144));      // 顶带图标（cy≈96=4%）
+        FeedAdGuard.FeedDecision bandHit = InterstitialGuard.decideIconFromCandidates(
+                twoBand, new boolean[]{false, false}, 1080, 2400, false, true, false);
+        TestHost.check(bandHit != null && (bandHit.tapBounds[1] + bandHit.tapBounds[3]) / 2 < 600,
+                "顶带候选优先胜出（顶带 <25% 屏高——关闭钮常态位）");
+        // 终闸一致性：图标钮 label="×" 过 interBoundaryCheck（与文字 × 钮同一闸）
+        TestHost.checkEq(ComplianceGuard.BND_OK, ComplianceGuard.interBoundaryCheck(
+                        "×", iconHit != null ? iconHit.tapBounds : new int[]{960, 48, 1056, 144},
+                        1080, 2400, "com.example.app", "android.widget.FrameLayout"),
+                "图标钮 label=× 过插屏终闸（语义/形态双闸——与文字 × 同闸零改动）");
+        // 普通窗（零强语境）同图标拒——误触红线（对照 S9 语境闸断言的行为面）
+        FeedAdGuard.FeedDecision noCtxHit = InterstitialGuard.decideIconFromCandidates(
+                icons, noStrong, 1080, 2400, false, false, true);
+        TestHost.check(noCtxHit == null, "零强语境窗同图标拒（仅语境词不够——图标路径语境门槛更严）");
+        TestHost.check(InterstitialGuard.ICON_AREA_MAX == 0.02, "图标面积上限 2% 屏（常量契约）");
+
         TestHost.done();
     }
 }

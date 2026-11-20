@@ -187,6 +187,86 @@ public final class VideoSplashTest {
         TestHost.checkEq(3, VideoSplashGuard.VIDEO_ZERO_CAND_STREAK, "零候选连环 3");
         TestHost.checkEq(12000L, VideoSplashGuard.windowDeadlineMs(false), "普通窗 12s 保持");
 
+        /* ════ S9 v7.9.0 画像竞速根治（8 项——树慢速构建窗的退避竞速死因）════ */
+        TestHost.suite("VideoSplash · S9 画像竞速根治（arm-hint——树慢速构建窗）");
+        // 死因复现：WebView/H5 视频容器树慢速构建（内容事件持续到 ~2s）——
+        // streak≥3 + 窗龄≥2.6s 的退避杀链早于静默≥1.6s 的全画像成立时刻
+        // （内容事件停在 2s 时，静默要到 3.6s 才满 1.6s——链已在 2.6s 被杀）。
+        // arm-hint（streak≥3 + 窗龄≥2.2s + 静默≥0.8s）窗免杀链：链活到
+        // 3.6s 全画像成立（videoLike 接管观察义务——轮询针在岗）。
+        TestHost.check(VideoSplashGuard.videoArmHint(2600, 3, 800),
+                "arm-hint 成立（streak 3 + 窗龄 2.6s + 静默 0.8s——退避正要杀链的竞速时刻）");
+        TestHost.check(VideoSplashGuard.videoArmHint(2600, 3, 1200),
+                "arm-hint 成立（静默 1.2s——距全画像 1.6s 还差 0.4s）");
+        TestHost.check(VideoSplashGuard.videoArmHint(2600, 3, 1700),
+                "arm-hint 成立（静默 1.7s——全画像同步成立，豁免与 videoLike 重叠无空档）");
+        TestHost.check(!VideoSplashGuard.videoArmHint(2600, 3, 500),
+                "arm-hint 拒（静默 0.5s < 0.8s——树持续有事件的窗不豁免，退避照杀功耗红线）");
+        TestHost.check(!VideoSplashGuard.videoArmHint(2600, 2, 2000),
+                "arm-hint 拒（streak 2 < 3——画像预备门槛与全画像同源）");
+        TestHost.check(!VideoSplashGuard.videoArmHint(2000, 3, 2000),
+                "arm-hint 拒（窗龄 2.0s < 2.2s——按钮常态 0~2s 渲染期内不预备）");
+        TestHost.check(VideoSplashGuard.videoArmHint(3000, 4, -1),
+                "arm-hint 成立（静默 -1 = 无内容事件记录——SurfaceView 纯静默窗，画像预备放行）");
+        // 竞速时间线仿真：树慢速构建窗（内容事件停在 1.8s——arm-hint 介入边界）——
+        // 旧版 2.6s 杀链（streak≥3 + 窗龄≥2.6s，无静默豁免）→ 全画像只能靠
+        // 固定档自愈（下一档 3220 时静默 1420 <1.6s 仍死；4000 档才活）；
+        // v7.9.0 arm-hint 在 2600 竞速时刻（静默 800≥0.8s）挡住杀链 → 链
+        // 连续活到 3.4s 全画像成立（videoLike 接管——轮询针在岗零空档）。
+        boolean chainAlive = true, oldChainAlive = true, profileAt34 = false;
+        long oldFirstProfile = -1;
+        for (long t = 2200; t <= 4000; t += 200) {
+            int streak = 3; // 梯子密档 + nudge 早已攒满
+            long silence = t - 1800; // 内容事件停在 1.8s（树慢速构建）
+            // v7.9.0：arm-hint 挡退避杀链（静默 ≥0.8s 的窗不杀）
+            boolean kill79 = streak >= 3 && t >= 2600 && !VideoSplashGuard.videoArmHint(t, streak, silence);
+            if (kill79) chainAlive = false;
+            // v7.8.0 对照：无 arm-hint——streak≥3 + 窗龄≥2.6s 即杀
+            boolean kill78 = streak >= 3 && t >= 2600;
+            if (kill78) oldChainAlive = false;
+            if (VideoSplashGuard.videoLike(t, streak, silence, false)) {
+                if (t == 3400) profileAt34 = true;
+                if (oldFirstProfile < 0) oldFirstProfile = t;
+            }
+        }
+        TestHost.check(chainAlive, "arm-hint 挡住退避杀链（2.6s 竞速时刻静默 800ms≥0.8s——链连续活）");
+        TestHost.check(!oldChainAlive, "对照·v7.8.0 同窗 2.6s 杀链（无静默豁免——链死等固定档自愈）");
+        TestHost.check(profileAt34, "3.4s 全画像成立（arm-hint 守链——静默涨满 1.6s 即接管，无空档）");
+        TestHost.check(oldFirstProfile >= 3400, "全画像最早 3.4s（静默 1.6s 于 3.4s 涨满——边界精确）");
+
+        /* ════ S10 v7.9.0 轮询针探针词 + 全量复扫（10 项——图片钮/图标钮路径）════ */
+        TestHost.suite("VideoSplash · S10 轮询针探针词 10 词 + 每 3 针全量复扫");
+        // 用户实锤「广告按钮不是普通 TextView / 关闭按钮只有图标没有文字」：
+        // 旧探针 5 词（跳过/跳過/skip/关闭广告/關閉廣告）对图内「×」文本钮、
+        // 拉丁 close 钮零命中 → 探针不中 → 全量 tryScan 不拉起 → 12~20s 段漏拦。
+        String[] words = VideoSplashGuard.VIDEO_POLL_PROBE_WORDS;
+        boolean hasX = false, hasClose = false, hasLatin = false, hasLegacy = false, hasNoBareX = true;
+        for (String w : words) {
+            if (w.equals("×") || w.equals("✕") || w.equals("✖")) hasX = true;
+            if (w.equals("关闭")) hasClose = true;
+            if (w.equals("close")) hasLatin = true;
+            if (w.equals("跳过") || w.equals("skip")) hasLegacy = true;
+            if (w.equals("X") || w.equals("x")) hasNoBareX = false; // 裸拉丁 X contains 噪声面
+        }
+        TestHost.check(words.length >= 10, "探针词 ≥10（旧 5 词——×/关闭/close/全角家族全收）");
+        TestHost.check(hasX, "图内「×/✕/✖」全角家族在场（图片钮最常见可探文本）");
+        TestHost.check(hasClose, "「关闭」短词在场（旧版只有「关闭广告」整词）");
+        TestHost.check(hasLatin, "拉丁「close」在场（国际 App 视频开屏）");
+        TestHost.check(hasLegacy, "旧 5 词保持（跳过/跳過/skip/关闭广告/關閉廣告——回归）");
+        TestHost.check(hasNoBareX, "裸「X/x」不收（contains 搜索英文任意含 x 词全命中——噪声面交给全量闸）");
+        // 每 3 针一次全量复扫（pollWalkDue——12~20s 段纯图片钮零文字零探针命中，
+        // walk 角落候选路径是唯一活路）
+        TestHost.check(!VideoSplashGuard.pollWalkDue(0), "第 0 针不全量（首针探针优先——零 DFS 红线）");
+        TestHost.check(VideoSplashGuard.pollWalkDue(3), "第 3 针全量复扫（图片钮兜底周期）");
+        TestHost.check(!VideoSplashGuard.pollWalkDue(4), "第 4 针不全量（周期内——探针直查）");
+        TestHost.check(VideoSplashGuard.pollWalkDue(6), "第 6 针全量复扫（3 针周期稳定）");
+        // 功耗契约：全量复扫只在 videoLike 窗（20s 观察窗内 ≤6 次全量；普通窗零轮询零全量）
+        int fullScans = 0;
+        for (int i = 0; i <= 12; i++) if (VideoSplashGuard.pollWalkDue(i)) fullScans++;
+        TestHost.check(fullScans <= 5 && fullScans >= 3, "20s 观察窗内全量复扫 ≤5 次（1.5s×13 针中每 3 针一次——功耗红线）");
+        TestHost.checkEq(3, VideoSplashGuard.VIDEO_POLL_WALK_EVERY, "全量复扫周期 3 针（常量契约）");
+        TestHost.checkEq(800L, VideoSplashGuard.VIDEO_ARM_SILENCE_MIN_MS, "画像预备静默半阈值 0.8s（常量契约）");
+
         TestHost.done();
     }
 }

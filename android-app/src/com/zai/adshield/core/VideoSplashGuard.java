@@ -64,6 +64,28 @@ public final class VideoSplashGuard {
     /** 视频开屏角落键树上限放宽（150→260——WebView 视频容器常态 >150）。 */
     public static final int VIDEO_CORNER_TREE_MAX = 260;
 
+    /* ══ v7.9.0 视频画像竞速根治（树慢速构建窗的退避竞速死因）══ */
+    /** v7.9.0 画像预备门槛（静默半阈值）：WebView/H5 视频容器树慢速构建期
+     *  （内容事件持续到 ~2s）静默达不到 1.6s 全阈值时，零候选退避已在
+     *  streak≥3 + 窗龄≥2.6s 处杀链——链死 → 静默采样断供 → videoLike 永远
+     *  建立不起来 → 轮询针永不排 = 视频开屏整窗漏拦（用户实锤「只要是
+     *  开屏广告带视频的你都未命中」的树慢速构建亚型）。
+     *  arm-hint（streak≥3 + 窗龄≥2.2s + 静默≥0.8s）窗免退避——多守 0.8s
+     *  让全画像（静默≥1.6s）有机会成立；全画像成立后既有 videoLike 豁免接管。 */
+    public static final long VIDEO_ARM_SILENCE_MIN_MS = 800;
+    /** v7.9.0 轮询针探针词（视频窗专用——图内「×/关闭/close」纯图标钮与
+     *  拉丁关闭词旧探针 5 词探不到；命中即全量 tryScan 重走完整决策闸）。
+     *  顺序即命中率序（跳过族最优先）。裸「X/x」不收：contains 搜索噪声面
+     *  大（英文任意含 x 词全命中），交由全量闸处理。 */
+    public static final String[] VIDEO_POLL_PROBE_WORDS = {
+            "跳过", "跳過", "skip", "关闭广告", "關閉廣告",
+            "关闭", "close", "×", "✕", "✖",
+    };
+    /** v7.9.0 轮询针全量复扫周期：每 3 针一次全量 tryScan（12~20s 段图片
+     *  钮无文字零探针命中——图片 × 钮只能靠 walk 角落候选路径；全量复扫
+     *  走完整决策闸，预算 600 与 nudge 路径同档）。 */
+    public static final int VIDEO_POLL_WALK_EVERY = 3;
+
     /* ══ 画像与门（纯函数）══ */
 
     /**
@@ -84,6 +106,19 @@ public final class VideoSplashGuard {
         return silenceMs >= VIDEO_SILENCE_MIN_MS;
     }
 
+    /**
+     * v7.9.0 画像预备（arm-hint）：零候选退避豁免用——streak 已攒满但静默还
+     * 差半步（树慢速构建窗：内容事件持续到 ~2s，静默 0.8s 时退避正要杀链）。
+     * arm-hint 成立的窗不退避（轮询针/固定档再守一轮），静默涨满 1.6s 后
+     * videoLike 全画像成立接管观察；若树持续有事件（静默 <0.8s）则不豁免
+     * ——退避照杀（功耗红线：arm-hint 只多守半步，不无限观察）。
+     */
+    public static boolean videoArmHint(long elapsedMs, int zeroCandStreak, long silenceMs) {
+        if (zeroCandStreak < VIDEO_ZERO_CAND_STREAK) return false;
+        if (elapsedMs < VIDEO_PROFILE_MIN_MS) return false;
+        return silenceMs < 0 || silenceMs >= VIDEO_ARM_SILENCE_MIN_MS;
+    }
+
     /** 观察窗效：videoLike → 20s（延长档）；普通开屏 → 12s（原 WINDOW_MS）。 */
     public static long windowDeadlineMs(boolean videoLike) {
         return videoLike ? VIDEO_EXT_WINDOW_MS : 12000;
@@ -97,6 +132,12 @@ public final class VideoSplashGuard {
     /** 门控期白点节流：视频窗角落/手势击距上击 ≥VIDEO_STRIKE_GAP_MS 才放行。 */
     public static boolean strikeGapOk(Long lastStrikeAt, long now) {
         return lastStrikeAt == null || now - lastStrikeAt.longValue() >= VIDEO_STRIKE_GAP_MS;
+    }
+
+    /** v7.9.0 轮询针全量复扫到期（每 VIDEO_POLL_WALK_EVERY 针一次——图片钮
+     *  无文字零探针命中，全量 walk 角落候选是 12~20s 段图片键唯一路径）。 */
+    public static boolean pollWalkDue(int pollIdx) {
+        return pollIdx > 0 && pollIdx % VIDEO_POLL_WALK_EVERY == 0;
     }
 
     /**

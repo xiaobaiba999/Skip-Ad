@@ -1,0 +1,75 @@
+{
+  "round": 41,
+  "version": "7.9.0",
+  "date": "2026-11-20",
+  "theme": "源码审计轮：三处接线盲区根治 + 图标关闭钮路径 + 视频画像竞速根治",
+  "user_directives": [
+    "完整源码审计（Android 主模块/AccessibilityService/Event Handler/Window 处理/Node Tree 遍历/广告规则/点击逻辑）",
+    "完整追踪广告识别链路（AccessibilityEvent → Event Filter → Window/Root → Node Tree → 候选 → 规则 → 评分 → 安全 → 点击 → 复验），Splash 与 Interstitial 分开追踪",
+    "重点解决：广告按钮不是普通 TextView/图片按钮/WebView/Dialog/PopupWindow/独立 Window/Activity 不变化/无文字节点/Canvas·SurfaceView·TextureView",
+    "App 内插屏：关闭按钮是图片/只有图标没有文字",
+    "必须保持性能与功耗（最高优先级约束）——不持续高频轮询/不每事件全树扫描/不为命中率降低安全阈值",
+    "三级检测 L1/L2/L3 架构、事件驱动优先于轮询、高置信度点击优先、每次修改可编译可回滚、测试结果必须真实、最终 Git Commit + Push GitHub + 新版本"
+  ],
+  "root_causes": {
+    "cause_wiring_sdkadwin": "接线盲区①·闸⓪第三路「SDK 插屏窗指纹」死线：maybeInterstitialScan 从未给 wctx.sdkAdWin 赋值（Ctx 默认 false）——decideFromCandidates(..., wctx.sdkAdWin) 恒传 false，v7.8.0 新增的 SDK 插屏窗指纹在场证据整路死代码：无语境词无 WebView 的原生 SDK 插屏三路语境全空永不出手（纯函数单测直传 true 全绿，服务侧恒 false——装配层无断言覆盖的测试盲区实锤）",
+    "cause_streak_frozen": "接线盲区②·SDK 窗零候选 streak 冻结：零候选退避块的豁免窗（广告窗/Dialog/学习窗）跳过整个计数块——zeroCandScans 冻结在 0，videoLike 的 sdkAdWin 路径（streak≥3）在 SDK 广告窗上永远建立不起来：SDK 视频开屏观察窗不延长、轮询针不排",
+    "cause_foreign_dialog": "接线盲区③·外来包 Dialog 插屏卫士未拉起：非前台 Dialog 分支只走 nudgePopupScan（弹窗识别路径——话术门识别营销弹窗），插屏卫士从未被拉起；且此分支提前 return 从未登记 winClass——SDK 指纹判定拿到空串恒 false 的连带缺陷",
+    "cause_icon_button": "路径缺口④·图标关闭钮零路径：文字候选（nativeFindTexts）对纯图标钮（零文本零 desc）零候选——decideFromCandidates 返回 null，无文字钮零路径（用户实锤「关闭按钮是图片/只有图标没有文字」）",
+    "cause_video_race": "路径缺口⑤·视频画像竞速（树慢速构建窗）：WebView/H5 视频容器树慢速构建（内容事件持续到 ~2s）时零候选退避杀链（streak≥3 + 窗龄≥2.6s）早于静默≥1.6s 的全画像成立——链死 → 静默采样断供 → videoLike 建立不起来 → 轮询针永不排；且轮询探针 5 词探不到图内「×」/拉丁 close（12~20s 段图片钮零活路）"
+  },
+  "fixes": {
+    "wiring_sdkadwin": "AdSkipService.maybeInterstitialScan：wctx.sdkAdWin = AdDecisionCore.isAdActivityClass(cls)（与 tryScan 主路径同源同判——一行接线激活整路在场证据）",
+    "streak_unconditional": "零候选退避块重构：streak 无条件计数（豁免只挡杀链不挡计数——计数是 videoLike 画像的观测源；防膨胀上限 96 + 候选出现即清零原契约保持）",
+    "foreign_dialog_wiring": "TYPE_WINDOW_STATE_CHANGED 非前台 Dialog 分支：winClass.put(pkg, cls) 登记 + maybeInterstitialScan(pkg, now) 接线（自带 1.5s 节流——外来包 Dialog 插窗（com.qq.e.ads 家族）插屏卫士在岗）",
+    "icon_button_path": "InterstitialGuard 纯函数新增：iconContextOk（语境闸——SDK 插屏窗指纹在场，或 WebView 在场且广告角标同窗；仅语境词在场绝不点纯图标）+ decideIconFromCandidates（walk 角落候选逐候选判定：closeFormOk 三路并集 + 面积 ≤2% 屏图标级 + 顶带（cy≤25%）优先/底部带（cy≥75%）次选/中部 tabBar 高发区绝不收 + strongOnly 绝不收 + label=× 走既有终闸零改动）+ 服务侧接线（maybeInterstitialScan 内 f.corners 重收集 + badgePresent 判定 + executeInterstitial 复用）",
+    "video_arm_hint": "VideoSplashGuard.videoArmHint 纯函数（streak≥3 + 窗龄≥2.2s + 静默≥0.8s → 退避豁免——树慢速构建窗多守 0.8s 让全画像（静默≥1.6s）成立；静默持续 <0.8s 的窗照杀，功耗红线）+ tryScan 豁免列表接线（zCount 无条件计数后参与判定）",
+    "video_probe_words": "VIDEO_POLL_PROBE_WORDS 5→10（+关闭/+close/+×/+✕/+✖——图内纯图标钮与拉丁关闭词；裸 X/x 不收防 contains 噪声面交给全量闸）+ videoPoll 探针循环词表化",
+    "video_poll_walk": "VIDEO_POLL_WALK_EVERY=3 + pollWalkDue(pollIdx) + videoPoll 针序参数化（pollIdx 闭包递增）：每 3 针一次全量 tryScan（12~20s 段纯图片钮零文字零探针命中——walk 角落候选是唯一路径；全量闸照常把关，预算 600 与 nudge 同档；20s 窗内 ≤5 次——功耗契约）",
+    "perf_contract": "性能契约全保持：图标钮零新增扫描（既有 1.5s 节流内纯函数判定）/streak 计数纯 HashMap（原计数块同一成本）/arm-hint 零新增档位（静默 <0.8s 照杀）/全量复扫只在 videoLike 窗/探针是系统原生 C++ 子树搜索零 DFS/事件订阅零变化（typeViewScrolled 评估后保持不订——滚动高频低收益，内容变化事件已驱动扫描）"
+  },
+  "tests": {
+    "total": "6114/6114 全绿（23 套件；v7.8.0 为 6063 · +51）",
+    "delta": "+51 = VideoSplashTest 51→75（S9 画像竞速 11：arm-hint 真值表 7 + 竞速时间线仿真 4 / S10 探针词+全量复扫 13）+ InterstitialGuardTest 102→118（S9 图标钮真值表 16：语境闸 5 + 决策 9 + 面积双向 2）+ InterstitialRoutingTest 56→67（S10 接线契约 11：SDK 指纹全族 4 命中 + MainActivity/SplashActivity 红线不破 + 外来包 Dialog 节流 + streak 契约 + arm-hint 在场）",
+    "suites": {
+      "BrandFocus396Test": 4476,
+      "TapPointMatrixTest": 295,
+      "NonMainstreamAppTest": 130,
+      "RuleGovernorTest": 142,
+      "RestoreGuardTest": 106,
+      "ComplianceGuardTest": 83,
+      "SubscriptionBuiltinTest": 76,
+      "FeedAdGuardTest": 131,
+      "RuleOrderTest": 39,
+      "InterstitialGuardTest": 118,
+      "SplashCountdownTest": 61,
+      "AggressiveModeTest": 42,
+      "VideoSplashTest": 75,
+      "InterstitialRoutingTest": 67,
+      "MiniProgramGuardTest": 36,
+      "SubMirrorTest": 35,
+      "ReleaseNotesTest": 30,
+      "HumanTapMatrixTest": 20,
+      "DecisionGuardTest": 22,
+      "MultiDeviceMatrixTest": 42,
+      "PowerGovernorTest": 48,
+      "RegressionCoreTest": 15,
+      "ReentrySplashTest": 25,
+      "check-appjs.sh": "语义闸（不计入断言总数）"
+    },
+    "baseline_note": "修改前基线复跑：v7.8.0 6063/6063 全绿（沙箱工具链 ECJ 3.36.0 + build-tools r34 + platform-34 重建后复现）；P0 修改后全量回归零破坏（6063/6063 保持）→ 新增断言后终版 6114/6114"
+  },
+  "build": {
+    "apk_bytes": 853558,
+    "version_code": 79000,
+    "version_name": "7.9.0",
+    "md5": "b4b7f9e8f5f5200ec269f46e14bc917a",
+    "sha256": "c8053c27e37bf1205c84a3ca0e0584452c55606c536eb0f5d24e9a6fda50a5d2"
+  },
+  "honesty": {
+    "jvm_verified": "全部新增断言与全量回归均在 JVM 实测（run-tests.sh 输出：总计通过 6114 · 失败 0）",
+    "build_verified": "ECJ 编译零错误 + aapt2/d8/zipalign/apksigner 构建链实测（aapt dump badging：versionCode='79000' versionName='7.9.0'）+ 签名证书与 v7.8.0 同一（覆盖安装链保持）",
+    "device_unverified": "真机实测（九品牌机型矩阵实装开屏/插屏对照）当前环境无真机连接未执行——图标钮路径/外来包 Dialog 接线/arm-hint 竞速根治的覆盖验证边界为 JVM 断言（含九品牌 1:1 分辨率缩放与真值表），真机依赖用户实装反馈闭环（与既有 21 轮发布同一边界）"
+  },
+  "publish": "GitHub tag v7.9.0 + Release（publish-v790.mjs：描述同步 + Release 正文 + asset 上传 + digest 核对）· 三目录分发（android-app/dist · 仓库 dist · GitHub Release asset）· 免责声明保持（README）"
+}

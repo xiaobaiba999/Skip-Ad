@@ -1,6 +1,6 @@
 /** 版本与 GitHub 仓库信息（Web 端与发布节奏共用） */
-export const APP_VERSION = "7.8.0";
-export const VERSION_CODE = 78000; // major*10000 + minor*100 + patch，随版本单调递增
+export const APP_VERSION = "7.9.0";
+export const VERSION_CODE = 79000; // major*10000 + minor*100 + patch，随版本单调递增
 export const GITHUB_REPO = "xiaobaiba999/Skip-Ad";
 export const GITHUB_API = `https://api.github.com/repos/${GITHUB_REPO}`;
 export const GITHUB_HOME = `https://github.com/${GITHUB_REPO}`;
@@ -19,16 +19,16 @@ export interface VersionEntry {
  *  旧版本内容归档在 GitHub Releases 与 git 历史） */
 export const VERSION_HISTORY: VersionEntry[] = [
   {
-    version: "7.8.0",
-    code: 78000,
-    date: "2026-11-19",
-    tagline: "回切开屏根治 + Toast 常驻修复 + 机型矩阵 352（九维）",
+    version: "7.9.0",
+    code: 79000,
+    date: "2026-11-20",
+    tagline: "源码审计轮：三处接线盲区根治 + 图标关闭钮路径 + 视频画像竞速根治",
     notes: [
-      "回切开屏根治（用户实锤「从另一个 app 切回这个 app 期间会弹广告没有拦截到」）：两个死因一起根治——①卫士自家包事件被整体丢弃致 lastFgPkg 从未登记自家包名（切回目标 App 时 entering=false 不按新进入处理）：自家包 WINDOW_STATE_CHANGED 登记前台边界 + ReentryGuard 纯函数（同包离开 ≥6s 判回切等价新进入——息屏回亮/白名单边界/ROM 漏网全兜住）+ rootWinCls 刷新 + 回切日志记账（30s 节流）",
-      "进入期全量门（死因②）：回切开屏常叠在被宿主窗档案判 CLEAN 的主界面窗类上（同窗类盖开屏层，扫描链被抑制只剩探针哨兵，晚到/图标式跳过键整窗漏拦）——进入期 4s CLEAN 档案让路全量扫描（激进档·宁多扫绝不漏，进入是低频事件功耗代价可忽略）",
-      "Toast 常驻修复（用户实锤「点击开启弹窗广告屏蔽后提示一直停在底部」）：旧实现收尾纯靠 JS setTimeout（真机上同步桥调用卡 JS 线程时 2200ms 计时不触发）+ 内联 cssText transition 在部分 OEM WebView 渲染失灵——改 CSS 关键帧动画（合成器线程驱动，JS 阻塞免疫）+ opacity/visibility 双终态 + JS 兜底计时器三重保险",
-      "命中跳过率拓宽：探针词扩「关闭广告/關閉廣告」（切回期间插层常以整词作键）+ 繁体词典补收（TEXT_EXACT/SKIP_TEXTS）+ 机型矩阵 308→352（11 组 × 32 · 2027 世代：小米 19 系/Redmi K120/POCO F11/Mate 90/Magic10/Find X10/真我 GT9/X310/iQOO 21/S27/一加 18 系）+ 新增第九维回切开屏逐机型验证",
-      "21 套件 5099 项 JVM 断言全绿（v7.6.1 为 4314 · +785）；新增 ReentrySplashTest 回切开屏专项套件（S1~S7：真值表/进入期门/自家包边界时间线/全分辨率回切命中/插层键词典/离开时长记账/九品牌几何投影）",
+      "三处接线盲区根治（源码审计实锤——纯函数单测全绿、服务侧零接线的装配缺陷）：①闸⓪第三路「SDK 插屏窗指纹」从未被接通（wctx.sdkAdWin 恒 false——无语境词无 WebView 的原生 SDK 插屏三路语境全空永不出手）→ isAdActivityClass(窗类) 接通；②SDK 窗零候选 streak 冻结在 0（豁免窗跳过计数块——videoLike 的 sdkAdWin 路径永不触发，SDK 视频开屏观察窗不延长轮询针不排）→ streak 无条件计数（豁免只挡杀链不挡计数）；③外来包 Dialog 插屏卫士从未被拉起（非前台 Dialog 分支只走弹窗识别路径——广告 SDK 独立包 Dialog 插窗整窗漏拦）→ 同分支接线 + winClass 登记补齐",
+      "图标关闭钮路径（用户实锤「关闭按钮是图片/只有图标没有文字」）：无文字角落小可点控件在强广告语境窗（SDK 插屏窗指纹 / WebView+广告角标——语境门槛比文字路径更严，仅语境词在场的普通窗角落图标绝不点）内收为图标钮候选——顶带优先 + 面积 ≤2% 屏图标级 + 中部 tabBar 高发区全拒 + label=× 走既有终闸零改动（execute 既有防线全量复用）",
+      "视频画像竞速根治（树慢速构建窗）：WebView/H5 视频容器树慢速构建（内容事件持续到 ~2s）时零候选退避杀链（streak≥3+窗龄≥2.6s）早于静默≥1.6s 的全画像成立——arm-hint（streak≥3+窗龄≥2.2s+静默≥0.8s）窗免杀链，链连续活到全画像接管（旧版链死等固定档自愈最长 2s 空档；静默持续 <0.8s 照杀——功耗红线）",
+      "视频轮询针探针词 5→10（+关闭/close/×/✕/✖——图内纯图标钮与拉丁关闭词旧探针探不到；裸 X/x 不收防 contains 噪声面）+ 每 3 针一次全量复扫（12~20s 段纯图片钮零文字零探针命中——walk 角落候选是唯一路径；20s 窗内 ≤5 次——功耗契约）",
+      "23 套件 6114 项 JVM 断言全绿（+51：VideoSplashTest S9 画像竞速仿真 + S10 探针词契约、InterstitialGuardTest S9 图标钮真值表、InterstitialRoutingTest S10 接线契约）；性能契约全保持（零新增扫描/零新增档位/事件订阅零变化）· APK 836KB · VC 79000 覆盖安装即升级",
     ],
   },
 ];

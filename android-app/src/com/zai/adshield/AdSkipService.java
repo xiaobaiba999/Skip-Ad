@@ -1633,6 +1633,21 @@ public class AdSkipService extends AccessibilityService {
                     if (isDialogClass(cls) && !isOemUtilityPkg(pkg)) {
                         popupUntil.put(pkg, now + POPUP_WINDOW_MS);
                         nudgePopupScan(pkg, now);
+                        /* v7.9.0：外来包 Dialog 窗类登记（winClass 追踪——主路径
+                         * TYPE_WINDOW_STATE_CHANGED 进入逻辑登记 winClass，此分支
+                         * 提前 return 从未登记 → 插屏卫士的 wctx.sdkAdWin（窗类即
+                         * SDK 广告窗指纹）与 Dialog 形态判定拿到空串恒 false）。 */
+                        winClass.put(pkg, cls);
+                        /* ═══ v7.9.0 外来包 Dialog 插屏接线（用户实锤「SDK
+                         *  动态创建广告窗口/独立 Window」）═══
+                         * 广告 SDK 独立包的 Dialog 插窗（如 com.qq.e.ads 家族
+                         * 的 Dialog 形态——事件 pkg 是 SDK 包而非宿主 App）：
+                         * 旧版此分支只走 nudgePopupScan 弹窗识别路径（话术门
+                         * 识别营销弹窗），插屏卫士（角标/关闭钮/图标钮签名）
+                         * 从未被拉起——外来包 Dialog 插屏整窗漏拦。v7.9.0：
+                         * 插屏卫士同分支接线（自带 1.5s 节流 + collectRoots
+                         * 按事件包收集——外来包 Dialog 树可被收集到）。 */
+                        maybeInterstitialScan(pkg, now);
                     }
                     return;
                 }
@@ -2848,6 +2863,15 @@ public class AdSkipService extends AccessibilityService {
                 wctx.pkg = pkg;
                 wctx.activityId = cls == null ? "" : cls;
                 wctx.budgetNodes = 300;
+                /* ═══ v7.9.0 SDK 插屏窗指纹接线根治（闸⓪第三路死线）═══
+                 * v7.8.0 新增的闸⓪第三在场证据（SDK 插屏窗指纹——窗类即
+                 * 广告窗）从未被接通：wctx.sdkAdWin 恒 false（Ctx 默认值），
+                 * decideFromCandidates(..., wctx.sdkAdWin) 传的永远是 false——
+                 * SDK 插屏窗（无语境词、无 WebView 的原生插屏）三路语境
+                 * 全空 → 整路死代码（纯函数单测直传 true 全绿，服务侧零
+                 * 接线——测试盲区实锤）。v7.9.0：窗类即 SDK 广告窗的
+                 * isAdActivityClass 判定接通（与 tryScan 主路径同源）。 */
+                wctx.sdkAdWin = AdDecisionCore.isAdActivityClass(cls);
                 com.zai.adshield.core.AdDecisionCore.ScanFind f =
                         com.zai.adshield.core.AdDecisionCore.walk(rootView, wctx);
                 java.util.ArrayList<com.zai.adshield.core.AdDecisionCore.NodeView> ctxCands =
@@ -2862,6 +2886,46 @@ public class AdSkipService extends AccessibilityService {
                                 ctxCands, closeCands, screenWidth, screenHeight, f.scrollPresent,
                                 f.webviewPresent, wctx.sdkAdWin);
                 if (fd != null && executeInterstitial(pkg, fd, now)) return;
+                /* ═══ v7.9.0 图标关闭钮路径（用户实锤「关闭按钮只有图标没有文字」）═══
+                 * 文字候选（nativeFindTexts）对纯图标钮（零文本零 desc）零候选——
+                 * walk 已收集的无文字角落小可点控件（isCornerControl 形态门把关）
+                 * 在强广告语境窗（SDK 插屏窗指纹 / WebView+角标同窗）内由
+                 * decideIconFromCandidates 收为图标钮候选（语境门槛比文字路径更严
+                 * ——仅语境词在场的普通窗角落图标绝不点：菜单/分享图标误触面）。
+                 * 角落候选是 NodeView 包装的 CornerCand.clickNode——直接重收集
+                 * clickNode 列表 + strongOnly 标记数组交决策核心。 */
+                if (fd == null && !f.corners.isEmpty()) {
+                    java.util.ArrayList<com.zai.adshield.core.AdDecisionCore.NodeView> iconCands =
+                            new java.util.ArrayList<>(f.corners.size());
+                    boolean[] strongOnly = new boolean[f.corners.size()];
+                    for (int ci = 0; ci < f.corners.size(); ci++) {
+                        com.zai.adshield.core.AdDecisionCore.CornerCand cc = f.corners.get(ci);
+                        iconCands.add(cc.clickNode);
+                        strongOnly[ci] = cc.strongOnly;
+                    }
+                    boolean badgePresent = false; // 角标在场（语境词候选里有过闸的可见标签）
+                    for (int bi = 0; bi < ctxCands.size() && !badgePresent; bi++) {
+                        com.zai.adshield.core.AdDecisionCore.NodeView bn = ctxCands.get(bi);
+                        if (bn == null) continue;
+                        try {
+                            String bl = bn.text();
+                            if (bl == null) bl = bn.desc() == null ? "" : bn.desc();
+                            bl = bl.trim();
+                            badgePresent = com.zai.adshield.core.InterstitialGuard.hasAdContextWord(bl) && bn.visible();
+                        } catch (Throwable ignored) {
+                        }
+                    }
+                    com.zai.adshield.core.FeedAdGuard.FeedDecision iconFd =
+                            com.zai.adshield.core.InterstitialGuard.decideIconFromCandidates(
+                                    iconCands, strongOnly, screenWidth, screenHeight,
+                                    f.webviewPresent, wctx.sdkAdWin, badgePresent);
+                    if (iconFd != null && executeInterstitial(pkg, iconFd, now)) {
+                        appendLog("🛡 插屏图标钮（" + shortPkg(pkg) + "）：纯图标关闭钮出手（"
+                                + (wctx.sdkAdWin ? "SDK 插屏窗指纹" : "WebView+广告角标")
+                                + "强语境在场——v7.9.0 图标钮路径）");
+                        return;
+                    }
+                }
                 if (missSamples == null) {
                     // v7.6.0：语境词与关闭词命中样本都登（被闸也照登）——上传日志
                     // 直接定位「语境不在场」还是「关闭钮被哪道闸拒」
@@ -3251,19 +3315,38 @@ public class AdSkipService extends AccessibilityService {
                 String zKey = pkg + "|" + winStart;
                 if (zeroCand) {
                     String zCls = winClassOf(pkg);
+                    /* ═══ v7.9.0 streak 计数结构性修复 ═══
+                     * 旧版：豁免窗（广告窗/Dialog/学习窗）跳过整个计数块 →
+                     * zeroCandScans 冻结在 0——videoLike 的 sdkAdWin 路径
+                     *（streak≥3）在 SDK 广告窗上【永远建立不起来】（窗类即
+                     * 广告窗的零候选 streak 恰恰被豁免挡住不计数——纯函数
+                     * 单测直传 streak=3 全绿，服务侧 streak 恒 0 的第二处
+                     * 接线盲区）。修复：streak【无条件计数】（豁免只挡杀链
+                     * 不挡计数——计数是 videoLike 画像的观测源），防膨胀
+                     * 上限 96 + 候选出现即清零（原契约保持）。 */
+                    if (zeroCandScans.size() > 96) zeroCandScans.clear(); // 防膨胀
+                    Integer zBox = zeroCandScans.get(zKey);
+                    int zCount = (zBox == null ? 1 : zBox.intValue() + 1);
+                    zeroCandScans.put(zKey, zCount);
+                    /* ═══ v7.9.0 画像预备豁免（视频画像竞速死因——树慢速构建窗）═══
+                     * WebView/H5 视频容器树慢速构建（内容事件持续到 ~2s）时：
+                     * streak≥3 + 窗龄≥2.6s 的退避杀链早于静默≥1.6s 的全画像
+                     * 成立——链死 → 静默采样断供 → videoLike 永远建立不起来 →
+                     * 轮询针永不排 = 视频开屏整窗漏拦。arm-hint（streak≥3 +
+                     * 窗龄≥2.2s + 静默≥0.8s）窗免杀链：多守 0.8s 让全画像有
+                     * 机会成立（静默持续有事件的窗不豁免——退避照杀，功耗红线）。 */
+                    long zSilence = -1;
+                    Long zLastContent = contentAt.get(pkg);
+                    if (zLastContent != null) zSilence = now - zLastContent.longValue();
                     boolean exempt = AdDecisionCore.isAdActivityClass(zCls)
                             || isDialogClass(zCls)
                             || videoLike // v7.8.0：视频画像窗绝不退避（轮询针接管观察——静默事件源下退避 = 主动放弃视频开屏）
+                            || com.zai.adshield.core.VideoSplashGuard.videoArmHint(
+                                    now - winStart, zCount, zSilence)
                             || (winClsLearned.get(pkg) != null && winClsLearned.get(pkg).booleanValue());
-                    if (!exempt) {
-                        if (zeroCandScans.size() > 96) zeroCandScans.clear(); // 防膨胀
-                        Integer zBox = zeroCandScans.get(zKey);
-                        int zCount = (zBox == null ? 1 : zBox.intValue() + 1);
-                        zeroCandScans.put(zKey, zCount);
-                        if (AdDecisionCore.zeroCandBackoff(zCount, now - winStart, lastFind.nodeCount)) {
-                            chainKilledAt.put(pkg, winStart);
-                            zeroCandScans.remove(zKey);
-                        }
+                    if (!exempt && AdDecisionCore.zeroCandBackoff(zCount, now - winStart, lastFind.nodeCount)) {
+                        chainKilledAt.put(pkg, winStart);
+                        zeroCandScans.remove(zKey);
                     }
                 } else {
                     zeroCandScans.remove(zKey); // 出现候选即重置（救回通道复活计数）
@@ -3297,7 +3380,7 @@ public class AdSkipService extends AccessibilityService {
                             + (silenceMs < 0 ? ("≥" + elapsed) : silenceMs)
                             + "ms → 观察窗延至 20s · 1.5s 轮询针在岗（视频末露头按钮有人扫）");
                 }
-                handler.postDelayed(() -> videoPoll(pkg, winStart),
+                handler.postDelayed(() -> videoPoll(pkg, winStart, 0),
                         com.zai.adshield.core.VideoSplashGuard.VIDEO_POLL_MS);
             }
         } catch (Exception ignored) {
@@ -3305,10 +3388,15 @@ public class AdSkipService extends AccessibilityService {
     }
 
     /** v7.8.0 视频开屏轮询针：探针直查（零 DFS——findAccessibilityNode
-     *  InfosByText 5 词）——视频播放期零内容事件，轮询是按钮晚露头的唯一
+     *  InfosByText）——视频播放期零内容事件，轮询是按钮晚露头的唯一
      *  兜底观察。命中即全量 tryScan（重走决策梯）；未露头 → 继续排下一针
-     * （代际护栏：窗已切即停；观察窗 20s 到期即停）。 */
-    private void videoPoll(String pkg, long winStart) {
+     * （代际护栏：窗已切即停；观察窗 20s 到期即停）。
+     *  v7.9.0 升级：①探针词 5→10（图内「×/关闭/close」纯图标钮与拉丁
+     *  关闭词——用户实锤「广告按钮不是普通 TextView/关闭按钮只有图标」：
+     *  旧 5 词探不到就零全量复扫）；②每 3 针一次全量 tryScan（pollWalkDue
+     *  ——12~20s 段纯图片钮零文字零探针命中，walk 角落候选路径是唯一活路）。
+     *  pollIdx 针序（0 起）由排针链闭包递增传递。 */
+    private void videoPoll(String pkg, long winStart, int pollIdx) {
         if (instance == null || !masterOn) return;
         if (whitelistSet.contains(pkg) || !pkg.equals(lastFgPkg)) return;
         if (AdDecisionCore.isChatMainUi(pkg, winClassOf(pkg))) return;
@@ -3328,14 +3416,19 @@ public class AdSkipService extends AccessibilityService {
         videoPollAt.put(pkg, now);
         if (videoPollAt.size() > 24) videoPollAt.clear(); // 防膨胀
         try {
+            /* v7.9.0 每 3 针一次全量复扫（图片钮零文字零探针命中——walk
+             *  角落候选是 12~20s 段纯图片键唯一路径；全量闸（L4 形态门 +
+             *  videoLike 放宽 + 点击梯子）照常把关，预算 600 与 nudge 同档）。 */
+            if (com.zai.adshield.core.VideoSplashGuard.pollWalkDue(pollIdx)) {
+                tryScan(pkg, winStart, -1);
+            }
             android.view.accessibility.AccessibilityNodeInfo[] roots = collectRoots(pkg);
             if (roots.length == 0) return;
             for (int ri = 0; ri < roots.length; ri++) {
                 android.view.accessibility.AccessibilityNodeInfo r = roots[ri];
                 if (r == null) continue;
-                for (int probe = 0; probe < 5; probe++) {
-                    String w = probe == 0 ? "跳过" : (probe == 1 ? "跳過" : (probe == 2 ? "skip"
-                            : (probe == 3 ? "关闭广告" : "關閉廣告")));
+                for (int probe = 0; probe < com.zai.adshield.core.VideoSplashGuard.VIDEO_POLL_PROBE_WORDS.length; probe++) {
+                    String w = com.zai.adshield.core.VideoSplashGuard.VIDEO_POLL_PROBE_WORDS[probe];
                     try {
                         java.util.List<android.view.accessibility.AccessibilityNodeInfo> found =
                                 r.findAccessibilityNodeInfosByText(w);
@@ -3350,7 +3443,7 @@ public class AdSkipService extends AccessibilityService {
                 }
             }
             // 未露头 → 继续排下一针（静默事件源兜底——固定梯子不覆盖 12~20s 段）
-            handler.postDelayed(() -> videoPoll(pkg, winStart),
+            handler.postDelayed(() -> videoPoll(pkg, winStart, pollIdx + 1),
                     com.zai.adshield.core.VideoSplashGuard.VIDEO_POLL_MS);
         } catch (Throwable ignored) {
         }

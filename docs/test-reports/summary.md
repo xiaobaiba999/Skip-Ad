@@ -276,3 +276,22 @@ className 指纹）对此**零信号**，引擎从不出手（R15 复现：img_l
 - HIT-RATE（用户指令「进一步拓宽广告日志命中跳过率」）：探针词 3→5（+关闭广告/關閉廣告）+ 繁体词典补收（TEXT_EXACT/SKIP_TEXTS）+ 回切日志记账
 - MATRIX-352（用户指令「拓展设备型号和品牌以及系统」）：308→352 + 第九维回切开屏逐机型验证
 - PUSH-SYNC：v7.7.0 全量推送 GitHub + Releases（tag v7.7.0 · APK asset digest 核对 · 仓库描述与 README 面板同步 · 免责声明扩充）
+
+## Round 41 · v7.9.0（2026-11-20）——源码审计轮：三处接线盲区根治 + 图标关闭钮路径 + 视频画像竞速根治
+
+| 套件 | 断言 | 结果 | 要点 |
+| --- | --- | --- | --- |
+| VideoSplashTest（51→75） | 75 | ✅ | S9 画像竞速 11（arm-hint 真值表 7：竞速时刻/静默半步/全画像重叠/静默 <0.8s 拒/streak<3 拒/窗龄 <2.2s 拒/静默 -1 放行 + 时间线仿真 4：v7.8.0 同窗 2.6s 杀链对照 / arm-hint 守链连续活 / 3.4s 全画像成立 / 静默边界精确）· S10 探针词+全量复扫 13（10 词契约：×/✕/✖/关闭/close 收编 + 裸 X/x 不拒 + pollWalkDue 周期 + 20s 窗 ≤5 次全量功耗上限 + 常量契约） |
+| InterstitialGuardTest（102→118） | 118 | ✅ | S9 图标钮真值表 16（语境闸 iconContextOk 5：SDK 窗放行/WebView+角标放行/WebView 无角标拒/仅语境词拒/零语境拒 + 决策 9：顶角钮出手 label=×/tapBounds 逐位=图标自身/中部 tabBar 拒/strongOnly 拒/面积 >2% 拒 242×352=3.3%/面积 ≤2% 收 192×192=1.42%/顶带优先胜出/终闸一致性 BND_OK/零强语境拒 + 常量契约 2） |
+| InterstitialRoutingTest（56→67） | 67 | ✅ | S10 接线契约 11（SDK 插屏窗指纹全族 4 命中：qq.e.ads/bytedance/kwad/mbridge + InterstitialADActivity 变体 + MainActivity/SplashActivity 红线不破 + 外来包 Dialog 节流 ≤1.5s + 图标钮终闸直通 + streak≥3 契约 + SDK 窗 streak=3 全画像成立（v7.8.0 streak 冻结对照）+ arm-hint 在场） |
+| 存量回归（20 套件） | 5954 | ✅ | v7.8.0 全量零回归（修改前基线复跑 6063/6063——五处服务侧接线 + 两处纯函数新增不动既有断言） |
+| 整体（构建/签名/分发） | 6114 | ✅ | 23 套件全绿 · VC 79000 · 836KB（853,558 B）· MD5 b4b7f9e8 · SHA-256 c8053c27 三目录分发 + check-appjs.sh 语义闸 5 符号在场（CURRENT_RELEASE v7.9.0） |
+
+**修复清单（全部对准本轮源码审计实锤——不做无意义的测试）**
+- WIRING-SDKADWIN（审计实锤·盲区①）：maybeInterstitialScan 的 wctx.sdkAdWin 从未赋值（Ctx 默认 false）——闸⓪第三路「SDK 插屏窗指纹」整路死代码（纯函数单测全绿服务侧死线）→ isAdActivityClass(窗类) 接通（一行接线激活整路）
+- STREAK-FROZEN（审计实锤·盲区②）：豁免窗跳过计数块 → zeroCandScans 冻结 0 → videoLike 的 sdkAdWin 路径永不触发 → streak 无条件计数（豁免只挡杀链不挡计数）
+- FOREIGN-DIALOG（审计实锤·盲区③）：非前台 Dialog 分支只走弹窗识别 → 外来包 Dialog 插屏卫士未拉起 → maybeInterstitialScan 接线 + winClass 登记（连带缺陷一并补齐）
+- ICON-BUTTON（用户实锤「关闭按钮是图片/只有图标没有文字」）：decideIconFromCandidates 纯函数（强语境闸 SDK 窗/WebView+角标——比文字路径更严 + 形态闸 + 图标面积 ≤2% 屏 + 顶带优先/中部全拒 + label=× 零终闸改动）
+- VIDEO-RACE（树慢速构建窗竞速）：videoArmHint 免杀链（静默半阈值 0.8s——链连续活到全画像 1.6s 接管；静默持续 <0.8s 照杀功耗红线）
+- PROBE-10 + POLL-WALK：轮询探针词 5→10（+关闭/close/×/✕/✖）+ 每 3 针全量复扫（12~20s 段纯图片钮唯一活路；20s 窗 ≤5 次）
+- PUSH-SYNC：v7.9.0 全量推送 GitHub + Releases（tag v7.9.0 · APK asset digest 核对 · 仓库描述同步 · 免责声明保持）

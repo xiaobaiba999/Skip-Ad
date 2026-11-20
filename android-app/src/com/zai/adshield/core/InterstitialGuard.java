@@ -293,6 +293,89 @@ public final class InterstitialGuard {
         return Math.abs(cy - cyc) <= screenH * INTER_NEAR_Y_MAX;
     }
 
+    /* ───────── v7.9.0 图标关闭钮（无文字钮——用户实锤「关闭按钮只有图标没有文字」） ───────── */
+
+    /** v7.9.0 图标钮语境闸：强广告语境 = SDK 插屏窗指纹在场，或 WebView 容器
+     *  在场且广告角标同窗（「广告」语境词可见）。仅语境词在场（无 WebView/
+     *  无 SDK 窗）时【绝不】对纯图标出手——普通页面角落的菜单/分享/设置图标
+     *  误触面不可控（宁可漏拦绝不误触红线：图标路径的语境门槛比文字路径更高）。 */
+    public static boolean iconContextOk(boolean webviewPresent, boolean sdkInterWin, boolean badgePresent) {
+        if (sdkInterWin) return true;
+        return webviewPresent && badgePresent;
+    }
+
+    /** v7.9.0 图标钮图标面积上限（≤2% 屏——真关闭图标钮是小图标；菜单容器/
+     *  广告主体缩略图常 >2%）。与 walk 角落候选形态门（≤35% 宽×≤20% 高）叠加。 */
+    public static final double ICON_AREA_MAX = 0.02;
+
+    /**
+     * v7.9.0 图标关闭钮决策（纯函数）：无文字的角落小可点控件（walk 已收集——
+     * isCornerControl 形态门把关：无文本、24px~35% 宽、顶/底带、贴缘）在
+     * 【强广告语境窗】内收为图标关闭钮候选。
+     * 闸门（全部满足才出手）：
+     *  · 语境闸：iconContextOk（SDK 插屏窗 / WebView+角标——比文字路径更严）；
+     *  · 形态闸：closeFormOk（≤30%×≤12% / 宽扁 / 小面积三路并集——按钮是钮
+     *    不是横幅）+ 面积 ≤2% 屏（图标级）；
+     *  · 位置闸：顶部带（cy ≤25% 屏高）优先——关闭图标钮常态在窗顶角；底部
+     *    带（cy ≥75%）次选；中部图标（tabBar/菜单高发区）绝不收；
+     *  · strongOnly（中部边带候选）绝不收（边带中部图标误触面最大）。
+     * 返回 FeedDecision(label="×")——label 用图标语义，走 inter_close 终闸
+     * （interBoundaryCheck 对 "×" 放行——与文字 × 钮同一闸，零终闸改动）。
+     *
+     * @param iconCands   walk 收集的无文字角落候选（形态已过 isCornerControl 门）
+     * @param strongOnly  与 iconCands 同序的中部边带标记（true=跳过；null=全收）
+     */
+    public static FeedDecision decideIconFromCandidates(java.util.List<NodeView> iconCands,
+                                                        boolean[] strongOnly,
+                                                        int screenW, int screenH,
+                                                        boolean webviewPresent,
+                                                        boolean sdkInterWin,
+                                                        boolean badgePresent) {
+        if (iconCands == null || iconCands.isEmpty()) return null;
+        if (!iconContextOk(webviewPresent, sdkInterWin, badgePresent)) return null;
+        NodeView bestNode = null;
+        int[] bestB = null;
+        int bestCy = Integer.MAX_VALUE;
+        int bestBand = Integer.MAX_VALUE; // 0=顶部带 1=底部带（顶带优先）
+        for (int i = 0; i < iconCands.size(); i++) {
+            NodeView n = iconCands.get(i);
+            if (n == null) continue;
+            if (strongOnly != null && i < strongOnly.length && strongOnly[i]) continue; // 中部边带绝不收
+            try {
+                if (!n.visible()) continue;
+                String label = nz(n.text());
+                if (label.length() > 0) label = nz(n.desc());
+                if (label.length() > 0) continue; // walk 角落候选本无文字；带文本的走文字路径
+                int[] b = n.bounds();
+                if (!closeFormOk(b, screenW, screenH)) continue; // 形态闸（按钮是钮）
+                if (screenW > 0 && screenH > 0) {
+                    int w = b[2] - b[0], h = b[3] - b[1];
+                    if (w <= 0 || h <= 0) continue;
+                    if (w * h > screenW * screenH * ICON_AREA_MAX) continue; // 图标级面积
+                    int cy = (b[1] + b[3]) / 2;
+                    int band;
+                    if (cy <= screenH * 0.25) band = 0;        // 顶部带（关闭钮常态）
+                    else if (cy >= screenH * 0.75) band = 1;  // 底部带（部分贴底关闭钮）
+                    else continue;                              // 中部图标绝不收
+                    if (band < bestBand || (band == bestBand && cy < bestCy)) {
+                        bestNode = n; bestB = b; bestCy = cy; bestBand = band;
+                    }
+                } else {
+                    // 屏幕未知：保守只收首候选（形态闸已过）
+                    if (bestNode == null) { bestNode = n; bestB = b; }
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+        if (bestNode == null || bestB == null) return null;
+        FeedDecision fd = new FeedDecision();
+        fd.action = ACTION_CLOSE;
+        fd.label = "×"; // 图标语义（终闸 interBoundaryCheck 对 × 放行——零终闸改动）
+        fd.tapBounds = bestB; // 图标钮【自身】bounds——绝不广告主体
+        fd.node = bestNode;
+        return fd;
+    }
+
     static String nz(String s) {
         return s == null ? "" : s.trim();
     }

@@ -3,6 +3,23 @@
 > 首页只保留当前版本要点；全部历史版本详情在本页归档。
 > 发布物（APK/报告/文档）见 [Releases](https://github.com/xiaobaiba999/Skip-Ad/releases) 与 `docs/test-reports/`。
 
+## v7.9.0（2026-11-20）—— 源码审计轮：三处接线盲区根治 + 图标关闭钮路径 + 视频画像竞速根治
+
+- **本轮方法论（用户指令「先找根因再改代码 · 先修架构再加规则」）**：完整审计 AdSkipService（5236 行）/ InterstitialGuard / VideoSplashGuard / AdDecisionCore 全链路（事件路由 → 窗口收集 → Node Tree 遍历 → 候选 → 规则匹配 → 评分 → 安全门 → 点击 → 复验），实锤 **v7.8.0 的三处「纯函数单测全绿、服务侧零接线」盲区**——纯函数层被单测保护得很好，服务侧装配层没有断言覆盖，三处死线全是装配缺陷（不是算法缺陷）：
+  - **盲区①（闸⓪第三路 SDK 插屏窗指纹死线）**：`maybeInterstitialScan` 从未给 `wctx.sdkAdWin` 赋值（Ctx 默认 false）→ `decideFromCandidates(..., wctx.sdkAdWin)` 传的永远是 false——v7.8.0 新增的「SDK 插屏窗指纹」在场证据（窗类即广告窗）整路死代码：**无语境词、无 WebView 的原生 SDK 插屏**三路语境全空 → 永不出手。**根治**：`wctx.sdkAdWin = AdDecisionCore.isAdActivityClass(cls)` 接通（与 tryScan 主路径同源同判）。
+  - **盲区②（SDK 窗零候选 streak 冻结）**：零候选退避块的豁免窗（广告窗/Dialog/学习窗）**跳过整个计数块** → `zeroCandScans` 冻结在 0——`videoLike` 的 sdkAdWin 路径（streak≥3）在 SDK 广告窗上**永远建立不起来**：SDK 视频开屏（按钮常在视频末才挂树）观察窗不延长、轮询针不排。**根治**：streak **无条件计数**（豁免只挡杀链不挡计数——计数是 videoLike 画像的观测源；防膨胀上限 96 + 候选出现即清零原契约保持）。
+  - **盲区③（外来包 Dialog 插屏卫士未拉起）**：非前台 Dialog 分支只走 nudgePopupScan（弹窗识别路径——话术门识别营销弹窗），**插屏卫士从未被拉起**——广告 SDK 独立包的 Dialog 插窗（如 com.qq.e.ads 家族 Dialog 形态，事件 pkg 是 SDK 包而非宿主）整窗漏拦。**根治**：同分支接线 `maybeInterstitialScan(pkg, now)`（自带 1.5s 节流）+ winClass 登记（此分支提前 return 从未登记窗类 → SDK 指纹判定拿到空串恒 false 的连带缺陷一并补齐）。
+- **图标关闭钮路径（用户实锤：「关闭按钮是图片」「关闭按钮只有图标没有文字」——纯函数新模块 InterstitialGuard.decideIconFromCandidates）**：文字候选（nativeFindTexts）对纯图标钮（零文本零 desc）零候选——本轮新增无文字钮路径：
+  - **语境闸（iconContextOk，门槛比文字路径更严）**：SDK 插屏窗指纹在场，或 WebView 容器在场且广告角标同窗（「广告」语境词可见）→ 放行；**仅语境词在场（无 WebView/无 SDK 窗）绝不点纯图标**——普通窗角落的菜单/分享/设置图标误触面不可控（宁可漏拦绝不误触红线：图标无语义证据，语境门槛必须加倍）。
+  - **形态闸**：closeFormOk 三路并集（≤30%×≤12% / 宽扁 ≤55%×≤7% / 小面积 ≤4%）+ 图标级面积 ≤2% 屏（真关闭图标钮是小图标；菜单容器/广告缩略图常 >2%）。
+  - **位置闸**：顶部带（cy≤25% 屏高——关闭图标钮常态位）优先、底部带（cy≥75%）次选、**中部图标绝不收**（tabBar/菜单图标高发区）；strongOnly（中部边带候选）绝不收；顶带多候选取最靠上者。
+  - **终闸零改动**：FeedDecision.label="×"（图标语义）——interBoundaryCheck 对 "×" 本就放行（与文字 × 钮同一闸），语义/形态/场景三重断言全复用，execute() 既有防线（用户让路/耐心预算/多点防线/人手手势/点击梯子）全量复用。
+- **视频画像竞速根治（VideoSplashGuard.videoArmHint——树慢速构建窗）**：WebView/H5 视频容器树慢速构建（内容事件持续到 ~2s）时，零候选退避杀链（streak≥3 + 窗龄≥2.6s）**早于**静默≥1.6s 的全画像成立——链死 → 静默采样断供 → videoLike 建立不起来 → 轮询针永不排。**根治**：arm-hint（streak≥3 + 窗龄≥2.2s + 静默≥0.8s）窗免杀链——多守 0.8s 让全画像有机会成立；树持续有事件的窗（静默 <0.8s）不豁免，退避照杀（功耗红线：arm-hint 只多守半步，不无限观察）。
+- **视频轮询针探针词 5→10 + 每 3 针全量复扫（VideoSplashGuard.VIDEO_POLL_PROBE_WORDS / pollWalkDue）**：旧探针 5 词（跳过/跳過/skip/关闭广告/關閉廣告）对图内「×」文本钮、拉丁 close 钮零命中 → 探针不中 → 全量 tryScan 不拉起。**扩容**：+关闭/+close/+×/+✕/+✖（裸「X/x」不收——contains 搜索英文任意含 x 词全命中，噪声面交给全量闸）。**每 3 针一次全量复扫**：12~20s 段纯图片钮零文字零探针命中——walk 角落候选路径是唯一活路（全量闸照常把关，预算 600 与 nudge 同档；20s 观察窗内 ≤5 次全量——功耗红线）。
+- **性能契约（不牺牲功耗换命中率——本轮全部新增路径的功耗边界）**：①图标钮路径只在既有插屏扫描节流内决策（1.5s/次——零新增扫描）；②arm-hint 只豁免杀链不新增档位（树持续有事件的窗照杀）；③全量复扫只在 videoLike 窗（普通窗零轮询零复扫）；④探针是系统原生 C++ 子树搜索（零 DFS）；⑤事件面订阅零变化（typeViewScrolled 评估后保持不订——滚动事件高频低收益，内容变化事件已驱动扫描）。
+- **测试（+51 项断言，全绿 23 套件 6114 项——v7.8.0 为 6063）**：VideoSplashTest S9 画像竞速（arm-hint 真值表 7 项 + 竞速时间线仿真 4 项：v7.8.0 同窗 2.6s 杀链对照 / arm-hint 守链连续活到 3.4s 全画像成立 / 静默边界精确）/ S10 探针词 + 全量复扫（10 词契约 + pollWalkDue 周期 + 功耗上限 ≤5 次/20s）；InterstitialGuardTest S9 图标钮真值表（语境闸 5 项 + 决策 9 项：顶角钮出手/tapBounds 逐位/中部拒/strongOnly 拒/面积 2% 双向/顶带优先/终闸一致性/零强语境拒/常量契约）；InterstitialRoutingTest S10 接线契约（SDK 指纹全族 4 命中 + MainActivity/SplashActivity 红线不破 + 外来包 Dialog 节流 + streak 契约 + arm-hint 在场）。
+- 工程化：ECJ 全量编译零错误（核心 + 测试）；APK 836KB（853,558 B）· VC 79000（>78000 覆盖安装即升级）· MD5 `b4b7f9e8f5f5200ec269f46e14bc917a` · SHA-256 `c8053c27e37bf1205c84a3ca0e0584452c55606c536eb0f5d24e9a6fda50a5d2` 三目录分发（android-app/dist · 仓库 dist · GitHub Release asset——包内资产语义闸同验）；GitHub tag v7.9.0 + Release + 仓库描述同步 v7.9.0 主题 + 免责声明保持。
+
 ## v7.8.0（2026-11-20）—— 视频开屏卫士 + 插屏重扫路由根治 + C 语言基准实测（五语言同构）+ 机型矩阵 396（十维）
 
 - **视频开屏卫士（用户十八轮实锤原话：「很多没命中，只要是开屏广告带视频的你都未命中」）——四死因链一起根治**：
