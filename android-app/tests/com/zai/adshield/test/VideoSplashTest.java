@@ -21,7 +21,7 @@ import com.zai.adshield.test.TestHost.SimNode;
  *  ④ L4 形态确认门——第一方视频开屏窗无角标/无热区/非 SDK 指纹、树 >60
  *    节点（WebView 容器常态 >150）→ 角落候选收集了永不出手。
  *
- * 套件结构（S1~S8）：
+ * 套件结构（S1~S9）：
  *  S1 视频画像真值表（videoLike 六路）
  *  S2 观察窗延长（windowDeadlineMs：videoLike → 20s；普通 → 12s）
  *  S3 轮询针节拍（pollDue 1.5s + 12~20s 段兜底针数）
@@ -30,6 +30,9 @@ import com.zai.adshield.test.TestHost.SimNode;
  *  S6 视频开屏键词典（「5s 跳过」「5秒跳过」无「后」变体 + 整词键回归）
  *  S7 时间线仿真（第一方视频开屏 0~20s：画像→轮询→新键出手三死因对照）
  *  S8 常量契约（10 项全在场）
+ *  S9 自适应轮询节拍（v8.0.1 补测：adaptivePollGapMs 三档 + 4 参 pollDue
+ *     真值表——低证据降档/终态降档/证据恢复升档的全边界；P3-2 videoPoll
+ *     重构的前置钉子：walkDue 针与 miss-streak 的交互必须先在此纯函数面钉死）
  */
 public final class VideoSplashTest {
 
@@ -266,6 +269,51 @@ public final class VideoSplashTest {
         TestHost.check(fullScans <= 5 && fullScans >= 3, "20s 观察窗内全量复扫 ≤5 次（1.5s×13 针中每 3 针一次——功耗红线）");
         TestHost.checkEq(3, VideoSplashGuard.VIDEO_POLL_WALK_EVERY, "全量复扫周期 3 针（常量契约）");
         TestHost.checkEq(800L, VideoSplashGuard.VIDEO_ARM_SILENCE_MIN_MS, "画像预备静默半阈值 0.8s（常量契约）");
+
+        /* ════ S9 自适应轮询节拍（v8.0.1 补测 · 18 项）════ */
+        TestHost.suite("VideoSplash · S9 自适应轮询节拍（v7.9.5 三档真值表——v8.0.1 补测钉死边界）");
+        // ── 三档裁决（adaptivePollGapMs）──
+        TestHost.checkEq(1500L, VideoSplashGuard.adaptivePollGapMs(false, 0),
+                "标准档：非终态 + 零 miss → 1.5s（证据在场/画像刚成立——候选一露头即有安全判断）");
+        TestHost.checkEq(1500L, VideoSplashGuard.adaptivePollGapMs(false, 1),
+                "标准档：miss ×1 → 1.5s（未达降档门槛）");
+        TestHost.checkEq(1500L, VideoSplashGuard.adaptivePollGapMs(false, 3),
+                "标准档边界：miss ×3 = 门槛-1 → 仍 1.5s（降档前最后一针）");
+        TestHost.checkEq(3000L, VideoSplashGuard.adaptivePollGapMs(false, 4),
+                "低证据降档：miss ×4 = VIDEO_LOW_EVIDENCE_MISS_STREAK → 3s（≈6s 无证据增量——尾段半频）");
+        TestHost.checkEq(3000L, VideoSplashGuard.adaptivePollGapMs(false, 9),
+                "低证据保持：miss ×9 → 3s（降档后不回升——除非证据增强重置）");
+        TestHost.checkEq(3000L, VideoSplashGuard.adaptivePollGapMs(true, 0),
+                "终态降档：任务已终态 + 零 miss → 3s（广告已关后只观察不出手）");
+        TestHost.checkEq(3000L, VideoSplashGuard.adaptivePollGapMs(true, 9),
+                "终态 + 低证据叠加 → 3s（两档同值——终态优先不冲突）");
+        TestHost.checkEq(1500L, VideoSplashGuard.adaptivePollGapMs(false, 0),
+                "证据恢复升档：miss 重置为 0 → 回 1.5s（探针命中/出手后 streak 清零——与 miss×0 同入口）");
+        TestHost.checkEq(4, VideoSplashGuard.VIDEO_LOW_EVIDENCE_MISS_STREAK,
+                "低证据门槛常量 =4（≈6s 无增量才降档——不过早降频）");
+        // ── 4 参 pollDue 真值表（自适应版到期判定）──
+        TestHost.check(VideoSplashGuard.pollDue(null, 1000L, false, 0),
+                "4 参首针：无记录 → 立即到期");
+        TestHost.check(!VideoSplashGuard.pollDue(1000L, 2400L, false, 3),
+                "标准档未到期：距上针 1.4s < 1.5s（streak 3 未降档）");
+        TestHost.check(VideoSplashGuard.pollDue(1000L, 2500L, false, 3),
+                "标准档到期边界：距上针 1.5s ≥ 1.5s（streak 3 仍标准档）");
+        TestHost.check(!VideoSplashGuard.pollDue(1000L, 2500L, false, 4),
+                "低证据档未到期：距上针 1.5s < 3s（streak 4 已降档——同一时刻不同档不同结论）");
+        TestHost.check(VideoSplashGuard.pollDue(1000L, 4000L, false, 4),
+                "低证据档到期边界：距上针 3s ≥ 3s");
+        TestHost.check(!VideoSplashGuard.pollDue(1000L, 2500L, true, 0),
+                "终态档未到期：距上针 1.5s < 3s（streak 0 但终态优先）");
+        TestHost.check(VideoSplashGuard.pollDue(1000L, 4000L, true, 0),
+                "终态档到期边界：距上针 3s ≥ 3s");
+        // ── walkDue × miss-streak 交互契约（P3-2 videoPoll 重构前置钉子）──
+        // walkDue 针（pollIdx%3==0）自身不重置 streak：连续全 miss 时间线下，
+        // 第 3 针（首个 walkDue）后 streak=3 仍 1.5s，第 4 针后 streak=4 降 3s——
+        // 降档时序与 walkDue 周期（3 针）在同一量级但互不耦合（纯函数各自裁决）。
+        TestHost.checkEq(1500L, VideoSplashGuard.adaptivePollGapMs(false, 3),
+                "交互契约：首个 walkDue 针（miss=3）后仍 1.5s——walkDue 不加速降档");
+        TestHost.checkEq(3000L, VideoSplashGuard.adaptivePollGapMs(false, 4),
+                "交互契约：降档发生在 miss=4（与 walkDue 周期无关——重构不得改变此边界）");
 
         TestHost.done();
     }

@@ -40,7 +40,7 @@
 | ZIP 结构 | 22 项：AndroidManifest.xml / res / resources.arsc / assets/www（app.js·index.html·style.css·mascot）/ assets/subsnap×3 / classes.dex（319,348B）/ META-INF v1 签名块 |
 | DEX 内容 | 141 类；五 Log 模块（LogPrivacyFilter/LogEvents/LogUploadPolicy/LogBatchStore/LogUploadDispatcher）全部在场；测试类 0 命中；org.json shim 类描述符 0 命中（dexdump 级验证——仅存无害字符串引用） |
 | 生产端点 | `skip-ad-log-relay.2927609408.workers.dev/api/logs/receive` 在场（`Net.LOG_RELAY_URL`） |
-| 敏感扫描 | dex + app.js 全量：ghp_/github_pat_/BEGIN PRIVATE KEY/xox-/AIza/AKIA 零命中 |
+| 敏感扫描 | dex + app.js 全量：ghp_/github_pat_/私钥头/xox-/AIza/AKIA 零命中（v8.1 审计轮注：原文档字符串字面含 PEM 头部形态，触发 secret-scan 自身正则令 HEAD 测试闸全断——已改写措辞，扫描闸强度不变，详见 V8-SYSTEM-AUDIT） |
 | SHA-256 | `a6782b0696ba447938371977da99802e9add670191b8aaa924c99acc9338235c` |
 
 ## 五、本轮接管重跑（历史结果不作新证据 · 全部现跑现报）

@@ -1,6 +1,6 @@
 /** 版本与 GitHub 仓库信息（Web 端与发布节奏共用） */
-export const APP_VERSION = "8.0.0";
-export const VERSION_CODE = 80000; // major*10000 + minor*1000 + patch*100，随版本单调递增
+export const APP_VERSION = "8.0.1";
+export const VERSION_CODE = 80100; // major*10000 + minor*1000 + patch*100，随版本单调递增
 export const GITHUB_REPO = "xiaobaiba999/Skip-Ad";
 export const GITHUB_API = `https://api.github.com/repos/${GITHUB_REPO}`;
 export const GITHUB_HOME = `https://github.com/${GITHUB_REPO}`;
@@ -19,18 +19,16 @@ export interface VersionEntry {
  *  旧版本内容归档在 GitHub Releases 与 git 历史） */
 export const VERSION_HISTORY: VersionEntry[] = [
   {
-    version: "8.0.0",
-    code: 80000,
-    date: "2026-11-25",
-    tagline: "自动日志上传闭环轮：Android → Cloudflare Worker（skip-ad-log-relay）→ GitHub 私有仓库 Issues——授权默认关 · 客户端零凭据 · 白名单双端过滤 · batchId 幂等重试",
+    version: "8.0.1",
+    code: 80100,
+    date: "2026-11-27",
+    tagline: "系统级审计轮：全链路调用图审计（安全面零问题实锤）+ 窗口切换 0ms 双重全量扫描消除（每次切窗省一整遍树扫描）+ secret-scan 闸门自断修复 + 视频轮询自适应节拍真值表补测",
     notes: [
-      "自动上传通道上线：Net.LOG_RELAY_URL 填入生产中转地址（skip-ad-log-relay.2927609408.workers.dev——已部署并经用户真实浏览器 /healthz 验证）；服务端凭据（GitHub App 私钥/IP_HMAC 密钥）全部只存 Cloudflare Worker Secret——APK 零凭据红线保持",
-      "客户端上传链路（5 个 core 模块）：LogPrivacyFilter（白名单/枚举/危险键整批拒绝/脱敏四正则——与服务端 validate.ts 同规约）+ LogEvents（八类事件工厂：AD_TASK/SAFE_BLOCK/CLICK/VERIFY/STATS/GKD/VIDEO_POLL/CRASH）+ LogUploadPolicy（响应裁决纯函数：ACK/WAIT/RETRY/FAIL 可穷举）+ LogBatchStore（批次持久化：PENDING→UPLOADING→ACKED/FAILED；ACK 前绝不删；400 条缓冲上限关键事件最后丢；48 分批上限）+ LogUploadDispatcher（单后台守护线程；退避 30s→480s×5；RATE_LIMITED 尊重 retryAfter 不耗重试计数；MANUAL_RECONCILIATION_REQUIRED 立即终态绝不换 batchId 重传）",
-      "batchId 幂等：每次封批生成 UUID v4；网络超时重试复用同一 batchId——服务端幂等兜底「超时但 Issue 已建」场景（重试必然 ALREADY_ACCEPTED，绝不二建 Issue）；重试不换号结构性保证（上传只读已存批次）",
-      "隐私纵深：客户端白名单过滤（字段/枚举/整数界/词族门）+ 服务端权威第二道（同规约）；身份证 18 位差一正则四端同族修复（Net.maskSensitive/www maskText/LogPrivacyFilter/服务端 privacy.ts）；未授权采集门关闭——未同意上传的设备零新增磁盘写入",
-      "设置页真数据：上传状态行（待传批次数/24h 已提交/失败检视/最近提交时间）+「立即提交」（同一服务端 24h/3 限额绝不绕过）+「清理待上传」；www 手动本地导出通道并存",
-      "上传失败绝不影响广告跳过：事件埋点异步落盘（单线程 executor 非阻塞 submit）+ 上传独立守护线程 + 全部 try/catch 吞尽——无障碍热路径零新增同步 IO；本轮零识别/安全门改动（不新增关键词、不扩大点击区域、不降 SafetyGuard、不动任务状态机）",
-      "测试：35 套件 6802 项 JVM 断言全绿（新增 3 套件 149 项：隐私过滤 47/策略裁决 55/批次存储 47——含 org.json JVM shim 使 core 的 org.json 依赖可在无 Android 运行时测试）；全源 ECJ 编译与基线零差异（5 个 R.* 基线错误不变）；secret-scan/app.js 符号闸/version-sync 全绿",
+      "全链路审计（docs/audits/V8-SYSTEM-AUDIT.md + V8-OPTIMIZATION-PLAN.md）：事件→扫描→决策→点击→复验→终态全调用图行号级绘制；安全面逐项核对零问题（九态状态机真值表/taskId+generation 全回调贯穿/重复点击断源五道防线/ACK 前不删日志/未授权零磁盘写/上传零阻塞——全部在岗实锤）；matchAll+walk 双 DFS 同树、videoPoll walkDue 双工作、appendEvent 全文件读写等发现分级入档（P3-1/P3-2 列下轮专项并给出否决理由与前置条件）",
+      "性能优化（P2-1）：窗口切换路径 bumpScanChain(pkg, true) 跳过梯子 0ms 档——内联首扫（onAccessibilityEvent 现场同步出手）与 0ms 档对同一棵树的全量双扫是纯幂等冗余，每次切窗白付一整遍扫描（守护①②+反馈查+探针 5 词+matchAll+matchSources+walk，至多 ~1500 节点访问）；60ms 档与 nudge 通道覆盖树演化，安全门/决策梯/任务门/档案抑制路径零变化（suppress 路径 0ms 档保留——该路径无内联先行）",
+      "仓库卫生修复（P0-1 实锤）：reports/iteration-v8.0.0.md 文档字符串字面含 PEM 头形态，触发 secret-scan 自身正则令 HEAD 测试/构建闸全断（接管首跑即被阻断——任何后续会话无法跑测试）；改写措辞修复，扫描闸强度零变化",
+      "测试补强（VideoSplashTest S9 · 18 断言：75→93）：补 v7.9.5 自适应轮询节拍真值表（adaptivePollGapMs 三档边界/4 参 pollDue 到期判定/walkDue×miss-streak 交互契约——75→93 断言）——P3-2 videoPoll 重构的前置钉子（此前该纯函数面零覆盖）",
+      "本轮零识别/安全门/状态机/契约改动：不新增关键词、不扩大点击区域、不降 SafetyGuard、不动任务状态机、不动日志五模块——纯调度冗余消除与测试/文档",
     ],
   },
 ];

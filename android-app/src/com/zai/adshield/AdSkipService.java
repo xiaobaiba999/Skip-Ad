@@ -1868,12 +1868,13 @@ public class AdSkipService extends AccessibilityService {
                 /* ═══ v5.3.0 位置学习验证钩子①：窗类切换 = 跳过键关窗铁证
                  *（零文本点击挂起中：广告窗退出/Dialog 消散 → 提交学习）═══ */
                 posVerifyOnWindowChange(pkg, cls, now);
-                bumpScanChain(pkg);
+                bumpScanChain(pkg, true); // v8.0.1：0ms 档让位内联首扫（见 bumpScanChain 注）
                 /* ═══ v4.5.0 露头就秒·内联首扫 ═══
                  * 0ms 档从「postDelayed 排队等下一轮消息循环」改为窗口事件
                  * 现场同步出手（省一跳 handler 约 5~16ms，真·露头就秒）。
-                 * 链上 0ms 档随后仍会扫（幂等：点击冷却/复验门自然挡住重复
-                 * 出手），窗口已切则代际护栏自动作废，零副作用。
+                 * v8.0.1：内联首扫后梯子 0ms 档不再重复排（上方
+                 * bumpScanChain(pkg, true)）——同一棵树的全量双扫是纯冗余；
+                 * 60ms 档与 nudge 通道覆盖树演化，窗口已切则代际护栏自动作废。
                  * v5.3.0：CLEAN 档案窗跳过内联首扫——bumpScanChain 已排探针
                  * 哨兵，此处再全量扫就把省电档案的意义扫没了。 */
                 if (!profileSuppressScan(pkg, cls)) tryScan(pkg, winAt(pkg), 0);
@@ -2216,6 +2217,20 @@ public class AdSkipService extends AccessibilityService {
     /* ───────── 扫描调度：0ms 首扫 + 前密后疏重试链 ───────── */
 
     private void bumpScanChain(final String pkg) {
+        bumpScanChain(pkg, false);
+    }
+
+    /* ═══ v8.0.1 双扫消除：窗口切换路径的 0ms 档让位内联首扫 ═══
+     * onAccessibilityEvent 在 bumpScanChain 之后同步内联跑 tryScan(…,0)
+     * （:1880）——梯子 0ms 档在几 ms 后对【同一棵树】再跑一遍全量扫描
+     * （守护①②+反馈查+探针 5 词+matchAll+matchSources+walk，至多
+     * ~1500 节点访问）——纯幂等冗余（原注释自认“随后仍会扫（幂等）”），
+     * 每次切窗白付一次全量扫描的 CPU/binder/电量。
+     * skipFirstRung=true 仅跳过全量梯子的 0ms 档（60ms 档与 nudge 通道
+     * 覆盖树演化）；档案抑制路径（探针哨兵/低频档 {0,700}）不受影响——
+     * 该路径内联首扫不跑（抑制窗），0ms 档是唯一即时扫描，必须保留。
+     * nudgeScan（:2553）/返回键复验（:4205）两处调用无内联先行，保持 false。 */
+    private void bumpScanChain(final String pkg, boolean skipFirstRung) {
         // v4.2.0 聊天主界面门：微信主界面没有跳过键，16 档定时扫描
         // 一个都不排（零调度零唤醒，功耗最优；Dialog 弹窗不受影响）
         if (AdDecisionCore.isChatMainUi(pkg, winClassOf(pkg))) return;
@@ -2261,7 +2276,8 @@ public class AdSkipService extends AccessibilityService {
         Integer g = scanGen.get(pkg);
         final int gen = g == null ? 1 : g + 1;
         scanGen.put(pkg, gen);
-        for (int i = 0; i < SCAN_AT.length; i++) {
+        // v8.0.1：skipFirstRung=true 从 60ms 档起排（0ms 已由内联首扫覆盖）
+        for (int i = (skipFirstRung && SCAN_AT.length > 1) ? 1 : 0; i < SCAN_AT.length; i++) {
             final long at = SCAN_AT[i];
             handler.postDelayed(() -> {
                 Integer cur = scanGen.get(pkg);
