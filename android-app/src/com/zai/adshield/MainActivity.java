@@ -27,7 +27,8 @@ import org.json.JSONObject;
  * · WebView 装载离线页面 assets/www（首页 / 学习中心 / 关于）
  * · 启动即静默检查 GitHub Releases：发现新版 → 页面顶部弹出更新横幅，
  *   页内直接下载（系统 DownloadManager）→ 进度条 → 完成后拉起安装，全程不跳浏览器
- * · 问题反馈 / 引擎日志上传使用内置混淆令牌（Net.builtInToken），界面零 Token 输入
+ * · v7.9.7：问题反馈走浏览器预填链接（newIssuePrefillUrl）、引擎日志本地导出
+ *   （exportLog 桥 + shareLogText 分享）——内置混淆令牌已随 PAT 移除下线，客户端零凭据
  * · v3.5.0 保活：通知权限引导（Android 13+）、jump_a11y 通知一键恢复直达、
  *   电池优化白名单与 keepOn 状态桥接（配合 KeepAliveReceiver）
  * · v3.6.0 自动拉活：清理后台后服务被杀但系统设置仍登记时，打开 App
@@ -403,7 +404,7 @@ public class MainActivity extends Activity {
             if (value != null && value.length() > 262144) return;
             /* v7.3.0 安全：key 白名单——JS 侧（app.js store.set）合法写入的键
              * 只有 "state"（页面状态/战绩/开关）。其余键（subUrl、subCache、
-             * dl 系列与 autoLogAt 等）是服务/订阅/下载链路的持久化字段：一旦
+             * dl 系列与曾用的 autoLogAt 等）是服务/订阅/下载链路的持久化字段：一旦
              * 前端出现注入（XSS），「kvSet 写 subCache 恶意规则」即可让服务
              * 重启时静默加载被投毒的自动点击规则——白名单把这个通道焊死。 */
             if (!"state".equals(key)) return;
@@ -794,28 +795,85 @@ public class MainActivity extends Activity {
             }
         }
 
-        /* ───── 问题反馈 / 引擎日志上传（内置令牌，无任何用户配置） ───── */
+        /* ───── v7.9.7：日志本地导出 + 自动上传授权桥（PAT 移除轮） ─────
+         * 旧 netPostIssue（内置令牌直发 GitHub Issue）已移除——客户端零 GitHub
+         * 写凭据。手动日志 = 本地导出（应用外部私有目录，无任何新权限）+
+         * 系统分享面板（ACTION_SEND 纯文本，用户自行投递：邮件/网盘/仓库
+         * Issue 浏览器预填）。自动上传授权 = 独立开关（默认关，见
+         * AdSkipService.KEY_AUTO_LOG_UPLOAD；v7.9.7 中转服务未上线结构性关闭）。 */
 
-        /** 创建反馈 Issue（引擎日志上传共用此通道）；令牌内置混淆存储（Net.builtInToken）。
-         *  v4.5.0 安全：标题/正文长度上限 + 15s 频控（防被滥刷 issue 消耗
-         *  配额；WebView URL 劫持防护之外的第二道闸） */
+        /** 导出引擎日志到本地文件（应用外部私有目录 logs/，无新权限）。
+         *  @return {ok:true, path, bytes} 或 {ok:false, error} */
         @JavascriptInterface
-        public String netPostIssue(String title, String body) {
+        public String exportLog(String title, String body) {
             try {
                 long now = System.currentTimeMillis();
-                if (now - lastPostIssueAt < 15000) {
-                    return "{\"ok\":false,\"error\":\"提交太频繁，请稍后再试\"}";
-                }
-                lastPostIssueAt = now;
                 String t = title == null ? "" : (title.length() > 128 ? title.substring(0, 128) : title);
                 String b = body == null ? "" : (body.length() > 24000 ? body.substring(0, 24000) : body);
-                return Net.postIssue(t, b);
+                String stamp = new java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.US).format(new java.util.Date(now));
+                java.io.File dir = a.getExternalFilesDir("logs");
+                if (dir == null) dir = a.getFilesDir();
+                //noinspection ResultOfMethodCallIgnored
+                dir.mkdirs();
+                java.io.File f = new java.io.File(dir, "adshield-log-" + stamp + ".md");
+                java.io.OutputStream os = new java.io.FileOutputStream(f);
+                os.write(("# " + t + "\n\n" + b + "\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                os.close();
+                org.json.JSONObject out = new org.json.JSONObject();
+                out.put("ok", true);
+                out.put("path", f.getAbsolutePath());
+                out.put("bytes", f.length());
+                return out.toString();
             } catch (Throwable t) {
-                return "{\"ok\":false,\"error\":\"内部错误\"}";
+                try {
+                    org.json.JSONObject out = new org.json.JSONObject();
+                    out.put("ok", false);
+                    out.put("error", "导出失败：" + t.getClass().getSimpleName());
+                    return out.toString();
+                } catch (Throwable ignored) {
+                    return "{\"ok\":false,\"error\":\"导出失败\"}";
+                }
             }
         }
 
-        private static volatile long lastPostIssueAt = 0L;
+        /** 系统分享面板分享纯文本日志（用户自行选择投递渠道；零凭据零上传）。 */
+        @JavascriptInterface
+        public void shareLogText(String text) {
+            try {
+                final String safe = text == null ? "" : (text.length() > 24000 ? text.substring(0, 24000) : text);
+                a.runOnUiThread(() -> {
+                    try {
+                        Intent it = new Intent(Intent.ACTION_SEND);
+                        it.setType("text/plain");
+                        it.putExtra(Intent.EXTRA_TEXT, safe);
+                        it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        a.startActivity(Intent.createChooser(it, "分享引擎日志"));
+                    } catch (Exception ignored) {
+                    }
+                });
+            } catch (Throwable ignored) {
+            }
+        }
+
+        /** v7.9.7：自动日志上传授权状态（默认关）。 */
+        @JavascriptInterface
+        public boolean logUploadConsent() {
+            try {
+                return AdSkipService.autoLogUploadEnabled(a);
+            } catch (Throwable t) {
+                return false;
+            }
+        }
+
+        /** v7.9.7：设置自动日志上传授权（仅写授权位；上传行为另受中转服务
+         *  配置与服务端 24h 限额双重门控——本版本不执行自动上传）。 */
+        @JavascriptInterface
+        public void setLogUploadConsent(boolean enabled) {
+            try {
+                AdSkipService.setAutoLogUploadEnabled(a, enabled);
+            } catch (Throwable ignored) {
+            }
+        }
 
         /** v4.5.0：后台深挖拉活（MainActivity.onResume 自动拉活用；
          *  与页面 tryAutoReviveDeep 同一逻辑，静默版——不打扰 UI）。
@@ -1089,9 +1147,11 @@ public class MainActivity extends Activity {
     }
 
     /* ═══ v4.5.0 WebView 硬化：URL 劫持防护（攻击面收缩核心）═══
-     * 本地离线页装载了带 GitHub 令牌能力的 JS 桥——若页面被诱导跳转到
-     * 远程页面（更新横幅里的链接/订阅预览/恶意注入），远程页面将直接
-     * 拿到 AndroidApp 桥（netPostIssue 内置令牌、kvSet 任意写）。
+     * 本地离线页装载了带能力的 JS 桥——若页面被诱导跳转到远程页面（更新
+     * 横幅里的链接/订阅预览/恶意注入），远程页面将直接拿到 AndroidApp 桥
+     * （kvSet 任意写、shareLogText 分享等）。v7.9.7 起 netPostIssue（内置
+     * 令牌直发 GitHub Issue）已随 PAT 移除下线——桥已无任何凭据能力，
+     * 劫持面进一步收缩，但白名单制保持不变（纵深防御不因单点移除而松绑）。
      * 对策：shouldOverrideUrlLoading 白名单制——只允许本应用 asset 目录
      * 内导航；http(s) 链接一律转交系统浏览器（无桥）；其余 scheme 全部
      * 拦截。返回 true = 本应用接管，WebView 绝不加载。 */

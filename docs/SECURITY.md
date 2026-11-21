@@ -5,11 +5,13 @@
 
 ## 一、已披露风险与整改状态
 
-### R1 · GitHub Token 曾以内嵌混淆形态存在于公开仓库【需撤销】
+### R1 · GitHub Token 曾以内嵌混淆形态存在于公开仓库（Web 端 v7.9.4 / Android 端 v7.9.7 已移除）【仍需撤销】
 
-- **暴露形态**：`src/lib/credentials.ts` 自 v2.0.0（commit `3f16c1c`，2026-11-16）
-  起，以「双层 XOR + Base64」混淆形态内嵌一枚 classic PAT（`ghp_` 前缀 40 字符），
-  用于仓库发布脚本与推送链鉴权。
+- **暴露形态（双端）**：`src/lib/credentials.ts` 自 v2.0.0（commit `3f16c1c`，
+  2026-11-16）起，以「双层 XOR + Base64」混淆形态内嵌一枚 classic PAT（`ghp_`
+  前缀 40 字符），用于仓库发布脚本与推送链鉴权；**同一令牌同源密文亦内嵌于
+  Android 端 `Net.java`（builtInToken，v4.2.0 起随每个公开发布的 APK 分发，用于
+  自动/手动日志直发 GitHub Issue 与带鉴权的更新检查）——两端暴露面同源。**
 - **风险定性**：**混淆不等于加密**。APK/源码公开环境下，攻击者最终可以提取；
   公开 git 仓库中的混淆令牌必须视为**已泄露**。该文件自首次入库起即随公开仓库
   对全网可见。
@@ -17,7 +19,13 @@
   本仓库**禁止 force push / 禁止改写历史**（发布链红线），因此历史无法原地清除——
   历史中的暴露事实**不可撤销地存在**。
 - **处置状态**：
-  - [x] HEAD 代码已完全移除内嵌令牌（v7.9.4）：`credentials.ts` 重写为
+  - [x] **Android 端内嵌令牌已移除（v7.9.7）**：`Net.java` 的 `builtInToken`
+    （双层 XOR+Base64 同源密文）与 `postIssue`（自动/手动日志直发 GitHub Issue）
+    整体移除；`latestRelease` 改匿名请求（Authorization 头不再发送）；手动日志
+    改为本地导出 + 系统分享；新增 `LOG_RELAY_URL` 预留常量（空串 = 自动上传
+    结构性关闭——客户端从此零 GitHub 写凭据，绝不回退直连）。secret-scan 双闸
+    复跑全绿。
+  - [x] HEAD 代码已完全移除内嵌令牌（v7.9.4，Web 端）：`credentials.ts` 重写为
     「环境变量（`SKIPAD_GH_TOKEN` / `GH_TOKEN` / `GITHUB_TOKEN`）→ 仓库根
     未入库文件 `local-gh-token`（`.gitignore` `local-*` 规则放行收集，权限 600）」
     的凭据链；`scripts/gh-token.mjs`（git-push-once / auto-log-sync 推送链）同款整改。

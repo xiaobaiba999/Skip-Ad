@@ -3,6 +3,18 @@
 > 首页只保留当前版本要点；全部历史版本详情在本页归档。
 > 发布物（APK/报告/文档）见 [Releases](https://github.com/xiaobaiba999/Skip-Ad/releases) 与 `docs/test-reports/`。
 
+## v7.9.7（2026-11-21）—— PAT 移除安全轮：APK 零 GitHub 凭据 + 自动日志上传授权（默认关）+ 手动日志本地导出
+
+- **本轮定位（用户指令：自动日志上传系统正式实施 · 第一步安全改造——无公网服务依赖部分）**：内置 PAT 从 Android 端移除是 P0 安全项（与 v7.9.4 Web 端整改同源同标准）；自动日志上传整体架构升级为「Android → HTTPS 中转服务（鉴权 / 24h 滑窗最多 3 次 / batchId 幂等 / 隐私二次过滤）→ Skip-Ad-Logs 私有仓库 Issues」，本版本落地无需公网服务的前置改造，v8.0.0 上线中转服务后接入。
+- **P0 · 内置令牌移除（CURRENT_CONFIRMED 生产实锤）**：`Net.builtInToken`（双层 XOR+Base64，与 v7.9.4 已移除的 Web 端 credentials.ts 同源密文）+ `postIssue`（自动/手动日志直发 GitHub Issue）整体删除——混淆不等于加密，公开分发 APK 内任何令牌形态必须视为已泄露凭据（v7.9.6 发布说明中 `GET /user` 实测该令牌仍有效 → 撤销动作仍待仓库所有者执行，docs/SECURITY.md R1）。`latestRelease` 检查更新改匿名请求（v3.3.0 重试 + /releases 列表回退链路不变，仅去 Authorization 头——手动检查频次远低于匿名限频）；新增 `newIssuePrefillUrl` 浏览器预填链接（用户登录态自助提交，零令牌）。
+- **自动上传旧通道下线 + 新通道双门结构**：`maybeAutoUploadLog` 重写——授权门（`KEY_AUTO_LOG_UPLOAD` 默认 false）与中转门（`Net.LOG_RELAY_URL` 空串）任一未过即零行为。KeepAliveReceiver 心跳调用点保持（零额外调度开销）；`AUTO_LOG_MS`（8h）保留为 v8.0.0 客户端节拍值（最终限额以服务端 24h 滑窗为准）。
+- **手动日志本地导出（替代直发 Issue）**：MainActivity 新桥 `exportLog`（应用外部私有目录 `logs/`，无新权限；Java 侧 `Net.maskSensitive` 二次脱敏——JS `maskText` + Java 双层保持）+ `shareLogText`（ACTION_SEND 系统分享面板）；`netPostIssue` 桥删除；崩溃堆栈自动附带逻辑（读后即删）保持。
+- **自动日志上传授权（默认关）**：设置页新增独立开关 + 状态行（「已授权 · 服务器上线前不执行」/「默认关闭」）；与无障碍授权严格分离（开无障碍 ≠ 同意日志上传）；授权 ≠ 上传。
+- **WebView 劫持面注释同步**：桥已无任何凭据能力（netPostIssue 已移除），URL 白名单制不变（纵深防御不因单点移除而松绑）。
+- **本轮零识别/安全门改动**：不新增关键词、不扩大点击区域、不降 SafetyGuard、不加轮询、不动任务状态机——唯一生产修改面 = 日志通道/凭据/授权（安全 > 正确关闭 > 命中率 > 性能微优化）。
+- **测试与闸门**：31 套件 6653 项 JVM 断言全绿（修改前后各跑一轮，零回退）；全源 ECJ 编译通过（android-34 platform）；secret-scan 双闸全绿；check-appjs 语义闸全绿；version-sync（7.9.7/79700）全绿。versionCode 79700（> 79600 覆盖安装即升级；无障碍授权/学习数据/白名单/已导入订阅全部保留）。
+- **v8.0.0 展望（自动日志上传完整系统，待中转服务上线）**：Skip-Ad-Logs 私有仓库 + Cloudflare Worker（Durable Objects 原子限流/幂等/恢复）+ GitHub App 最小权限凭据 + LogBatchStore 批次持久化 + 退避重试——方案与中转服务代码已于本轮交付（`log-upload-staging/`，见发布说明）。
+
 ## v7.9.6（2026-11-20）—— L3 真实世界验证轮：Bug#001 终局三漏根治（冷却闸绕过→无限重试循环阻断 + MISS 终局记账）· 一个真实 Bug 一个回归测试
 
 - **本轮定位（用户指令：L3 第一批 50 款真实 App 验证——真实 App → 真实广告 → Decision Evidence → SafetyGuard → HumanTap → VERIFY → 真实结果 → 失败样本 → 缺陷修复 → 回归测试）**：不以堆功能为目标。**真机复查仍无设备（adb/emulator/KVM 均不可用）→ REAL_DEVICE_TEST = NOT_AVAILABLE，L3 批次 1 保持 PENDING_REAL_DEVICE（50 款记录字段一律真机回填，绝不预填/不虚报）**。按用户指令第一原则，唯一允许的生产修改 = 「发现明确生产 Bug」——本轮以代码审读实锤 **Bug#001**（v7.9.5 六态闭环接线引入的潜伏终局竞态）并按「一个真实 Bug 一个回归测试」闭环。

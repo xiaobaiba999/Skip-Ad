@@ -14,13 +14,19 @@ import java.nio.charset.StandardCharsets;
 /**
  * GitHub API 极简客户端（HttpURLConnection + org.json，零第三方依赖）。
  *
- * v3.0.0 出口（全部围绕开源仓库本身，内置混淆令牌，界面零配置）：
- *  1. 问题反馈    → POST /repos/{repo}/issues（令牌内置于代码，双层 XOR+Base64 混淆，
- *                   与 Web 端 credentials.ts 同源密文；密文落库不触发密钥扫描）
- *  2. 检查更新    → GET  /repos/{repo}/releases/latest（v3.3.0 起带令牌 + 三重重试 +
- *                   /releases 列表回退——对抗移动网络/出口的间歇性 404/超时）
- *  3. 应用内更新  → 下载交给系统 DownloadManager（见 Downloader.java），
- *                   v3.3.0 起直连失败自动切换镜像通道（Net.mirrorUrls 提供）
+ * v7.9.7 安全整改（PAT 移除轮）：
+ *  · 【移除】内置混淆令牌（builtInToken，双层 XOR+Base64）——混淆不等于加密，
+ *    公开分发的 APK 内的任何令牌形态（明文/混淆/拆分/加密硬编码）都必须视为
+ *    已泄露凭据。历史令牌的撤销由仓库所有者在 GitHub Settings 执行
+ *    （docs/SECURITY.md R1，撤销前必须视为有效暴露凭据）。
+ *  · 【移除】postIssue（问题反馈/日志上传直发 GitHub Issue）——客户端不再
+ *    持有任何 GitHub 写凭据：手动日志改为本地导出（MainActivity.exportLog），
+ *    问题反馈改走浏览器预填链接（零令牌）。
+ *  · 【保留·匿名】检查更新 → GET /repos/{repo}/releases/latest（v3.3.0 重试 +
+ *    /releases 列表回退全保留；仅去掉 Authorization 头——匿名限频 60 次/小时/出口，
+ *    手动「检查更新」频次远低于此；间歇 404/超时由既有重试链路吸收）。
+ *  · 【预留】LOG_RELAY_URL——自动日志上传的中转服务地址（v8.0.0 上线后填入；
+ *    空串 = 自动上传结构性关闭——授权开启也绝不直连 GitHub）。
  *
  * 约束：为规避 d8 8.2 的非静态内部类 bug，本类不使用任何匿名类/内部类/lambda。
  *       所有方法为同步阻塞调用，仅允许在 JSBridge 线程等后台线程执行。
@@ -35,34 +41,14 @@ public final class Net {
     private Net() {
     }
 
-    /* ───────── 内置混淆令牌（与 Web src/lib/credentials.ts 同源，双层 XOR+Base64） ───────── */
-
-    private static final String L2 = "BSg9CSQRPBYxeFxCNllQHy8hfy4yAiI7Mz0ccjAHNCAuND0AKlsAASsxCTgwPBo7BTpQEjs1dlQ=";
-    private static final int[] KEY_B = {75, 105, 112, 83, 104, 105, 101, 108, 100}; // "KipShield"
-
-    /** 解出内置 Token（仅内存，永不落盘/落日志）；失败返回空串 */
-    static String builtInToken() {
-        try {
-            String kb = new String(new char[]{(char) KEY_B[0], (char) KEY_B[1], (char) KEY_B[2], (char) KEY_B[3], (char) KEY_B[4], (char) KEY_B[5], (char) KEY_B[6], (char) KEY_B[7], (char) KEY_B[8]});
-            String layer1 = xorWith(b64Decode(L2), kb);
-            String token = xorWith(b64Decode(layer1), "SkipAd::2026::obf::k1");
-            return token.matches("[A-Za-z0-9_]{20,}") ? token : "";
-        } catch (Exception e) {
-            return "";
-        }
-    }
-
-    private static String xorWith(String input, String key) {
-        StringBuilder out = new StringBuilder();
-        for (int i = 0; i < input.length(); i++) {
-            out.append((char) (input.charAt(i) ^ key.charAt(i % key.length())));
-        }
-        return out.toString();
-    }
-
-    private static String b64Decode(String s) {
-        return new String(android.util.Base64.decode(s, android.util.Base64.DEFAULT), StandardCharsets.UTF_8);
-    }
+    /* ───────── v7.9.7：自动日志上传中转服务地址（预留常量，默认空） ─────────
+     * 架构（v8.0.0 落地）：Android → HTTPS 中转服务（鉴权/24h 滑窗限流/batchId
+     * 幂等/二次隐私过滤）→ GitHub 私有仓库 Skip-Ad-Logs 的 Issues。
+     * 空串 = 自动上传结构性关闭：AdSkipService.maybeAutoUploadLog 授权门之后
+     * 立即短路返回，绝不直连 GitHub（客户端零写凭据红线）。
+     * 上线流程：中转服务部署完成（Cloudflare Worker）→ 此处填入地址 →
+     * versionCode 递增发版。绝不把临时/测试地址写入此处。 */
+    public static final String LOG_RELAY_URL = "";
 
     /** v4.0.0 订阅拉取：GET 任意 URL 原文（GKD 订阅 JSON5），2xx 返回 body，否则抛异常。
      *  v6.1.0 Connection reset 根治（用户实锤：订阅市场点击导入提示「拉取失败，
@@ -171,9 +157,7 @@ public final class Net {
     static final String BROWSER_UA =
             "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Mobile Safari/537.36";
 
-    /* ───────── 问题反馈 → GitHub Issues（内置令牌，用户零配置） ───────── */
-
-    /* ───────── v5.5.0 隐私纵深：上传正文正则脱敏（纯函数，JVM 可测） ─────────
+    /* ───────── v5.5.0 隐私纵深：本地导出/曾上传正文正则脱敏（纯函数，JVM 可测） ─────────
      * 双端双层：JS 侧 maskText() 先脱敏（收集时），本方法再脱敏一次（提交前）
      * ——纵深防御，任何一层被绕过都兜得住。规则与 Web 端 /api/feedback 对齐：
      *  · 手机号（1[3-9] 开头 11 位，前后非数字）→ 保留前 3 后 4：138****5678
@@ -191,53 +175,25 @@ public final class Net {
         return out;
     }
 
-    /**
-     * 创建反馈 Issue，使用内置混淆令牌（界面已无任何 Token 输入）。
-     * v5.5.0：title/body 提交前经 maskSensitive 二次脱敏（纵深第二层）。
-     * @return {ok:true, url, number} 或 {ok:false, error, fallbackUrl}
-     */
-    public static String postIssue(String title, String body) {
-        title = maskSensitive(title);
-        body = maskSensitive(body);
-        String fallback = ISSUES_PAGE + "/new?title=" + enc(title) + "&body=" + enc(body);
-        String token = builtInToken();
-        if (token.length() == 0) {
-            return err("内置令牌不可用：已生成浏览器预填链接", fallback);
-        }
-        try {
-            JSONObject payload = new JSONObject();
-            payload.put("title", title);
-            payload.put("body", body);
-            String[] r = http("POST", API + "/issues", token, payload.toString(), true);
-            int code = Integer.parseInt(r[0]);
-            if (code >= 200 && code < 300) {
-                JSONObject d = new JSONObject(r[1]);
-                JSONObject out = new JSONObject();
-                out.put("ok", true);
-                out.put("url", d.optString("html_url", ""));
-                out.put("number", d.optInt("number", 0));
-                return out.toString();
-            }
-            if (code == 401) return err("内置令牌无效（401）", fallback);
-            if (code == 403) return err("触发限流或权限不足（403）", fallback);
-            return err("GitHub 返回 " + code, fallback);
-        } catch (Exception e) {
-            return err("网络异常：" + safeMsg(e), fallback);
-        }
+    /** v7.9.7：问题反馈/手动日志的零令牌浏览器预填链接（本机拼好 title/body 查询串，
+     * 交给系统浏览器打开 GitHub 新建 Issue 预填页——用户在自己登录态里提交，
+     * 客户端零凭据零写操作）。 */
+    public static String newIssuePrefillUrl(String title, String body) {
+        return ISSUES_PAGE + "/new?title=" + enc(maskSensitive(title)) + "&body=" + enc(maskSensitive(body));
     }
 
-    /* ───────── 检查更新 → GitHub Releases（v3.3.0：令牌 + 重试 + 列表回退） ───────── */
+    /* ───────── 检查更新 → GitHub Releases（v7.9.7：匿名 + 重试 + 列表回退） ───────── */
 
     /**
-     * 获取最新 Release（v3.3.0 三通道：令牌直连 → 重试 → /releases 列表回退）。
+     * 获取最新 Release（三通道：直连 → 重试 → /releases 列表回退；v7.9.7 起匿名）。
      * 背景真机反馈：检查更新常报“仓库尚未发布版本”或直接无反应——移动网络下
      * api.github.com 间歇 404/超时；v3.2.0 及之前匿名单次请求，失败即放弃。
      * @return {ok:true, hasRelease:false} / {ok:true, hasRelease:true, tag, name, notes, url, apkUrl, apkMirrors[], apkFileName, apkMB, publishedAt}
      *         / {ok:false, error}
      */
     public static String latestRelease() {
-        String token = builtInToken();
-        // 通道 1/2：/releases/latest，带令牌重试两次（间隔 800ms）
+        String token = ""; // v7.9.7：匿名——http() 对空 token 不发送 Authorization 头（限频 60 次/小时/出口，手动检查更新频次远低）
+        // 通道 1/2：/releases/latest，重试两次（间隔 800ms）
         for (int attempt = 1; attempt <= 2; attempt++) {
             try {
                 String[] r = http("GET", API + "/releases/latest", token, null, true);

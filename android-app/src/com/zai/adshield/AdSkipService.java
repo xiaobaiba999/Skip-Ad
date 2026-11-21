@@ -299,8 +299,16 @@ public class AdSkipService extends AccessibilityService {
     private final java.util.HashMap<String, Long> lastGestureOkAt = new java.util.HashMap<>();
 
     /* v6.1.0：每 8 小时自动提交引擎日志（用户实锤：一天自动提交 3 次、
-     * 24 小时均匀 → 12h→8h；成功才计时，服务未运行/息屏跳过等下轮心跳） */
+     * 24 小时均匀 → 12h→8h；成功才计时，服务未运行/息屏跳过等下轮心跳）
+     * v7.9.7：客户端节拍值保留——最终限额以服务端 24h 滑窗（最多 3 次）为准 */
     public static final long AUTO_LOG_MS = 8 * 60 * 60 * 1000L;
+
+    /* v7.9.7 安全整改：自动日志上传授权开关（默认关闭）。
+     * · 授权与无障碍授权严格分离：开启无障碍服务 ≠ 同意日志上传；
+     * · 授权开启后，仍要等中转服务上线（Net.LOG_RELAY_URL 非空，v8.0.0）
+     *   才会真正提交——本版本（v7.9.7）结构性不自动上传；
+     * · 旧 v4.2.0~v7.9.6 通道（内置 PAT 直发 GitHub Issue）已随 PAT 移除下线。 */
+    static final String KEY_AUTO_LOG_UPLOAD = "autoLogUploadEnabled";
 
     /* 极速链（v4.3.0 功耗收紧：16 档 → 13 档——前 4s 的内容变化补扫已覆盖
        密集相位，固定档只留骨架；露头就秒跳不变（0/80/200ms 三连快扫）
@@ -673,47 +681,38 @@ public class AdSkipService extends AccessibilityService {
         return ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_STATE, null);
     }
 
-    /* ═══ v4.2.0 自动提交引擎日志（KeepAliveReceiver 心跳顺带）═══
-     * v6.1.0：12h→8h（用户实锤：一天自动提交 3 次，24 小时均匀 → 一日
-     * 三次）；成功才计时；服务未运行/暂停/息屏时跳过（等下一轮心跳，
-     * 绝不夜间耗电）。与手动上传同一内置令牌通道（GitHub issue），
-     * 标题带「自动」标识。 */
+    /* ═══ v7.9.7 自动提交引擎日志（授权门 + 中转服务门，双双短路）═══
+     * · v4.2.0 引入 / v6.1.0 调 8h 的旧通道（KeepAliveReceiver 心跳顺带 →
+     *   Net.postIssue 直发 GitHub Issue）已随内置 PAT 移除整体下线；
+     * · 新通道（v8.0.0 LogUploadDispatcher 接管）：用户授权开启 +
+     *   Net.LOG_RELAY_URL 配置（中转服务上线）+ 服务端 24h 滑窗最多 3 次 +
+     *   batchId 幂等——本版本两个门任一未过即零行为（结构性不自动上传，
+     *   绝不回退到直连 GitHub）；
+     * · KeepAliveReceiver 心跳调用点保持不变（零额外调度开销）。 */
     public static void maybeAutoUploadLog(final Context ctx) {
         try {
-            final SharedPreferences sp = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-            long last = sp.getLong("autoLogAt", 0);
-            long now = System.currentTimeMillis();
-            if (now - last < AUTO_LOG_MS) return;
-            final AdSkipService s = instance;
-            if (s == null || !masterOn) return;       // 服务活着且在守护才传
-            if (!isScreenOn(ctx)) return;              // 息屏不传（夜间功耗红线）
-            Thread t = new Thread(() -> {
-                try {
-                    String state = snapshotState(ctx);
-                    org.json.JSONObject st = state != null
-                            ? new org.json.JSONObject(state) : new org.json.JSONObject();
-                    String ver = "4.3.0";
-                    try {
-                        ver = ctx.getPackageManager().getPackageInfo(ctx.getPackageName(), 0).versionName;
-                    } catch (Throwable ignored) {
-                    }
-                    String body = buildLogBody(ctx, st, ver, true);
-                    String title = "[引擎日志][v" + ver + "] "
-                            + android.os.Build.BRAND + " " + android.os.Build.MODEL + "（8 小时自动 · 一日 3 次）";
-                    String r = Net.postIssue(title, body);
-                    org.json.JSONObject o = new org.json.JSONObject(r);
-                    if (o.optBoolean("ok")) {
-                        sp.edit().putLong("autoLogAt", System.currentTimeMillis()).apply();
-                        AdSkipService sv = instance;
-                        if (sv != null) {
-                            sv.appendLog("📨 引擎日志已自动提交（每 8 小时一次 · 一日 3 次均匀覆盖全天；手动上传不受影响）");
-                        }
-                    }
-                } catch (Throwable ignored) {
-                }
-            }, "auto-log");
-            t.setDaemon(true);
-            t.start();
+            if (!autoLogUploadEnabled(ctx)) return;        // 授权门：默认关（与无障碍授权分离）
+            if (Net.LOG_RELAY_URL.length() == 0) return;    // 中转门：v7.9.7 服务未上线——保持关闭
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** v7.9.7：自动日志上传授权（默认 false——首次安装绝不默认同意）。 */
+    public static boolean autoLogUploadEnabled(Context ctx) {
+        try {
+            return ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                    .getBoolean(KEY_AUTO_LOG_UPLOAD, false);
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** v7.9.7：设置授权开关（UI 桥调用）。仅写授权位，不触发任何上传行为——
+     *  上传条件另见 maybeAutoUploadLog 双门与服务端限额。 */
+    public static void setAutoLogUploadEnabled(Context ctx, boolean enabled) {
+        try {
+            ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                    .putBoolean(KEY_AUTO_LOG_UPLOAD, enabled).apply();
         } catch (Throwable ignored) {
         }
     }

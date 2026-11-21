@@ -82,6 +82,12 @@
           <span class="sw-name">习惯学习</span>
           <label class="switch"><input type="checkbox" id="toggle-learning" checked><span class="slider"></span></label>
         </div>
+        <!-- v7.9.7：自动提交诊断日志授权（默认关；与无障碍授权分离；服务器上线前不执行） -->
+        <div class="switch-row">
+          <span class="sw-name">自动提交诊断日志</span>
+          <label class="switch"><input type="checkbox" id="toggle-log-upload"><span class="slider"></span></label>
+        </div>
+        <div class="sub-note" id="log-upload-note" style="margin-top:4px">默认关闭 · 服务器上线前不会执行任何自动提交</div>
       </div>
 
       <!-- v4.3.0 应用白名单 -->
@@ -202,7 +208,7 @@
           <div class="card-title">引擎日志</div>
           <div class="btn-row" style="margin:0">
             <button class="btn btn-ghost btn-sm" id="btn-refresh-log">刷新</button>
-            <button class="btn btn-primary btn-sm" id="btn-upload-log">上传日志</button>
+            <button class="btn btn-primary btn-sm" id="btn-upload-log">导出日志</button>
           </div>
         </div>
         <div class="log-box" id="real-log"></div>

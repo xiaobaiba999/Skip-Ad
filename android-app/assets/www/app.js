@@ -1,4 +1,4 @@
-/* 开屏卫士 v7.9.6 · L3 真实世界验证轮：Bug#001 终局三漏根治（冷却闸绕过→无限重试循环阻断 + MISS 终局记账） */
+/* 开屏卫士 v7.9.7 · PAT 移除安全轮：APK 零 GitHub 凭据 + 自动日志授权（默认关）+ 手动日志本地导出 */
 "use strict";
 
 /* ══════════ 环境 ══════════ */
@@ -23,8 +23,8 @@ const store = {
 };
 
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "7.9.6"; }
-function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "79600"; }
+function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "7.9.7"; }
+function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "79700"; }
 
 /* ══════════ 吉祥物（v4.1.0 全新形象：白机器人小侠 + 绿披风跳跃） ══════════
  * 与启动器图标同源；state: on（跳跃浮动）/ off（灰度待命） */
@@ -35,18 +35,18 @@ function mascotImg(size, state, head) {
 
 $("#brand-logo").innerHTML = mascotImg(30, "on", true);
 
-/* ═══ v7.9.6 版本记录（L3 真实世界验证轮 · Bug#001 终局三漏根治）═══ */
+/* ═══ v7.9.7 版本记录（PAT 移除安全轮）═══ */
 const CURRENT_RELEASE = {
-  date: "2026-11-20",
-  title: "Bug#001 终局三漏根治：冷却闸绕过→无限重试循环阻断 + MISS 终局记账",
+  date: "2026-11-21",
+  title: "APK 零 GitHub 凭据：内置 PAT 移除 + 自动日志上传授权（默认关）+ 手动日志本地导出",
   features: [
-    "Bug#001（代码审读实锤）：预算耗尽于复验时刻的终局直接置 FAILED 三漏——不落 endedAt（taskAllowsNew(now,0) 恒放行 → 2.2s 冷却闸被绕过 → 立即开新任务重置预算 → 同一存活广告无限重试循环）；不记 MISS（六态把任务终局整类漏记）；终局无日志",
-    "修复：AdTaskCore.onVerifyStillStep 纯函数（服务侧薄接线）——预算耗尽 → FAILED + endedAt=now（冷却闸在岗：新任务须过 2.2s 闸才重置预算）+ MISS 终局一次记账；FEEDBACK 复验在场原态保持（零行为变化）；终态不可逆不重复记账",
-    "一个真实 Bug 一个回归测试：Bug001RegressionTest（52 断言 · 八段）——终局三件套/全生命周期/冷却闸闭环/门语义取证/不重复记账/FEEDBACK 语义/RETRY 仅首击计一次/六态计数端到端",
-    "本轮零识别/安全门改动：不新增关键词、不扩大点击区域、不降 SafetyGuard、不加轮询——唯一生产修改是终局记账/冷却闸 bookkeeping（安全 > 正确关闭 > 命中率 > 性能微优化）",
-    "L3 批次 1 保持 PENDING_REAL_DEVICE（REAL_DEVICE_TEST = NOT_AVAILABLE——v7.9.6 复查仍无真机，绝不预填）· 31 套件 6653 项断言全绿（+52；既有 6601 项零回退）· versionCode 79600（> 79500 覆盖安装即升级）",
+    "P0 安全：Net.java 内嵌混淆 PAT（双层 XOR+Base64，与 Web 端同源密文）整体移除——混淆不等于加密，公开 APK 内任何令牌形态即已泄露凭据；撤销待仓库所有者执行（SECURITY.md R1）",
+    "自动上传旧通道（v4.2.0 起 · 8h 心跳直发 GitHub Issue）整体下线：新通道双门结构（用户授权默认关 + 中转服务地址为空）任一未过即零行为——本版本结构性不自动上传",
+    "自动日志上传授权独立开关（默认关，与无障碍授权分离）：设置页新增 toggle + 状态行；上线后受服务端 24h 滑窗（最多 3 次）+ batchId 幂等约束（v8.0.0）",
+    "手动日志本地导出：exportLog 桥（logs/ 目录文件 + Java 侧二次脱敏）+ 系统分享面板；检查更新匿名化 + 浏览器预填链接（零令牌）",
+    "本轮零识别/安全门改动：不新增关键词、不扩大点击区域、不降 SafetyGuard、不加轮询；31 套件 6653 项断言全绿（修改前后各一轮零回退）· versionCode 79700（> 79600 覆盖安装即升级）",
   ],
-  summary: "v7.9.6 L3 真实世界验证轮：代码审读实锤 Bug#001——预算耗尽于复验时刻的终局三漏（不落 endedAt → 冷却闸被绕过 → 同一存活广告借「新任务重置预算」无限重试循环；不记 MISS → 六态把任务终局整类漏记；终局无日志）。终局裁决收进纯函数 AdTaskCore.onVerifyStillStep（服务侧薄接线），一个真实 Bug 一个回归测试（Bug001RegressionTest 52 断言）。本轮零识别/安全门改动；L3 批次 1 保持 PENDING_REAL_DEVICE（无真机绝不虚报）。",
+  summary: "v7.9.7 安全轮：内置 PAT 从 APK 移除（客户端零 GitHub 写凭据）；自动日志上传改为授权默认关 + 中转服务未上线结构性关闭（绝不直连 GitHub）；手动日志本地导出 + 系统分享替代直发 Issue；检查更新匿名化。为 v8.0.0 轻量中转服务（24h 最多 3 次 + batchId 幂等 + 隐私二次过滤）铺轨。",
 };
 
 /* v7.0.0 新版功能描述（规范：≤5 个标题、带序号；检查更新发现新版本时就地渲染）。
@@ -429,6 +429,35 @@ function renderKeepAlive() {
 
 bindToggle("toggle-popup", "popupShield", "弹窗屏蔽已开启", "弹窗屏蔽已关闭");
 bindToggle("toggle-learning", "learning", "习惯学习已开启", "习惯学习已关闭");
+
+/* ══════════ v7.9.7 自动提交诊断日志授权（独立开关 · 默认关） ══════════
+ * 与无障碍授权严格分离；授权≠上传——中转服务上线（v8.0.0）前结构性不执行，
+ * 上线后仍受服务端 24h 滑窗（最多 3 次）与 batchId 幂等约束。 */
+function refreshLogUploadNote() {
+  const note = $("#log-upload-note");
+  if (!note) return;
+  const on = !!(HAS_BRIDGE && AndroidApp.logUploadConsent && (function(){ try { return AndroidApp.logUploadConsent(); } catch (e) { return false; } })());
+  note.textContent = on
+    ? "已授权 · 每 24 小时最多 3 次 · 上传服务器上线前不会执行任何自动提交"
+    : "默认关闭 · 每日最多 3 次脱敏诊断数据 · 可随时关闭（服务器上线前不会执行）";
+}
+(function bindLogUploadToggle() {
+  const el = $("#toggle-log-upload");
+  if (!el) return;
+  try {
+    if (HAS_BRIDGE && AndroidApp.logUploadConsent) el.checked = !!AndroidApp.logUploadConsent();
+  } catch (e) {}
+  el.addEventListener("change", () => {
+    if (HAS_BRIDGE && AndroidApp.setLogUploadConsent) {
+      try { AndroidApp.setLogUploadConsent(el.checked); } catch (e) {}
+    } else {
+      store.set("logUploadConsent", el.checked);
+    }
+    toast(el.checked ? "已授权自动提交（服务器上线后生效）" : "自动提交已关闭");
+    refreshLogUploadNote();
+  });
+  refreshLogUploadNote();
+})();
 
 /* ══════════ v4.3.0 应用白名单 ══════════ */
 let wlCache = null; // {list:Set, known:[{pkg,label}]}
@@ -1035,19 +1064,19 @@ function resetUploadBtn(btn) {
 
 /* 三重反馈之一：全屏弹窗确认 */
 /* v5.8.0 唯一确认弹窗：一个 ✓、一行结果、一个「好的」——零跳转零其他反馈 */
-function showUploadDoneModal(number) {
+function showExportDoneModal(path, bytes) {
   closeModal();
   const wrap = document.createElement("div");
   wrap.id = "upload-done-modal";
   wrap.style.cssText = "position:fixed;inset:0;z-index:130;background:rgba(4,12,8,.6);"
     + "display:flex;align-items:center;justify-content:center;padding:24px;";
   wrap.innerHTML =
-    '<div role="dialog" aria-modal="true" aria-label="上传成功" style="background:#fff;border-radius:16px;'
+    '<div role="dialog" aria-modal="true" aria-label="导出成功" style="background:#fff;border-radius:16px;'
     + 'max-width:320px;width:100%;padding:22px 20px 16px;text-align:center;box-shadow:0 18px 50px rgba(0,0,0,.28)">'
     + '<div style="width:56px;height:56px;margin:0 auto 12px;border-radius:50%;background:#10B981;'
     + 'display:flex;align-items:center;justify-content:center;font-size:28px;color:#fff;font-weight:700">✓</div>'
-    + '<div style="font-size:17px;font-weight:700;color:#0c2015">上传成功，感谢反馈</div>'
-    + '<div style="font-size:13px;color:#5b6b60;margin:8px 0 14px">日志已提交 GitHub Issue #' + esc(number) + '</div>'
+    + '<div style="font-size:17px;font-weight:700;color:#0c2015">日志已导出到本地</div>'
+    + '<div style="font-size:13px;color:#5b6b60;margin:8px 0 14px">' + esc(path) + '<br>（' + esc(bytes || "?") + ' 字节 · 可用「分享」发送给开发者）</div>'
     + '<button data-act="close" style="width:100%;border:0;border-radius:10px;background:#10B981;'
     + 'color:#fff;font-size:14px;font-weight:600;padding:11px 0">好的</button></div>';
   document.body.appendChild(wrap);
@@ -1061,26 +1090,12 @@ function closeModal() {
   if (m) m.remove();
 }
 
-/* v5.8.0：系统通知仅保留失败路径（成功已有唯一确认弹窗——单一反馈通道防呆；
- * 失败通知在用户离开 App 时仍可召回，是罕见场景兜底） */
-function notifyUploadResult(ok, number) {
-  if (!HAS_BRIDGE || ok) return;
-  try {
-    AndroidApp.postNotify(
-      "日志上传失败",
-      "本次上传未完成，可回到「我的 → 引擎日志」重试",
-      false);
-  } catch (e) {}
-}
-
 /* 失败原因 → 人话提示 */
 function humanizeUploadError(err) {
   const e = String(err || "");
-  if (e.includes("401")) return "内置令牌无效（401）——请到 GitHub 仓库 Issues 手动反馈";
-  if (e.includes("403")) return "触发 GitHub 限流（403）——请稍后重试";
-  if (e.includes("网络")) return "网络异常——请检查网络后重试";
-  if (e.includes("令牌")) return e;
-  return e || "上传失败（未知原因）";
+  if (e.includes("空间") || e.includes("storage")) return "存储空间不足或不可写——请检查存储后重试";
+  if (e.includes("导出失败")) return e;
+  return e || "导出失败（未知原因）";
 }
 
 /* 失败提示（含重试按钮） */
@@ -1090,14 +1105,14 @@ function showUploadFail(box, err) {
     + ' <button id="btn-upload-retry" style="border:0;border-radius:999px;background:#fff;color:#b91c1c;'
     + 'font-size:12px;font-weight:700;padding:4px 12px;margin-left:6px">重试</button>';
   const rb = $("#btn-upload-retry");
-  if (rb) rb.addEventListener("click", () => doUploadLog());
+  if (rb) rb.addEventListener("click", () => doExportLog());
 }
 
-/* 上传主流程：收集（四类内容）→ 脱敏 → 提交 → 三重反馈 */
-async function doUploadLog() {
+/* 导出主流程（v7.9.7）：收集（四类内容）→ 脱敏 → 写入本地文件 → 分享可选 */
+async function doExportLog() {
   const box = $("#upload-log-result");
   const btn = $("#btn-upload-log");
-  if (!HAS_BRIDGE) { box.className = "fb-result err"; box.textContent = "仅 APK 内可上传（浏览器预览请用 Web 端学习中心）"; return; }
+  if (!HAS_BRIDGE) { box.className = "fb-result err"; box.textContent = "仅 APK 内可导出（浏览器预览无文件系统）"; return; }
 
   closeModal();
   box.className = "fb-result";
@@ -1111,11 +1126,11 @@ async function doUploadLog() {
   try { crash = AndroidApp.crashDump() || ""; } catch (e) { crash = ""; }
   setUploadPhase(btn, "本地脱敏…");
 
-  const title = "[引擎日志][v" + appVer() + "] " + (dev.brand || "") + " " + (dev.model || "设备") + "（手动上传）";
+  const title = "[引擎日志][v" + appVer() + "] " + (dev.brand || "") + " " + (dev.model || "设备") + "（本地导出）";
   const bodyLines = [
     "## 设备",
     "- " + (dev.brand || "") + " " + (dev.model || "") + " · " + (dev.os || "") + " · SDK " + (dev.sdk || "?"),
-    "- 应用版本：v" + appVer() + "（build " + appCode() + "） · 环境：Android APK · 手动上传",
+    "- 应用版本：v" + appVer() + "（build " + appCode() + "） · 环境：Android APK · 本地导出（不上传）",
     "",
     "## 状态",
     engineProfile(),
@@ -1125,25 +1140,30 @@ async function doUploadLog() {
   } else {
     bodyLines.push("", "## 上次崩溃堆栈", "（无——本次开机周期内进程未崩溃）");
   }
-  // ② 本地脱敏（第一层；Java Net.postIssue 提交前还会再脱敏一次）
+  // ② 本地脱敏（第一层；Java exportLog 写入前还会再脱敏一次——双层保持）
   const body = maskText(bodyLines.join("\n"));
 
-  setUploadPhase(btn, "提交中…");
+  setUploadPhase(btn, "写入文件…");
   let res = null;
-  try { res = JSON.parse(AndroidApp.netPostIssue(title, body)); } catch (e) { res = { ok: false, error: "上传异常" }; }
+  try { res = JSON.parse(AndroidApp.exportLog(title, body)); } catch (e) { res = { ok: false, error: "导出异常" }; }
   resetUploadBtn(btn);
 
   if (res && res.ok) {
     box.className = "fb-result ok";
-    box.textContent = "已上传 Issue #" + res.number;
-    showUploadDoneModal(res.number);               // 唯一反馈：一个确认弹窗（v5.8.0）
+    box.innerHTML = "已导出：" + esc(res.path)
+      + ' <button id="btn-share-log" style="border:0;border-radius:999px;background:#fff;color:#047857;'
+      + 'font-size:12px;font-weight:700;padding:4px 12px;margin-left:6px">分享</button>';
+    const sb = $("#btn-share-log");
+    if (sb) sb.addEventListener("click", () => {
+      try { AndroidApp.shareLogText(title + "\n\n" + body); } catch (e) {}
+    });
+    showExportDoneModal(res.path, res.bytes);      // 唯一反馈：一个确认弹窗（v5.8.0 形态保持）
   } else {
     showUploadFail(box, res && res.error);          // 明确原因 + 重试按钮
-    notifyUploadResult(false, 0);                  // 失败通知保留（罕见场景兜底）
   }
 }
 
-$("#btn-upload-log").addEventListener("click", () => { void doUploadLog(); });
+$("#btn-upload-log").addEventListener("click", () => { void doExportLog(); });
 
 /* ══════════ v7.1.0 卫士使用报告 · v7.2.0 饼图常驻 + 明细折叠 ══════════
  * （用户实锤：报告生成后太长看着难受——顶部拦截分布饼图常驻 + 五段明细
