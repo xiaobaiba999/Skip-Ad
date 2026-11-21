@@ -1,6 +1,6 @@
 /** 版本与 GitHub 仓库信息（Web 端与发布节奏共用） */
-export const APP_VERSION = "8.0.1";
-export const VERSION_CODE = 80100; // major*10000 + minor*1000 + patch*100，随版本单调递增
+export const APP_VERSION = "8.0.2";
+export const VERSION_CODE = 80200; // major*10000 + minor*1000 + patch*100，随版本单调递增
 export const GITHUB_REPO = "xiaobaiba999/Skip-Ad";
 export const GITHUB_API = `https://api.github.com/repos/${GITHUB_REPO}`;
 export const GITHUB_HOME = `https://github.com/${GITHUB_REPO}`;
@@ -19,16 +19,16 @@ export interface VersionEntry {
  *  旧版本内容归档在 GitHub Releases 与 git 历史） */
 export const VERSION_HISTORY: VersionEntry[] = [
   {
-    version: "8.0.1",
-    code: 80100,
-    date: "2026-11-27",
-    tagline: "系统级审计轮：全链路调用图审计（安全面零问题实锤）+ 窗口切换 0ms 双重全量扫描消除（每次切窗省一整遍树扫描）+ secret-scan 闸门自断修复 + 视频轮询自适应节拍真值表补测",
+    version: "8.0.2",
+    code: 80200,
+    date: "2026-11-28",
+    tagline: "双 DFS 单遍化专项：matchAll+walk 两趟同树遍历融合为 walkFused 单遍（零命中扫描 getChild/分配/属性读减半）+ 21 场景逐字段对照测试 + JVM 基准证据入档",
     notes: [
-      "全链路审计（docs/audits/V8-SYSTEM-AUDIT.md + V8-OPTIMIZATION-PLAN.md）：事件→扫描→决策→点击→复验→终态全调用图行号级绘制；安全面逐项核对零问题（九态状态机真值表/taskId+generation 全回调贯穿/重复点击断源五道防线/ACK 前不删日志/未授权零磁盘写/上传零阻塞——全部在岗实锤）；matchAll+walk 双 DFS 同树、videoPoll walkDue 双工作、appendEvent 全文件读写等发现分级入档（P3-1/P3-2 列下轮专项并给出否决理由与前置条件）",
-      "性能优化（P2-1）：窗口切换路径 bumpScanChain(pkg, true) 跳过梯子 0ms 档——内联首扫（onAccessibilityEvent 现场同步出手）与 0ms 档对同一棵树的全量双扫是纯幂等冗余，每次切窗白付一整遍扫描（守护①②+反馈查+探针 5 词+matchAll+matchSources+walk，至多 ~1500 节点访问）；60ms 档与 nudge 通道覆盖树演化，安全门/决策梯/任务门/档案抑制路径零变化（suppress 路径 0ms 档保留——该路径无内联先行）",
-      "仓库卫生修复（P0-1 实锤）：reports/iteration-v8.0.0.md 文档字符串字面含 PEM 头形态，触发 secret-scan 自身正则令 HEAD 测试/构建闸全断（接管首跑即被阻断——任何后续会话无法跑测试）；改写措辞修复，扫描闸强度零变化",
-      "测试补强（VideoSplashTest S9 · 18 断言：75→93）：补 v7.9.5 自适应轮询节拍真值表（adaptivePollGapMs 三档边界/4 参 pollDue 到期判定/walkDue×miss-streak 交互契约——75→93 断言）——P3-2 videoPoll 重构的前置钉子（此前该纯函数面零覆盖）",
-      "本轮零识别/安全门/状态机/契约改动：不新增关键词、不扩大点击区域、不降 SafetyGuard、不动任务状态机、不动日志五模块——纯调度冗余消除与测试/文档",
+      "双 DFS 单遍化（P3-1 专项落地）：新增 AdDecisionCore.walkFused（FusedScan：规则骑士+决策信号同遍收集）——零命中扫描（档位大头）不再对同一棵树走 matchAll+walk 两趟独立 DFS；骑士门序/去重/排序/满 4 早停与 matchAll 逐字段等价，决策信号与 walk 同一 visit 体（rider=null 时 byte-for-byte 旧路径）；探针命中/弹窗窗路径零变化",
+      "三处语义差全部声明并测试钉死（DualDfsParityTest S11/S12/S17）：①树在两趟间变化时晚到候选顺延下一档（60ms 梯子/nudge 覆盖，出手前 refreshLive 复核不变）；②子树瞬时 binder 异常单次即失（确定性异常两者等价）；③小程序容器骑士入口即抑制（旧路 execute L0 拦，同为零点击）",
+      "新增 DualDfsParityTest（21 场景 92 断言）：内容页/开屏/WebView/Native/Compose/极简/聊天孤立跳过/输入框/滚动/多窗口/树中途变化两方向/节点异常两类/预算截断/多候选/订阅命中合成顺序/订阅未命中/小程序容器/骑士满额早停/计数对照/vid 门边界——旧组合 vs 新单遍的命中集+顺序、决策信号全字段、决策结果逐项断言",
+      "新增 ScanBenchmark（三形态×三规模 63 断言，SIMULATED）：确定性计数证据——child 调用（≈生产 getChild binder）精确减半（298→149/798→399/1198→599）、text/desc/bounds 读次减半、属性读总次降约 36%（2117→1351/5642→3601/8462→5401）、包装分配（≈NodeAdapter）减半；JVM 计时仅供参考，真机性能/电量 NOT_RUN",
+      "本轮零安全门/状态机/契约改动：SafetyGuard/ComplianceGuard/AdTaskCore/日志五模块/坐标安全边界/DecisionEvidence 全部不动；小程序保护/菜单行保护/预算梯子在对照测试中实锤在岗",
     ],
   },
 ];

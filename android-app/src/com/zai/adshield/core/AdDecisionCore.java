@@ -434,6 +434,9 @@ public final class AdDecisionCore {
 
     /* ═════════ 控件树遍历（多信号一次收集） ═════════ */
 
+    /** 决策核心单树遍历（v8.0.2 起 rider 参数化：rider=null 纯 walk 语义，
+     *  行为与历版 byte-for-byte 一致——复验针/插屏扫描等独立调用方继续用本入口）。
+     *  主扫描路径改走 walkFused（规则骑士与决策信号单遍收集，双 DFS 消除）。 */
     public static ScanFind walk(NodeView root, Ctx ctx) {
         ScanFind f = new ScanFind();
         if (root == null) return f;
@@ -446,7 +449,7 @@ public final class AdDecisionCore {
         String rootCls = nz(root.cls()).toLowerCase();
         f.dialogForm = rootCls.contains("dialog") || rootCls.contains("popup");
         int[] budget = {ctx.budgetNodes};
-        visit(root, 0, budget, f, ctx);
+        visit(root, 0, budget, f, ctx, null);
         // v3.8.0 候选排序：真键优先——① 自身可点（无祖先中转）② 文案更短（精确「跳过」
         // 优先于「5s后可跳过」类长文案）③ 面积更小。防「第 1 候选是广告图内假文本」
         try {
@@ -464,6 +467,98 @@ public final class AdDecisionCore {
          * 门控到「倒计时将尽」再出手——首击不再白点烧耐心预算）。 */
         resolveCdDigits(f, ctx);
         return f;
+    }
+
+    /* ═════════ v8.0.2 双 DFS 单遍化（P3-1 专项）═════════
+     * 旧主扫描路径：RuleEngine.matchAll（规则 DFS）与 walk（决策 DFS）对
+     * 同一棵树先后各走一遍——零命中扫描（内容页/无文本规则广告，档位大头）
+     * 时 matchAll 整趟白付：同节点 text/desc/visible/bounds/childCount 读
+     * 两遍、getChild() binder 调用×2、NodeAdapter 分配×2。
+     * walkFused = 一次遍历同时收集【规则命中（骑士）】与【决策信号（walk）】：
+     *  · 骑士条件与 matchAll 逐字段等价：text 规则门（vis&&b!=null&&label>0
+     *    &&area≤SKIP_AREA_MAX→matchText）/ vid 叶子门（label==0&&childCount==0
+     *    →matchVid）/ addCand 去重（label+tapBounds）/ tierFull+短文案排序 /
+     *    满 max 中即止（与 collect 的 entry 检查+子循环条件同停点）；
+     *  · 决策信号与 walk 逐字段等价：同一 visit 体（rider=null 时 byte-for-byte
+     *    旧路径），预算同源同减点，候选排序/倒计时并入/根 Dialog 形态全同；
+     *  · 骑士满 max 即止 = collect 早停同点；此时规则路径必走（hits 非空），
+     *    find 将被服务侧丢弃——早停不产生任何可观测差异；
+     *  · 小程序容器门与 walk 同位（入口即返空）：旧路径 matchAll 无此门、
+     *    命中后在 execute() L0 被拦——新路径骑士同被抑制（更早更省，出手
+     *    结果同为零点击，差异仅日志量/acted 标志，见 V8-SYSTEM-AUDIT）。
+     * 已知语义差（诚实清单，DualDfsParityTest 场景 11/12 钉死）：
+     *  ① 树在两趟 DFS 之间变化时，旧 walk 看到第二时刻快照、fused 只看
+     *    第一时刻——晚到候选顺延到下一档（60ms）/nudge 通道，与 v8.0.1
+     *    P2-1 同类权衡；出手前 refreshLive 复核不变，零新增误触面；
+     *  ② 子树瞬时 binder 异常（throw-once）旧 walk 重试可得、fused 单次
+     *    即失——确定性异常两者等价（同丢同子树）。 */
+    public static final class RuleRiderState {
+        public final java.util.ArrayList<RuleEngine.Hit> hits = new java.util.ArrayList<RuleEngine.Hit>();
+        final int max;
+
+        RuleRiderState(int max) {
+            this.max = max;
+        }
+
+        boolean done() {
+            return hits.size() >= max;
+        }
+
+        /** RuleEngine.addCand 同款去重（label+tapBounds 双等——换了也是白点） */
+        void addIfNew(RuleEngine.Hit h) {
+            if (hits.size() >= max) return;
+            for (int i = 0; i < hits.size(); i++) {
+                RuleEngine.Hit o = hits.get(i);
+                if (o.label.equals(h.label) && RuleEngine.sameBounds(o.tapBounds, h.tapBounds)) return;
+            }
+            hits.add(h);
+        }
+    }
+
+    /** walkFused 输出：决策信号（find，walk 同构）+ 规则命中（ruleHits，matchAll 同构） */
+    public static final class FusedScan {
+        public final ScanFind find = new ScanFind();
+        public final java.util.ArrayList<RuleEngine.Hit> ruleHits = new java.util.ArrayList<RuleEngine.Hit>();
+    }
+
+    /** 单遍融合扫描：ruleRider=false 等价 walk()（弹窗窗等无规则路径）；
+     *  true 时骑士与决策信号同遍收集。maxHits<=0 视同骑士关闭。 */
+    public static FusedScan walkFused(NodeView root, Ctx ctx, boolean ruleRider, int maxHits) {
+        FusedScan out = new FusedScan();
+        if (root == null) return out;
+        if (MiniProgramGuard.isMiniProgramWindow(ctx.pkg, ctx.activityId)) return out;
+        RuleRiderState rider = (ruleRider && maxHits > 0) ? new RuleRiderState(maxHits) : null;
+        String rootCls = nz(root.cls()).toLowerCase();
+        out.find.dialogForm = rootCls.contains("dialog") || rootCls.contains("popup");
+        int[] budget = {ctx.budgetNodes};
+        visit(root, 0, budget, out.find, ctx, rider);
+        // walk 同款候选排序（比较器逐字段复制，不得漂移）
+        try {
+            java.util.Collections.sort(out.find.skipCands, (a, b) -> {
+                if (a.selfClick != b.selfClick) return a.selfClick ? -1 : 1;
+                int la = a.label == null ? 0 : a.label.length();
+                int lb = b.label == null ? 0 : b.label.length();
+                if (la != lb) return la - lb;
+                return Double.compare(areaRatio(a.tapBounds, ctx), areaRatio(b.tapBounds, ctx));
+            });
+        } catch (Throwable ignored) {
+        }
+        resolveCdDigits(out.find, ctx);
+        if (rider != null) {
+            out.ruleHits.addAll(rider.hits);
+            // matchAll 同款排序（tierFull 降序 + 同级短文案优先）
+            try {
+                java.util.Collections.sort(out.ruleHits, (a, b) -> {
+                    int d = RuleEngine.tierFull(b.appId) - RuleEngine.tierFull(a.appId);
+                    if (d != 0) return d;
+                    int la = a.label == null ? 0 : a.label.length();
+                    int lb = b.label == null ? 0 : b.label.length();
+                    return la - lb;
+                });
+            } catch (Throwable ignored) {
+            }
+        }
+        return out;
     }
 
     /** v7.5.0：独立倒计时数字解析（倒计时区或跳过候选近旁才计入）。 */
@@ -487,8 +582,12 @@ public final class AdDecisionCore {
         return false;
     }
 
-    private static void visit(NodeView node, int depth, int[] budget, ScanFind f, Ctx ctx) {
-        if (node == null || depth > 32 || budget[0] <= 0) return;
+    private static void visit(NodeView node, int depth, int[] budget, ScanFind f, Ctx ctx,
+                             RuleRiderState rider) {
+        /* v8.0.2 骑士早停：满 max 命中即止（RuleEngine.collect 同停点——
+         * 入口不预算不减计数；此时规则路径必走，find 将被服务侧丢弃） */
+        if (node == null || depth > 32 || budget[0] <= 0
+                || (rider != null && rider.done())) return;
         budget[0]--;
         f.nodeCount++;
         try {
@@ -509,9 +608,32 @@ public final class AdDecisionCore {
             int[] b = node.bounds();
             boolean clickable = node.clickable();
             double areaRatio = areaRatio(b, ctx);
+            // v8.0.2 上提：childCount 单读共用（骑士 vid 叶门与子循环同源——
+            // 旧版 vid 门与子循环各读一次，纯 getter 语义零变化）
+            int n = node.childCount();
 
             // 全屏热区：可点且 ≥55% 屏幕
             if (!f.hotZone && clickable && areaRatio >= HOT_ZONE_AREA) f.hotZone = true;
+
+            /* ═══ v8.0.2 规则骑士（与决策信号同遍收集——双 DFS 消除）═══
+             * 门序与 RuleEngine.collect 逐字段等价：text 门（label>0）优先、
+             * else vid 叶子门（label==0 且零子）。异常隔离：骑士自身异常
+             * 只丢该节点骑士结果，不拖累决策信号与子树（旧 matchAll 异常
+             * 会断子树——新路径异常面只严不减，见 DualDfsParityTest S12）。 */
+            if (rider != null && !rider.done()) {
+                try {
+                    if (vis && b != null && label.length() > 0 && areaRatio <= SKIP_AREA_MAX) {
+                        RuleEngine.Hit h = RuleEngine.matchText(label, b, node, ctx);
+                        if (h != null) rider.addIfNew(h);
+                    } else if (vis && b != null && label.length() == 0 && n == 0
+                            && areaRatio <= SKIP_AREA_MAX) {
+                        RuleEngine.Hit h = RuleEngine.matchVid(node, b, ctx);
+                        if (h != null) rider.addIfNew(h);
+                    }
+                } catch (Throwable ignored) {
+                }
+                if (rider.done()) return; // 同 collect：满 max 即止，后续子树不再入
+            }
 
             if (label.length() > 0) {
                 if (label.length() <= 14 && matchesSkip(label)) {
@@ -597,7 +719,7 @@ public final class AdDecisionCore {
                     d.bounds = b;
                     f.cdDigits.add(d);
                 }
-            } else if (b != null && vis && node.childCount() == 0 && isVidSkip(node)) {
+            } else if (b != null && vis && n == 0 && isVidSkip(node)) {
                 // v3.8.0：viewId 跳过键（GKD 全局规则同款）：vid 含 skip（穿山甲 tt_splash_skip_btn /
                 // 微博 iv_skip 类零文本图片键）或倒计时控件（count+down 非 download）——
                 // 零文本图片跳过键的头号信号，此前只能靠角落形态猜，猜不中就只能返回键
@@ -647,9 +769,10 @@ public final class AdDecisionCore {
                 }
             }
 
-            int n = node.childCount();
             for (int i = 0; i < n; i++) {
-                visit(node.child(i), depth + 1, budget, f, ctx);
+                // v8.0.2 骑士满额即止（RuleEngine.collect 子循环条件 out.size()<max 同停点）
+                if (rider != null && rider.done()) break;
+                visit(node.child(i), depth + 1, budget, f, ctx, rider);
             }
         } catch (Throwable ignored) {
         }

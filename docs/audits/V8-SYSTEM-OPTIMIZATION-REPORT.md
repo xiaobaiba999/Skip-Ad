@@ -119,3 +119,78 @@ AdTaskCore、AdDecisionCore（visit/decide）、RuleEngine 匹配层、SafetyGua
 ## 6. 版本裁定说明
 
 v8.0.1（PATCH）：生产调度行为有真实变化（切窗扫描次数 2→1），无新功能面、无契约变化、无安全门变化——PATCH 符合项目版本规则（性能小优化按改动规模定 PATCH）。RELEASE_CANDIDATE 口径延续；v8.0.0 Draft Release 不动。
+
+---
+
+# v8.0.2 轮追加：双 DFS 单遍化专项交付（2026-11-28）
+
+> 轮次：v8.0.2 专项轮 · 基线：本地 main `c137a07`（v8.0.1 本地提交，远端仍为 `9c59f25`）
+> 本轮指令：完成 v8.0.1 Git 交付（凭证受限如实处理）+ v8.0.1 APK 产物核验 + 双 DFS 专项（分析→评估→对照测试→实施→基准）+ 其余跨模块项逐项判断。
+
+## A. 第一阶段：Git 交付核验（凭证受限，通道已备好）
+
+| 项 | 结果 | 等级 |
+|---|---|---|
+| 本地工作区 | 干净，main 领先远端 2 提交（`9f3478c` → `c137a07`），顺序与内容核对无误 | 实测 |
+| 远端 main SHA | `9c59f25…`（github.com git 协议超时 → 改用 api.github.com REST 确认，与预期一致——本地两提交可 fast-forward） | 实测（API 通道） |
+| 两提交敏感信息扫描 | 通过（diff 全量正则扫描：无令牌/私钥/密码形态；唯一命中为删除行中的公开 workers.dev 端点 URL 与文档中列举的扫描模式名——均非凭据）；无 .keystore/.jks/.pem 类文件 | AUTOMATED |
+| gh CLI 浏览器 OAuth | **不可行**：gh 未安装且不可安装（github.com 下载通道超时）；其 OAuth 设备流端点（github.com/login/device）在沙箱网络不可达 | 实测 |
+| 系统凭据管理 | 本机无任何存储凭据（.git-credentials/.netrc/gh hosts/credential.helper 均无） | 实测 |
+| **SSH Deploy Key 通道（已就绪待用户）** | 沙箱生成 ed25519 密钥对（私钥 600 权限驻留 ~/.ssh，永不打印永不外发）；git→ssh2 包装器经 ssh.github.com:443 全链路验证到认证层（主机密钥指纹固定 GitHub 官方三枚）；**公钥已交用户**（添加为仓库 Deploy Key 即可推送） | AUTOMATED（传输层） |
+| push 状态 | **BLOCKED_PENDING_USER_DEPLOY_KEY**——按指令停止无效认证重试，本地提交完整保留 | — |
+
+**唯一用户操作**：GitHub → xiaobaiba999/Skip-Ad → Settings → Deploy keys → Add deploy key（勾选 Allow write access）→ 粘贴本轮给出的公钥。添加后任一轮次执行推送并核验 `ls-remote`。
+
+## B. 第二阶段：v8.0.1 APK 产物核验（全部通过）
+
+| 核验项 | 结果 | 等级 |
+|---|---|---|
+| v8.0.1 SHA-256 | `ce87b2999db6689f2122c6300d2561500d1c6f9c95b55ba93e42c7673a8ddd3a`（≠ v8.0.0 的 `a6782b06…`——**非同一产物**；同尺寸 878134B 为等长改动巧合：VC 80000→80100 等位数字符串 + 小幅代码增量） | AUTOMATED |
+| 字节级比较 | `cmp` 首差异在字节 15——内容确异；classes.dex 319348→319412（+64B） | AUTOMATED |
+| versionCode/versionName | **80100 / 8.0.1**（aapt dump badging；单调递增守卫在岗） | AUTOMATED |
+| DEX 含本轮修改 | `bumpScanChain(Ljava/lang/String;)V` + 新重载 `(Ljava/lang/String;Z)V` 双在场（v8.0.0 仅单参版） | AUTOMATED |
+| 源码一致性（决定性） | **当前源码重建（80101/8.0.1）产出 classes.dex 与产物 DEX 字节级一致**（SHA-256 `19c60347…da68a` 双双吻合；v8.0.0 DEX `79eec1ac…` 不同） | AUTOMATED |
+| 签名 | apksigner verify：v2+v3 Verifies，1 signer | AUTOMATED |
+| 证书一致性 | SHA-256 `05ada6e3f7a4fc6bf77449611c24f51e1ef4caa0a91a5cdd02c4d877738e6f79` 与 v8.0.0 完全一致（覆盖安装兼容） | AUTOMATED |
+
+## C. 第三阶段：双 DFS 专项（本轮主体）
+
+语义对照表 / 三方案评估 / 防范清单落实见 `V8-OPTIMIZATION-PLAN.md` v8.0.2 节。要点：
+
+1. **方案 B（单遍融合）落地**：`walkFused` 一次遍历同时收集规则命中（骑士）与决策信号——骑士门序/去重/tierFull 排序/满 4 早停与 matchAll 逐字段等价；决策信号与 walk 同一 visit 体（rider=null 时 byte-for-byte 旧路径）。方案 A（属性缓存）踩「跨趟快照复用」红线邻域且不省 binder；方案 C（分阶段决策）改变 SafetyGuard 数据时序——均否决。
+2. **三处已声明语义差**（S11/S12/S17 钉死）：树中途变化晚到候选顺延一档（refreshLive 复核不变，零新增误触面）；瞬时 binder 异常单次即失（确定性异常等价）；小程序容器骑士入口即抑制（出手结果同为零点击）。
+3. **对照测试**：DualDfsParityTest 21 场景 92 断言——命中集+顺序/决策信号全字段/决策结果/预算耗尽点逐项一致；既有防线（菜单行保护/容器门/订阅合成序）在测试中实锤在岗。
+4. **基准证据（SIMULATED）**：ScanBenchmark 三形态×三规模——child 调用（≈生产 getChild binder IPC）**精确减半**（298→149/798→399/1198→599）、属性读总次降 36~40%、NodeAdapter 分配减半；JVM 计时 9 例新路径全部不慢于旧路径（仅供参考——无 binder 成本环境，真机口径 NOT_RUN）。
+
+## D. 第五阶段：其余跨模块项逐项判断（全部维持不改动）
+
+| 项 | 判定 | 理由 |
+|---|---|---|
+| appendEvent 全文件读写 | 不改 | 低事件率+独立 IO 线程；ACK 前不删/崩溃恢复语义依赖文件结构 |
+| LogBatchStore 批次封装成本 | 不改 | 封批频率受 48 上限钳制；成本面与 P3-3 同口径 |
+| Dispatcher 并发与 CAS 门 | 不改 | 单循环线程零阻塞已实锤；无竞争面可优化 |
+| videoPoll walkDue 探针重复 | 不改（继续搁置） | S9 纯函数真值表已钉；但服务侧接线与 miss-streak 降档耦合（跳探针→streak 恒+1→降档提前→文本键发现延迟 1.5s→3s）——无真机数据不动 |
+| nativeTextProbe×视频探针词族 | 不改 | 与上项同一针同一面 |
+| maybeInterstitialScan 整树扫描 | 不改 | 专用轻量遍历仅省 ~30% 属性读取且需复制 walk 语义 |
+| 页面级状态缓存失效 | 不改 | 96+ 包罕见路径；行为方向安全（P4-1 口径） |
+| 高频窗口事件节流 | 已达标 | nudge 80ms/弹窗 240ms/feed 1.2s/插屏 1.5s + v8.0.1 已消 0ms 双扫 |
+
+## E. 本轮测试与构建汇总
+
+- **36 套件 6975 断言 0 失败**（v8.0.1 为 6820；+155 = DualDfsParityTest 92 + ScanBenchmark 63）。
+- APK v8.0.2：`./build.sh 80200 8.0.2` → `android-app/dist/adshield-v8.0.2.apk`；DEX 含 `walkFused`（v8.0.1 DEX 零命中对照）；证书与历史一致；防降级守卫 80200 > 80100 在岗。
+- 闸门全绿：secret-scan / app.js 符号闸 / version-sync（8.0.2/80200）/ `git diff --check` / 全源 ECJ 编译（R.* 基线错误数不变）。
+- 版本裁定：**v8.0.2（PATCH）**——服务侧扫描遍历结构优化、输出等价、无新功能面无契约变化。
+
+## F. 证据分级汇总（本轮）
+
+| 项 | 等级 |
+|---|---|
+| 双 DFS 语义分析/方案评估 | STATIC_REVIEW |
+| 对照测试 92 断言（21 场景逐字段等价 + 3 处已声明差钉死） | AUTOMATED |
+| 基准计数（child/属性读/分配减半） | AUTOMATED（确定性计数） |
+| 基准计时（µs 级） | SIMULATED（JVM 无 binder，仅供参考） |
+| 真机性能/电量/安装回归 | NOT_RUN（无设备） |
+| v8.0.1/v8.0.2 APK 静态核验 | AUTOMATED |
+| Worker 仓契约 | UNKNOWN（私有不可达） |
+| push | BLOCKED_PENDING_USER_DEPLOY_KEY（SSH 通道已验证到认证层） |

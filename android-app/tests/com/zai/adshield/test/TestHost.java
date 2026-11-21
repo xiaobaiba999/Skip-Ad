@@ -182,4 +182,105 @@ public final class TestHost {
         n.clickable = true;
         return n;
     }
+
+    /* ══ v8.0.2 双 DFS 专项：属性读取/节点访问计数器（性能对照基准用）══
+     * CountingNode 包装任意 NodeView，每次属性读/子访问/父访问计数——
+     * 旧路径（matchAll+walk 两趟）与新路径（walkFused 单趟）在同一棵
+     * 计数树上跑，计数差即真实读取差（JVM 无 binder，计数是确定性证据）。 */
+    public static final class Counters {
+        public int textRead, descRead, clsRead, visibleRead, boundsRead;
+        public int clickableRead, editableRead, scrollableRead, childCountRead;
+        public int childCall, parentCall, viewIdRead;
+        public int wrapperAlloc;
+
+        public void reset() {
+            textRead = descRead = clsRead = visibleRead = boundsRead = 0;
+            clickableRead = editableRead = scrollableRead = childCountRead = 0;
+            childCall = parentCall = viewIdRead = 0;
+            wrapperAlloc = 0;
+        }
+
+        public int propertyReads() {
+            return textRead + descRead + clsRead + visibleRead + boundsRead
+                    + clickableRead + editableRead + scrollableRead + childCountRead + viewIdRead;
+        }
+
+        public int total() {
+            return propertyReads() + childCall + parentCall;
+        }
+    }
+
+    /** 计数包装节点：child()/parent() 每次返回新包装（模拟 NodeAdapter 每 getChild 分配）。 */
+    public static final class CountingNode implements NodeView {
+        public final NodeView inner;
+        public final Counters c;
+
+        public CountingNode(NodeView inner, Counters c) {
+            this.inner = inner;
+            this.c = c;
+            c.wrapperAlloc++;
+        }
+
+        public String text() {
+            c.textRead++;
+            return inner.text();
+        }
+
+        public String desc() {
+            c.descRead++;
+            return inner.desc();
+        }
+
+        public String cls() {
+            c.clsRead++;
+            return inner.cls();
+        }
+
+        public boolean clickable() {
+            c.clickableRead++;
+            return inner.clickable();
+        }
+
+        public boolean scrollable() {
+            c.scrollableRead++;
+            return inner.scrollable();
+        }
+
+        public boolean editable() {
+            c.editableRead++;
+            return inner.editable();
+        }
+
+        public int[] bounds() {
+            c.boundsRead++;
+            return inner.bounds();
+        }
+
+        public int childCount() {
+            c.childCountRead++;
+            return inner.childCount();
+        }
+
+        public NodeView child(int i) {
+            c.childCall++;
+            NodeView ch = inner.child(i);
+            return ch == null ? null : new CountingNode(ch, c);
+        }
+
+        public NodeView parent() {
+            c.parentCall++;
+            NodeView p = inner.parent();
+            return p == null ? null : new CountingNode(p, c);
+        }
+
+        public boolean visible() {
+            c.visibleRead++;
+            return inner.visible();
+        }
+
+        public String viewId() {
+            c.viewIdRead++;
+            return inner.viewId();
+        }
+    }
 }

@@ -3390,6 +3390,15 @@ public class AdSkipService extends AccessibilityService {
                  * ×6（issue#38 喜马拉雅实锤「换第 N 个候选」日志是假的）。
                  * 订阅命中按需追加（文本候选用尽才轮到订阅 vid 候选——
                  * SubscriptionManager 的限流记账只在真正出手时消耗）。 */
+                /* v8.0.2 双 DFS 单遍化：规则骑士与决策信号同遍收集（FusedScan）。
+                 * probe 命中 → 融合遍历不跑（规则路径直接走，与旧路径 walk 不跑同构）；
+                 * probe 未中 → 单遍同时产出 ruleHits（≡matchAll，DualDfsParityTest 逐字段钉死）
+                 * 与 find（≡walk）——零命中扫描（档位大头）同树不再走两趟：
+                 * getChild binder 调用/NodeAdapter 分配/text·desc·bounds 读次减半
+                 * （ScanBenchmark 计数证据）。语义差三处已声明并测试钉死
+                 * （S11 树中途变化顺延下一档 / S12 瞬时异常单次即失 / S17
+                 * 小程序骑士入口抑制——出手结果同为零点击）。 */
+                com.zai.adshield.core.AdDecisionCore.FusedScan fs = null;
                 if (splashLive || popupLive) {
                     /* ═══ v5.3.0 探针前置（李跳跳核心路径优先）═══
                      * findAccessibilityNodeInfosByText 是系统原生 C++ 子树搜索，
@@ -3400,8 +3409,11 @@ public class AdSkipService extends AccessibilityService {
                     energyProbes++;
                     Hit probeHit = nativeTextProbe(roots[ri], ctx);
                     if (probeHit != null) hits.add(probeHit);
-                    if (hits.isEmpty() && splashLive) {
-                        hits = RuleEngine.matchAll(new NodeAdapter(roots[ri]), ctx, 4);
+                    if (probeHit == null) {
+                        /* v8.0.2：matchAll+walk 两趟 → walkFused 单趟（rider=splashLive
+                         * 与旧路径 matchAll 仅 splashLive 跑同构；弹窗窗 rider 关=纯 walk） */
+                        fs = AdDecisionCore.walkFused(new NodeAdapter(roots[ri]), ctx, splashLive, 4);
+                        if (!fs.ruleHits.isEmpty()) hits = fs.ruleHits;
                     }
                     /* ═══ v7.9.1 订阅反饥饿（订阅命中 2→0 回归根因修复）═══
                      * v7.5.0/v7.7.0 探针词扩容（+skip/+关闭广告/+關閉廣告）后
@@ -3471,8 +3483,12 @@ public class AdSkipService extends AccessibilityService {
                     }
                 }
 
-                /* ═══ 兜底路径：决策核心（复杂信号）═══ */
-                ScanFind f = AdDecisionCore.walk(new NodeAdapter(roots[ri]), ctx);
+                /* ═══ 兜底路径：决策核心（复杂信号）═══
+                 * v8.0.2：零命中时读融合单遍的 find（≡旧 walk，S1~S13/S20 逐字段
+                 * 对照钉死）；probe 命中时无融合遍历（规则路径已 continue，此处
+                 * 不可达）——防御性回落 walk。 */
+                ScanFind f = fs != null ? fs.find
+                        : AdDecisionCore.walk(new NodeAdapter(roots[ri]), ctx);
                 lastFind = f;
                 lastCtx = ctx;
                 /* v3.8.0 倒计时门控（issue#10 二轮·喜马拉雅）：穿山甲类 SDK 倒计时
