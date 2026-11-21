@@ -187,7 +187,7 @@ GitHub Issues（Skip-Ad-Logs 私有仓库 · 每批一个 Issue）
 5. **Worker 的 E2E 尚未执行**（e2e.sh / e2e.ps1 已交付待执行；状态 `DEPLOYED_BUT_NOT_E2E_VERIFIED`，不得升格）
 6. **Doze、断网恢复、进程被杀恢复、重启恢复等真机场景尚未完成**
 7. **GitHub Release v8.0.0 正式发布尚未完成**（publish-v800 脚本待写；本轮默认不直接正式发布，标记 RELEASE_CANDIDATE；如需先建草稿 Release 待用户确认后执行）
-8. **GitHub Actions 构建 workflow 激活待确认**：`.github/workflows/build-apk.yml` 已写入（YAML 归档副本在 `docs/ci-workflows/build-apk.yml`）；首次推送 .github/workflows 需 token 具备 `workflow` scope——本轮 PAT 仅 repo scope，若 push 被拒则文件留本地提交+归档副本在库，激活需用户在 GitHub 网页直接创建该文件或换带 workflow scope 的 token 重推。
+8. **GitHub Actions 构建 workflow 已写入待激活**：`.github/workflows/build-apk.yml` 已在本地工作树（未跟踪）+ 远端归档副本 `docs/ci-workflows/build-apk.yml`（内容一致）；首次推送 .github/workflows 需 token 具备 `workflow` scope——本轮 PAT 仅 repo scope，push 实测被拒收（已 soft-reset 摘提交保持仓库可推送）。激活二选一：用户网页创建该文件，或换 workflow-scope token 推送（`cp docs/ci-workflows/build-apk.yml .github/workflows/build-apk.yml && git add .github && git commit -m 'ci: add build workflow' && git push`）。
 
 ---
 

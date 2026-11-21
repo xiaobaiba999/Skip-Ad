@@ -55,7 +55,7 @@
 ## 六、构建自动化与发布准备
 
 - **GitHub Actions**：新增 `.github/workflows/build-apk.yml`（workflow_dispatch 输入 versionCode/versionName · ubuntu-latest + JDK17 + sdkmanager build-tools;34.0.0/platforms;android-34 · 复用 `./build.sh`（同版本重建时临时挪开 dist 同版本包防误拒，守卫对降级全程在岗）· 构建后验证步六项（存在/签名/包名/版本/SDK/SHA-256 任一不符硬失败）· upload-artifact v4 上传 APK+idsig+sha256）；归档副本 `docs/ci-workflows/build-apk.yml` 同步入库。
-- **已知限制（如实）**：本轮 push 所用 PAT scopes = `read:org, repo`（无 `workflow` scope）——首次创建 `.github/workflows` 文件的推送**可能被 GitHub 拒收**。处置：APK/文档/归档副本一 commit 先推（不受影响）；workflow 文件单独 commit 尝试推送，被拒则保留本地提交并如实报告，激活路径 = 用户网页创建或换 workflow-scope token 重推（一分钟操作）。
+- **已知事实（如实）**：本轮 push 所用 PAT scopes = `read:org, repo`（无 `workflow` scope）——workflow 文件推送**实测被远端拒收**（`refusing to allow ... without workflow scope`）。处置已完成：APK/文档/归档副本一 commit 先推成功（`33eb80e`）；workflow 提交已 soft-reset 摘除、文件保留本地工作树（未跟踪，内容与远端归档副本逐字一致）——仓库回到与远端同步状态，**不影响后续轮次推送**。激活路径（二选一，一分钟操作）：① GitHub 网页直接创建 `.github/workflows/build-apk.yml`（内容用 `docs/ci-workflows/build-apk.yml`）；② 用户换带 workflow scope 的 token 重推本地文件。
 - **发布口径**：本轮**不正式发布** GitHub Release；v8.0.0 = **RELEASE_CANDIDATE**（构建+静态检查全过；真机验证未完成——不伪装成稳定发布）。
 
 ## 七、诚实状态（证据等级）
