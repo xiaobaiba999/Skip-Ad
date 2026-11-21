@@ -34,8 +34,8 @@
   - `scripts/` —— 发布/校验/补丁脚本（含 `secret-scan.sh`、`check-appjs.sh`、`check-version-sync.sh`）
   - `dist/`、`download/`、`upload/` —— 历史 APK 归档（dist 最大 versionCode 79600 = v7.9.6）
   - `compatibility/`、`data/learning/`、`agent-ctx/` —— 测试矩阵与学习数据
-- **当前开发阶段**：v8.0.0 代码已完成（客户端日志上传闭环），
-  **APK 尚未构建、真机尚未回归、上传闭环真机端到端尚未验证**（见 H 节）。
+- **当前开发阶段**：v8.0.0 代码已完成（客户端日志上传闭环）；**APK 已构建完成并通过全部静态检查（2026-11-26 构建轮）**；真机尚未回归、上传闭环真机端到端尚未验证（见 H 节）。
+- **v8.0.0 APK**：`android-app/dist/adshield-v8.0.0.apk` · 878134 字节 · SHA-256 `a6782b0696ba447938371977da99802e9add670191b8aaa924c99acc9338235c` · 签名证书与 v7.9.6 完全一致（覆盖安装兼容）· RELEASE_CANDIDATE 口径。
 
 ---
 
@@ -174,27 +174,28 @@ GitHub Issues（Skip-Ad-Logs 私有仓库 · 每批一个 Issue）
 - `scripts/secret-scan.sh` 重跑：**PASS**（无令牌形态·无内嵌凭据·本机凭据未入库·keystore 面收敛）
 - Worker 仓 `bun test` 重跑：**53 测试 0 失败 / 424 expect()**（8 文件，2.77s；详见 Worker 仓 HANDOFF-V8.0-WORKER.md E 节）
 - 证据等级口径（贯穿本项目）：`STATIC_REVIEW`（代码审读）/ `AUTOMATED`（JVM/脚本自动测试）/ `REAL_API`（真实 API 调用验证）/ `REAL_DEVICE`（真机实测）/ `UNKNOWN`（未验证）。
-- 本轮如实口径：JVM 测试 = AUTOMATED；Worker `/healthz` 用户真实浏览器验证 = REAL_API（用户侧）；**真机 = NOT_AVAILABLE（本沙箱无设备/模拟器）**；APK 构建 = 见 H 节状态。
+- 本轮如实口径：JVM 测试 = AUTOMATED；Worker `/healthz` 用户真实浏览器验证 = REAL_API（用户侧）；**真机 = NOT_AVAILABLE（本沙箱无设备/模拟器）**；**APK 构建 = 已完成（2026-11-26 · 本地官方工具链 build-tools r34 · `./build.sh 80000 8.0.0` · 六项静态检查全过，详见 CHANGELOG v8.0.0 构建轮小节与 reports/iteration-v8.0.0.md）**。
 
 ---
 
-## H. 当前尚未完成事项（截至本文落笔）
+## H. 当前尚未完成事项（截至 2026-11-26 构建轮后）
 
-1. **APK v8.0.0 尚未构建**（versionCode 80000 > dist 最大 79600，覆盖安装即升级；构建命令 `cd android-app && ./build.sh 80000 8.0.0`；本地 `android-tools/` 缺 aapt2/d8/zipalign/apksigner（`bt/` 目录空），需补工具链或走 GitHub Actions）
-2. **APK 安装测试尚未完成**（真机/模拟器均未执行）
+1. ~~APK v8.0.0 尚未构建~~ **已完成（2026-11-26）**：`./build.sh 80000 8.0.0` 官方工具链构建成功；静态检查全过（包名/版本/签名/ZIP/DEX/敏感扫描——详见 CHANGELOG「v8.0.0 构建与交接轮」）。**APK 安装测试仍未执行（无设备）**。
+2. **APK 安装测试尚未完成**（真机/模拟器均未执行；本地已可复现构建：`/home/z/android-tools/bt/android-14` 已补齐官方 build-tools r34）
 3. **Android 真机回归尚未完成**（L3 批次 1 · 50 款 App 仍 PENDING_REAL_DEVICE）
 4. **Android → Worker → GitHub Issues 真实上传闭环尚未完成**（客户端与服务端代码均已就绪，缺真机端到端）
 5. **Worker 的 E2E 尚未执行**（e2e.sh / e2e.ps1 已交付待执行；状态 `DEPLOYED_BUT_NOT_E2E_VERIFIED`，不得升格）
 6. **Doze、断网恢复、进程被杀恢复、重启恢复等真机场景尚未完成**
-7. **GitHub Release v8.0.0 正式发布尚未完成**（publish-v800 脚本待写；本轮默认不直接正式发布，标记 RELEASE_CANDIDATE）
+7. **GitHub Release v8.0.0 正式发布尚未完成**（publish-v800 脚本待写；本轮默认不直接正式发布，标记 RELEASE_CANDIDATE；如需先建草稿 Release 待用户确认后执行）
+8. **GitHub Actions 构建 workflow 激活待确认**：`.github/workflows/build-apk.yml` 已写入（YAML 归档副本在 `docs/ci-workflows/build-apk.yml`）；首次推送 .github/workflows 需 token 具备 `workflow` scope——本轮 PAT 仅 repo scope，若 push 被拒则文件留本地提交+归档副本在库，激活需用户在 GitHub 网页直接创建该文件或换带 workflow scope 的 token 重推。
 
 ---
 
 ## I. 下一步任务优先级
 
-- **P0**：APK 自动化构建（本地补齐 build-tools 或新增 `.github/workflows/` 手动 workflow_dispatch——官方 Android 构建环境 + `./build.sh 80000 8.0.0` + APK artifact 上传）
-- **P1**：APK 静态检查（存在性/大小/包名/versionName/versionCode/minSdk/targetSdk/签名/ZIP 结构/DEX/敏感扫描/调试密钥检查）——`build.sh` 尾部已自带 apksigner verify + aapt badging 摘要
-- **P2**：真机安装与基本功能回归（覆盖升级 79600→80000）
+- **P0**：APK 自动化构建 —— **已完成（2026-11-26）**：本地官方工具链构建成功 + GitHub Actions workflow 已写入（激活见 H-8）
+- **P1**：APK 静态检查 —— **已完成（2026-11-26）**：存在性/大小/包名/versionName/versionCode/minSdk/targetSdk/签名（v2+v3 + 证书与历史一致）/ZIP 结构/DEX（五模块在场·测试类缺席·shim 零命中）/敏感扫描全过
+- **P2**：真机安装与基本功能回归（覆盖升级 79600→80000；本沙箱无设备 → NOT_AVAILABLE，待有真机环境执行）
 - **P3**：真实日志上传闭环验证（下方 20 项计划）
 - **P4**：断网恢复 / Doze / 重启恢复专项
 - **P5**：GitHub Release 发布（RELEASE_CANDIDATE 口径直到真机验证通过）

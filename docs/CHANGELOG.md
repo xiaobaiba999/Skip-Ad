@@ -23,6 +23,13 @@
 - **诚实口径（能力边界）**：本沙箱无 aapt2/d8 构建工具链、无 Android 真机——**APK 构建与真机 E2E 均 NOT_RUN**（versionCode 80000 > dist 最大 79600 覆盖安装即升级；构建待有工具链的环境执行 `./build.sh 80000 8.0.0`）；Windows/真机 E2E 状态沿用 Worker 仓 `DEPLOYED_BUT_NOT_E2E_VERIFIED`；服务端 Windows E2E 脚本（e2e.ps1/e2e.sh）已交付待用户本机执行。
 - **v8.0.x 展望**：真机验证（埋点→封批→上传→Issue 全链 + 网络断恢复/Doze/重启）；服务端 E2E 脚本用户本机回传；APK 构建与 GitHub Release 发布（publish-v800.mjs 仪式沿用既有模式）。
 
+### v8.0.0 构建与交接轮（2026-11-26）
+
+- **双仓库交接文档（换模型可恢复）**：主仓新增 `docs/PROJECT-HANDOFF-V8.0.0.md`（A–J 全景：架构/版本史/五模块/上传数据流/隐私红线/代码位置/证据口径/待办/P0–P5/纪律 + 20 项真机验证计划）；Worker 仓（`Skip-Ad-Log-Upload`）新增根 `HANDOFF-V8.0-WORKER.md`（API 契约全表·幂等与墓碑·GitHub App 边界·E2E 交付物·`DEPLOYED_BUT_NOT_E2E_VERIFIED` 不升格）。两文档均已 commit+push 并核验远端 SHA 一致。
+- **APK v8.0.0 真实构建完成（`android-app/dist/adshield-v8.0.0.apk` · 878134B · SHA-256 `a6782b0696ba447938371977da99802e9add670191b8aaa924c99acc9338235c`）**：补齐官方 build-tools r34（aapt2 2.19 / d8 8.2.2 / zipalign / apksigner——官方 build-tools_r34-linux.zip 完整下载 + zip 完整性校验通过）后执行 `./build.sh 80000 8.0.0`。**静态检查全过**：versionCode 80000 > 79600（防降级守卫在岗）；包名 `com.zai.adshield`；versionName 8.0.0；minSdk 24 / targetSdk 34；签名 Verifies（v2+v3，v1 块在场——与 v7.9.6 签名 profile 逐项一致，证书 SHA-256 `05ada6e3…` 与历史版本完全相同 → 覆盖安装兼容）；ZIP 22 项（classes.dex 319348B + AndroidManifest + resources.arsc + www/subsnap 资产齐备）；DEX 141 类——五 Log 模块全部在场、测试类与 org.json shim 零命中（dexdump 类描述符级验证）、生产端点 `skip-ad-log-relay.2927609408.workers.dev/api/logs/receive` 在场；dex+app.js 全量敏感扫描零命中（ghp_/github_pat_/PRIVATE KEY/xox/AKIA 等形态）。
+- **构建自动化（GitHub Actions）**：新增 `.github/workflows/build-apk.yml`（workflow_dispatch 可选 versionCode/versionName · 官方 ubuntu 环境 · sdkmanager 装 build-tools 34.0.0 + platform 34 · 复用 `./build.sh`（三道前置闸全程在岗）· 构建后六项验证步（存在/签名/包名/版本/SDK/SHA-256 任一不符即硬失败）· upload-artifact 上传 APK+idsig+sha256）；YAML 归档副本同步入 `docs/ci-workflows/build-apk.yml`。（注：首次推送 .github/workflows 需 token 具备 workflow scope——本轮 push 所用 PAT 仅有 repo scope，若远端拒绝则文件以本地提交+docs 归档副本形式留存，见本轮迭代报告。）
+- **状态口径**：APK = **构建完成 + 静态检查全过（AUTOMATED 级）**；真机安装/回归/上传闭环 E2E = **NOT_RUN（NOT_AVAILABLE——本沙箱无设备）**；正式 GitHub Release **未发布**——v8.0.0 以 **RELEASE_CANDIDATE** 口径待真机验证后发布（publish-v800 仪式待写）。JVM 测试本轮接管重跑：34 套件 6802 断言 0 失败 + version-sync/secret-scan/app.js 符号闸全绿（与 v8.0.0 首轮口径一致，零回退）。
+
 ## v7.9.7（2026-11-21）—— PAT 移除安全轮：APK 零 GitHub 凭据 + 自动日志上传授权（默认关）+ 手动日志本地导出
 
 - **本轮定位（用户指令：自动日志上传系统正式实施 · 第一步安全改造——无公网服务依赖部分）**：内置 PAT 从 Android 端移除是 P0 安全项（与 v7.9.4 Web 端整改同源同标准）；自动日志上传整体架构升级为「Android → HTTPS 中转服务（鉴权 / 24h 滑窗最多 3 次 / batchId 幂等 / 隐私二次过滤）→ Skip-Ad-Logs 私有仓库 Issues」，本版本落地无需公网服务的前置改造，v8.0.0 上线中转服务后接入。
