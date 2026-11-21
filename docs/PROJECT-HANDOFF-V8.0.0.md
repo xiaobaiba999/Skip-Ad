@@ -2,7 +2,7 @@
 
 > 本文档面向"无聊天上下文的新接手模型"。目标：仅凭本仓库即可理解项目全貌、
 > 已完成/未完成边界、下一步该做什么、哪些事绝对不能做。
-> 姊妹文档（中转服务侧）：`xiaobaika999/Skip-Ad-Log-Upload` 仓库根 `HANDOFF-V8.0-WORKER.md`。
+> 姊妹文档（中转服务侧）：`xiaobaiba999/Skip-Ad-Log-Upload` 仓库根 `HANDOFF-V8.0-WORKER.md`。
 > 一切以真实代码 / Git 历史 / `docs/CHANGELOG.md` 为准；本文与它们冲突时，以代码为准并回改本文。
 
 ---
@@ -14,7 +14,8 @@
 → 派发点击 → 500ms 复验闭环。附带订阅规则市场（GKD JSON5 兼容）、学习治理、
 崩溃捕获、Web 控制台与 GitHub Release 自更新。
 
-- **GitHub**：`xiaobaika999/Skip-Ad`（本仓库）；本地开发目录 `/home/z/skip-ad-repo`
+- **GitHub**：`xiaobaiba999/Skip-Ad`（本仓库）；本地开发目录 `/home/z/skip-ad-repo`
+- **⚠️ 所有者拼写陷阱（历史已两次踩坑，务必字节级核对）**：GitHub 账号真名是 `xiaobaiba999`（**b**——version.ts / Net.java / git remote / Worker wrangler REPO_OWNER 四处字节级验证一致）。史料与聊天记录中曾出现 `xiaobaika999`（k）与 `xiaobaiza999`（z）两种**不存在**的误拼——写入 API 路径即 404。凡引用 owner，以 `src/lib/version.ts` 的 `GITHUB_REPO` 为单一权威源，动手前 `grep -o` 复核字节。
 - **当前正式版本**：v8.0.0（versionName `8.0.0` · versionCode `80000`，
   唯一权威源 `src/lib/version.ts`；`AndroidManifest.xml` 中的 6.2.0/60200 是**构建模板值**，
   由 `build.sh` 在构建时 sed 注入真实值——不要误读）

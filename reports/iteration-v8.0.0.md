@@ -6,8 +6,8 @@
 
 ## 一、执行前基线核对（真实 Git 历史，不信任历史 SHA）
 
-- 主仓 `xiaobaika999/Skip-Ad`（本地 `/home/z/skip-ad-repo`）：工作树干净、main、HEAD = `cd669aaca32af99bfe69a691dd2ee4dd71e6c51a`（v8.0.0 客户端上传链路提交）——`git ls-remote` 远端一致；零 stash、零未跟踪。
-- Worker 仓 `xiaobaika999/Skip-Ad-Log-Upload`（本地 `/home/z/my-project`——**注意：该仓库克隆根即 Next.js 沙箱项目根**，git 操作必须从根执行）：工作树干净、main、HEAD = `1c1f97da3d8c427694d999be366c2bf6027aeb25`（INTEGRATION-ANDROID STAGED→INTEGRATED——比早前会话记录的 435e47a 更新，以真实历史为准）、远端一致。
+- 主仓 `xiaobaiba999/Skip-Ad`（本地 `/home/z/skip-ad-repo`）：工作树干净、main、HEAD = `cd669aaca32af99bfe69a691dd2ee4dd71e6c51a`（v8.0.0 客户端上传链路提交）——`git ls-remote` 远端一致；零 stash、零未跟踪。
+- Worker 仓 `xiaobaiba999/Skip-Ad-Log-Upload`（本地 `/home/z/my-project`——**注意：该仓库克隆根即 Next.js 沙箱项目根**，git 操作必须从根执行）：工作树干净、main、HEAD = `1c1f97da3d8c427694d999be366c2bf6027aeb25`（INTEGRATION-ANDROID STAGED→INTEGRATED——比早前会话记录的 435e47a 更新，以真实历史为准）、远端一致。
 - 版本权威：`src/lib/version.ts` = 8.0.0 / 80000；`AndroidManifest.xml` 6.2.0/60200 为构建模板值（build.sh 构建期注入）。
 - 网络注意项：GitHub 偶发 GnuTLS 抖动 → `git -c http.version=HTTP/1.1` + token extraheader 稳定复现。
 
@@ -69,6 +69,10 @@
 | 真机安装/回归/上传闭环/Doze/重启 | **NOT_AVAILABLE（本沙箱无设备）** |
 | Worker E2E | NOT_RUN（状态保持 DEPLOYED_BUT_NOT_E2E_VERIFIED） |
 
-## 八、下一步（供接手模型）
+## 八、本轮事故与修正（如实记录）
+
+- **同形字误读事故（已修正·零生产影响）**：会话史料中 GitHub owner 被记作 `xiaobaika999`（k）——字节级核验证实为不存在的误拼（真实账号 `xiaobaiba999`，b）。本轮受其污染：新写的三份交接文档一度写入 (k) 拼写、草稿 Release 脚本用 (k) 路径导致 "Not Found"。**生产代码从未受影响**（version.ts / Net.java / git remote / Worker wrangler REPO_OWNER 四处字节级验证从来都是正确的 (b)——无账户改名、无配置失效、Worker 上传闭环不受影响）。已处置：三文档 9 处拼写全部修正 + 双仓交接文档加入「所有者拼写陷阱」警示条目（该项目历史上已有 (z) 拼写 404 事故先例——wrangler.toml 注释在案）。教训固化：凡引用 owner 先 `grep -o` 字节级复核，以 `src/lib/version.ts` 为单一权威源。
+
+## 九、下一步（供接手模型）
 
 P2 真机安装回归 → P3 上传闭环 20 项验证 → P4 Doze/断网/重启专项 → P5 publish-v800 正式发布（真机验证通过后）。全部细节见 `docs/PROJECT-HANDOFF-V8.0.0.md` H/I 节。
