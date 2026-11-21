@@ -1,17 +1,26 @@
-# Skip-Ad 项目交接文档（v8.0.2 · Android 主仓）
+# Skip-Ad 项目交接文档（v8.0.3 · Android 主仓）
 
-> 本文档面向"无聊天上下文的新接手模型"，仅覆盖 v8.0.1→v8.0.2 增量与当前交付状态。
+> 本文档面向"无聊天上下文的新接手模型"，覆盖 v8.0.1→v8.0.3 增量与当前交付状态。
 > 项目全貌见 `docs/PROJECT-HANDOFF-V8.0.0.md`（仍有效）；一切以真实代码 / Git 历史 /
 > `docs/CHANGELOG.md` 为准，冲突时以代码为准并回改本文。
 
 ---
 
+## 0. v8.0.3 增补（更新检查链路修复轮 · 2026-11-28）
+
+- **背景**：用户反馈"无法检查到新版本"。全链路追踪（入口→请求→解析→比较→下载→校验→安装）结论：**机制正确，非代码缺陷**——更新接口只读 GitHub 正式 Releases API（`/releases/latest` + `/releases?per_page=8` 回退，Draft 两层过滤），最新正式发布是 v7.9.6；v8.0.0 仅 Draft（匿名 API 不可见）、v8.0.1/8.0.2 无 Release 且未推送。
+- **修复（3 项）**：① `Net.rateLimited(403/429)` 限流即时报明确错误（旧版浪费重试只报"GitHub 返回 403"）——ReleaseNotesTest 7 断言钉死；② app.js 下载完成文案如实化（SHA-256 安装时校验）+ appVer/appCode 回落值同步；③ CURRENT_RELEASE 从 v8.0.0 过期内容同步三轮实绩。
+- **测试**：36 套件 6982 断言 0 失败（+7）；APK `dist/adshield-v8.0.3.apk`（80300 · SHA-256 `444e14d4899843d5457e00a22952c619ed57067c9949e439d6eae622bc019aa9` · 证书 `05ada6e3…` 一致 · DEX 含 rateLimited + app.js 含新文案）。
+- **发布路径**（未完成）：推送 4 提交（待 Deploy Key）→ 用户网页建 v8.0.3 Draft（正文已备好，见下方 L 节）→ 真机验证 → Publish → 匿名 API 核验 `/releases/latest` 返回 v8.0.3。
+
+---
+
 ## A. 当前版本与仓库状态
 
-- **当前版本**：v8.0.2（versionName `8.0.2` · versionCode `80200`，权威源 `src/lib/version.ts`）
-- **本地 main**：v8.0.1 两提交（`9f3478c` 代码+文档 → `c137a07` 交付报告）+ v8.0.2 一提交（本提交）
+- **当前版本**：v8.0.3（versionName `8.0.3` · versionCode `80300`，权威源 `src/lib/version.ts`）
+- **本地 main**：v8.0.1 两提交（`9f3478c` → `c137a07`）+ v8.0.2 一提交（`483f4fa`）+ v8.0.3 一提交（本提交）
 - **远端 main**：`9c59f2549be561cb187d3bfff609bdf3e3c84c65`（v8.0.0 收尾，经 api.github.com 核验）
-  ——本地领先 3 提交，全部可 fast-forward
+  ——本地领先 4 提交，全部可 fast-forward
 - **push 状态**：`BLOCKED_PENDING_USER_DEPLOY_KEY`
   - gh CLI 浏览器 OAuth 在本沙箱不可行（github.com git/下载通道超时，OAuth 端点不可达）
   - 已就绪通道：SSH Deploy Key——沙箱持有 ed25519 密钥对（私钥 `~/.ssh/id_ed25519` 600 权限，

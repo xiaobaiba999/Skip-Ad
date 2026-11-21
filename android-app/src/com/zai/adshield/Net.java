@@ -214,6 +214,13 @@ public final class Net {
                 if (code == 404) {
                     break; // 两次 404 → 走列表回退再下结论
                 }
+                /* v8.0.3 限流即时报错：403（匿名配额 60 次/小时/IP 耗尽）/429
+                 * （次级限流）窗口为小时级——800ms 后重试纯浪费同一配额，
+                 * 且列表回退同池同限；旧版两趟重试后只报「GitHub 返回 403」
+                 * ——用户无从知道是限流还是何时能重试。立即返回明确原因。 */
+                if (rateLimited(code)) {
+                    return err("GitHub API 限流（匿名 60 次/小时/IP），请约 1 小时后再试", null);
+                }
                 if (attempt == 1) {
                     sleep(800);
                     continue;
@@ -241,10 +248,22 @@ public final class Net {
                 none.put("hasRelease", false);
                 return none.toString();
             }
+            // v8.0.3：限流同因即报（与通道 1/2 同口径——同配额池重试无意义）
+            if (rateLimited(code)) {
+                return err("GitHub API 限流（匿名 60 次/小时/IP），请约 1 小时后再试", null);
+            }
             return err("GitHub 返回 " + code, null);
         } catch (Exception e) {
             return err("网络异常：" + safeMsg(e), null);
         }
+    }
+
+    /** v8.0.3：限流类状态码判定（403 = 匿名配额耗尽 / 429 = 次级限流）。
+     *  更新检查两通道共用；纯函数 JVM 可测（ReleaseNotesTest 更新链路段）。
+     *  404 不算限流（仓库暂无正式 Release 的正常态——继续重试/列表回退）；
+     *  3xx 在 noRedirect 语义下按错误处理但非限流（劫持/代理注入另一类）。 */
+    public static boolean rateLimited(int code) {
+        return code == 403 || code == 429;
     }
 
     /** 解析单个 Release JSON → 页面可用结构（含镜像通道列表）。

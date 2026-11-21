@@ -3,6 +3,18 @@
 > 首页只保留当前版本要点；全部历史版本详情在本页归档。
 > 发布物（APK/报告/文档）见 [Releases](https://github.com/xiaobaiba999/Skip-Ad/releases) 与 `docs/test-reports/`。
 
+## v8.0.3（2026-11-28）—— 更新检查链路修复轮：GitHub API 限流即时报错（不再浪费重试）+ 下载文案如实描述 + 「用户看不到新版本」根因定案（非代码缺陷）
+
+- **本轮定位（用户指令：优先解决用户无法检查到新版本——先完整追踪更新链路、以真实代码为准、不能为让用户看到新版本而绕过正式发布状态）**：逐行追踪「检查更新」全链路（入口→请求→解析→比较→下载→校验→安装），结论：**机制本身正确，用户看不到新版本不是代码缺陷**——更新接口只读 GitHub 正式 Releases API，而最新正式发布仍是 v7.9.6（2026-11-20）；v8.0.0 仅存 Draft（GitHub 匿名 API 设计上不返回草稿）、v8.0.1/v8.0.2 从未创建 Release 且代码尚未推送。用户看到 v7.9.6 是**正确**行为；出路 = 推送代码 → 建 v8.0.3 Draft → 真机验证 → Publish（不绕过发布状态）。
+- **更新链路完整追踪（以真实代码为准 · STATIC_REVIEW）**：① 入口 = 设置页手动「检查更新」按钮（v7.0.0 已移除自动横幅——`app.js #btn-check-update` → `fetchLatest()` → 桥 `netGetLatestRelease()` → `Net.latestRelease()`）；② 请求 = `https://api.github.com/repos/xiaobaiba999/Skip-Ad/releases/latest`（通道 1/2：匿名、UA adshield-android、noRedirect 防重定向投毒、连接 7s/读 12s 超时、404 间歇重试一次）+ `/releases?per_page=8` 列表回退（通道 3）；③ **Draft 过滤两层正确**：GitHub 匿名 API 天然不返回草稿 + 回退通道显式 `draft||prerelease continue`（Net.java:242）——Draft Release 状态下应用正确忽略；④ 版本比较 = `tag_name` 去掉 v 前缀 → JS `cmpVer` 三段式数字比较 vs `AndroidApp.versionName()`（versionCode 只用于 Android 覆盖安装单调性，不参与比较——设计正确）；⑤ APK 下载 = 首个 .apk 资产的 `browser_download_url` + ghfast/gh-proxy 双镜像 + 30 秒无进展自动换通道；⑥ 安装 = SHA-256（GitHub API 官方 digest）/字节数双校验通过 → Android 8+ `canRequestPackageInstalls` 未授权自动拉授权页 → `ACTION_VIEW content://` 系统安装器；⑦ 更新失败永远保留当前版本（只下载不卸载，安装由用户确认）。
+- **限流修复（本轮唯一生产代码改动 · Net.java）**：旧版 403/429 先浪费一次 800ms 重试（限流窗口小时级，重试必败再烧同一配额池两次）再报「GitHub 返回 403」——用户无从知道是限流还是何时能重试。新增 `rateLimited(int)` 纯函数（403=匿名配额 60 次/小时/IP 耗尽、429=次级限流）+ 两通道接线：即时报「GitHub API 限流（匿名 60 次/小时/IP），请约 1 小时后再试」，不浪费重试不走列表回退（同配额池必然同样 403）。404/2xx/3xx/5xx/0 判定为非限流（各走既有路径不变）。**ReleaseNotesTest 更新链路段 7 断言钉死判定边界（AUTOMATED）**。
+- **文案诚实性修复（app.js）**：下载完成态旧文案「下载完成（已验 SHA-256）」与实现不符——SHA-256 实际在点击安装时才校验（`Downloader.install() → verifyDownloadedFile()`，v6.3.0 安装闸）——改为「下载完成，点击安装（安装前自动校验 SHA-256）」如实描述；`appVer()/appCode()` 浏览器预览回落值 8.0.0/80000 → 8.0.3/80300；关于页 `CURRENT_RELEASE` 从 v8.0.0 过期内容（三轮未更新）同步为 v8.0.1→v8.0.3 实绩（check-appjs 符号闸 5 项全过）。
+- **明确不修的项（审计确认非缺陷）**：无法识别最新正式 Release（能——/releases/latest 语义正确）；误读 Draft（不会——两层过滤）；versionCode 比较错误（不参与比较，设计如此）；APK 下载 URL 错误（browser_download_url 正确）；网络超时（7s/12s + 重试 + 回退三重处理）；下载失败显示成功（failed 态换通道/重下载按钮）；安装失败无反馈（install() 错误逐条返回 + toast + 授权页引导）；版本缓存（无缓存，每次实时查询）。
+- **测试（36 套件 6982 项 JVM 断言全绿——v8.0.2 为 6975，+7 = ReleaseNotesTest 更新链路段）**：既有 35 套件零回退；全源 ECJ 编译通过；secret-scan / app.js 符号闸 / version-sync（8.0.3/80300）/ `git diff --check` 全绿。
+- **APK v8.0.3 真实构建（`./build.sh 80300 8.0.3`）**：`android-app/dist/adshield-v8.0.3.apk` · SHA-256 `444e14d4899843d5457e00a22952c619ed57067c9949e439d6eae622bc019aa9`；versionCode 80300 > 80200（防降级守卫在岗）；签名证书 SHA-256 `05ada6e3…` 与全部历史版本一致（覆盖安装兼容）；DEX 含 `rateLimited`、app.js 含新文案（产物级验证）。
+- **本轮零识别/安全门/状态机/契约改动**：仅更新链路错误提示与页面文案；draft 过滤/版本比较/下载源白名单（host 精确匹配防构造 URL）/SHA-256 安装闸/未知应用授权引导全部原样保持。
+- **诚实口径**：Draft Release 状态下的「应用正确忽略草稿」已由匿名 API 实测证实（/releases/latest 返回 v7.9.6，/releases 列表不含草稿——GitHub 设计如此）；真机安装/更新 E2E = NOT_RUN（无设备）；GitHub push 与 Draft 创建待用户操作（Deploy Key 添加 / 网页建草稿）。
+
 ## v8.0.2（2026-11-28）—— 双 DFS 单遍化专项（P3-1 落地）：matchAll+walk 两趟同树遍历融合为 walkFused 单遍 + 21 场景逐字段对照测试 + JVM 基准计数证据
 
 - **本轮定位（用户指令：双 DFS 专项优化——先语义分析、再三方案评估、不强制合并、安全差异必须解释）**：上一轮审计把 P3-1 列为「下轮专项」并给出三个前置条件（JVM 计时基准 / 候选收集语义逐字段对照 / 全量零退化）——本轮三条件全部先行落地后才动生产代码。语义分析（三方案评估表已入 `V8-OPTIMIZATION-PLAN.md` v8.0.2 节）：**方案 B（单遍融合）在严格约束下输出与旧路径逐字段等价**（骑士门序/去重/排序/满 4 早停同停点 = matchAll 语义；决策信号 = 同一 visit 体 rider=null 时 byte-for-byte 旧 walk），方案 C（分阶段决策）改变 SafetyGuard 数据时序被否决，方案 A（双 DFS+属性缓存）收益不足且踩「缓存 AccessibilityNodeInfo 快照」灰区被否决。

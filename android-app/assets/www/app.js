@@ -23,8 +23,8 @@ const store = {
 };
 
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "8.0.0"; }
-function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "80000"; }
+function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "8.0.3"; }
+function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "80300"; }
 
 /* ══════════ 吉祥物（v4.1.0 全新形象：白机器人小侠 + 绿披风跳跃） ══════════
  * 与启动器图标同源；state: on（跳跃浮动）/ off（灰度待命） */
@@ -35,18 +35,18 @@ function mascotImg(size, state, head) {
 
 $("#brand-logo").innerHTML = mascotImg(30, "on", true);
 
-/* ═══ v8.0.0 版本记录（自动日志上传闭环轮）═══ */
+/* ═══ v8.0.3 版本记录（更新链路修复 + 引擎双 DFS 单遍化）═══ */
 const CURRENT_RELEASE = {
-  date: "2026-11-25",
-  title: "自动日志上传闭环：中转服务上线 + 客户端上传链路（授权默认关 · 零凭据 · 幂等重试）",
+  date: "2026-11-28",
+  title: "更新链路修复：GitHub API 限流即时报错（不再浪费重试）+ 引擎双 DFS 单遍化（零命中扫描开销减半）",
   features: [
-    "自动上传通道上线：Net.LOG_RELAY_URL 填入生产中转地址（skip-ad-log-relay——已部署并经真实浏览器 /healthz 验证）；服务端凭据只存 Cloudflare Worker Secret——APK 零凭据红线保持（v7.9.7 达成，本轮不破）",
-    "客户端上传链路 5 模块：LogPrivacyFilter（白名单/危险键整批拒绝/脱敏——与服务端同规约）+ LogEvents（八类事件工厂）+ LogUploadPolicy（ACK/WAIT/RETRY/FAIL 可穷举裁决）+ LogBatchStore（PENDING→UPLOADING→ACKED/FAILED；ACK 前绝不删；400 缓冲上限/48 分批上限）+ LogUploadDispatcher（单后台守护线程；退避 30s→480s×5）",
-    "batchId 幂等：封批生成 UUID v4；网络超时重试复用同一 batchId——服务端幂等兜底（重试必然 ALREADY_ACCEPTED，绝不二建 Issue）；MANUAL_RECONCILIATION_REQUIRED 立即终态绝不换号重传",
-    "隐私纵深：身份证 18 位差一正则四端同族修复（Net.maskSensitive/maskText/LogPrivacyFilter/服务端）；未授权采集门——未同意上传的设备零新增磁盘写；设置页真数据（状态行/立即提交/清理待上传）",
-    "上传失败绝不影响广告跳过：埋点异步落盘 + 上传独立守护线程 + 全部异常吞尽；零识别/安全门改动；35 套件 6802 项断言全绿（新增 3 套件 149 项）· versionCode 80000（> 79700 覆盖安装即升级）",
+    "检查更新链路修复（v8.0.3）：GitHub API 限流（403/429）旧版浪费两次重试后只报「GitHub 返回 403」——现在即时报「限流（匿名 60 次/小时/IP），约 1 小时后再试」，不烧配额；下载完成文案校正（SHA-256 安装前自动校验，如实描述）",
+    "引擎双 DFS 单遍化（v8.0.2）：零命中扫描不再对同一棵控件树走两趟独立遍历——节点访问/属性读取/内存分配全面减半（JVM 基准计数实证：child 调用 798→399、属性读 5642→3601）；决策输出与旧版逐字段一致（21 场景对照测试钉死）",
+    "窗口切换 0ms 双重扫描消除（v8.0.1）：内联首扫与定时梯子 0ms 档对同一棵树的全量双扫是纯冗余——每次切窗省一整遍树扫描；安全门/决策梯/任务门零变化",
+    "全链路审计轮（v8.0.1）：事件→扫描→决策→点击→复验→终态全调用图审计——安全面逐项核对零问题（状态机/代际护栏/重复点击断源/ACK 前不删日志/未授权零磁盘写全部在岗实锤）",
+    "36 套件 6975+ 项断言全绿（新增双 DFS 对照测试 92 项 + JVM 基准 63 项 + 更新链路 7 项）· versionCode 80300（> 79600 覆盖安装即升级）",
   ],
-  summary: "v8.0.0 闭环轮：中转服务（Cloudflare Worker：24h 滑窗最多 3 次 + batchId 幂等 + 隐私二次过滤）上线接入客户端上传链路；授权默认关——同意后事件埋点→本地批次→脱敏过滤→HTTPS 中转→GitHub 私有仓库 Issues；失败退避重试绝不影响广告跳过核心功能。",
+  summary: "v8.0.1→v8.0.3 三轮：全链路审计（安全面零问题）+ 扫描链路两处性能优化（切窗双扫消除 + 双 DFS 单遍化）+ 更新检查链路修复（限流即时报错）；零识别/安全门/状态机/契约改动。",
 };
 
 /* v7.0.0 新版功能描述（规范：≤5 个标题、带序号；检查更新发现新版本时就地渲染）。
@@ -929,7 +929,7 @@ function startProgressPoll(prefix) {
       } else if (d.state === "done") {
         clearInterval(ubTimer); ubTimer = null;
         bar.style.width = "100%";
-        txt.textContent = "下载完成（已验 SHA-256），点击安装即覆盖升级";
+        txt.textContent = "下载完成，点击安装（安装前自动校验 SHA-256）";
         const btn = $("#" + prefix + "-dl-btn");
         if (btn) { btn.textContent = "立即安装"; btn.disabled = false; btn.dataset.phase = "install"; }
       } else if (d.state === "failed") {

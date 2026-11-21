@@ -95,6 +95,19 @@ public final class ReleaseNotesTest {
         TestHost.checkEq(5, ReleaseNotes.MAX_HEADLINES, "MAX_HEADLINES = 5");
         TestHost.checkEq(44, ReleaseNotes.MAX_LEN, "MAX_LEN = 44（言简意赅）");
 
+        /* ══ 七、更新链路限流判定（v8.0.3 · Net.rateLimited 纯函数）══
+         * 背景：latestRelease 两通道对 403/429 旧行为是「800ms 后重试一次再
+         * 报 GitHub 返回 403」——限流窗口小时级，重试纯浪费同一配额两次，
+         * 且用户无从知道是限流、何时能重试。v8.0.3 改为即时报明确错误。 */
+        TestHost.suite("更新链路限流判定（403/429 即时报错不重试）");
+        TestHost.check(com.zai.adshield.Net.rateLimited(403), "403 = 匿名配额耗尽（60 次/小时/IP）→ 限流");
+        TestHost.check(com.zai.adshield.Net.rateLimited(429), "429 = 次级限流（Retry-After 类）→ 限流");
+        TestHost.check(!com.zai.adshield.Net.rateLimited(404), "404 ≠ 限流（暂无正式 Release 正常态——继续重试/列表回退）");
+        TestHost.check(!com.zai.adshield.Net.rateLimited(200), "200 ≠ 限流（正常响应）");
+        TestHost.check(!com.zai.adshield.Net.rateLimited(301), "3xx ≠ 限流（noRedirect 语义下按劫持/注入类错误处理）");
+        TestHost.check(!com.zai.adshield.Net.rateLimited(500), "5xx ≠ 限流（服务端错误——走既有重试路径）");
+        TestHost.check(!com.zai.adshield.Net.rateLimited(0), "0/异常码 ≠ 限流（网络层失败交 catch 路径）");
+
         TestHost.done();
     }
 }
