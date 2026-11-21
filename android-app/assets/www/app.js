@@ -1,4 +1,4 @@
-/* 开屏卫士 v7.9.7 · PAT 移除安全轮：APK 零 GitHub 凭据 + 自动日志授权（默认关）+ 手动日志本地导出 */
+/* 开屏卫士 v8.0.0 · 自动日志上传闭环：Android → Cloudflare Worker → GitHub 私有仓库 Issues（授权默认关 · 客户端零凭据 · 白名单双端过滤 · batchId 幂等） */
 "use strict";
 
 /* ══════════ 环境 ══════════ */
@@ -23,8 +23,8 @@ const store = {
 };
 
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "7.9.7"; }
-function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "79700"; }
+function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "8.0.0"; }
+function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "80000"; }
 
 /* ══════════ 吉祥物（v4.1.0 全新形象：白机器人小侠 + 绿披风跳跃） ══════════
  * 与启动器图标同源；state: on（跳跃浮动）/ off（灰度待命） */
@@ -35,18 +35,18 @@ function mascotImg(size, state, head) {
 
 $("#brand-logo").innerHTML = mascotImg(30, "on", true);
 
-/* ═══ v7.9.7 版本记录（PAT 移除安全轮）═══ */
+/* ═══ v8.0.0 版本记录（自动日志上传闭环轮）═══ */
 const CURRENT_RELEASE = {
-  date: "2026-11-21",
-  title: "APK 零 GitHub 凭据：内置 PAT 移除 + 自动日志上传授权（默认关）+ 手动日志本地导出",
+  date: "2026-11-25",
+  title: "自动日志上传闭环：中转服务上线 + 客户端上传链路（授权默认关 · 零凭据 · 幂等重试）",
   features: [
-    "P0 安全：Net.java 内嵌混淆 PAT（双层 XOR+Base64，与 Web 端同源密文）整体移除——混淆不等于加密，公开 APK 内任何令牌形态即已泄露凭据；撤销待仓库所有者执行（SECURITY.md R1）",
-    "自动上传旧通道（v4.2.0 起 · 8h 心跳直发 GitHub Issue）整体下线：新通道双门结构（用户授权默认关 + 中转服务地址为空）任一未过即零行为——本版本结构性不自动上传",
-    "自动日志上传授权独立开关（默认关，与无障碍授权分离）：设置页新增 toggle + 状态行；上线后受服务端 24h 滑窗（最多 3 次）+ batchId 幂等约束（v8.0.0）",
-    "手动日志本地导出：exportLog 桥（logs/ 目录文件 + Java 侧二次脱敏）+ 系统分享面板；检查更新匿名化 + 浏览器预填链接（零令牌）",
-    "本轮零识别/安全门改动：不新增关键词、不扩大点击区域、不降 SafetyGuard、不加轮询；31 套件 6653 项断言全绿（修改前后各一轮零回退）· versionCode 79700（> 79600 覆盖安装即升级）",
+    "自动上传通道上线：Net.LOG_RELAY_URL 填入生产中转地址（skip-ad-log-relay——已部署并经真实浏览器 /healthz 验证）；服务端凭据只存 Cloudflare Worker Secret——APK 零凭据红线保持（v7.9.7 达成，本轮不破）",
+    "客户端上传链路 5 模块：LogPrivacyFilter（白名单/危险键整批拒绝/脱敏——与服务端同规约）+ LogEvents（八类事件工厂）+ LogUploadPolicy（ACK/WAIT/RETRY/FAIL 可穷举裁决）+ LogBatchStore（PENDING→UPLOADING→ACKED/FAILED；ACK 前绝不删；400 缓冲上限/48 分批上限）+ LogUploadDispatcher（单后台守护线程；退避 30s→480s×5）",
+    "batchId 幂等：封批生成 UUID v4；网络超时重试复用同一 batchId——服务端幂等兜底（重试必然 ALREADY_ACCEPTED，绝不二建 Issue）；MANUAL_RECONCILIATION_REQUIRED 立即终态绝不换号重传",
+    "隐私纵深：身份证 18 位差一正则四端同族修复（Net.maskSensitive/maskText/LogPrivacyFilter/服务端）；未授权采集门——未同意上传的设备零新增磁盘写；设置页真数据（状态行/立即提交/清理待上传）",
+    "上传失败绝不影响广告跳过：埋点异步落盘 + 上传独立守护线程 + 全部异常吞尽；零识别/安全门改动；35 套件 6802 项断言全绿（新增 3 套件 149 项）· versionCode 80000（> 79700 覆盖安装即升级）",
   ],
-  summary: "v7.9.7 安全轮：内置 PAT 从 APK 移除（客户端零 GitHub 写凭据）；自动日志上传改为授权默认关 + 中转服务未上线结构性关闭（绝不直连 GitHub）；手动日志本地导出 + 系统分享替代直发 Issue；检查更新匿名化。为 v8.0.0 轻量中转服务（24h 最多 3 次 + batchId 幂等 + 隐私二次过滤）铺轨。",
+  summary: "v8.0.0 闭环轮：中转服务（Cloudflare Worker：24h 滑窗最多 3 次 + batchId 幂等 + 隐私二次过滤）上线接入客户端上传链路；授权默认关——同意后事件埋点→本地批次→脱敏过滤→HTTPS 中转→GitHub 私有仓库 Issues；失败退避重试绝不影响广告跳过核心功能。",
 };
 
 /* v7.0.0 新版功能描述（规范：≤5 个标题、带序号；检查更新发现新版本时就地渲染）。
@@ -430,33 +430,81 @@ function renderKeepAlive() {
 bindToggle("toggle-popup", "popupShield", "弹窗屏蔽已开启", "弹窗屏蔽已关闭");
 bindToggle("toggle-learning", "learning", "习惯学习已开启", "习惯学习已关闭");
 
-/* ══════════ v7.9.7 自动提交诊断日志授权（独立开关 · 默认关） ══════════
- * 与无障碍授权严格分离；授权≠上传——中转服务上线（v8.0.0）前结构性不执行，
- * 上线后仍受服务端 24h 滑窗（最多 3 次）与 batchId 幂等约束。 */
+/* ══════════ v7.9.7 自动提交诊断日志授权（独立开关 · 默认关）→ v8.0.0 中转上线真数据 ══════════
+ * 与无障碍授权严格分离；授权≠上传——上传仍受服务端 24h 滑窗（最多 3 次）
+ * 与 batchId 幂等约束（中转服务 skip-ad-log-relay 已上线）。
+ * v8.0.0：状态行真数据（待传批次/24h 已提交（服务端权威，本地仅展示参考）/
+ * 失败检视/最近失败原因）+「立即提交」（同一服务端限额，绝不绕过）
+ * +「清理待上传」（只删本地文件，不影响服务端已建 Issue）。 */
+function bridgeCall(fn, fallback) {
+  try {
+    if (HAS_BRIDGE && AndroidApp[fn]) return AndroidApp[fn]();
+  } catch (e) {}
+  return fallback;
+}
 function refreshLogUploadNote() {
   const note = $("#log-upload-note");
   if (!note) return;
-  const on = !!(HAS_BRIDGE && AndroidApp.logUploadConsent && (function(){ try { return AndroidApp.logUploadConsent(); } catch (e) { return false; } })());
-  note.textContent = on
-    ? "已授权 · 每 24 小时最多 3 次 · 上传服务器上线前不会执行任何自动提交"
-    : "默认关闭 · 每日最多 3 次脱敏诊断数据 · 可随时关闭（服务器上线前不会执行）";
+  const on = !!bridgeCall("logUploadConsent", false);
+  const actions = $("#log-upload-actions");
+  if (actions) actions.style.display = on ? "" : "none";
+  if (!on) {
+    note.textContent = "默认关闭 · 每日最多 3 次脱敏诊断数据 · 可随时关闭";
+    return;
+  }
+  let st = null;
+  try { st = JSON.parse(bridgeCall("logUploadStatus", null)); } catch (e) {}
+  if (!st) {
+    note.textContent = "已授权 · 每 24 小时最多 3 次（服务端滑窗权威）";
+    return;
+  }
+  const agoMin = st.lastAckedAt > 0 ? Math.max(1, Math.round((Date.now() - st.lastAckedAt) / 60000)) : 0;
+  let s = "已授权 · 24h 已提交 " + (st.acked24h || 0) + "/3（服务端权威）"
+    + " · 待传 " + (st.pending || 0) + " 批";
+  if (agoMin > 0) s += " · 最近提交 " + (agoMin >= 1440 ? Math.round(agoMin / 1440) + " 天前" : agoMin + " 分钟前");
+  if (st.failed > 0 && st.lastError) s += " · 检视 " + st.failed + "（" + String(st.lastError).slice(0, 40) + "）";
+  note.textContent = s;
 }
 (function bindLogUploadToggle() {
   const el = $("#toggle-log-upload");
   if (!el) return;
   try {
-    if (HAS_BRIDGE && AndroidApp.logUploadConsent) el.checked = !!AndroidApp.logUploadConsent();
+    el.checked = !!bridgeCall("logUploadConsent", false);
   } catch (e) {}
   el.addEventListener("change", () => {
-    if (HAS_BRIDGE && AndroidApp.setLogUploadConsent) {
-      try { AndroidApp.setLogUploadConsent(el.checked); } catch (e) {}
-    } else {
+    try {
+      if (HAS_BRIDGE && AndroidApp.setLogUploadConsent) AndroidApp.setLogUploadConsent(el.checked);
+      else store.set("logUploadConsent", el.checked);
+    } catch (e) {
       store.set("logUploadConsent", el.checked);
     }
-    toast(el.checked ? "已授权自动提交（服务器上线后生效）" : "自动提交已关闭");
-    refreshLogUploadNote();
+    toast(el.checked ? "已授权自动提交（每日最多 3 次 · 服务端限额）" : "自动提交已关闭");
+    setTimeout(refreshLogUploadNote, 200);
   });
   refreshLogUploadNote();
+})();
+(function bindLogUploadActions() {
+  const nowBtn = $("#btn-log-upload-now");
+  if (nowBtn) nowBtn.addEventListener("click", () => {
+    if (HAS_BRIDGE && AndroidApp.logUploadSubmitNow) {
+      try { AndroidApp.logUploadSubmitNow(); } catch (e) {}
+      toast("已触发立即提交（后台执行 · 同一服务端限额）");
+      setTimeout(refreshLogUploadNote, 400);
+    } else {
+      toast("当前环境不支持自动上传");
+    }
+  });
+  const clearBtn = $("#btn-log-upload-clear");
+  if (clearBtn) clearBtn.addEventListener("click", () => {
+    if (HAS_BRIDGE && AndroidApp.logUploadClearPending) {
+      let r = null;
+      try { r = JSON.parse(AndroidApp.logUploadClearPending()); } catch (e) {}
+      toast(r && r.ok ? "已清理 " + (r.cleared || 0) + " 批本地待上传日志" : "清理失败");
+      setTimeout(refreshLogUploadNote, 400);
+    } else {
+      toast("当前环境不支持自动上传");
+    }
+  });
 })();
 
 /* ══════════ v4.3.0 应用白名单 ══════════ */
@@ -1043,7 +1091,7 @@ $("#btn-refresh-log").addEventListener("click", () => {
 function maskText(s) {
   return String(s == null ? "" : s)
     .replace(/(?<![0-9])(1[3-9]\d)\d{4}(\d{4})(?![0-9])/g, "$1****$2")
-    .replace(/(?<![0-9A-Za-z])(\d{3})\d{12}(\d{3}[\dXx])(?![0-9A-Za-z])/g, "$1************$2")
+    .replace(/(?<![0-9A-Za-z])(\d{3})\d{12}(\d{2}[\dXx])(?![0-9A-Za-z])/g, "$1************$2")
     .replace(/[A-Za-z0-9._%+-]+@([A-Za-z0-9.-]+\.[A-Za-z]{2,})/g, "***@$1")
     .replace(/(?<![0-9])(\d{1,3}\.\d{1,3})\.\d{1,3}\.\d{1,3}(?![0-9])/g, "$1.*.*");
 }

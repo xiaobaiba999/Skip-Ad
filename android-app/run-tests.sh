@@ -68,7 +68,7 @@ echo "    编译产出: $OUT/classes"
 echo "==> [2/3] 运行测试套件"
 TOTAL_PASS=0
 TOTAL_FAIL=0
-for SUITE in MiniProgramGuardTest DecisionGuardTest SubscriptionBuiltinTest RegressionCoreTest MultiDeviceMatrixTest NonMainstreamAppTest RestoreGuardTest PowerGovernorTest RuleGovernorTest ComplianceGuardTest TapPointMatrixTest HumanTapMatrixTest BrandFocus396Test ReentrySplashTest ReleaseNotesTest SubMirrorTest FeedAdGuardTest RuleOrderTest InterstitialGuardTest SplashCountdownTest AggressiveModeTest VideoSplashTest InterstitialRoutingTest AdTaskTest AppCatalogTest PageScenarioTest FalsePositiveScenarioTest AdTaskTimingTest DecisionEvidenceTest MinimalWindowBatchTest Bug001RegressionTest; do
+for SUITE in MiniProgramGuardTest DecisionGuardTest SubscriptionBuiltinTest RegressionCoreTest MultiDeviceMatrixTest NonMainstreamAppTest RestoreGuardTest PowerGovernorTest RuleGovernorTest ComplianceGuardTest TapPointMatrixTest HumanTapMatrixTest BrandFocus396Test ReentrySplashTest ReleaseNotesTest SubMirrorTest FeedAdGuardTest RuleOrderTest InterstitialGuardTest SplashCountdownTest AggressiveModeTest VideoSplashTest InterstitialRoutingTest AdTaskTest AppCatalogTest PageScenarioTest FalsePositiveScenarioTest AdTaskTimingTest DecisionEvidenceTest MinimalWindowBatchTest Bug001RegressionTest LogPrivacyFilterTest LogUploadPolicyTest LogBatchStoreTest; do
   echo ""
   echo "══ $SUITE ══"
   if java -cp "$OUT/classes" "com.zai.adshield.test.$SUITE" | tee "$OUT/$SUITE.log"; then

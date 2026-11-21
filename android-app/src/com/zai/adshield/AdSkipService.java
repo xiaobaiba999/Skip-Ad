@@ -303,6 +303,31 @@ public class AdSkipService extends AccessibilityService {
      * v7.9.7：客户端节拍值保留——最终限额以服务端 24h 滑窗（最多 3 次）为准 */
     public static final long AUTO_LOG_MS = 8 * 60 * 60 * 1000L;
 
+    /* ═══ v8.0.0 日志事件埋点（LogBatchStore.appendEvent 异步落盘——无障碍热路径零阻塞）═══
+     * · logStore：onServiceConnected 懒初始化（服务未跑→tapEvent 空转，零行为）；
+     * · 采集门在 LogBatchStore.collectEnabled（授权 × 中转上线——未授权零磁盘写）；
+     * · appendEvent 内部单线程 executor——调用方（无障碍事件/点击/复验线程）
+     *   只支付一次非阻塞 submit；任何异常在本方法内吞尽——绝不影响点击主链。 */
+    private static volatile com.zai.adshield.core.LogBatchStore logStore;
+
+    private static void tapEvent(org.json.JSONObject ev) {
+        try {
+            if (ev == null) return;
+            com.zai.adshield.core.LogBatchStore s = logStore;
+            if (s != null) s.appendEvent(ev);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** v8.0.0：上传采集门双保险初始化（onServiceConnected——静态引用 + 采集门同步）。 */
+    private void initLogUploadTap() {
+        try {
+            logStore = com.zai.adshield.core.LogBatchStore.get(this);
+            refreshUploadCollect(this);
+        } catch (Throwable ignored) {
+        }
+    }
+
     /* v7.9.7 安全整改：自动日志上传授权开关（默认关闭）。
      * · 授权与无障碍授权严格分离：开启无障碍服务 ≠ 同意日志上传；
      * · 授权开启后，仍要等中转服务上线（Net.LOG_RELAY_URL 非空，v8.0.0）
@@ -686,13 +711,27 @@ public class AdSkipService extends AccessibilityService {
      *   Net.postIssue 直发 GitHub Issue）已随内置 PAT 移除整体下线；
      * · 新通道（v8.0.0 LogUploadDispatcher 接管）：用户授权开启 +
      *   Net.LOG_RELAY_URL 配置（中转服务上线）+ 服务端 24h 滑窗最多 3 次 +
-     *   batchId 幂等——本版本两个门任一未过即零行为（结构性不自动上传，
+     *   batchId 幂等——两个门任一未过即零行为（结构性不自动上传，
      *   绝不回退到直连 GitHub）；
-     * · KeepAliveReceiver 心跳调用点保持不变（零额外调度开销）。 */
+     * · KeepAliveReceiver 心跳调用点保持不变（零额外调度开销）；
+     * · 采集门同步：授权+上线才允许事件缓冲落盘（未授权设备零新增磁盘写）。 */
     public static void maybeAutoUploadLog(final Context ctx) {
         try {
             if (!autoLogUploadEnabled(ctx)) return;        // 授权门：默认关（与无障碍授权分离）
-            if (Net.LOG_RELAY_URL.length() == 0) return;    // 中转门：v7.9.7 服务未上线——保持关闭
+            if (Net.LOG_RELAY_URL.length() == 0) return;    // 中转门：服务未上线——保持关闭
+            refreshUploadCollect(ctx);
+            com.zai.adshield.core.LogUploadDispatcher.get(ctx.getApplicationContext())
+                    .requestAutoCheck(AUTO_LOG_MS);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** v8.0.0：事件采集门刷新（授权 × 中转上线 → LogBatchStore.setCollectEnabled）。
+     *  心跳（maybeAutoUploadLog）与开关回调（setAutoLogUploadEnabled）两处同步。 */
+    static void refreshUploadCollect(Context ctx) {
+        try {
+            com.zai.adshield.core.LogBatchStore.setCollectEnabled(
+                    autoLogUploadEnabled(ctx) && Net.LOG_RELAY_URL.length() > 0);
         } catch (Throwable ignored) {
         }
     }
@@ -707,12 +746,13 @@ public class AdSkipService extends AccessibilityService {
         }
     }
 
-    /** v7.9.7：设置授权开关（UI 桥调用）。仅写授权位，不触发任何上传行为——
-     *  上传条件另见 maybeAutoUploadLog 双门与服务端限额。 */
+    /** v7.9.7：设置授权开关（UI 桥调用）。仅写授权位与采集门，不触发任何上传
+     *  行为——上传条件另见 maybeAutoUploadLog 双门与服务端限额。 */
     public static void setAutoLogUploadEnabled(Context ctx, boolean enabled) {
         try {
             ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
                     .putBoolean(KEY_AUTO_LOG_UPLOAD, enabled).apply();
+            refreshUploadCollect(ctx); // v8.0.0：开关即时同步采集门（关→零磁盘写）
         } catch (Throwable ignored) {
         }
     }
@@ -1059,6 +1099,8 @@ public class AdSkipService extends AccessibilityService {
         // 每事件一次的 PowerManager.isInteractive binder IPC（issue#40 能耗画像
         // 实锤 4602 事件 = 4602 次 IPC；广播零开销，屏幕翻转秒级同步）
         registerScreenReceiver();
+        // v8.0.0：日志上传采集门初始化（logStore 单例 + 授权门同步——未授权零磁盘写）
+        initLogUploadTap();
         // v3.5.0 保活：服务连上即记「用户要求保持开启」；仅用户在 App 内手动
         // 关闭保活提醒（Bridge.setKeepOn(false)）才置 false
         prefs().edit().putBoolean(KEY_KEEPON, true).apply();
@@ -3615,6 +3657,9 @@ public class AdSkipService extends AccessibilityService {
                             videoProbeMiss.put(pkg, 0); // v7.9.5：证据增强——miss streak 重置
                             appendLog("🎞 视频开屏轮询命中（" + shortPkg(pkg) + "）：探针「" + w
                                     + "」露头 → 全量扫描出手（窗龄 " + (elapsed / 1000) + "s）");
+                            /* v8.0.0 上传事件埋点：VIDEO_POLL 探针命中（intervalMs =
+                             *  窗龄——静默事件源下视频开屏真实观测证据）。 */
+                            tapEvent(com.zai.adshield.core.LogEvents.videoPoll(pkg, elapsed));
                             tryScan(pkg, winStart, elapsed);
                             return;
                         }
@@ -4061,6 +4106,9 @@ public class AdSkipService extends AccessibilityService {
                         "BND_" + bnd);
                 com.zai.adshield.core.DecisionEvidence.recordOutcome(
                         com.zai.adshield.core.DecisionEvidence.OUT_SAFE_BLOCK);
+                /* v8.0.0 上传事件埋点：SAFE_BLOCK（safetyReason = 决策 reason——
+                 *  引擎内部词表非用户内容；封批时脱敏+截断 32）。 */
+                tapEvent(com.zai.adshield.core.LogEvents.safeBlock(pkg, d.reason));
                 return false;
             }
             /* v7.9.5 订阅证据链第二格：候选被 SafetyGuard 终闸接受（进入后续
@@ -4284,6 +4332,9 @@ public class AdSkipService extends AccessibilityService {
                 return true;
             }
             SubscriptionManager.countClickOutcome(d.reason, 0); // v7.9.1 订阅七分类：双通道派发全失败
+            /* v8.0.0 上传事件埋点：CLICK 派发失败（clickResult=FAILED——双通道
+             *  全失败诊断；候选来源不可得时 OTHER 兜底）。 */
+            tapEvent(com.zai.adshield.core.LogEvents.click(pkg, winClassOf(pkg), null, null, false));
             return false;
         }
         if (d.action.equals(AdDecisionCore.A_TAP_POINT)) {
@@ -4682,6 +4733,10 @@ public class AdSkipService extends AccessibilityService {
                     src, d != null && d.reason != null ? d.reason : "",
                     rawLabel, rawResId, adCtx, sdkCtx, wvCtx, subCtx,
                     cx, cy, area, clk, "BND_OK");
+            /* v8.0.0 上传事件埋点：CLICK 派发成功（词族内文本才入 text 字段——
+             *  LogEvents 内部白名单闸；两调用点（主链/学习位置直点）统一覆盖）。 */
+            tapEvent(com.zai.adshield.core.LogEvents.click(
+                    pkg, winClassOf(pkg), src, rawLabel, true));
             /* v7.9.5 自适应轮询证据增强：任何出手都重置探针 miss streak
              * （低证据降频立即恢复标准节拍）。 */
             Integer missBox = videoProbeMiss.get(pkg);
@@ -4706,6 +4761,11 @@ public class AdSkipService extends AccessibilityService {
             com.zai.adshield.core.DecisionEvidence.recordOutcome(
                     com.zai.adshield.core.DecisionEvidence.OUT_VERIFIED_SUCCESS);
             SubscriptionManager.countVerifiedSuccess(lastReason);
+            /* v8.0.0 上传事件埋点：AD_TASK 终局 SUCCESS（dispatchGesture 成功
+             *  ≠ 广告关闭——只有本路验证链才出 VERIFIED_SUCCESS 事件）。 */
+            tapEvent(com.zai.adshield.core.LogEvents.adTask(
+                    pkg, winClassOf(pkg), "SUCCESS", "VERIFIED_SUCCESS",
+                    triesOfClick(pkg), 0, scanGenOf(pkg)));
         }
         if (adClosedAt.size() > 64) adClosedAt.clear();
         adClosedAt.put(pkg, t.endedAt);   // 静默期照常（未命中日志降噪）
@@ -4723,6 +4783,11 @@ public class AdSkipService extends AccessibilityService {
         if (t.hadClick) {
             com.zai.adshield.core.DecisionEvidence.recordOutcome(
                     com.zai.adshield.core.DecisionEvidence.OUT_MISS);
+            /* v8.0.0 上传事件埋点：AD_TASK 终局 FAILED/MISS（预算收手——
+             *  有出手未关闭的真实漏检证据）。 */
+            tapEvent(com.zai.adshield.core.LogEvents.adTask(
+                    pkg, winClassOf(pkg), "FAILED", "MISS",
+                    triesOfClick(pkg), 0, scanGenOf(pkg)));
         }
         t.state = AdTaskCore.onVerifyAdStill(t.state, Integer.MAX_VALUE, 0);
         t.endedAt = System.currentTimeMillis();
@@ -4751,6 +4816,11 @@ public class AdSkipService extends AccessibilityService {
                 com.zai.adshield.core.DecisionEvidence.recordOutcome(
                         com.zai.adshield.core.DecisionEvidence.OUT_VERIFIED_SUCCESS);
                 SubscriptionManager.countVerifiedSuccess(lastReason);
+                /* v8.0.0 上传事件埋点：AD_TASK 终局 SUCCESS（窗口切换=点击
+                 *  生效的验证链证据——与 markTaskSuccess 同源）。 */
+                tapEvent(com.zai.adshield.core.LogEvents.adTask(
+                        pkg, winClassOf(pkg), "SUCCESS", "VERIFIED_SUCCESS",
+                        triesOfClick(pkg), 0, scanGenOf(pkg)));
             }
             if (had && howZh != null) appendLog("✓ 复验通过（" + shortPkg(pkg) + "）：" + howZh);
         }
@@ -4780,6 +4850,9 @@ public class AdSkipService extends AccessibilityService {
         int kindOfInterest = t.state;
         if (kindOfInterest != AdTaskCore.S_VERIFYING && kindOfInterest != AdTaskCore.S_RETRY_WAIT
                 && kindOfInterest != AdTaskCore.S_FEEDBACK) return;
+        /* v8.0.0 上传事件埋点：VERIFY 复验扫描结果（零候选 = CLOSED 信号——
+         *  每针一条，点击后 500ms/1.4s/… 人手节奏的真实观测面）。 */
+        tapEvent(com.zai.adshield.core.LogEvents.verify(pkg, zeroCand));
         if (!zeroCand) {
             /* ═══ v7.9.6 Bug#001 根治：复验预算耗尽终局记账 ═══
              * 旧代码直接置态三漏：① 不落 endedAt → taskAllowsNew(now, 0)
@@ -4803,6 +4876,11 @@ public class AdSkipService extends AccessibilityService {
             if (st.state == AdTaskCore.S_FAILED && !AdTaskCore.isTerminal(t.state)) {
                 appendLog("🤲 复验预算用尽（" + shortPkg(pkg) + "）：广告仍在场 → 任务终态（FAILED）"
                         + "——2.2s 冷却闸在岗（新任务须过闸才重置预算；你的手动跳过仍会被学习）");
+                /* v8.0.0 上传事件埋点：AD_TASK 终局 FAILED/MISS（复验预算
+                 *  用尽——Bug#001 根治同源路径的终局证据面）。 */
+                tapEvent(com.zai.adshield.core.LogEvents.adTask(
+                        pkg, winClassOf(pkg), "FAILED", "MISS",
+                        triesOfClick(pkg), 0, scanGenOf(pkg)));
             }
             t.state = st.state;
             t.endedAt = st.endedAt;
@@ -5509,6 +5587,12 @@ public class AdSkipService extends AccessibilityService {
     private int triesOfClick(String pkg) {
         Integer n = clickTries.get(pkg);
         return n == null ? 0 : n.intValue();
+    }
+
+    /** v8.0.0 上传事件埋点辅助：当前包的扫描代际（缺失 → 0；白名单界内）。 */
+    private int scanGenOf(String pkg) {
+        Integer g = scanGen.get(pkg);
+        return g == null ? 0 : g.intValue();
     }
 
     /* ───────── v3.13.0 验证码横幅保护：SystemUI 顶部小窗探测与守卫日志 ─────────

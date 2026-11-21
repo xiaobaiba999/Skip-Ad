@@ -3,6 +3,26 @@
 > 首页只保留当前版本要点；全部历史版本详情在本页归档。
 > 发布物（APK/报告/文档）见 [Releases](https://github.com/xiaobaiba999/Skip-Ad/releases) 与 `docs/test-reports/`。
 
+## v8.0.0（2026-11-25）—— 自动日志上传闭环轮：中转服务上线 + 客户端上传链路（授权默认关 · APK 零凭据 · batchId 幂等）
+
+- **本轮定位（用户指令：Android 客户端 → Worker → GitHub Issues 完整日志上传闭环）**：中转服务（`Skip-Ad-Log-Upload` 仓库 `skip-ad-log-relay` v1.2.1 · Cloudflare Worker + Durable Objects）已部署至 `https://skip-ad-log-relay.2927609408.workers.dev` 并经用户真实浏览器 `/healthz` 验证（ok=true · ipHmacConfigured=true · fail-closed）；本轮把客户端上传链路接入主工程（`log-upload-staging/android/java` 三件套经四轮审计终验后进入仓库，另有扩展）。**Worker 端契约一字不改**——状态码/语义/幂等/滑窗全部沿用既有部署。
+- **服务端凭据边界（零凭据红线保持）**：`Net.LOG_RELAY_URL` 只填公开服务端点；GitHub App 私钥 / IP_HASH_SECRET 等全部只存 Cloudflare Worker Secret——APK 内零令牌零私钥零 OAuth（v7.9.7 达成，本轮不破；secret-scan 闸全绿）。
+- **客户端上传链路（5 个 core 模块 · 纯 Java 优先 JVM 可测）**：
+  - `LogPrivacyFilter`（staging 终验版原样入库）：字段白名单/枚举/整数界/危险键**整批拒绝**/候选词族门/脱敏四正则——与服务端 `validate.ts` 同规约（双端同步演进 privacyFilterVersion 同号递增）；
+  - `LogEvents`（新）：八类事件工厂（AD_TASK 终局/SAFE_BLOCK 终闸/CLICK 派发/VERIFY 复验/STATS 快照/GKD 拉取异常/VIDEO_POLL 探针命中/CRASH 类名）——字段名/枚举值与白名单一字不差（工厂输出过自家过滤器零剥离，测试钉死）；
+  - `LogUploadPolicy`（新）：响应裁决纯函数——`ACK`（200 ACCEPTED/ALREADY_ACCEPTED）/`WAIT`（429 尊重 retryAfter 钳制 [30s,24h]，**不耗重试计数**）/`RETRY`（TEMPORARY_ERROR/网络异常/未知 code——退避 30s→60s→120s→240s→480s×5 同 batchId）/`FAIL` 终态（PRIVACY_REJECTED/INVALID_REQUEST/UNAUTHORIZED/IDEMPOTENCY_CONFLICT/PAYLOAD_TOO_LARGE/**MANUAL_RECONCILIATION_REQUIRED 立即终态绝不换 batchId 重传**——服务端三轮红线逐条落客户端）；请求体构造（schemaVersion 1 顶层九键 + UUID 防御门——明知 401 的请求绝不发出）；
+  - `LogBatchStore`（staging 版 + StoreEnv seam）：PENDING→UPLOADING→ACKED/FAILED 状态机；installInstanceId 首启 UUID v4（清数据/卸载自然重置）；400 条事件缓冲（容量裁剪**关键安全事件最后丢**）；单批 ≤48（服务端契约上限，**余量留缓冲分多批**——8h 心跳间堆积不截尾丢数据）；批次容量 20 最旧先逐出；UPLOADING 中断恢复；ACK 前绝不删本地批次（红线）；
+  - `LogUploadDispatcher`（staging 版 + 裁决表接线）：单后台守护线程（running CAS 门——绝不并发提交同批次）；非 2xx 响应体也解析（错误信封 code/retryAfter 全字段可用）；StATS 快照（六态 + GKD 八格纯静态计数器）每轮先行。
+- **幂等核心（用户指令重点场景）**：每次封批生成 UUID v4 batchId；**网络超时重试复用同一 batchId**——服务端 LogGate 幂等使「客户端发送成功但响应丢失」场景下的重试必然得到 `ALREADY_ACCEPTED` 复用原 issueNumber，绝不二建 Issue；「重试不换号」是结构性保证（dispatcher 只读已存批次文件，无任何重封包路径）。
+- **事件埋点（薄接线 · 全部一行 try/catch）**：AD_TASK 终局三路（markTaskSuccess/markTaskFailed/markTaskWindowChanged + taskOnScanOutcome 预算耗尽——Bug#001 根治同源路径）/ SAFE_BLOCK 终闸 / CLICK 派发成功与失败（recordClickEvidence 内统一）/ VERIFY 复验扫描（CLOSED/NOT_CLOSED）/ GKD 拉取异常（errClass 仅类名）/ VIDEO_POLL 探针命中（intervalMs=窗龄）/ CRASH（save 尽力而为 + readAndClear 幸存补点——仅顶层栈帧类名，绝不带堆栈正文）。
+- **采集门（未授权零磁盘写）**：`LogBatchStore.setCollectEnabled`（授权 × 中转上线双条件）——未同意上传的设备上零新增磁盘写入；内存内 DecisionEvidence 诊断照旧。
+- **隐私纵深（四端同族差一修复）**：身份证 18 位正则 `(\d{3})\d{12}(\d{3}[\dXx])`→`(\d{3})\d{12}(\d{2}[\dXx])`（19 位要求从未真正脱敏 18 位真证件号）——`Net.maskSensitive`/www `maskText`/`LogPrivacyFilter`（staging 已修）/服务端 privacy.ts 四端同修；`safetyReason` 先脱敏后截断（跨界 PII 前缀不因截断漏出）。
+- **设置页真数据（www）**：上传状态行（待传批次数/24h 已提交（服务端权威，本地仅展示参考）/失败检视数/最近提交时间/最近失败原因）+「立即提交」（同一服务端 24h/3 限额绝不绕过）+「清理待上传」（只删本地文件）；授权开关未开时按钮区隐藏；手动本地导出通道并存。
+- **上传失败绝不影响广告跳过（结构性纪律）**：埋点 `appendEvent` 异步落盘（单线程 executor 非阻塞 submit——无障碍热路径零新增同步 IO）；上传独立守护线程（绝不网络 IO 于无障碍事件/点击/复验线程）；`tapEvent`/埋点/上传全链 try/catch 吞尽。**本轮零识别/安全门改动**：不新增关键词、不扩大点击区域、不降 SafetyGuard、不加轮询、不动任务状态机、不动 taskId/generation/clickAllowed/verification/retry 五要件。
+- **测试（35 套件 6802 项 JVM 断言全绿——v7.9.7 为 6653，+149 = 新增 3 套件）**：`LogPrivacyFilterTest`（47 项：白名单/危险键/枚举界/词族门/脱敏四正则含 18 位身份证差一回归/脱敏-截断顺序/MAX_EVENTS/工厂 schema 自洽）+ `LogUploadPolicyTest`（55 项：响应矩阵全枚举——200 幂等/429 不耗计数/六类终态/退避表/耗尽/请求体九键/UUID 校验与唯一性）+ `LogBatchStoreTest`（47 项：installId/采集门/400 上限关键最后丢/封批/隐私拒绝检视/48 分批/到期与中断恢复/ACK 前不删与 24h 计数/重试不换号/清理与 overview）。**org.json JVM shim**（tests/org/json——与 android.jar 二进制签名逐一对齐 javap 实测）：使 core 的 org.json 依赖在无 Android 运行时可全量测试（生产 APK 绝不包含——build.sh 只编译 src/）。既有 32 套件零回退逐套件核对；全源 ECJ 编译与 v7.9.7 基线**零差异**（5 个 R.* 基线错误不变——R 类由 aapt2 构建时生成）；secret-scan/app.js 符号闸/version-sync（8.0.0/80000）全绿。
+- **诚实口径（能力边界）**：本沙箱无 aapt2/d8 构建工具链、无 Android 真机——**APK 构建与真机 E2E 均 NOT_RUN**（versionCode 80000 > dist 最大 79600 覆盖安装即升级；构建待有工具链的环境执行 `./build.sh 80000 8.0.0`）；Windows/真机 E2E 状态沿用 Worker 仓 `DEPLOYED_BUT_NOT_E2E_VERIFIED`；服务端 Windows E2E 脚本（e2e.ps1/e2e.sh）已交付待用户本机执行。
+- **v8.0.x 展望**：真机验证（埋点→封批→上传→Issue 全链 + 网络断恢复/Doze/重启）；服务端 E2E 脚本用户本机回传；APK 构建与 GitHub Release 发布（publish-v800.mjs 仪式沿用既有模式）。
+
 ## v7.9.7（2026-11-21）—— PAT 移除安全轮：APK 零 GitHub 凭据 + 自动日志上传授权（默认关）+ 手动日志本地导出
 
 - **本轮定位（用户指令：自动日志上传系统正式实施 · 第一步安全改造——无公网服务依赖部分）**：内置 PAT 从 Android 端移除是 P0 安全项（与 v7.9.4 Web 端整改同源同标准）；自动日志上传整体架构升级为「Android → HTTPS 中转服务（鉴权 / 24h 滑窗最多 3 次 / batchId 幂等 / 隐私二次过滤）→ Skip-Ad-Logs 私有仓库 Issues」，本版本落地无需公网服务的前置改造，v8.0.0 上线中转服务后接入。

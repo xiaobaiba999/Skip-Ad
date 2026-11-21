@@ -41,14 +41,16 @@ public final class Net {
     private Net() {
     }
 
-    /* ───────── v7.9.7：自动日志上传中转服务地址（预留常量，默认空） ─────────
-     * 架构（v8.0.0 落地）：Android → HTTPS 中转服务（鉴权/24h 滑窗限流/batchId
-     * 幂等/二次隐私过滤）→ GitHub 私有仓库 Skip-Ad-Logs 的 Issues。
-     * 空串 = 自动上传结构性关闭：AdSkipService.maybeAutoUploadLog 授权门之后
-     * 立即短路返回，绝不直连 GitHub（客户端零写凭据红线）。
-     * 上线流程：中转服务部署完成（Cloudflare Worker）→ 此处填入地址 →
-     * versionCode 递增发版。绝不把临时/测试地址写入此处。 */
-    public static final String LOG_RELAY_URL = "";
+    /* ───────── v7.9.7 预留 / v8.0.0 填入：自动日志上传中转服务地址 ─────────
+     * 架构（v8.0.0 已落地）：Android → HTTPS 中转服务（鉴权/24h 滑窗限流/
+     * batchId 幂等/二次隐私过滤）→ GitHub 私有仓库 Skip-Ad-Logs 的 Issues。
+     * 生产地址（skip-ad-log-relay v1.2.1 · Cloudflare Worker，已部署并经
+     * 用户真实浏览器 /healthz 验证：ipHmacConfigured=true · fail-closed）。
+     * 服务端凭据（GitHub App 私钥/IP_HMAC 密钥）全部只存 Cloudflare Worker
+     * Secret——APK 零凭据红线保持（v7.9.7 达成，本轮不破）；此地址为公开
+     * 服务端点（非 Secret）。空串 = 自动上传结构性关闭。 */
+    public static final String LOG_RELAY_URL =
+            "https://skip-ad-log-relay.2927609408.workers.dev/api/logs/receive";
 
     /** v4.0.0 订阅拉取：GET 任意 URL 原文（GKD 订阅 JSON5），2xx 返回 body，否则抛异常。
      *  v6.1.0 Connection reset 根治（用户实锤：订阅市场点击导入提示「拉取失败，
@@ -162,6 +164,10 @@ public final class Net {
      * ——纵深防御，任何一层被绕过都兜得住。规则与 Web 端 /api/feedback 对齐：
      *  · 手机号（1[3-9] 开头 11 位，前后非数字）→ 保留前 3 后 4：138****5678
      *  · 身份证（18 位含校验位 X/x，前后非字母数字）→ 保留前 3 后 2
+     *    v8.0.0 差一修复：旧正则 ([0-9]{3})[0-9]{12}([0-9]{3}[0-9Xx]) 要求 19 位
+     *    ——中国居民身份证实为 18 位，同族实现从未真正脱敏；修正为
+     *    ([0-9]{3})[0-9]{12}([0-9]{2}[0-9Xx]) = 18 位全匹配（与 LogPrivacyFilter
+     *    /www maskText /服务端 privacy.ts 四端同族同修）。
      *  · 邮箱 → 本地部分整体打码，保留 @域名
      *  · IPv4（独立四段）→ 保留前两段：192.168.*.*
      * 包名/类名/控件 ID/坐标等调试必需信息不受影响。 */
@@ -169,7 +175,7 @@ public final class Net {
         if (s == null || s.length() == 0) return "";
         String out = s;
         out = out.replaceAll("(?<![0-9])(1[3-9][0-9])[0-9]{4}([0-9]{4})(?![0-9])", "$1****$2");
-        out = out.replaceAll("(?<![0-9A-Za-z])([0-9]{3})[0-9]{12}([0-9]{3}[0-9Xx])(?![0-9A-Za-z])", "$1************$2");
+        out = out.replaceAll("(?<![0-9A-Za-z])([0-9]{3})[0-9]{12}([0-9]{2}[0-9Xx])(?![0-9A-Za-z])", "$1************$2");
         out = out.replaceAll("[A-Za-z0-9._%+-]+@([A-Za-z0-9.-]+\\.[A-Za-z]{2,})", "***@$1");
         out = out.replaceAll("(?<![0-9])(\\d{1,3}\\.\\d{1,3})\\.\\d{1,3}\\.\\d{1,3}(?![0-9])", "$1.*.*");
         return out;

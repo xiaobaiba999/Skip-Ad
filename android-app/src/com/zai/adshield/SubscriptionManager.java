@@ -460,6 +460,14 @@ public final class SubscriptionManager {
         }
         String raw = lastEx == null ? "网络失败" : safeMsg(lastEx);
         lastError = raw;
+        /* v8.0.0 上传事件埋点：GKD 订阅拉取异常（errClass = 异常类名——八通道
+         *  镜像链 + 快照兜底全失败；仅类名不带消息正文；采集门未授权零行为）。 */
+        try {
+            com.zai.adshield.core.LogBatchStore.get(ctx).appendEvent(
+                    com.zai.adshield.core.LogEvents.gkdError(
+                            lastEx == null ? "unknown" : lastEx.getClass().getName()));
+        } catch (Throwable ignored) {
+        }
         String msg = humanizeNetError(raw);
         String hint = variants.size() > 1
                 ? "（已自动重试并切换 " + variants.size() + " 个镜像通道仍失败——多为当前网络对海外源全阻断，可稍后重试或换 Wi-Fi/流量后重试一次）"

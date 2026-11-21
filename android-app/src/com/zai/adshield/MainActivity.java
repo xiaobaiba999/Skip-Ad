@@ -865,13 +865,50 @@ public class MainActivity extends Activity {
             }
         }
 
-        /** v7.9.7：设置自动日志上传授权（仅写授权位；上传行为另受中转服务
-         *  配置与服务端 24h 限额双重门控——本版本不执行自动上传）。 */
+        /** v7.9.7：设置自动日志上传授权（仅写授权位与采集门；上传行为另受中转服务
+         *  配置与服务端 24h 限额双重门控——授权 ≠ 上传）。 */
         @JavascriptInterface
         public void setLogUploadConsent(boolean enabled) {
             try {
                 AdSkipService.setAutoLogUploadEnabled(a, enabled);
             } catch (Throwable ignored) {
+            }
+        }
+
+        /** v8.0.0：上传状态行真数据（待传批次数 / 24h 已提交（服务端权威，本地
+         *  仅展示参考）/ 失败检视数 / 最近失败原因）。 */
+        @JavascriptInterface
+        public String logUploadStatus() {
+            try {
+                return com.zai.adshield.core.LogBatchStore.get(a)
+                        .overview(System.currentTimeMillis()).toString();
+            } catch (Throwable t) {
+                return "{\"pending\":0,\"failed\":0,\"acked24h\":0,\"lastAckedAt\":0,\"lastError\":\"\"}";
+            }
+        }
+
+        /** v8.0.0：手动「立即提交」（用户主动操作——同一服务端 24h/3 限额与
+         *  batchId 幂等，绝不绕过；单后台守护线程执行，绝不阻塞页面）。 */
+        @JavascriptInterface
+        public void logUploadSubmitNow() {
+            try {
+                com.zai.adshield.core.LogUploadDispatcher.get(a).requestUploadNow();
+            } catch (Throwable ignored) {
+            }
+        }
+
+        /** v8.0.0：清理本地待上传日志（用户主动操作——ACK 前批次一并清理；
+         *  只删本地文件，不影响服务端已建 Issue）。 */
+        @JavascriptInterface
+        public String logUploadClearPending() {
+            try {
+                int n = com.zai.adshield.core.LogBatchStore.get(a).clearPending();
+                org.json.JSONObject o = new org.json.JSONObject();
+                o.put("ok", true);
+                o.put("cleared", n);
+                return o.toString();
+            } catch (Throwable t) {
+                return "{\"ok\":false,\"cleared\":0}";
             }
         }
 

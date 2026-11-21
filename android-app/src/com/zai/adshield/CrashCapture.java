@@ -71,8 +71,29 @@ public final class CrashCapture {
             } finally {
                 try { os.close(); } catch (Exception ignored) { }
             }
+            /* v8.0.0 上传事件埋点（尽力而为）：CRASH 事件仅含顶层栈帧类名
+             *  ——堆栈正文/消息文本绝不入事件（白名单外）。崩溃路径上进程
+             *  即将死亡，executor 刷盘大概率赶不上（诚实口径：此事件多数
+             *  丢失；幸存路径靠 readAndClear 侧补点）。 */
+            try {
+                com.zai.adshield.core.LogBatchStore.get(ctx).appendEvent(
+                        com.zai.adshield.core.LogEvents.crash(topFrameClass(e)));
+            } catch (Throwable ignored) {
+            }
         } catch (Throwable ignored) {
         }
+    }
+
+    /** v8.0.0：崩溃顶层栈帧类名（无堆栈取异常类名——绝不带消息/堆栈正文）。 */
+    static String topFrameClass(Throwable e) {
+        try {
+            StackTraceElement[] st = e.getStackTrace();
+            if (st != null && st.length > 0 && st[0].getClassName() != null) {
+                return st[0].getClassName();
+            }
+        } catch (Throwable ignored) {
+        }
+        return e.getClass().getName();
     }
 
     /** 读取并清除上次崩溃堆栈（无崩溃/读失败返回空串）——一次性消费 */
@@ -90,6 +111,28 @@ public final class CrashCapture {
                 try { in.close(); } catch (Exception ignored) { }
             }
             try { f.delete(); } catch (Exception ignored) { }
+            /* v8.0.0 上传事件埋点：崩溃幸存补点（手动导出时消费 last_crash.txt
+             *  ——崩溃路径上的 save 埋点大概率赶不上进程死亡，此处是 CRASH
+             *  事件真正可靠的入口；仅类名，无堆栈正文）。 */
+            try {
+                String head = new String(bo.toByteArray(), StandardCharsets.UTF_8);
+                int firstLineEnd = head.indexOf('\n');
+                // 首行是 version/thread/at 元数据——第二行是「异常类名: 消息」；仅取类名
+                if (firstLineEnd > 0) {
+                    int secondLineEnd = head.indexOf('\n', firstLineEnd + 1);
+                    String second = secondLineEnd > firstLineEnd
+                            ? head.substring(firstLineEnd + 1, secondLineEnd)
+                            : head.substring(firstLineEnd + 1);
+                    int colon = second.indexOf(": ");
+                    if (colon > 0) second = second.substring(0, colon);
+                    second = second.trim();
+                    if (second.length() > 0) {
+                        com.zai.adshield.core.LogBatchStore.get(ctx).appendEvent(
+                                com.zai.adshield.core.LogEvents.crash(second));
+                    }
+                }
+            } catch (Throwable ignored) {
+            }
             return new String(bo.toByteArray(), StandardCharsets.UTF_8);
         } catch (Throwable t) {
             return "";
