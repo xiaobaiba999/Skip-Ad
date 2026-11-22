@@ -1,4 +1,4 @@
-/* 开屏卫士 v8.0.0 · 自动日志上传闭环：Android → Cloudflare Worker → GitHub 私有仓库 Issues（授权默认关 · 客户端零凭据 · 白名单双端过滤 · batchId 幂等） */
+/* 开屏卫士 v7.9.6plus · 以 v7.9.6 为稳定基线的精简重构版：日志上传（自动 24h 最多成功 3 次 + 随时手动）+ 启动时新版本检测（versionCode 主判 + 全屏更新页 + 多源下载 + SHA-256 校验）· APK 零凭据 */
 "use strict";
 
 /* ══════════ 环境 ══════════ */
@@ -23,8 +23,8 @@ const store = {
 };
 
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "8.2.0"; }
-function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "82000"; }
+function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "7.9.6plus"; }
+function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "82300"; }
 
 /* ══════════ 吉祥物（v4.1.0 全新形象：白机器人小侠 + 绿披风跳跃） ══════════
  * 与启动器图标同源；state: on（跳跃浮动）/ off（灰度待命） */
@@ -35,18 +35,18 @@ function mascotImg(size, state, head) {
 
 $("#brand-logo").innerHTML = mascotImg(30, "on", true);
 
-/* ═══ v8.2.0 版本记录（更新检查双通道——限流根因修复）═══ */
+/* ═══ v7.9.6plus 版本记录（以 v7.9.6 为基线的精简重构 + 启动更新检测）═══ */
 const CURRENT_RELEASE = {
-  date: "2026-11-22",
-  title: "日志上传简化重构：回归 v7.8 简单模型（一键上传无日志根因修复）· 8.x 全线召回替换版",
+  date: "2026-11-23",
+  title: "以 v7.9.6 为稳定基线的精简重构版：启动时新版本检测 + 全屏更新页 + 日志上传业务保持",
   features: [
-    "根因定案：v8.2.1「一键上传提示暂无可上传的新日志」= 事件采集门被绑在自动上传开关上（默认关→零采集→手动必然空转）。v8.2.2 采集常开：应用运行与跳过广告的事件无条件记录、重启保留，自动上传关闭绝不影响采集与手动上传",
-    "架构精简：删除 v8.x 复杂层约 1260 行（六状态机批次文件/退避表 30s→480s×5/6 次耗尽终态/失败复活启发式/8 轮排空循环/守护线程）——替换为 LogStore + LogUploader 两个小类，失败重试=下次心跳或再点一次",
-    "六项业务：自动上传 24h 最多成功 3 次（只记服务端确认·无新日志零请求·失败不耗额度）；手动上传随时可用；成功=服务端明确确认（HTTP 2xx 且 body ok=true）才清日志；失败保留+同批次号重试（幂等绝不重复建 Issue）；服务端终态拒收隔离检视",
-    "Issue 链接真实性：成功后经 GitHub 匿名 API 核实公开仓 issues/{编号}——核实到才展示可点击的真实链接（非拼接）；核实不到只显示编号。空队列如实区分：未产生/已全部上传/采集异常/读取异常",
-    "8.x 全线召回：GitHub Releases 已删除 v8.0.0/v8.0.3/v8.1.0/v8.2.0；本版 82200 为召回替换版（覆盖安装即升级·签名一致·APK 零凭据）。测试 39 套件 7068 断言全绿；真机端到端待装机验证",
+    "启动时优先检查更新：进入 App 自动获取 GitHub 最新正式 Release，远端 versionCode 高于本地（versionCode 主判——不再只比 versionName）时优先显示全屏更新提示页；无新版本/网络异常静默进入 App，绝不阻塞使用",
+    "全屏更新页：应用名/图标/当前版本/最新版本/更新内容/安装包大小一目了然；立即更新醒目按钮 + 暂不更新随时可继续使用当前版本，下次进入 App 仍会检测",
+    "下载状态全展示：正在连接/下载进度（百分比与已下载大小）/当前使用的下载源/下载中断自动重试（系统断点续传）/正在校验 APK/校验成功准备安装/失败可重新下载；下载完成前绝不把不完整文件交给安装器",
+    "安全校验不降级：无论哪个下载源，安装前统一核对文件大小 + SHA-256（与 Release 公布值比对）+ 包名/版本/签名兼容性（Android 安装流程校验）；任何一项不符拒绝安装并删除文件",
+    "日志上传业务保持：正常采集（重启保留）· 自动上传 24 小时最多成功 3 次（只记服务端确认·失败不耗额度·可关闭且不影响采集）· 随时手动上传 · 成功创建 GitHub Issue 并显示真实编号与链接",
   ],
-  summary: "日志正常采集 · 自动每天最多成功 3 次 · 随时手动上传 · 成功创建 GitHub Issue——除此之外零附加机制。",
+  summary: "以 v7.9.6 为稳定基础：广告跳过引擎回归 + 日志正常采集 + 自动每天最多成功 3 次 + 随时手动上传 + 进入 App 优先看到新版本全屏更新提示。",
 
 };
 
@@ -841,62 +841,69 @@ let ubTimer = null;
 let latestRelease = null;
 let dl = { channels: [], idx: 0, fileName: "", digest: "", size: 0, prefix: "page", lastBytes: -1, lastMoveAt: 0 };
 
+/* v7.9.6plus：段内前缀数字解析（"6plus"→6——"7.9.6plus"≈7.9.6 同族；
+ * Java Net.segNum 同源同修——防 plus 后缀把第三段吞成 0 误判新版） */
 function cmpVer(a, b) {
+  const seg = (s) => { const m = /^[0-9]+/.exec(String(s || "")); return m ? parseInt(m[0], 10) : 0; };
   const pa = String(a).replace(/^v/, "").split("."), pb = String(b).replace(/^v/, "").split(".");
   for (let i = 0; i < 3; i++) {
-    const x = +pa[i] || 0, y = +pb[i] || 0;
+    const x = seg(pa[i]), y = seg(pb[i]);
     if (x !== y) return x - y;
   }
   return 0;
 }
 
-/* ═══ v8.2.0 更新检查双通道（真机限流根因修复）════
- * APK 内：AndroidApp.netGetLatestRelease() → Net.latestRelease(当前版本) 原生
- * 双通道（中转 GET /api/update/latest 优先——服务端边缘缓存 5~10 分钟 + GitHub
- * App 认证上游（独立配额池）；失败自动回退 GitHub 匿名直连（v8.0.3 语义保持），
- * 双通道失败各自归因（errorCode 五分类：GITHUB_RATE_LIMITED / WORKER_UNAVAILABLE
- * / NETWORK_ERROR / PARSE_ERROR / NO_NEW_VERSION）——绝不把中转故障误报成
- * GitHub 限流）。浏览器预览：同序双通道（中转 CORS 已开）。 */
-const UPDATE_RELAY_URL = "https://skip-ad-log-relay.2927609408.workers.dev/api/update/latest";
+/* ═══ v7.9.6plus 更新检查（GitHub 单通道 + versionCode 主判）════
+ * APK 内：AndroidApp.netGetLatestRelease() → Net.latestRelease(versionName,
+ * versionCode) 原生 GitHub 匿名直连（latest 重试×2 → /releases 列表回退，
+ * Draft/Pre-release 不作正式更新；限流即时报错）。isNewer 权威判定 =
+ * Release 正文 versionCode 元数据行 > 本地 versionCode（Net.isNewerRelease
+ * ——「7.9.6plus」等非纯数字 versionName 的分段比较不可靠，覆盖安装权威
+ * 依据是 versionCode 单调递增）；元数据缺失回退 versionName 三段比较。
+ * 浏览器预览：同语义直连（versionCodeFromNotes/isNewerByCode 为 Java 镜像）。 */
 
-/* v8.2.0：中转载荷规范化（浏览器路径）——字段与 APK 原生 normalizeWorkerUpdatePayload 对齐 */
-function normWorkerPayload(j) {
-  return {
-    ok: true, hasRelease: true, tag: j.tag || "", url: j.url || "",
-    notes: j.notes || "", apkUrl: j.apkUrl || "",
-    apkMirrors: j.apkUrl ? ["https://ghfast.top/" + j.apkUrl, "https://gh-proxy.com/" + j.apkUrl] : [],
-    apkFileName: j.apkFileName || "adshield.apk", apkMB: j.apkMB || 0,
-    apkDigest: j.apkDigest || "", apkSize: j.apkSize || 0,
-    source: "worker", cached: !!j.cached, fetchedAt: j.fetchedAt || 0,
-  };
+/* Release 正文 versionCode 元数据行解析（Java Net.versionCodeOfNotes 镜像）：
+ * 匹配首个 versionCode: 开头的行，取前缀连续数字；无/非法 → 0（回退名比较） */
+function versionCodeFromNotes(notes) {
+  if (!notes) return 0;
+  const lines = String(notes).split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const t = lines[i].trim();
+    if (t.startsWith("versionCode:")) {
+      const m = t.slice("versionCode:".length).trim().match(/^[0-9]+/);
+      const v = m ? parseInt(m[0], 10) : 0;
+      return (v > 0 && v <= 2147483647) ? v : 0;
+    }
+  }
+  return 0;
+}
+
+/* 新版本判定（Java Net.isNewerRelease 镜像）：双方 versionCode 在场 →
+ * versionCode 主判（≤ 不算——绝不提示降级）；缺失回退 versionName 三段比较 */
+function isNewerByCode(remoteVc, remoteTag, localVc, localVer) {
+  if (remoteVc > 0 && localVc > 0) return remoteVc > localVc;
+  return cmpVer(remoteTag, localVer) > 0;
 }
 
 async function fetchLatest() {
   if (HAS_BRIDGE) {
     try { return JSON.parse(AndroidApp.netGetLatestRelease()); } catch (e) { return { ok: false, error: "解析失败", errorCode: "PARSE_ERROR" }; }
   }
-  /* 通道 0：更新中转（浏览器路径）——任何失败静默回退 GitHub 直连 */
-  try {
-    const r = await fetch(UPDATE_RELAY_URL, { headers: { Accept: "application/json" } });
-    if (r.ok) {
-      const j = await r.json();
-      if (j && j.ok === true && typeof j.hasRelease !== "undefined") {
-        if (!j.hasRelease) return { ok: true, hasRelease: false, source: "worker" };
-        return normWorkerPayload(j);
-      }
-    }
-  } catch (e) { /* 回退直连 */ }
+  /* 浏览器预览：GitHub 直连（与 APK 原生单通道同源同语义） */
   try {
     const r = await fetch(GH_API + "/releases/latest", { headers: { Accept: "application/vnd.github+json" } });
     if (r.status === 404) return { ok: true, hasRelease: false };
     if (r.ok) {
       const j = await r.json();
+      if (j.draft || j.prerelease) return { ok: true, hasRelease: false }; // Draft/Pre-release 不作正式更新
       const apk = (j.assets || []).filter(a => a && a.name && a.name.endsWith(".apk"))[0];
+      const remoteVc = versionCodeFromNotes(j.body || "");
       return {
         ok: true, hasRelease: true, tag: j.tag_name, url: j.html_url,
-        notes: j.body || "", // v6.1.0：新版功能描述（浏览器预览路径）
+        notes: j.body || "", // 新版功能描述（浏览器预览路径）
+        remoteVersionCode: remoteVc,
         apkUrl: apk ? apk.browser_download_url : "",
-        apkMirrors: apk ? ["https://ghfast.top/" + apk.browser_download_url, "https://gh-proxy.com/" + apk.browser_download_url] : [],
+        apkMirrors: [], // v7.9.6plus：ghproxy 类代理已移除——唯一官方源 GitHub Release
         apkFileName: apk ? apk.name : "adshield.apk",
         apkMB: apk ? Math.round(apk.size / 1048576 * 100) / 100 : 0,
         apkDigest: apk ? (apk.digest || "") : "", // v7.3.0：GitHub API SHA-256（安装前校验）
@@ -907,6 +914,17 @@ async function fetchLatest() {
   } catch (e) { return { ok: false, error: "网络异常" }; }
 }
 
+/* ═══ v7.9.6plus 下载状态机（prefix = page|gate——「我的」页与全屏更新页同一状态机）════
+ * 状态全集（用户指令·更新页下载状态）：
+ *  connecting 正在连接下载服务器（DownloadManager 入队）· downloading 正在下载
+ *  （百分比+已下载/总大小）· source 当前使用的下载源（host）· retrying 下载中断
+ *  正在自动重试（系统断点续传——HTTP Range）· switching 正在切换备用下载源 ·
+ *  verifying 正在校验 APK（SHA-256+大小）· verify-ok 校验成功准备安装 ·
+ *  failed 下载失败可重新尝试 · all-failed 所有下载源均不可用。
+ * 多源机制：channels 数组（当前仅 GitHub 官方源——ghproxy 类代理已移除，
+ * 无经所有者确认的备用源）；失败/30s 无进展自动切换下一源；单源时切换
+ * 直接落入 failed（提供重新下载入口）。切换源不改变 APK 内容——所有源
+ * 同一 Release 资产、同一 digest/size 校验（安装闸绝不降级）。 */
 function beginChannel() {
   const url = dl.channels[dl.idx];
   try {
@@ -915,23 +933,55 @@ function beginChannel() {
      * 在安装前被拦下并自动删除。 */
     const r = JSON.parse(AndroidApp.startUpdateDownload(url, dl.fileName, dl.digest, dl.size));
     if (r.ok) {
-      /* v7.3.0 修复：按钮选择器与真实按钮 id 对齐（#page-dl-btn——旧
-       * prefix+"-btn" 永不命中，下载完成后按钮从不翻转「立即安装」） */
       const btn = $("#" + dl.prefix + "-dl-btn");
       if (btn) { btn.textContent = "下载中…"; btn.disabled = true; }
       const wrap = $("#" + dl.prefix + "-progress-wrap");
       if (wrap) wrap.style.display = "";
+      setDlStateText(dl.prefix, "connecting", 0, 0, 0, hostOfUrl(url));
       dl.lastBytes = -1;
       dl.lastMoveAt = Date.now();
       startProgressPoll(dl.prefix);
-    } else toast(r.error || "启动下载失败");
-  } catch (e) { toast("启动下载失败"); }
+    } else { toast(r.error || "启动下载失败"); onAllChannelsFailed(dl.prefix, r.error || "启动下载失败"); }
+  } catch (e) { toast("启动下载失败"); onAllChannelsFailed(dl.prefix, "启动下载失败"); }
+}
+
+/* URL → host（当前使用的下载源显示） */
+function hostOfUrl(u) {
+  try { return new URL(u).host; } catch (e) { return ""; }
+}
+
+/* 状态文案渲染（状态机的唯一文案出口——两入口一致） */
+function setDlStateText(prefix, state, percent, bytes, total, host) {
+  const txt = $("#" + prefix + "-progress-text");
+  const bar = $("#" + prefix + "-bar");
+  if (!txt) return;
+  const mb = (n) => (n / 1048576).toFixed(1);
+  const src = host ? "（源：" + host + "）" : "";
+  if (state === "connecting") txt.textContent = "正在连接下载服务器…" + src;
+  else if (state === "running") txt.textContent = "正在下载 " + percent + "% · " + mb(bytes) + " / " + (total > 0 ? mb(total) : "?") + " MB" + src;
+  else if (state === "retrying") txt.textContent = "下载中断，正在自动重试（断点续传）…" + src;
+  else if (state === "switching") txt.textContent = "正在切换备用下载源…";
+  else if (state === "verifying") txt.textContent = "正在校验 APK（SHA-256 + 大小）…";
+  else if (state === "verify-ok") txt.textContent = "校验成功，准备安装";
+  else if (state === "failed") txt.textContent = "下载失败，可点击重新下载";
+  else if (state === "all-failed") txt.textContent = "所有下载源均不可用——请检查网络后重试";
+  if (bar && state === "running") bar.style.width = percent + "%";
+}
+
+/* 全部源失败（提供重新下载入口——不要求用户反复手动点击切换） */
+function onAllChannelsFailed(prefix, reason) {
+  setDlStateText(prefix, "all-failed", 0, 0, 0, "");
+  const btn = $("#" + prefix + "-dl-btn");
+  if (btn) { btn.textContent = "重新下载"; btn.disabled = false; btn.dataset.phase = "download"; }
+  const note = $("#" + prefix + "-dl-note");
+  if (note) { note.className = "fb-result err"; note.style.display = ""; note.textContent = "下载失败：" + (reason || "网络异常") + "——日志与数据不受影响，可稍后重试"; }
 }
 
 function switchChannel(reason) {
   if (dl.idx + 1 < dl.channels.length) {
     dl.idx++;
-    toast(reason + "，已切换备用通道");
+    setDlStateText(dl.prefix, "switching", 0, 0, 0, "");
+    toast(reason + "，已切换备用下载源");
     beginChannel();
     return true;
   }
@@ -942,6 +992,8 @@ function startPageDownload(d, prefix) {
   if (!d.apkUrl) { toast("该版本没有 APK 附件"); return; }
   if (!HAS_BRIDGE) { window.open(d.apkUrl, "_blank"); return; }
   dl = { channels: [d.apkUrl].concat(d.apkMirrors || []), idx: 0, fileName: d.apkFileName || "adshield.apk", digest: d.apkDigest || "", size: d.apkSize || 0, prefix, lastBytes: -1, lastMoveAt: Date.now() };
+  const note = $("#" + prefix + "-dl-note");
+  if (note) { note.style.display = "none"; note.textContent = ""; }
   beginChannel();
 }
 
@@ -950,30 +1002,56 @@ function startProgressPoll(prefix) {
   ubTimer = setInterval(() => {
     try {
       const d = JSON.parse(AndroidApp.updateProgress());
-      const bar = $("#" + prefix + "-bar"), txt = $("#" + prefix + "-text");
-      if (d.state === "running" || d.state === "paused") {
-        bar.style.width = d.percent + "%";
-        txt.textContent = d.percent + "% · " + (d.bytes / 1048576).toFixed(1) + " / " + (d.total / 1048576).toFixed(1) + " MB";
+      if (d.state === "running") {
+        setDlStateText(prefix, "running", d.percent, d.bytes, d.total, d.sourceHost || "");
         if (d.bytes !== dl.lastBytes) { dl.lastBytes = d.bytes; dl.lastMoveAt = Date.now(); }
         else if (Date.now() - dl.lastMoveAt > 30000) {
           if (switchChannel("下载长时间无进展")) return;
           dl.lastMoveAt = Date.now();
         }
+      } else if (d.state === "connecting") {
+        setDlStateText(prefix, "connecting", 0, d.bytes, d.total, d.sourceHost || "");
+      } else if (d.state === "retrying") {
+        setDlStateText(prefix, "retrying", d.percent, d.bytes, d.total, d.sourceHost || "");
+        if (d.bytes !== dl.lastBytes) { dl.lastBytes = d.bytes; dl.lastMoveAt = Date.now(); }
+        else if (Date.now() - dl.lastMoveAt > 60000) {
+          if (switchChannel("下载长时间无进展")) return;
+          dl.lastMoveAt = Date.now();
+        }
       } else if (d.state === "done") {
         clearInterval(ubTimer); ubTimer = null;
-        bar.style.width = "100%";
-        txt.textContent = "下载完成，点击安装（安装前自动校验 SHA-256）";
+        const bar = $("#" + prefix + "-bar");
+        if (bar) bar.style.width = "100%";
+        setDlStateText(prefix, "verify-ok", 100, d.bytes, d.total, d.sourceHost || "");
         const btn = $("#" + prefix + "-dl-btn");
         if (btn) { btn.textContent = "立即安装"; btn.disabled = false; btn.dataset.phase = "install"; }
       } else if (d.state === "failed") {
         clearInterval(ubTimer); ubTimer = null;
         if (switchChannel("下载失败")) return;
-        txt.textContent = "下载失败，可稍后重试";
-        const btn = $("#" + prefix + "-dl-btn");
-        if (btn) { btn.textContent = "重新下载"; btn.disabled = false; btn.dataset.phase = "download"; }
+        onAllChannelsFailed(prefix, "网络异常或下载中断");
       }
     } catch (e) { clearInterval(ubTimer); ubTimer = null; }
   }, 800);
+}
+
+/* 安装（校验状态显示——installUpdate 桥内部完成 SHA-256/大小校验后才拉起
+ * 系统安装器；校验失败自动删除文件并返回错误，绝不安装不完整/被篡改 APK） */
+function doInstallUpdate(prefix) {
+  setDlStateText(prefix, "verifying", 100, 0, 0, "");
+  setTimeout(() => {
+    try {
+      const r = JSON.parse(AndroidApp.installUpdate());
+      if (r && !r.ok) {
+        setDlStateText(prefix, "failed", 0, 0, 0, "");
+        toast(r.error || "拉起安装失败");
+        const btn = $("#" + prefix + "-dl-btn");
+        if (btn && r.needPermission) { btn.textContent = "已去授权，返回后重试"; btn.disabled = false; btn.dataset.phase = "install"; }
+      }
+    } catch (e) {
+      setDlStateText(prefix, "failed", 0, 0, 0, "");
+      toast("拉起安装失败");
+    }
+  }, 60);
 }
 
 /* v7.0.0：顶部更新横幅已整体移除（用户实锤：每次检查更新出现两个提示——
@@ -996,8 +1074,11 @@ $("#btn-check-update").addEventListener("click", async () => {
   if (!d.hasRelease) { note.className = "fb-result"; note.style.display = ""; note.textContent = "尚未发布版本"; return; }
   latestRelease = d;
   const latest = String(d.tag || "").replace(/^v/, "");
-  /* v8.2.0：优先用原生侧权威判定（Net.cmpVersion——数值段比较），浏览器路径回退 cmpVer */
-  const isNewer = typeof d.isNewer === "boolean" ? d.isNewer : cmpVer(latest, appVer()) > 0;
+  /* v7.9.6plus：优先用原生侧权威判定（Net.isNewerRelease——versionCode 主判，
+   * Release 正文 versionCode 元数据行 > 本地 versionCode；元数据缺失回退
+   * versionName 三段比较），浏览器路径回退 isNewerByCode（Java 镜像） */
+  const isNewer = typeof d.isNewer === "boolean" ? d.isNewer
+    : isNewerByCode(d.remoteVersionCode || 0, String(d.tag || ""), parseInt(appCode(), 10) || 0, appVer());
   /* v7.0.0：检查更新当场显示新版本 ≤5 条带序号功能描述（就地渲染——
    * 就在点按钮的地方；不只弹版本号） */
   if (isNewer) renderReleaseNotes(d);
@@ -1009,25 +1090,104 @@ $("#btn-check-update").addEventListener("click", async () => {
     note.className = "fb-result";
     note.style.display = "";
     note.textContent = (isNewer
-      ? "发现新版本 v" + latest + "（功能描述如上，下载后覆盖安装即升级）"
-      : "已是最新版本 · " + CURRENT_RELEASE.title)
-      + (d.workerError ? "（中转服务不可用，已直连 GitHub）" : "");
+      ? "发现新版本 v" + latest + "（versionCode " + (d.remoteVersionCode || "?") + " · 功能描述如上，下载后覆盖安装即升级）"
+      : "已是最新版本 · " + CURRENT_RELEASE.title);
   }
 });
 
 $("#page-dl-btn").addEventListener("click", () => {
   const btn = $("#page-dl-btn");
   if (btn.dataset.phase === "install") {
-    if (HAS_BRIDGE) {
-      try {
-        const r = JSON.parse(AndroidApp.installUpdate());
-        if (!r.ok) toast(r.error || "拉起安装失败");
-      } catch (e) { toast("拉起安装失败"); }
-    }
+    if (HAS_BRIDGE) doInstallUpdate("page");
     return;
   }
   if (latestRelease) startPageDownload(latestRelease, "page");
 });
+
+/* ══════════ v7.9.6plus 启动时新版本检测 + 全屏更新页 ══════════
+ * 用户每次进入 App：首屏渲染后异步获取 GitHub 最新正式 Release →
+ * versionCode 主判（远端 > 本地）→ 优先显示全屏更新提示页；无新版本/
+ * 网络异常/GitHub 暂不可用 → 静默正常进入 App（绝不因更新检查失败阻塞
+ * 启动）。Draft/Pre-release 不作为正式更新（GitHub latest 接口天然排除 +
+ * 列表回退显式过滤）。用户选「暂不更新」→ 继续使用当前版本，下次进入
+ * App 仍会检测（无频控不脱敏——该版本装上前每次启动都提示）。 */
+let gateRelease = null;
+
+async function checkUpdateOnLaunch() {
+  try {
+    const d = await fetchLatest();
+    if (!d || !d.ok || !d.hasRelease) return; // 检查失败静默——App 正常可用
+    const isNewer = typeof d.isNewer === "boolean" ? d.isNewer
+      : isNewerByCode(d.remoteVersionCode || 0, String(d.tag || ""), parseInt(appCode(), 10) || 0, appVer());
+    if (isNewer) showUpdateGate(d);
+  } catch (e) { /* 启动检查绝不阻塞 App */ }
+}
+
+/* 全屏更新页渲染（fixed 覆盖全屏 · z-index 最高 · 不影响原页面布局——
+ * 关闭即回到原状；移动端优先适配无横向溢出） */
+function showUpdateGate(d) {
+  gateRelease = d;
+  let gate = $("#update-gate");
+  if (gate) gate.remove();
+  gate = document.createElement("div");
+  gate.id = "update-gate";
+  const latest = String(d.tag || "").replace(/^v/, "");
+  const heads = notesToHeadlines(d, 5);
+  const sizeLine = d.apkMB ? "安装包 " + d.apkMB + " MB" : "";
+  const digestLine = d.apkDigest ? " · SHA-256 已公布" : "";
+  gate.innerHTML =
+    '<div class="ug-card" role="dialog" aria-modal="true" aria-label="发现新版本">'
+    + '<img class="ug-logo" src="mascot-head.png" width="64" height="64" alt="开屏卫士图标">'
+    + '<div class="ug-app-name">开屏卫士</div>'
+    + '<div class="ug-badge">发现新版本</div>'
+    + '<div class="ug-versions">当前 v' + esc(appVer()) + ' → 最新 <b>v' + esc(latest) + '</b>'
+    + (d.remoteVersionCode ? '（versionCode ' + d.remoteVersionCode + '）' : '') + '</div>'
+    + (heads.length
+        ? '<div class="ug-notes">' + heads.map((h, i) =>
+            '<div class="ug-note-item"><span class="ug-note-n">' + (i + 1) + '</span>' + esc(h) + '</div>').join("") + '</div>'
+        : '')
+    + (sizeLine ? '<div class="ug-size">' + sizeLine + digestLine + ' · 官方源 GitHub Releases</div>' : '')
+    + '<div class="ug-progress-wrap" id="gate-progress-wrap" style="display:none">'
+    + '<div class="progress"><div class="progress-bar" id="gate-bar"></div></div>'
+    + '<div class="progress-text" id="gate-progress-text">准备中</div></div>'
+    + '<button class="ug-btn-primary" id="gate-dl-btn">立即更新</button>'
+    + '<button class="ug-btn-ghost" id="gate-later-btn">暂不更新</button>'
+    + '<div class="fb-result" id="gate-dl-note" style="display:none"></div>'
+    + '</div>';
+  document.body.appendChild(gate);
+  const dlBtn = $("#gate-dl-btn");
+  dlBtn.dataset.phase = "download";
+  dlBtn.addEventListener("click", () => {
+    const b = $("#gate-dl-btn");
+    if (b.dataset.phase === "install") { if (HAS_BRIDGE) doInstallUpdate("gate"); return; }
+    if (gateRelease) startPageDownload(gateRelease, "gate");
+  });
+  $("#gate-later-btn").addEventListener("click", hideUpdateGate);
+  /* 恢复未完成的下载任务（用户上次退出时下载中/已完成未安装——系统
+   * DownloadManager 任务持久，进度查询天然恢复；已完成直接给安装入口） */
+  if (HAS_BRIDGE) {
+    try {
+      const p = JSON.parse(AndroidApp.updateProgress());
+      if (p.state === "done") {
+        dlBtn.textContent = "立即安装"; dlBtn.dataset.phase = "install";
+        $("#gate-progress-wrap").style.display = "";
+        setDlStateText("gate", "verify-ok", 100, p.bytes || 0, p.total || 0, p.sourceHost || "");
+      } else if (p.state === "running" || p.state === "connecting" || p.state === "retrying") {
+        dlBtn.textContent = "下载中…"; dlBtn.disabled = true;
+        $("#gate-progress-wrap").style.display = "";
+        dl = { channels: [gateRelease.apkUrl].concat(gateRelease.apkMirrors || []), idx: 0,
+          fileName: gateRelease.apkFileName || "adshield.apk", digest: gateRelease.apkDigest || "",
+          size: gateRelease.apkSize || 0, prefix: "gate", lastBytes: -1, lastMoveAt: Date.now() };
+        startProgressPoll("gate");
+      }
+    } catch (e) {}
+  }
+}
+
+function hideUpdateGate() {
+  const gate = $("#update-gate");
+  if (gate) gate.remove();
+}
 
 /* ══════════ 引擎画像（日志上传正文 · v4.2.0 更具体） ══════════ */
 function fmtTs(t) {
@@ -1582,8 +1742,10 @@ function toast(msg) {
     }
   });
   // 通知权限（Android 13+，保活提醒需要）
-  // v7.0.0：启动静默更新检查已移除（顶部更新横幅整体取消——只有手动
-  // 点击「检查更新」才查询/下载，启动零网络零提示）。
+  // v7.9.6plus：启动时新版本检测（用户指令——首屏渲染后异步检查，
+  // versionCode 主判，发现新版本优先显示全屏更新页；检查失败静默
+  // 进入 App，绝不阻塞启动。v7.0.0「启动零网络」决策由本指令取代）。
+  setTimeout(() => { void checkUpdateOnLaunch(); }, 800);
   // 每 5s 刷新首页状态（首次进入最关心）
   setInterval(() => {
     if ($("#page-home").classList.contains("active")) {

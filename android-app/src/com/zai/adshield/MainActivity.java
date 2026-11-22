@@ -227,6 +227,17 @@ public class MainActivity extends Activity {
         }
     }
 
+    /** v7.9.6plus：当前 versionCode（PackageManager——更新检查 versionCode
+     *  主判依据；取不到回退 0=禁用主判，isNewerRelease 回退 versionName 比较）。 */
+    static int versionCodeOf(Context ctx) {
+        try {
+            PackageInfo pi = ctx.getPackageManager().getPackageInfo(ctx.getPackageName(), 0);
+            return pi.versionCode;
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
     /** 暴露给离线页面的原生桥（静态类 + 外部引用，规避 d8 8.2 内部类 bug） */
     static class Bridge {
 
@@ -1125,11 +1136,13 @@ public class MainActivity extends Activity {
             return o.toString();
         }
 
-        /** 查询 GitHub 最新 Release（v8.2.0 双通道：更新中转优先 → GitHub 匿名
-         *  直连回退；传当前 versionName 产 isNewer 与错误五分类归因） */
+        /** 查询 GitHub 最新 Release（v7.9.6plus：GitHub 单通道 + versionCode
+         *  主判——传当前 versionName 与 versionCode，isNewer 由
+         *  Net.isNewerRelease 权威判定：Release 正文 versionCode 元数据行
+         *  > 本地 versionCode 才算新版，元数据缺失回退 versionName 比较） */
         @JavascriptInterface
         public String netGetLatestRelease() {
-            return Net.latestRelease(versionNameOf(a));
+            return Net.latestRelease(versionNameOf(a), versionCodeOf(a));
         }
 
         /* ───── 应用内更新：页内下载 → 进度 → 安装（不跳浏览器） ───── */
@@ -1144,6 +1157,13 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public String updateProgress() {
             return Downloader.progress(a);
+        }
+
+        /** v7.9.6plus：取消当前下载（全屏更新页「取消下载」按钮——移除
+         *  系统任务与部分文件，清理任务元数据）。 */
+        @JavascriptInterface
+        public String cancelUpdateDownload() {
+            return Downloader.cancel(a);
         }
 
         /** v3.2.0 能耗画像：本次开机累计（事件/扫描/返回键 + 弹窗战果）

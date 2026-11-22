@@ -77,6 +77,10 @@ const NEED = [
   "renderReleaseNotes",  // 更新说明渲染
   "renderLog",           // 扫描日志
   "renderReport",        // 使用报告
+  "checkUpdateOnLaunch", // v7.9.6plus 启动时新版本检测
+  "showUpdateGate",      // v7.9.6plus 全屏更新页
+  "versionCodeFromNotes",// v7.9.6plus versionCode 元数据解析
+  "isNewerByCode",       // v7.9.6plus versionCode 主判
 ];
 
 let runErr = null;

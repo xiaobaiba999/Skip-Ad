@@ -113,12 +113,22 @@ public final class Downloader {
 
     /**
      * 查询当前下载状态。
-     * @return {ok:true, state: idle|running|paused|done|failed, percent, bytes, total, fileName}
+     * v7.9.6plus 更新页下载状态机（用户指令：全屏更新页需区分
+     * 正在连接/下载中/等待重试等状态并显示当前下载源）：
+     *  · pending → connecting（已入队，正在连接下载服务器）
+     *  · running → running（下载中——percent/bytes/total 实时）
+     *  · paused  → retrying（网络中断等——系统 DownloadManager 自动
+     *    恢复续传（HTTP Range），无需用户干预；UI 提示「下载中断，正在重试」）
+     *  · successful → done / 其余 → failed
+     * sourceHost = 当前下载任务 URL 的 host（当前使用的下载源）。
+     * @return {ok:true, state, percent, bytes, total, fileName, sourceHost}
      */
     public static String progress(Context ctx) {
         try {
-            long id = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong(KEY_DL_ID, -1);
+            android.content.SharedPreferences sp = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+            long id = sp.getLong(KEY_DL_ID, -1);
             JSONObject out = ok();
+            out.put("sourceHost", hostOf(sp.getString(KEY_DL_URL, "")));
             if (id <= 0) {
                 out.put("state", "idle");
                 out.put("percent", 0);
@@ -141,14 +151,14 @@ public final class Downloader {
             String state;
             if (status == DownloadManager.STATUS_SUCCESSFUL) state = "done";
             else if (status == DownloadManager.STATUS_RUNNING) state = "running";
-            else if (status == DownloadManager.STATUS_PAUSED) state = "paused";
-            else if (status == DownloadManager.STATUS_PENDING) state = "running";
+            else if (status == DownloadManager.STATUS_PAUSED) state = "retrying";
+            else if (status == DownloadManager.STATUS_PENDING) state = "connecting";
             else state = "failed";
             out.put("state", state);
             out.put("percent", total > 0 ? (int) (soFar * 100 / total) : 0);
             out.put("bytes", soFar);
             out.put("total", total);
-            out.put("fileName", ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_DL_FILE, ""));
+            out.put("fileName", sp.getString(KEY_DL_FILE, ""));
             return out.toString();
         } catch (Exception e) {
             return err("查询失败：" + safe(e));
@@ -246,12 +256,44 @@ public final class Downloader {
         }
     }
 
+    /** v7.9.6plus：取消当前下载（用户操作——移除系统任务与已下载部分文件，
+     *  清理任务元数据；不删已成功完成且待安装的文件取消无效返回 ok）。 */
+    public static String cancel(Context ctx) {
+        try {
+            android.content.SharedPreferences sp = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+            long id = sp.getLong(KEY_DL_ID, -1);
+            if (id <= 0) return ok().toString();
+            DownloadManager dm = (DownloadManager) ctx.getSystemService(Context.DOWNLOAD_SERVICE);
+            if (dm != null) {
+                try { dm.remove(id); } catch (Exception ignored) { }
+            }
+            sp.edit().remove(KEY_DL_ID).remove(KEY_DL_URL).remove(KEY_DL_FILE)
+                    .remove(KEY_DL_SHA).remove(KEY_DL_SIZE).apply();
+            return ok().toString();
+        } catch (Exception e) {
+            return err("取消失败：" + safe(e));
+        }
+    }
+
+    /** v7.9.6plus：URL → host（进度显示「当前使用的下载源」；解析失败返回空串）。 */
+    static String hostOf(String u) {
+        try {
+            if (u == null || u.length() == 0) return "";
+            String host = new java.net.URL(u).getHost();
+            return host == null ? "" : host;
+        } catch (Throwable t) {
+            return "";
+        }
+    }
+
     /* ═══ v6.3.0 安全工具 ═══ */
 
     /**
      * 发布通道 host 白名单（URL 解析后的 host 精确/后缀匹配）。
-     * 允许：github.com · *.github.com · githubusercontent.com 及子域 ·
-     * ghfast.top · gh-proxy.com（v3.3.0 镜像通道）。
+     * v7.9.6plus：仅允许 GitHub 官方域（github.com · *.github.com ·
+     * githubusercontent.com 及子域）——ghfast.top/gh-proxy.com 等 ghproxy
+     * 类第三方代理已移除（用户指令：来源不明/不稳定，不作正式下载源；
+     * 当前无经所有者确认的国内备用源，如实保留单一官方下载链路）。
      * 拒绝一切构造绕过：userinfo 混淆、子串注入、尾点 FQDN。 */
     public static boolean hostAllowed(String u) {
         try {
@@ -263,9 +305,7 @@ public final class Downloader {
             String h = host.toLowerCase(java.util.Locale.ROOT);
             if (h.endsWith(".")) h = h.substring(0, h.length() - 1); // 尾点 FQDN 混淆
             return h.equals("github.com") || h.endsWith(".github.com")
-                    || h.equals("githubusercontent.com") || h.endsWith(".githubusercontent.com")
-                    || h.equals("ghfast.top") || h.endsWith(".ghfast.top")
-                    || h.equals("gh-proxy.com") || h.endsWith(".gh-proxy.com");
+                    || h.equals("githubusercontent.com") || h.endsWith(".githubusercontent.com");
         } catch (Throwable t) {
             return false;
         }

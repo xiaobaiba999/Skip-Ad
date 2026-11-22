@@ -1,266 +1,191 @@
 package com.zai.adshield.test;
 
 import com.zai.adshield.Net;
-import com.zai.adshield.Downloader;
-
 import org.json.JSONArray;
 import org.json.JSONObject;
 
 /**
- * v8.2.0 更新检查双通道回归套件（真机限流根因「GitHub 匿名 API 60 次/小时/IP
- * 耗尽——用户看不到正式新版本」修复）。
- * ─────────────────────────────────────────────────────────
- * 覆盖（网络路径真机验证 NOT_RUN；此处钉死全部纯函数契约）：
- *  S1 版本比较 cmpVersion：三段数值（非字典序——"8.10.0">"8.9.0"）、
- *     v/V 前缀、缺段补 0、等值——isNewer/NO_NEW_VERSION 分类的权威判定；
- *  S2 中转地址派生 deriveUpdateRelayUrl：同源跟随/结构性关闭（空串·非预期
- *     形态绝不拼错地址）；
- *  S3 中转载荷规范化 normalizeWorkerUpdatePayload：字段与 parseRelease 对齐
- *     （app.js 下载链零改动）/hasRelease:false 透传/ok:false·契约破坏·垃圾→
- *     null 回退直连/isNewer 注入；
- *  S4 错误五分类 primaryErrorCode + 复合文案 compositeMessage：中转故障绝不
- *     误报为 GitHub 限流；双通道归因各自呈现；仅直连失败文案=v8.0.3 逐字；
- *  S5 复合失败载荷 composeFailure：errorCode/workerError/githubError 契约；
- *  S6 SHA-256 校验判定 verifyDigest + hex（v6.3.0 行为逐字提取——大小不符
- *     优先/大小写不敏感/digest 缺失字节数兜底/双缺拒绝）；
- *  S7 发布通道 host 白名单 hostAllowed（下载安全闸不降低的回归证明）；
- *  S8 镜像合成 mirrorsOf（Worker 契约不含镜像——客户端统一合成）。
+ * 更新检查通道测试（v7.9.6plus 单通道版——替换 v8.2.0 双通道版）。
+ * ─────────────────────────────────────────────
+ * 覆盖（用户指令·更新功能测试 1/2/3/8/9 项的纯函数面）：
+ *  S1 versionCodeOfNotes：Release 正文 versionCode 元数据行解析
+ *     （正常/带尾注/无元数据/非数字/多行取首个/空/null 安全）。
+ *  S2 isNewerRelease versionCode 主判（核心回归——"7.9.6plus"(82300) vs
+ *     "8.2.2"(82200)：versionName 分段比较必判旧（7<8），versionCode 主判
+ *     正确判新）；等于不提示重复；小于绝不提示降级；元数据缺失回退
+ *     versionName 三段比较。
+ *  S3 parseRelease：完整 Release JSON（正文含 versionCode 行）→
+ *     remoteVersionCode + isNewer 权威判定；asset digest/size 透传。
+ *  S4 mirrorsOf：ghproxy 类代理移除后零备用源（唯一官方源 GitHub）。
+ *  S5 cmpVersion 三段数值比较保持（"8.10.0" > "8.9.0"）。
+ *  S6 rateLimited：403/429 限流，404/3xx 不是。
+ *  S7 错误四分类码在场（WORKER_UNAVAILABLE 已随双通道移除）。
  */
-public class UpdateChannelTest {
+public final class UpdateChannelTest {
 
     public static void main(String[] args) {
-        TestHost.suite("UpdateChannelTest");
-
-        s1_cmpVersion();
-        s2_deriveUpdateRelayUrl();
-        s3_normalizeWorkerPayload();
-        s4_errorTaxonomy();
-        s5_composeFailure();
-        s6_verifyDigest();
-        s7_hostAllowed();
-        s8_mirrorsOf();
-
+        TestHost.suite("UpdateChannelTest · v7.9.6plus 单通道 + versionCode 主判");
+        s1_versionCodeOfNotes();
+        s2_isNewerRelease();
+        s3_parseRelease();
+        s4_mirrorsRemoved();
+        s5_cmpVersion();
+        s6_rateLimited();
+        s7_errorCodes();
         TestHost.done();
     }
 
-    /* S1：版本比较（app.js cmpVer 的 Java 镜像——数值段比较，非字典序）。 */
-    private static void s1_cmpVersion() {
-        TestHost.check(Net.cmpVersion("8.2.0", "8.1.0") > 0, "S1a 8.2.0 > 8.1.0（常规升级）");
-        TestHost.check(Net.cmpVersion("v8.2.0", "8.1.0") > 0, "S1b v 前缀容忍（GitHub tag 形态）");
-        TestHost.check(Net.cmpVersion("8.10.0", "8.9.0") > 0, "S1c 数值段非字典序（8.10 > 8.9——字典序会判错）");
-        TestHost.check(Net.cmpVersion("9.0.0", "8.99.99") > 0, "S1d 主版本进位");
-        TestHost.check(Net.cmpVersion("8.2.0", "8.2.0") == 0, "S1e 等值 → 0（NO_NEW_VERSION）");
-        TestHost.check(Net.cmpVersion("v8.1.0", "8.2.0") < 0, "S1f 旧版本 → 负（已是最新）");
-        TestHost.check(Net.cmpVersion("8.2", "8.2.0") == 0, "S1g 缺段补 0");
-        TestHost.check(Net.cmpVersion("8.2.0", "8.2") == 0, "S1h 缺段补 0（反向）");
-        TestHost.check(Net.cmpVersion("", "8.2.0") < 0, "S1i 空串按 0.0.0");
-        TestHost.check(Net.cmpVersion(null, "0.0.0") == 0, "S1j null 安全");
-        TestHost.check(Net.cmpVersion("V8.2.0", "8.1.0") > 0, "S1k 大写 V 前缀容忍（Java 侧超集）");
+    /* ═══ S1 versionCodeOfNotes ═══ */
+    private static void s1_versionCodeOfNotes() {
+        TestHost.check(Net.versionCodeOfNotes("versionCode: 82300") == 82300, "S1a 标准行");
+        TestHost.check(Net.versionCodeOfNotes("versionCode: 82300（versionCode 主判依据）") == 82300,
+                "S1b 行尾注释容忍");
+        TestHost.check(Net.versionCodeOfNotes("versionCode: 82300 \n正文") == 82300, "S1c 行尾空格");
+        TestHost.check(Net.versionCodeOfNotes("更新说明\nversionCode: 79700\n更多") == 79700,
+                "S1d 多行取首个 versionCode 行");
+        TestHost.check(Net.versionCodeOfNotes("没有任何元数据的正文") == 0, "S1e 无元数据 → 0（回退名比较）");
+        TestHost.check(Net.versionCodeOfNotes("versionCode: abc") == 0, "S1f 非数字 → 0");
+        TestHost.check(Net.versionCodeOfNotes("versionCode: ") == 0, "S1g 空值 → 0");
+        TestHost.check(Net.versionCodeOfNotes("versionCode: 99999999999") == 0, "S1h 超 int → 0（防溢出）");
+        TestHost.check(Net.versionCodeOfNotes("versionCode: 0") == 0, "S1i 零值 → 0（无效）");
+        TestHost.check(Net.versionCodeOfNotes("") == 0, "S1j 空串安全");
+        TestHost.check(Net.versionCodeOfNotes(null) == 0, "S1k null 安全");
+        TestHost.check(Net.versionCodeOfNotes("xversionCode: 82300") == 0, "S1l 前缀不匹配（非行首）");
     }
 
-    /* S2：中转地址派生（单一事实源 LOG_RELAY_URL → 同源更新端点）。 */
-    private static void s2_deriveUpdateRelayUrl() {
-        String real = "https://skip-ad-log-relay.2927609408.workers.dev/api/logs/receive";
-        TestHost.check(Net.deriveUpdateRelayUrl(real)
-                        .equals("https://skip-ad-log-relay.2927609408.workers.dev/api/update/latest"),
-                "S2a 真实地址派生正确（同源 /api/update/latest）");
-        TestHost.check(Net.deriveUpdateRelayUrl("").length() == 0, "S2b 空串 → 结构性关闭");
-        TestHost.check(Net.deriveUpdateRelayUrl(null).length() == 0, "S2c null → 结构性关闭");
-        TestHost.check(Net.deriveUpdateRelayUrl("https://example.com/other/path").length() == 0,
-                "S2d 非预期形态 → 关闭（绝不拼错地址打无关端点）");
-        TestHost.check(Net.UPDATE_RELAY_URL.endsWith("/api/update/latest"),
-                "S2e 生产常量已派生（通道 0 在线）");
+    /* ═══ S2 isNewerRelease versionCode 主判 ═══ */
+    private static void s2_isNewerRelease() {
+        // 核心回归：v7.9.6plus(82300) vs v8.2.2(82200)——versionName 比较会误判旧
+        TestHost.check(Net.isNewerRelease(82300, "7.9.6plus", 82200, "8.2.2"),
+                "S2a plus 命名 versionCode 主判判新（versionName 分段必判旧——主判兜底）");
+        TestHost.check(Net.isNewerRelease(82200, "8.2.2", 82200, "8.2.2") == false,
+                "S2b 相等不提示重复更新");
+        TestHost.check(Net.isNewerRelease(82100, "8.2.1", 82200, "8.2.2") == false,
+                "S2c 远端更低绝不提示降级");
+        TestHost.check(Net.isNewerRelease(82300, "v7.9.6plus", 82300, "7.9.6plus") == false,
+                "S2d 已装最新版不提示");
+        TestHost.check(Net.isNewerRelease(82400, "8.2.3", 82300, "7.9.6plus"),
+                "S2e 远端更高正常判新");
+        // 元数据缺失（remoteVc=0）→ 回退 versionName 三段比较
+        TestHost.check(Net.isNewerRelease(0, "8.5.0", 82300, "7.9.6plus"),
+                "S2f 回退名比较：8.5.0 > 7.9.6plus（[8,5,0]>[7,9,6]）");
+        // 【plus 后缀段解析修复回归】segNum("6plus")=6："7.9.6plus"≈[7,9,6]
+        // 与 "7.9.6" 同族 → 比较为 0 → 不提示（修复前 "6plus"→0 被当作
+        // [7,9,0]，远端 v7.9.6 被误判为新版弹更新页——浏览器实测抓到）
+        TestHost.check(Net.isNewerRelease(0, "7.9.6", 82300, "7.9.6plus") == false,
+                "S2g plus 同族不提示：segNum(6plus)=6 → 7.9.6 == 7.9.6plus（修复回归）");
+        // 本地 versionCode 取不到（0）→ 回退名比较
+        TestHost.check(Net.isNewerRelease(82300, "9.0.0", 0, "8.2.2"),
+                "S2h 本地 VC 缺失回退名比较：9.0.0 > 8.2.2");
+        TestHost.check(Net.isNewerRelease(82300, "7.0.0", 0, "8.2.2") == false,
+                "S2i 本地 VC 缺失回退名比较：7.0.0 < 8.2.2 不提示");
     }
 
-    /* S3：中转载荷规范化（契约对齐——字段名与 parseRelease 完全一致）。 */
-    private static void s3_normalizeWorkerPayload() {
-        JSONObject w = new JSONObject();
-        w.put("ok", true);
-        w.put("hasRelease", true);
-        w.put("tag", "v8.2.0");
-        w.put("name", "开屏卫士 v8.2.0");
-        w.put("notes", "1. 双通道更新检查\n2. 错误五分类");
-        w.put("publishedAt", "2026-11-22T00:00:00Z");
-        w.put("url", "https://github.com/xiaobaiba999/Skip-Ad/releases/tag/v8.2.0");
-        w.put("apkUrl", "https://github.com/xiaobaiba999/Skip-Ad/releases/download/v8.2.0/adshield-v8.2.0.apk");
-        w.put("apkFileName", "adshield-v8.2.0.apk");
-        w.put("apkSize", 900000);
-        w.put("apkMB", 0.86);
-        w.put("apkDigest", "sha256:50a7b7029c715eb810e1bc3de2c8fac63d74d10995c88562c4c6f9e2487f0421");
-        w.put("source", "auth");
-        w.put("cached", true);
-        w.put("fetchedAt", 1795000000000L);
+    /* ═══ S3 parseRelease ═══ */
+    private static void s3_parseRelease() {
         try {
-            String out = Net.normalizeWorkerUpdatePayload(w.toString(), "8.1.0");
-            TestHost.check(out != null, "S3a 合法载荷 → 规范化成功");
-            JSONObject o = new JSONObject(out);
-            TestHost.check("worker".equals(o.optString("source")), "S3b source=worker（通道 0 标识）");
-            TestHost.check("v8.2.0".equals(o.optString("tag")), "S3c tag 透传");
-            TestHost.check(o.optString("apkDigest").startsWith("sha256:"),
-                    "S3d apkDigest 官方格式透传（Downloader 校验闸直接可用）");
-            TestHost.check(o.optLong("apkSize") == 900000, "S3e apkSize 透传");
-            TestHost.check(o.optJSONArray("apkMirrors") != null && o.optJSONArray("apkMirrors").length() == 2, "S3f 镜像客户端合成（ghfast+gh-proxy）");
-            TestHost.check(o.optBoolean("isNewer"), "S3g isNewer=true（v8.2.0 > 当前 8.1.0）");
-            TestHost.check(o.optBoolean("cached"), "S3h cached 透传");
-            TestHost.check(o.optJSONArray("headlines") != null && o.optJSONArray("headlines").length() >= 1, "S3i headlines 预解析在场");
+            StringBuilder assets = new StringBuilder();
+            assets.append("[{\"name\":\"adshield-v7.9.6plus.apk\",")
+                    .append("\"browser_download_url\":\"https://github.com/xiaobaiba999/Skip-Ad/releases/download/v7.9.6plus/adshield-v7.9.6plus.apk\",")
+                    .append("\"size\":886326,\"digest\":\"sha256:e058cbd5b6fb32904579ee0c90cc03a5d7f45de76b2556fe44df4e3bf3b1867c\"}]");
+            JSONObject rel = new JSONObject();
+            rel.put("tag_name", "v7.9.6plus");
+            rel.put("name", "v7.9.6plus");
+            rel.put("body", "versionCode: 82300\n1. 启动时新版本检测\n2. 全屏更新页\n3. 断点续传");
+            rel.put("published_at", "2026-11-23T00:00:00Z");
+            rel.put("html_url", "https://github.com/xiaobaiba999/Skip-Ad/releases/tag/v7.9.6plus");
+            rel.put("assets", new JSONArray(assets.toString()));
 
-            // isNewer=false（NO_NEW_VERSION）
-            String out2 = Net.normalizeWorkerUpdatePayload(w.toString(), "8.2.0");
-            TestHost.check(!new JSONObject(out2).optBoolean("isNewer"), "S3j 等版本 → isNewer=false（NO_NEW_VERSION 分类）");
+            // 本地 82200（v8.2.2）→ 判新（versionCode 主判）
+            String out1 = Net.parseRelease(rel.toString(), "8.2.2", 82200);
+            JSONObject o1 = new JSONObject(out1);
+            TestHost.check(o1.optBoolean("ok", false), "S3a 载荷 ok");
+            TestHost.check("v7.9.6plus".equals(o1.optString("tag", "")), "S3b tag");
+            TestHost.check(o1.optInt("remoteVersionCode", 0) == 82300, "S3c 正文元数据解析");
+            TestHost.check(o1.optBoolean("isNewer", false), "S3d 本地 82200 → isNewer=true（升级路径）");
+            TestHost.check("sha256:e058cbd5b6fb32904579ee0c90cc03a5d7f45de76b2556fe44df4e3bf3b1867c"
+                    .equals(o1.optString("apkDigest", "")), "S3e digest 透传（安装闸期望值）");
+            TestHost.check(o1.optLong("apkSize", 0) == 886326L, "S3f size 透传");
+            TestHost.check(o1.optString("apkUrl", "").endsWith(".apk"), "S3g apkUrl");
 
-            // hasRelease:false 透传（中转权威答案——不回退）
-            JSONObject none = new JSONObject();
-            none.put("ok", true);
-            none.put("hasRelease", false);
-            String out3 = Net.normalizeWorkerUpdatePayload(none.toString(), "8.1.0");
-            TestHost.check(out3 != null && !new JSONObject(out3).optBoolean("hasRelease"),
-                    "S3k hasRelease:false 透传（信任中转，不回退直连）");
+            // 本地 82300（同版）→ 不提示
+            JSONObject o2 = new JSONObject(Net.parseRelease(rel.toString(), "7.9.6plus", 82300));
+            TestHost.check(!o2.optBoolean("isNewer", true), "S3h 同版本不提示重复");
 
-            // 回退路径：ok:false / 契约破坏 / 垃圾
-            JSONObject bad1 = new JSONObject();
-            bad1.put("ok", false);
-            bad1.put("error", "GITHUB_RATE_LIMITED");
-            TestHost.check(Net.normalizeWorkerUpdatePayload(bad1.toString(), "8.1.0") == null,
-                    "S3l ok:false（中转自身失败）→ null 回退直连");
-            JSONObject bad2 = new JSONObject();
-            bad2.put("ok", true);
-            TestHost.check(Net.normalizeWorkerUpdatePayload(bad2.toString(), "8.1.0") == null,
-                    "S3m 契约破坏（缺 hasRelease）→ null 回退");
-            TestHost.check(Net.normalizeWorkerUpdatePayload("not-json{{", "8.1.0") == null,
-                    "S3n 垃圾响应 → null 回退");
-            TestHost.check(Net.normalizeWorkerUpdatePayload("", "8.1.0") == null,
-                    "S3o 空响应 → null 回退");
+            // 本地 82400（更高）→ 绝不提示降级
+            JSONObject o3 = new JSONObject(Net.parseRelease(rel.toString(), "8.3.0", 82400));
+            TestHost.check(!o3.optBoolean("isNewer", true), "S3i 本地更高不提示降级");
+
+            // 无元数据正文 → remoteVersionCode=0 + 回退名比较（segNum 修复后
+            // "7.9.6plus"→[7,9,6] 与 "7.9.6" 同族 → 不提示）
+            JSONObject rel2 = new JSONObject(rel.toString());
+            rel2.put("body", "1. 手写正文没有元数据行");
+            JSONObject o4 = new JSONObject(Net.parseRelease(rel2.toString(), "7.9.6", 0));
+            TestHost.check(o4.optInt("remoteVersionCode", -1) == 0, "S3j 无元数据 → 0");
+            TestHost.check(!o4.optBoolean("isNewer", true),
+                    "S3k plus 同族不提示：7.9.6plus≈[7,9,6] 与 7.9.6 同族（segNum 修复回归）");
         } catch (Exception e) {
             TestHost.check(false, "S3 异常: " + e);
         }
     }
 
-    /* S4：错误五分类 + 复合文案（中转故障绝不误报为 GitHub 限流）。 */
-    private static void s4_errorTaxonomy() {
-        // 主错误码（github 通道优先——可行动性最强）
-        TestHost.check(Net.ERR_GITHUB_RATE_LIMITED
-                        .equals(Net.primaryErrorCode(true, Net.ERR_GITHUB_RATE_LIMITED)),
-                "S4a 双通道皆败 + GitHub 限流 → GITHUB_RATE_LIMITED（可行动：等 1h 或走中转）");
-        TestHost.check(Net.ERR_NETWORK.equals(Net.primaryErrorCode(true, Net.ERR_NETWORK)),
-                "S4b 双通道皆败 + 网络异常 → NETWORK_ERROR（双连不上=设备网络）");
-        TestHost.check(Net.ERR_PARSE.equals(Net.primaryErrorCode(true, Net.ERR_PARSE)),
-                "S4c 双通道皆败 + 解析失败 → PARSE_ERROR");
-        TestHost.check(Net.ERR_GITHUB.equals(Net.primaryErrorCode(true, Net.ERR_GITHUB)),
-                "S4d GitHub 其他 HTTP → GITHUB_ERROR（如实第六类——非限流非网络）");
-        TestHost.check(Net.ERR_WORKER_UNAVAILABLE.equals(Net.primaryErrorCode(true, null)),
-                "S4e github 未败理论态 → WORKER_UNAVAILABLE 兜底");
-        TestHost.check(Net.ERR_NETWORK.equals(Net.primaryErrorCode(false, null)),
-                "S4f 双通道皆未发起/未分类 → NETWORK_ERROR 兜底");
-
-        // 复合文案：双通道归因各自呈现；仅直连时与 v8.0.3 一致
-        String both = Net.compositeMessage(true, "中转服务连接失败",
-                "GitHub API 限流（匿名 60 次/小时/IP），请约 1 小时后再试");
-        TestHost.check(both.startsWith("更新通道均失败：") && both.contains("中转服务连接失败")
-                        && both.contains("GitHub API 限流"),
-                "S4g 双通道皆败 → 复合文案（中转归因 + GitHub 归因同时在场——绝不误报单因）");
-        String onlyGh = Net.compositeMessage(false, null,
-                "GitHub API 限流（匿名 60 次/小时/IP），请约 1 小时后再试");
-        TestHost.check(onlyGh.equals("GitHub API 限流（匿名 60 次/小时/IP），请约 1 小时后再试"),
-                "S4h 仅直连失败 → 文案与 v8.0.3 逐字一致（无中转时不甩锅中转）");
-        String onlyNet = Net.compositeMessage(false, null, null);
-        TestHost.check(onlyNet.length() > 0, "S4i 归因全缺 → 兜底文案非空");
+    /* ═══ S4 mirrorsOf：ghproxy 代理移除 ═══ */
+    private static void s4_mirrorsRemoved() {
+        JSONArray m1 = Net.mirrorsOf("https://github.com/x/y.apk");
+        TestHost.check(m1.length() == 0, "S4a ghproxy 类代理移除 → 零备用源");
+        TestHost.check(Net.mirrorsOf("").length() == 0, "S4b 空 apkUrl 安全");
+        TestHost.check(Net.mirrorsOf(null).length() == 0, "S4c null 安全");
     }
 
-    /* S5：复合失败载荷契约（errorCode/workerError/githubError）。 */
-    private static void s5_composeFailure() {
-        Net.ChannelOutcome w = new Net.ChannelOutcome();
-        w.attempted = true;
-        w.errCode = Net.ERR_WORKER_UNAVAILABLE;
-        w.errText = "中转服务连接失败";
-        Net.ChannelOutcome g = new Net.ChannelOutcome();
-        g.errCode = Net.ERR_GITHUB_RATE_LIMITED;
-        g.errText = "GitHub API 限流（匿名 60 次/小时/IP），请约 1 小时后再试";
+    /* ═══ S5 cmpVersion 三段数值比较保持 ═══ */
+    private static void s5_cmpVersion() {
+        TestHost.check(Net.cmpVersion("8.10.0", "8.9.0") > 0, "S5a 数值段非字典序");
+        TestHost.check(Net.cmpVersion("v7.9.6", "7.9.6") == 0, "S5b v 前缀容忍");
+        TestHost.check(Net.cmpVersion("7.9.6", "7.9.6.1") == 0, "S5c 缺段补 0（三段封顶）");
+        TestHost.check(Net.cmpVersion("8.2.2", "7.9.6plus") > 0,
+                "S5d 名比较视角 8.2.2 > 7.9.6plus（versionCode 主判存在的理由）");
+        TestHost.check(Net.cmpVersion("7.9.6plus", "7.9.6") == 0,
+                "S5e segNum 修复回归：7.9.6plus 与 7.9.6 同族（6plus→6）");
+        TestHost.check(Net.cmpVersion("7.9.6plus2", "7.9.6") == 0,
+                "S5f 任意字母后缀同族（6plus2→6）");
+    }
+
+    /* ═══ S6 rateLimited ═══ */
+    private static void s6_rateLimited() {
+        TestHost.check(Net.rateLimited(403), "S6a 403 匿名配额耗尽 = 限流");
+        TestHost.check(Net.rateLimited(429), "S6b 429 次级限流 = 限流");
+        TestHost.check(!Net.rateLimited(404), "S6c 404 不算限流（无正式 Release 正常态）");
+        TestHost.check(!Net.rateLimited(302), "S6d 3xx 不算限流（劫持另类处理）");
+        TestHost.check(!Net.rateLimited(500), "S6e 5xx 不算限流");
+    }
+
+    /* ═══ S7 错误四分类 ═══ */
+    private static void s7_errorCodes() {
+        TestHost.check("GITHUB_RATE_LIMITED".equals(Net.ERR_GITHUB_RATE_LIMITED), "S7a 限流码");
+        TestHost.check("NETWORK_ERROR".equals(Net.ERR_NETWORK), "S7b 网络码");
+        TestHost.check("PARSE_ERROR".equals(Net.ERR_PARSE), "S7c 解析码");
+        TestHost.check("GITHUB_ERROR".equals(Net.ERR_GITHUB), "S7d GitHub 码");
+        // WORKER_UNAVAILABLE 已随 v8.2.0 双通道移除——反射验证字段不存在
+        boolean workerCodeGone = true;
         try {
-            JSONObject o = new JSONObject(Net.composeFailure(w, g));
-            TestHost.check(!o.optBoolean("ok"), "S5a ok=false");
-            TestHost.check(Net.ERR_GITHUB_RATE_LIMITED.equals(o.optString("errorCode")),
-                    "S5b errorCode=GITHUB_RATE_LIMITED");
-            TestHost.check(Net.ERR_WORKER_UNAVAILABLE.equals(o.optString("workerError")),
-                    "S5c workerError 归因在场（中转故障可诊断）");
-            TestHost.check(Net.ERR_GITHUB_RATE_LIMITED.equals(o.optString("githubError")),
-                    "S5d githubError 归因在场");
-            TestHost.check(o.optString("error").contains("更新通道均失败"),
-                    "S5e 人话文案复合呈现");
-        } catch (Exception e) {
-            TestHost.check(false, "S5 异常: " + e);
+            Net.class.getField("ERR_WORKER_UNAVAILABLE");
+            workerCodeGone = false;
+        } catch (NoSuchFieldException expected) {
         }
-        // 中转未尝试（结构性关闭）→ 无 workerError 字段
-        Net.ChannelOutcome w2 = new Net.ChannelOutcome();
+        TestHost.check(workerCodeGone, "S7e WORKER_UNAVAILABLE 已移除（单通道回归）");
+        boolean updateRelayGone = true;
         try {
-            JSONObject o2 = new JSONObject(Net.composeFailure(w2, g));
-            TestHost.check(!o2.has("workerError"), "S5f 中转未尝试 → 无 workerError（不甩锅）");
-        } catch (Exception e) {
-            TestHost.check(false, "S5f 异常: " + e);
+            Net.class.getField("UPDATE_RELAY_URL");
+            updateRelayGone = false;
+        } catch (NoSuchFieldException expected) {
         }
-    }
-
-    /* S6：SHA-256 校验判定（v6.3.0 行为逐字提取——安装前完整性闸的纯函数面）。 */
-    private static void s6_verifyDigest() {
-        String sha = "sha256:50a7b7029c715eb810e1bc3de2c8fac63d74d10995c88562c4c6f9e2487f0421";
-        String hex = "50a7b7029c715eb810e1bc3de2c8fac63d74d10995c88562c4c6f9e2487f0421";
-        TestHost.check(Downloader.verifyDigest(882230, hex, sha, 882230) == null,
-                "S6a SHA-256 与大小双匹配 → 通过");
-        TestHost.check(Downloader.verifyDigest(882230, hex.toUpperCase(), sha, 882230) == null,
-                "S6b 大小写不敏感（equalsIgnoreCase 语义保持）");
-        TestHost.check(Downloader.verifyDigest(882230, "0000000000000000000000000000000000000000000000000000000000000000", sha, 882230) != null,
-                "S6c SHA-256 不符 → 拒绝（镜像投毒拦截）");
-        TestHost.check(Downloader.verifyDigest(882231, hex, sha, 882230) != null,
-                "S6d 大小不符 → 拒绝（优先于 digest——次序与 v6.3.0 一致）");
-        TestHost.check(Downloader.verifyDigest(882230, hex, sha, 0) == null,
-                "S6e size 未知 + digest 匹配 → 通过（digest 权威）");
-        TestHost.check(Downloader.verifyDigest(882230, "", "", 882230) == null,
-                "S6f digest 缺失 + size 匹配 → 弱校验兜底通过（历史语义保持）");
-        TestHost.check(Downloader.verifyDigest(882230, "", "", 0) != null,
-                "S6g digest 与 size 双缺 → 拒绝（正常 Release 必有 digest）");
-        TestHost.check("大小不符".equals(fix(Downloader.verifyDigest(0, hex, sha, 882230))) || Downloader.verifyDigest(0, hex, sha, 882230) != null,
-                "S6h size 不符文案在场");
-        // hex 补零语义
-        TestHost.check("0a".equals(Downloader.hex(new byte[]{10})), "S6i hex 补零（10 → 0a）");
-        TestHost.check("ff00".equals(Downloader.hex(new byte[]{(byte) 0xff, 0})), "S6j hex 小写全字节");
-        TestHost.check(Downloader.hex(new byte[32]).length() == 64, "S6k SHA-256 摘要 64 hex 字符");
-    }
-
-    private static String fix(String s) {
-        return s == null ? "" : s;
-    }
-
-    /* S7：发布通道 host 白名单（v6.3.0 加固语义——下载安全闸不降低的回归证明）。 */
-    private static void s7_hostAllowed() {
-        TestHost.check(Downloader.hostAllowed("https://github.com/xiaobaiba999/Skip-Ad/releases/download/v8.2.0/a.apk"),
-                "S7a github.com 直连允许");
-        TestHost.check(Downloader.hostAllowed("https://objects.githubusercontent.com/x"),
-                "S7b githubusercontent 子域允许（Release CDN 重定向目标）");
-        TestHost.check(Downloader.hostAllowed("https://ghfast.top/https://github.com/x.apk"),
-                "S7c ghfast 镜像允许");
-        TestHost.check(Downloader.hostAllowed("https://gh-proxy.com/https://github.com/x.apk"),
-                "S7d gh-proxy 镜像允许");
-        TestHost.check(!Downloader.hostAllowed("http://github.com/x.apk"),
-                "S7e 非 https 拒绝");
-        TestHost.check(!Downloader.hostAllowed("https://github.com.evil.com/x.apk"),
-                "S7f 子串伪装域拒绝（github.com.evil.com）");
-        TestHost.check(!Downloader.hostAllowed("https://attacker.com/fwd?to=github.com"),
-                "S7g 查询串注入拒绝");
-        TestHost.check(!Downloader.hostAllowed("https://evil.com/x.apk"),
-                "S7h 无关域拒绝");
-        TestHost.check(!Downloader.hostAllowed("https://user@github.com/x.apk") || Downloader.hostAllowed("https://user@github.com/x.apk"),
-                "S7i userinfo 构造不崩溃（白名单判定不抛异常）");
-        TestHost.check(!Downloader.hostAllowed("not a url"),
-                "S7j 非法 URL 拒绝（不抛异常）");
-    }
-
-    /* S8：镜像合成（Worker 契约不含镜像——客户端统一合成，下载链零改动）。 */
-    private static void s8_mirrorsOf() {
-        JSONArray m = Net.mirrorsOf("https://github.com/x/y.apk");
-        TestHost.check(m.length() == 2, "S8a 双镜像（ghfast + gh-proxy）");
-        TestHost.check(m.optString(0).startsWith("https://ghfast.top/https://github.com/"),
-                "S8b ghfast 前缀形态（v3.3.0 语义不变）");
-        TestHost.check(m.optString(1).startsWith("https://gh-proxy.com/"), "S8c gh-proxy 前缀形态");
-        TestHost.check(Net.mirrorsOf("").length() == 0, "S8d 空 apkUrl → 零镜像");
-        TestHost.check(Net.mirrorsOf(null).length() == 0, "S8e null 安全");
+        TestHost.check(updateRelayGone, "S7f UPDATE_RELAY_URL 已移除");
+        boolean deriveGone = true;
+        try {
+            Net.class.getMethod("deriveUpdateRelayUrl", String.class);
+            deriveGone = false;
+        } catch (NoSuchMethodException expected) {
+        }
+        TestHost.check(deriveGone, "S7g deriveUpdateRelayUrl 已移除");
     }
 }

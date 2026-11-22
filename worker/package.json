@@ -1,9 +1,0 @@
-{
-  "name": "skip-ad-update-relay",
-  "private": true,
-  "description": "开屏卫士更新检查中转接口（GET /api/update/latest）——部署模块与测试；接线到现有 skip-ad-log-relay Worker",
-  "scripts": {
-    "test": "bun test test/update.test.ts",
-    "test:live": "RUN_LIVE=1 bun test test/update.live.test.ts"
-  }
-}

@@ -13,15 +13,18 @@ import java.nio.charset.StandardCharsets;
 /**
  * GitHub API 极简客户端（HttpURLConnection + org.json，零第三方依赖）。
  *
- * v8.2.0 双通道更新检查（真机限流根因修复）：
- *  · 【新增·通道 0】更新中转 GET /api/update/latest（UPDATE_RELAY_URL，与日志中转
- *    同源派生）——Worker 边缘缓存 5~10 分钟 + GitHub App 认证上游（独立于匿名
- *    配额池），单次尝试不重试；任何失败自动回退 GitHub 直连，绝不把中转故障
- *    误报为 GitHub 限流（双通道各自归因、复合呈现）。
- *  · 【保留·通道 1-3】GitHub 匿名直连（latest 重试 + /releases 列表回退——
- *    v8.0.3 语义逐字保持，仅错误输出增加五分类 errorCode）。
- *  · 错误五分类：GITHUB_RATE_LIMITED / WORKER_UNAVAILABLE / NETWORK_ERROR /
- *    PARSE_ERROR / NO_NEW_VERSION（isNewer 字段——版本比较 Net.cmpVersion）。
+ * v7.9.6plus 更新检查（单通道回归 + versionCode 主判）：
+ *  · 【移除】v8.2.0 更新中转双通道（UPDATE_RELAY_URL/workerChannel/复合归因）
+ *    ——Worker 部署状态在开发沙箱不可验证（DNS 正常但 TCP 出站拦截），更新
+ *    信息只从可信的正式 GitHub Release API 读取。GitHub 匿名直连语义
+ *    （latest 重试 + /releases 列表回退 + 限流即时报错）逐字保持。
+ *  · 【新增】versionCode 主判：Release 正文 versionCode 元数据行
+ *    （versionCodeOfNotes）+ isNewerRelease——「7.9.6plus」等非纯数字
+ *    versionName 的分段比较不可靠，Android 覆盖安装权威依据是 versionCode
+ *    单调递增（本地 PackageManager versionCode）。
+ *  · 【移除】ghfast.top/gh-proxy.com 镜像拼接——ghproxy 类第三方代理不稳定
+ *    且非项目所有，不作正式下载源；唯一官方源 = GitHub Release asset（HTTPS）。
+ *  · 错误四分类：GITHUB_RATE_LIMITED / NETWORK_ERROR / PARSE_ERROR / GITHUB_ERROR。
  *
  * v7.9.7 安全整改（PAT 移除轮）：
  *  · 【移除】内置混淆令牌（builtInToken，双层 XOR+Base64）——混淆不等于加密，
@@ -51,38 +54,19 @@ public final class Net {
     private Net() {
     }
 
-    /* ───────── v7.9.7 预留 / v8.0.0 填入：自动日志上传中转服务地址 ─────────
-     * 架构（v8.0.0 落地）：Android → HTTPS 中转服务（鉴权/24h 滑窗限流/
-     * batchId 幂等/二次隐私过滤）→ GitHub Issues。
-     * 生产地址（skip-ad-log-relay · Cloudflare Worker，已部署并经用户真实
-     * 浏览器 /healthz 验证）。服务端凭据（GitHub App 私钥/IP_HMAC 密钥）
-     * 全部只存 Cloudflare Worker Secret——APK 零凭据红线保持。
-     * 【v8.2.2 诚实口径】Worker 实际写入的目标仓库 UNKNOWN（Worker 源码仓
-     * 在 owner 账号不存在——2026-11-22 凭据实测 404；文档旧称「私有仓
-     * Skip-Ad-Logs」与账号实况矛盾）。客户端成功后经 GitHub 匿名 API 核实
+    /* ───────── 自动日志上传中转服务地址（唯一已知服务端端点）─────────
+     * 架构：Android → HTTPS 中转服务（鉴权/24h 滑窗限流/batchId 幂等/
+     * 二次隐私过滤）→ GitHub Issues。服务端凭据全部只存服务端——APK
+     * 零凭据红线保持。
+     * 【v7.9.6plus 诚实口径】端点部署状态在开发沙箱不可验证（DNS 解析
+     * 正常但 TCP 出站被拦截，无法确认服务存在；Worker 源码仓在 owner
+     * 账号不存在）。客户端按契约原样保留此地址（历史会话记录其曾部署
+     * 并经用户真实浏览器 /healthz 验证）；上传失败时如实报告「上传服务
+     * 不可达，日志已保留」——绝不伪造成功。成功后经 GitHub 匿名 API 核实
      * 公开仓 issues/{n}——核实到才展示可点击链接（LogUploader.verifyIssueUrl）。
      * 此地址为公开服务端点（非 Secret）。空串 = 上传结构性关闭。 */
     public static final String LOG_RELAY_URL =
             "https://skip-ad-log-relay.2927609408.workers.dev/api/logs/receive";
-
-    /* ───────── v8.2.0 通道 0：更新检查中转地址（从 LOG_RELAY_URL 同源派生）─────────
-     * 架构：设备 → Worker（边缘缓存 600s + GitHub App 认证上游——独立配额池）→
-     * GitHub Releases。Worker 侧代码见仓库 worker/ 目录（部署后生效；部署前
-     * 404 → 本客户端自动回退 GitHub 直连，行为=v8.0.3 零回退风险）。
-     * 单一事实源：改 LOG_RELAY_URL 自动跟随；空串 = 更新中转结构性关闭。 */
-    public static final String UPDATE_RELAY_URL = deriveUpdateRelayUrl(LOG_RELAY_URL);
-
-    /** v8.2.0：日志中转地址 → 同源更新接口地址（纯函数，JVM 可测）。
-     *  非预期形态（不以 /api/logs/receive 结尾）返回空串 = 结构性关闭——绝不拼出
-     *  错误地址打无关端点。 */
-    public static String deriveUpdateRelayUrl(String logRelayUrl) {
-        final String suffix = "/api/logs/receive";
-        if (logRelayUrl == null || logRelayUrl.length() == 0 || !logRelayUrl.endsWith(suffix)) {
-            return "";
-        }
-        return logRelayUrl.substring(0, logRelayUrl.length() - suffix.length())
-                + "/api/update/latest";
-    }
 
     /** v4.0.0 订阅拉取：GET 任意 URL 原文（GKD 订阅 JSON5），2xx 返回 body，否则抛异常。
      *  v6.1.0 Connection reset 根治（用户实锤：订阅市场点击导入提示「拉取失败，
@@ -139,8 +123,7 @@ public final class Net {
         return http(method, url, token, body, noRedirect, 7000, 12000);
     }
 
-    /** v8.2.0：超时可变版——更新中转通道用更短超时（连接 5s/读 8s：Worker 边缘
-     *  缓存命中亚秒级，超时快速切 GitHub 直连，最坏等待链不膨胀）。 */
+    /** 超时可变版（连接/读取超时由调用方指定——默认 7s/12s）。 */
     private static String[] http(String method, String url, String token, String body, boolean noRedirect,
                                  int connectMs, int readMs) throws Exception {
         HttpURLConnection c = null;
@@ -224,100 +207,32 @@ public final class Net {
      * 反馈链路 v8.0.0 起统一走中转服务（LOG_RELAY_URL）+ Web 反馈通道，
      * 客户端零 GitHub 凭据红线保持。 */
 
-    /* ───────── 检查更新 → 双通道（v8.2.0：中转优先 → GitHub 匿名直连回退） ─────────
-     * 真机根因（v8.0.3 实锤）：更新检查唯一通道是 GitHub 匿名 API（60 次/小时/IP，
-     * 国内共享出口极易耗尽）——用户看不到已发布的正式新版本。
-     * 通道 0（v8.2.0 新增）：更新中转（与日志中转同源 Worker 的独立只读端点）——
-     * 服务端边缘缓存 5~10 分钟 + GitHub App 认证上游（独立配额池），单次尝试
-     * 不重试（中转失败 ≠ 设备网络失败——留给直连通道判定），失败自动回退。
-     * 通道 1-3（v7.9.7 起 / v8.0.3 限流即时报错）：语义逐字保持。 */
+    /* ───────── 检查更新 → GitHub 匿名直连（v7.9.6plus 单通道）─────────
+     * 通道 1/2：GET /releases/latest（重试×2——间歇 404/网络抖动吸收；
+     * 限流 403/429 即时报错不重试）。
+     * 通道 3：GET /releases?per_page=8 列表回退（latest 语义不可用时取最新
+     * 非 draft 非 prerelease 项——Draft/Pre-release 不作为正式更新推送）。
+     * 真机根因史（v8.0.3 实锤）：匿名 60 次/小时/IP，国内共享出口易耗尽
+     * ——限流即时报错 + 1 小时窗口提示。 */
 
-    /** 错误分类码（五分类——UI 与诊断用；纯字符串常量避免 ProGuard 形变） */
+    /** 错误分类码（四分类——UI 与诊断用；纯字符串常量避免 ProGuard 形变） */
     public static final String ERR_GITHUB_RATE_LIMITED = "GITHUB_RATE_LIMITED";
-    public static final String ERR_WORKER_UNAVAILABLE = "WORKER_UNAVAILABLE";
     public static final String ERR_NETWORK = "NETWORK_ERROR";
     public static final String ERR_PARSE = "PARSE_ERROR";
     public static final String ERR_GITHUB = "GITHUB_ERROR";
     private static final String RATE_LIMIT_TEXT = "GitHub API 限流（匿名 60 次/小时/IP），请约 1 小时后再试";
 
-    /** v8.2.0 通道结果（静态嵌套类——d8 8.2 仅禁非静态内部类/匿名类/lambda；
-     *  public 供 JVM 测试构造——纯数据无不变式）。 */
-    public static final class ChannelOutcome {
-        public boolean attempted = false; // 通道是否实际发起（false=结构性关闭）
-        public String json = null;        // 成功载荷（ok:true JSON）；null = 失败
-        public String errCode = null;     // 失败分类码
-        public String errText = null;     // 人类可读归因短语（复合错误文案用）
-    }
-
     /**
-     * 获取最新 Release（兼容入口——无当前版本则不产 isNewer，由 JS 侧比较）。
-     * @see #latestRelease(String)
+     * 获取最新 Release（v7.9.6plus：GitHub 单通道 + versionCode 主判）。
+     * @param currentVersion 当前 versionName（如 "7.9.6plus"）
+     * @param currentVersionCode 当前 versionCode（PackageManager——覆盖安装
+     *                            权威依据；>0 时启用 versionCode 主判）
+     * @return {ok:true, hasRelease, tag, name, notes, headlines[], apkUrl,
+     *          apkFileName, apkMB, apkSize, apkDigest, apkMirrors[],
+     *          remoteVersionCode, isNewer, source:"github"}
+     *         / {ok:false, error, errorCode}
      */
-    public static String latestRelease() {
-        return latestRelease("");
-    }
-
-    /**
-     * 获取最新 Release（v8.2.0 双通道）。
-     * 通道 0：更新中转（单次尝试，5s/8s 超时；ok:true 即信任返回——含 hasRelease:false）。
-     * 通道 1-3：GitHub 匿名直连（v8.0.3 既有语义：latest 重试×2 → /releases 列表回退）。
-     * 失败复合原则：双通道各自归因、绝不误报（中转故障 ≠ GitHub 限流）；
-     * 中转失败而直连成功 → 成功载荷附 workerError 供 UI 提示（不构成失败）。
-     * @param currentVersion 当前 versionName（如 "8.2.0"）——非空时载荷附 isNewer
-     * @return {ok:true, hasRelease, tag, …, apkUrl, apkMirrors[], apkDigest, source, isNewer}
-     *         / {ok:false, error, errorCode, workerError?, githubError?}
-     */
-    public static String latestRelease(String currentVersion) {
-        ChannelOutcome w = workerChannel(currentVersion);
-        if (w.json != null) return w.json;
-        ChannelOutcome g = githubChannel(currentVersion);
-        if (g.json != null) {
-            if (w.attempted) {
-                try {
-                    JSONObject o = new JSONObject(g.json);
-                    o.put("workerError", ERR_WORKER_UNAVAILABLE); // 中转故障归因（成功路径如实标注）
-                    return o.toString();
-                } catch (Exception ignored) {
-                }
-            }
-            return g.json;
-        }
-        return composeFailure(w, g);
-    }
-
-    /** 通道 0：更新中转（纯函数化外壳——网络单点，逻辑在 normalizeWorkerUpdatePayload）。 */
-    private static ChannelOutcome workerChannel(String currentVersion) {
-        ChannelOutcome o = new ChannelOutcome();
-        if (UPDATE_RELAY_URL.length() == 0) return o; // 结构性关闭（未部署/未配置）
-        o.attempted = true;
-        try {
-            String[] r = http("GET", UPDATE_RELAY_URL, null, null, true, 5000, 8000);
-            int code = Integer.parseInt(r[0]);
-            if (code >= 200 && code < 300) {
-                String norm = normalizeWorkerUpdatePayload(r[1], currentVersion);
-                if (norm != null) {
-                    o.json = norm;
-                    return o;
-                }
-                o.errCode = ERR_WORKER_UNAVAILABLE;
-                o.errText = "中转响应无效";
-                return o;
-            }
-            o.errCode = ERR_WORKER_UNAVAILABLE;
-            o.errText = code == 404
-                    ? "中转服务未部署更新接口（worker/DEPLOY.md）"
-                    : ("中转服务异常（HTTP " + code + "）");
-            return o;
-        } catch (Exception e) {
-            o.errCode = ERR_WORKER_UNAVAILABLE;
-            o.errText = "中转服务连接失败";
-            return o;
-        }
-    }
-
-    /** 通道 1-3：GitHub 匿名直连（v8.0.3 语义保持；错误改带分类码）。 */
-    private static ChannelOutcome githubChannel(String currentVersion) {
-        ChannelOutcome o = new ChannelOutcome();
+    public static String latestRelease(String currentVersion, int currentVersionCode) {
         String token = ""; // v7.9.7：匿名——http() 对空 token 不发送 Authorization 头（限频 60 次/小时/出口，手动检查更新频次远低）
         // 通道 1/2：/releases/latest，重试两次（间隔 800ms）
         for (int attempt = 1; attempt <= 2; attempt++) {
@@ -330,12 +245,9 @@ public final class Net {
                 }
                 if (code >= 200 && code < 300) {
                     try {
-                        o.json = parseRelease(r[1], currentVersion);
-                        return o;
+                        return parseRelease(r[1], currentVersion, currentVersionCode);
                     } catch (Exception pe) {
-                        o.errCode = ERR_PARSE;
-                        o.errText = "GitHub 响应解析失败";
-                        return o;
+                        return fail(ERR_PARSE, "GitHub 响应解析失败");
                     }
                 }
                 if (code == 404) {
@@ -345,22 +257,16 @@ public final class Net {
                  * （次级限流）窗口为小时级——800ms 后重试纯浪费同一配额，
                  * 且列表回退同池同限；立即返回明确原因（v8.2.0 改带分类码）。 */
                 if (rateLimited(code)) {
-                    o.errCode = ERR_GITHUB_RATE_LIMITED;
-                    o.errText = RATE_LIMIT_TEXT;
-                    return o;
+                    return fail(ERR_GITHUB_RATE_LIMITED, RATE_LIMIT_TEXT);
                 }
                 if (attempt == 1) {
                     sleep(800);
                     continue;
                 }
-                o.errCode = ERR_GITHUB;
-                o.errText = "GitHub 返回 " + code;
-                return o;
+                return fail(ERR_GITHUB, "GitHub 返回 " + code);
             } catch (Exception e) {
                 if (attempt == 2) {
-                    o.errCode = ERR_NETWORK;
-                    o.errText = "网络异常（无法连接 GitHub）";
-                    return o;
+                    return fail(ERR_NETWORK, "网络异常（无法连接 GitHub）");
                 }
                 sleep(800);
             }
@@ -374,120 +280,93 @@ public final class Net {
                 for (int i = 0; i < arr.length(); i++) {
                     org.json.JSONObject d = arr.optJSONObject(i);
                     if (d == null || d.optBoolean("draft", false) || d.optBoolean("prerelease", false)) continue;
-                    o.json = parseRelease(d.toString(), currentVersion);
-                    return o;
+                    return parseRelease(d.toString(), currentVersion, currentVersionCode);
                 }
                 JSONObject none = new JSONObject();
                 none.put("ok", true);
                 none.put("hasRelease", false);
                 none.put("source", "github");
-                o.json = none.toString();
-                return o;
+                return none.toString();
             }
             // v8.0.3：限流同因即报（与通道 1/2 同口径——同配额池重试无意义）
             if (rateLimited(code)) {
-                o.errCode = ERR_GITHUB_RATE_LIMITED;
-                o.errText = RATE_LIMIT_TEXT;
-                return o;
+                return fail(ERR_GITHUB_RATE_LIMITED, RATE_LIMIT_TEXT);
             }
-            o.errCode = ERR_GITHUB;
-            o.errText = "GitHub 返回 " + code;
-            return o;
+            return fail(ERR_GITHUB, "GitHub 返回 " + code);
         } catch (org.json.JSONException je) {
-            o.errCode = ERR_PARSE;
-            o.errText = "GitHub 响应解析失败";
-            return o;
+            return fail(ERR_PARSE, "GitHub 响应解析失败");
         } catch (Exception e) {
-            o.errCode = ERR_NETWORK;
-            o.errText = "网络异常（无法连接 GitHub）";
-            return o;
+            return fail(ERR_NETWORK, "网络异常（无法连接 GitHub）");
         }
     }
 
-    /** 双通道皆败的复合失败载荷（纯函数——JVM 真值表钉死）。 */
-    public static String composeFailure(ChannelOutcome w, ChannelOutcome g) {
-        String code = primaryErrorCode(w.attempted, g.errCode);
-        String msg = compositeMessage(w.attempted, w.errText, g.errText);
+    /** 失败载荷（{ok:false, error, errorCode}）。 */
+    private static String fail(String errorCode, String text) {
         try {
             JSONObject o = new JSONObject();
             o.put("ok", false);
-            o.put("error", msg);
-            o.put("errorCode", code);
-            if (w.attempted && w.errCode != null) o.put("workerError", w.errCode);
-            if (g.errCode != null) o.put("githubError", g.errCode);
+            o.put("error", text);
+            o.put("errorCode", errorCode);
             return o.toString();
         } catch (Exception e) {
-            return "{\"ok\":false,\"error\":\"" + msg + "\"}";
+            return "{\"ok\":false,\"error\":\"" + text + "\"}";
         }
     }
 
-    /** 主错误码（纯函数）：github 通道结果优先（可行动性最强——限流=1h 后重试），
-     *  github 未失败（理论不可达）时按 worker 归因兜底。WORKER_UNAVAILABLE 只在
-     *  「中转失败而直连成功」的成功载荷里出现（workerError 字段）——不构成最终
-     *  失败码，绝不把中转故障误报为 GitHub 限流。 */
-    public static String primaryErrorCode(boolean workerAttempted, String githubErrCode) {
-        if (githubErrCode != null) {
-            if (githubErrCode.equals(ERR_GITHUB_RATE_LIMITED)) return ERR_GITHUB_RATE_LIMITED;
-            if (githubErrCode.equals(ERR_PARSE)) return ERR_PARSE;
-            if (githubErrCode.equals(ERR_GITHUB)) return ERR_GITHUB;
-            return ERR_NETWORK;
-        }
-        return workerAttempted ? ERR_WORKER_UNAVAILABLE : ERR_NETWORK;
-    }
+    /* ═══ v7.9.6plus versionCode 主判（纯函数，JVM 可测）═══ */
 
-    /** 复合错误文案（纯函数）：双通道归因各自呈现；仅直连失败时文案与 v8.0.3 一致。 */
-    public static String compositeMessage(boolean workerAttempted, String workerText, String githubText) {
-        String g = githubText == null ? "网络异常" : githubText;
-        if (workerAttempted && workerText != null && workerText.length() > 0) {
-            return "更新通道均失败：" + workerText + "；" + g;
+    /**
+     * 新版本判定（v7.9.6plus：versionCode 主判——用户指令）。
+     * ① 双方 versionCode 在场（>0）→ remoteVersionCode > currentVersionCode
+     *    才算新版（≤ 不算——绝不提示降级安装）；
+     * ② 元数据缺失（旧 Release 正文无 versionCode 行 / 取不到本地
+     *    versionCode）→ 回退 versionName 三段比较 cmpVersion(tag, current)
+     *    > 0（v7.x 语义兼容）。
+     * 背景：「7.9.6plus」等非纯数字 versionName 的分段解析不可靠
+     * （"7.9.6plus"→[7,9,6]，与 "8.2.2"→[8,2,2] 比较必判旧版）；Android
+     * 覆盖安装的权威依据是 versionCode 单调递增——正式发布模板必含
+     * versionCode 元数据行（本判定①兜住一切非纯数字命名）。
+     */
+    public static boolean isNewerRelease(int remoteVersionCode, String remoteTag,
+                                         int currentVersionCode, String currentVersion) {
+        if (remoteVersionCode > 0 && currentVersionCode > 0) {
+            return remoteVersionCode > currentVersionCode;
         }
-        return g;
+        return cmpVersion(remoteTag, currentVersion) > 0;
     }
 
     /**
-     * v8.2.0：中转更新载荷规范化（纯函数，JVM 可测）。字段与 parseRelease 输出
-     * 完全对齐（app.js 下载链零改动），附加 source:"worker"/cached/fetchedAt。
-     * @return 规范化 JSON；null = 载荷不可用（ok:false/契约破坏/垃圾）→ 调用方回退。
+     * v7.9.6plus：Release 正文 versionCode 元数据行解析（纯函数，JVM 可测）。
+     * 正式发布模板在正文开头含机器可读行「versionCode: 82300」。
+     * 匹配首个以 versionCode: 开头的行；只取行内前缀连续数字（容忍行尾
+     * 说明文字）；无匹配/非数字/超 int → 0（调用方回退 versionName 比较）。
      */
-    public static String normalizeWorkerUpdatePayload(String body, String currentVersion) {
-        try {
-            JSONObject d = new JSONObject(body);
-            if (!d.optBoolean("ok", false)) return null;
-            if (!d.has("hasRelease")) return null; // 契约破坏 → 回退直连
-            JSONObject out = new JSONObject();
-            out.put("ok", true);
-            out.put("source", "worker");
-            if (d.has("cached")) out.put("cached", d.optBoolean("cached", false));
-            if (d.has("fetchedAt")) out.put("fetchedAt", d.optLong("fetchedAt", 0));
-            if (!d.optBoolean("hasRelease", false)) {
-                out.put("hasRelease", false);
-                return out.toString();
+    public static int versionCodeOfNotes(String notes) {
+        if (notes == null) return 0;
+        String[] lines = notes.split("\n");
+        for (int i = 0; i < lines.length; i++) {
+            String t = lines[i].trim();
+            if (t.startsWith("versionCode:")) {
+                String rest = t.substring("versionCode:".length()).trim();
+                StringBuilder sb = new StringBuilder();
+                for (int j = 0; j < rest.length(); j++) {
+                    char ch = rest.charAt(j);
+                    if (ch >= '0' && ch <= '9') sb.append(ch); else break;
+                }
+                if (sb.length() > 0) {
+                    try {
+                        long v = Long.parseLong(sb.toString());
+                        if (v > 0 && v <= Integer.MAX_VALUE) return (int) v;
+                    } catch (Exception ignored) {
+                    }
+                }
+                return 0;
             }
-            String tag = d.optString("tag", "");
-            String apkUrl = d.optString("apkUrl", "");
-            long apkSize = d.optLong("apkSize", 0);
-            out.put("hasRelease", true);
-            out.put("tag", tag);
-            out.put("name", d.optString("name", ""));
-            out.put("notes", d.optString("notes", ""));
-            out.put("publishedAt", d.optString("publishedAt", ""));
-            out.put("url", d.optString("url", ""));
-            out.put("apkUrl", apkUrl);
-            out.put("apkFileName", d.optString("apkFileName", "adshield.apk"));
-            out.put("apkMB", Math.round(apkSize / 1048576.0 * 100) / 100.0); // 桩 org.json 无 optDouble——与 parseRelease 同公式本地计算（Worker apkMB 同源可忽略）
-            out.put("apkSize", apkSize);
-            out.put("apkDigest", d.optString("apkDigest", ""));
-            out.put("headlines", headlinesOf(d.optString("notes", "")));
-            out.put("apkMirrors", mirrorsOf(apkUrl));
-            out.put("isNewer", currentVersion != null && currentVersion.length() > 0
-                    && cmpVersion(tag, currentVersion) > 0);
-            return out.toString();
-        } catch (Exception e) {
-            return null;
         }
+        return 0;
     }
 
-    /** v8.2.0 版本比较（纯函数，JVM 可测）——app.js cmpVer 的 Java 镜像：
+    /** 版本名三段数值比较（纯函数，JVM 可测）——app.js cmpVer 的 Java 镜像：
      *  三段数值比较（非字典序："8.10.0" > "8.9.0"）、v 前缀容忍、缺段补 0。 */
     public static int cmpVersion(String a, String b) {
         int[] pa = versionSegs(a);
@@ -506,12 +385,25 @@ public final class Net {
         if (s.startsWith("v") || s.startsWith("V")) s = s.substring(1);
         String[] parts = s.split("\\.");
         for (int i = 0; i < 3 && i < parts.length; i++) {
-            try {
-                out[i] = Integer.parseInt(parts[i].trim());
-            } catch (Exception ignored) {
-            }
+            out[i] = segNum(parts[i].trim());
         }
         return out;
+    }
+
+    /** v7.9.6plus：段内前缀数字解析（"6plus"→6——"7.9.6plus"≈7.9.6 同族；
+     *  纯字母段→0。防 plus 后缀把第三段吞成 0 导致 cmpVersion 误判
+     *  「7.9.6 > 7.9.6plus」（浏览器实测抓到——远端 v7.9.6 无元数据行时
+     *  被误判为新版弹出更新页）。JS cmpVer 同源同修。 */
+    static int segNum(String seg) {
+        if (seg == null || seg.length() == 0) return 0;
+        int end = 0;
+        while (end < seg.length() && Character.isDigit(seg.charAt(end))) end++;
+        if (end == 0) return 0;
+        try {
+            return Integer.parseInt(seg.substring(0, end));
+        } catch (Exception e) {
+            return 0;
+        }
     }
 
     /** v8.0.3：限流类状态码判定（403 = 匿名配额耗尽 / 429 = 次级限流）。
@@ -529,9 +421,10 @@ public final class Net {
      *  "sha256:hex" 格式）与 size（字节）——经 HTTPS api.github.com 获取，
      *  交由 Downloader 安装前校验 APK 完整性（镜像代理被投毒/共享盘换包
      *  的 TOCTOU 全部由这道哈希闸拦下）。
-     *  v8.2.0：source:"github" + currentVersion 非空时附 isNewer（NO_NEW_VERSION
-     *  分类的权威判定——Net.cmpVersion 纯函数，JVM 钉死）。 */
-    private static String parseRelease(String body, String currentVersion) throws Exception {
+     *  v7.9.6plus：source:"github" + versionCode 主判 isNewer（正文 versionCode
+     *  元数据行 > 本地 PackageManager versionCode——isNewerRelease 纯函数；
+     *  元数据缺失回退 cmpVersion versionName 比较）。包级可见供 JVM 测试。 */
+    public static String parseRelease(String body, String currentVersion, int currentVersionCode) throws Exception {
         JSONObject d = new JSONObject(body);
         JSONObject out = new JSONObject();
         out.put("ok", true);
@@ -543,8 +436,11 @@ public final class Net {
         out.put("publishedAt", d.optString("published_at", ""));
         out.put("url", d.optString("html_url", ""));
         out.put("headlines", headlinesOf(d.optString("body", "")));
+        int remoteVc = versionCodeOfNotes(d.optString("body", ""));
+        out.put("remoteVersionCode", remoteVc);
         if (currentVersion != null && currentVersion.length() > 0) {
-            out.put("isNewer", cmpVersion(d.optString("tag_name", ""), currentVersion) > 0);
+            out.put("isNewer", isNewerRelease(remoteVc, d.optString("tag_name", ""),
+                    currentVersionCode, currentVersion));
         }
         String apkUrl = "";
         String apkFileName = "adshield.apk";
@@ -574,7 +470,7 @@ public final class Net {
         return out.toString();
     }
 
-    /** v8.2.0：Release 正文 → headlines[]（v7.0.0 语义原样提取——双通道共用）。 */
+    /** Release 正文 → headlines[]（v7.0.0 语义原样提取）。 */
     private static JSONArray headlinesOf(String notes) {
         JSONArray hl = new JSONArray();
         try {
@@ -585,15 +481,13 @@ public final class Net {
         return hl;
     }
 
-    /** v8.2.0：apkUrl → 镜像通道列表（v3.3.0 语义原样提取——双通道共用：
-     *  Worker 契约不含镜像——客户端统一合成，下载链零改动）。 */
+    /** v7.9.6plus：apkUrl → 备用下载源列表。ghfast.top/gh-proxy.com 等
+     *  ghproxy 类第三方代理已移除（用户指令：来源不明/不稳定，不作正式
+     *  下载源）——当前唯一官方源 = GitHub Release asset（HTTPS）。
+     *  保留方法与空数组结构：下载链多源机制不变（UI channels 数组照常
+     *  消费），未来新增经所有者确认的官方备用源时零改动接入。 */
     public static JSONArray mirrorsOf(String apkUrl) {
-        JSONArray mirrors = new JSONArray();
-        if (apkUrl != null && apkUrl.length() > 0) {
-            mirrors.put("https://ghfast.top/" + apkUrl);
-            mirrors.put("https://gh-proxy.com/" + apkUrl);
-        }
-        return mirrors;
+        return new JSONArray();
     }
 
     private static void sleep(long ms) {
