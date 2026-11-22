@@ -30,6 +30,22 @@ import java.util.UUID;
  * （ALREADY_ACCEPTED）绝不产生第二个 Issue。manifest 头部始终对应事件
  * 文件头部 48 条：成功/拒收从头消费，天然对齐。
  *
+ * ═══ v7.9.8 冻结批次（真机实锤「第一次失败、第二次被服务端拒」根因修复）═══
+ * v8.2.2 简化版每次 runUpload 重建 payload：createdAt 取当次时间 + STATS
+ * 快照重新生成 + 新事件并入头部块 —— 同 batchId 但 payload 必然变化。
+ * 服务端 LogGate 幂等按「batchId + payload 指纹」判定：首次 POST 已被
+ * 接受（Issue 已建）但响应丢失（读超时）后，重试的漂移 payload 命中
+ * IDEMPOTENCY_CONFLICT 终态拒收 —— 用户真机两连失败的完整链条。
+ * 修复：封批时把【batchId + createdAt + 事件数组】整体冻结进 manifest
+ * （v8.0.0 LogBatchStore 冻结语义在简化架构下的复归）——重试字节级
+ * 复用同一 payload，服务端必然 ALREADY_ACCEPTED 复用原编号。
+ *
+ * manifest 记录两代格式：
+ *  · v2（v7.9.8+）：{batchId, at, createdAt, realCount, events:[…]}；
+ *  · v1（v8.2.2~v7.9.7 遗留）：{batchId, at} —— 首次读到时保留 batchId
+ *    补冻当前头部事件（旧 payload 从未稳定过，无法复现；若服务端已记
+ *    录该 batchId 则维持既有冲突结局，不劣于升级前，诚实记录在案）。
+ *
  * 事件上限 2000：溢出丢最旧并清空 manifest（集合已变，旧 batchId 作废；
  * 极端场景下「超时未决块被裁剪」可能造成服务端重复建 Issue——概率极低
  * 且仅损及 Issue 数量，诚实记录在案）。
@@ -47,6 +63,7 @@ public final class LogStore {
     private static final String PENDING_FILE = "pending-events.json";
     private static final String MANIFEST_FILE = "batch-manifest.json";
     private static final String OK_TIMES_FILE = "ok-times.json";
+    private static final String AUTO_OK_TIMES_FILE = "auto-ok-times.json";
     private static final String REJECTED_FILE = "rejected.json";
     /** 事件缓冲上限（v8.x 400 → 2000：重度用户约 40 天余量，自动上传常态排空）。 */
     static final int EVENT_CAP = 2000;
@@ -247,26 +264,98 @@ public final class LogStore {
         }
     }
 
-    /* ── manifest（batchId 稳定性——服务端幂等契约）── */
+    /* ── manifest（batchId 稳定性 + v7.9.8 冻结 payload——服务端幂等契约）── */
 
-    /** 取当前头部块 batchId：manifest 非空复用头部（超时重试同号），否则
-     *  生成新 UUID 追加并持久化（POST 前调用——先落盘再发请求）。 */
-    public synchronized String headBatchIdOrAppend() {
+    /** 冻结批次（v2 manifest 记录——重试字节级复用）。 */
+    public static final class FrozenBatch {
+        public String batchId = "";
+        public String createdAt = "";
+        public int realCount;      // pending 中真实事件数（events 可能含注入 STATS）
+        public JSONArray events = new JSONArray();
+    }
+
+    /**
+     * 读取头部冻结批次（无头部或不可用 → null）。
+     * v2 记录（含 events）直接返回；v1 遗留记录（仅 batchId）返回
+     * batchId + 空 events（realCount=-1 标记）——由 sealBatch 补冻。
+     */
+    public synchronized FrozenBatch headFrozenOrNull() {
         JSONArray m = readJsonArray(file(MANIFEST_FILE));
-        if (m.length() > 0) {
-            JSONObject head = m.optJSONObject(0);
-            if (head != null) {
-                String id = head.optString("batchId", "");
-                if (LogUploader.isValidUuid(id)) return id;
-            }
+        if (m.length() == 0) return null;
+        JSONObject head = m.optJSONObject(0);
+        if (head == null) return null;
+        String id = head.optString("batchId", "");
+        if (!LogUploader.isValidUuid(id)) return null;
+        FrozenBatch fb = new FrozenBatch();
+        fb.batchId = id;
+        JSONArray ev = head.optJSONArray("events");
+        if (ev != null && ev.length() > 0) {
+            fb.events = ev;
+            fb.realCount = head.optInt("realCount", ev.length());
+            fb.createdAt = head.optString("createdAt", "");
+            if (fb.createdAt.length() == 0) fb.createdAt = isoOf(head.optLong("at", 0L));
+            return fb;
         }
-        JSONObject rec = new JSONObject();
+        fb.realCount = -1; // v1 遗留：未冻结 payload
+        return fb;
+    }
+
+    /**
+     * 封批冻结（POST 前调用——先落盘再发请求）：
+     *  · 头部已有 v2 冻结记录 → 原样返回（重试不换号不换 payload）；
+     *  · 头部是 v1 遗留记录 → 保留 batchId 补冻当前 chunk（一次性迁移）；
+     *  · 无头部 → 新 UUID 冻结 chunk。
+     * 返回冻结批次；失败返回 null（调用方绝不明知违约外发）。 */
+    public synchronized FrozenBatch sealBatch(JSONArray chunk, String createdAt) {
         try {
-            rec.put("batchId", LogUploader.newBatchId());
+            if (chunk == null || chunk.length() == 0) return null;
+            JSONArray m = readJsonArray(file(MANIFEST_FILE));
+            JSONObject head = m.length() > 0 ? m.optJSONObject(0) : null;
+            String headId = head == null ? "" : head.optString("batchId", "");
+            boolean headFrozen = head != null && head.optJSONArray("events") != null
+                    && head.optJSONArray("events").length() > 0;
+            if (head != null && headFrozen) {
+                FrozenBatch fb = headFrozenOrNull();
+                if (fb != null && fb.realCount >= 0) return fb; // 已冻结：字节级复用
+            }
+            FrozenBatch fb = new FrozenBatch();
+            fb.batchId = LogUploader.isValidUuid(headId) ? headId : LogUploader.newBatchId();
+            fb.createdAt = createdAt;
+            fb.events = chunk;
+            fb.realCount = countReal(chunk);
+            JSONObject rec = new JSONObject();
+            rec.put("batchId", fb.batchId);
             rec.put("at", System.currentTimeMillis());
+            rec.put("createdAt", createdAt);
+            rec.put("realCount", fb.realCount);
+            rec.put("events", chunk);
+            if (head != null) m.remove(0); // v1 遗留头部替换为 v2 冻结记录
             m.put(rec);
             writeJsonArray(file(MANIFEST_FILE), m);
-            return rec.optString("batchId", "");
+            return fb;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /** chunk 中非 STATS 注入事件数（STATS 事件首键 type=STATS——注入事件
+     *  不占 pending 名额，消费时不得从 pending 多删）。 */
+    private static int countReal(JSONArray chunk) {
+        int n = 0;
+        for (int i = 0; i < chunk.length(); i++) {
+            JSONObject e = chunk.optJSONObject(i);
+            if (e != null && !"STATS".equals(e.optString("type", ""))) n++;
+        }
+        return n;
+    }
+
+    private static String isoOf(long ms) {
+        if (ms <= 0) return "";
+        try {
+            java.text.SimpleDateFormat f = new java.text.SimpleDateFormat(
+                    "yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US);
+            f.setTimeZone(java.util.TimeZone.getTimeZone("UTC"));
+            return f.format(new java.util.Date(ms));
         } catch (Throwable t) {
             return "";
         }
@@ -313,9 +402,15 @@ public final class LogStore {
         return readJsonArray(file(REJECTED_FILE)).length();
     }
 
-    /* ── 24h 成功配额（只记成功——服务端确认才计数）── */
+    /* ── 24h 成功配额（只记成功——服务端确认才计数）──
+     * v7.9.8 额度分账（用户指令：手动与自动不互相占用额度）：
+     *  · ok-times.json —— 全部成功（展示用「24h 已成功 N 批」）；
+     *  · auto-ok-times.json —— 仅自动成功（自动 24h/3 闸只看这份）；
+     * 手动成功不占用自动配额；服务端侧共享限额由中转服务 RATE_LIMITED
+     * 如实转达（客户端不越权绕过）。 */
 
-    public synchronized void recordOk(long ts) {
+    /** 记录一次成功（全部账本；manual=true 时不记自动账本）。 */
+    public synchronized void recordOk(long ts, boolean manual) {
         try {
             JSONArray t = readJsonArray(file(OK_TIMES_FILE));
             t.put(ts);
@@ -324,13 +419,37 @@ public final class LogStore {
                 if (ts - t.optLong(i, 0L) < DAY_MS) kept.put(t.optLong(i, 0L));
             }
             writeJsonArray(file(OK_TIMES_FILE), kept);
+            if (!manual) {
+                JSONArray a = readJsonArray(file(AUTO_OK_TIMES_FILE));
+                a.put(ts);
+                JSONArray keptA = new JSONArray();
+                for (int i = 0; i < a.length(); i++) {
+                    if (ts - a.optLong(i, 0L) < DAY_MS) keptA.put(a.optLong(i, 0L));
+                }
+                writeJsonArray(file(AUTO_OK_TIMES_FILE), keptA);
+            }
         } catch (Throwable ignored) {
         }
     }
 
+    /** 兼容入口：只记全部账本（自动账本由 recordOk(ts,false) 管）。 */
+    public synchronized void recordOk(long ts) {
+        recordOk(ts, true);
+    }
+
+    /** 全部成功计数（24h 滚动窗——展示用）。 */
     public synchronized int okCount24h(long now) {
+        return countInWindow(file(OK_TIMES_FILE), now);
+    }
+
+    /** 仅自动成功计数（24h 滚动窗——autoEligible 第三重闸）。 */
+    public synchronized int autoOkCount24h(long now) {
+        return countInWindow(file(AUTO_OK_TIMES_FILE), now);
+    }
+
+    private int countInWindow(File f, long now) {
         int n = 0;
-        JSONArray t = readJsonArray(file(OK_TIMES_FILE));
+        JSONArray t = readJsonArray(f);
         for (int i = 0; i < t.length(); i++) {
             if (now - t.optLong(i, 0L) < DAY_MS) n++;
         }

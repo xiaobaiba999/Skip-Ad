@@ -1,0 +1,5854 @@
+{
+ "meta": {
+  "version": "7.9.8",
+  "generatedAt": "2026-11-23T12:00:00+08:00",
+  "purpose": "开屏广告跳过兼容性矩阵（任务五）：字段按用户指令组织，状态如实——真机实测前一律 NOT_TESTED，绝不把仅有规则的应用标为 PASS",
+  "statusSemantics": {
+   "PASS": "真机实测跳过成功（需真机证据回填）",
+   "FAIL": "真机实测跳过失败（需真机证据回填）",
+   "NOT_TESTED": "尚未真机实测（本轮全部 detection/match/action/final 如实标注）",
+   "NOT_APPLICABLE": "该应用目录标注无开屏广告场景"
+  },
+  "honestNotes": [
+   "ruleExists 仅陈述规则数据级存在（内置订阅/Feed 名单/GKD 快照交叉），不代表跳过成功",
+   "真机 E2E 本轮 NOT_RUN（沙箱无设备）——detection/match/action/final 四态零虚标",
+   "v7.9.8 新增 SCAN_MISS 结构化事件后，真机回填将携带失败码证据（NO_RULE_ZERO_CAND/RULE_MISS_ZERO_CAND/SILENT_TREE_ZERO_CAND/VIDEO_LIKE_ZERO_CAND）"
+  ],
+  "stats": {
+   "total": 233,
+   "splashApplicable": 163,
+   "ruleExists": 174,
+   "notTested": 163,
+   "notApplicable": 70,
+   "passCount": 0,
+   "failCount": 0
+  }
+ },
+ "apps": [
+  {
+   "packageName": "com.tencent.mm",
+   "appName": "微信",
+   "category": "social-im",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.tencent.mobileqq",
+   "appName": "QQ",
+   "category": "social-im",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.sina.weibo",
+   "appName": "微博",
+   "category": "social-im",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": true,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.weico.international",
+   "appName": "微博(国际版)",
+   "category": "social-im",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.ss.android.lark",
+   "appName": "飞书",
+   "category": "social-im",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.alibaba.android.rimet",
+   "appName": "钉钉",
+   "category": "social-im",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.tencent.wework",
+   "appName": "企业微信",
+   "category": "social-im",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.tencent.tim",
+   "appName": "TIM",
+   "category": "social-im",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.xingin.xhs",
+   "appName": "小红书",
+   "category": "social-im",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": true,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "cn.soulapp.android",
+   "appName": "Soul",
+   "category": "social-im",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.p1.mobile.putong",
+   "appName": "探探",
+   "category": "social-im",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.immomo.app",
+   "appName": "陌陌",
+   "category": "social-im",
+   "splashSupport": true,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.zhihu.android",
+   "appName": "知乎",
+   "category": "social-im",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": true,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.douban.frodo",
+   "appName": "豆瓣",
+   "category": "social-im",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.baidu.tieba",
+   "appName": "百度贴吧",
+   "category": "social-im",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.instagram.android",
+   "appName": "Instagram",
+   "category": "social-im",
+   "splashSupport": false,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.whatsapp",
+   "appName": "WhatsApp",
+   "category": "social-im",
+   "splashSupport": false,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.facebook.katana",
+   "appName": "Facebook",
+   "category": "social-im",
+   "splashSupport": false,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.facebook.orca",
+   "appName": "Messenger",
+   "category": "social-im",
+   "splashSupport": false,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.twitter.android",
+   "appName": "X (Twitter)",
+   "category": "social-im",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "org.telegram.messenger",
+   "appName": "Telegram",
+   "category": "social-im",
+   "splashSupport": false,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.snapchat.android",
+   "appName": "Snapchat",
+   "category": "social-im",
+   "splashSupport": false,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.discord",
+   "appName": "Discord",
+   "category": "social-im",
+   "splashSupport": false,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.reddit.frontpage",
+   "appName": "Reddit",
+   "category": "social-im",
+   "splashSupport": false,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "jp.naver.line.android",
+   "appName": "LINE",
+   "category": "social-im",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.ss.android.ugc.aweme",
+   "appName": "抖音",
+   "category": "video",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": true,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.ss.android.ugc.aweme.lite",
+   "appName": "抖音极速版",
+   "category": "video",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.smile.gifmaker",
+   "appName": "快手",
+   "category": "video",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": true,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.kwai.video",
+   "appName": "快手极速版",
+   "category": "video",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "tv.danmaku.bili",
+   "appName": "哔哩哔哩",
+   "category": "video",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": true,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.tencent.qqlive",
+   "appName": "腾讯视频",
+   "category": "video",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.qiyi.video",
+   "appName": "爱奇艺",
+   "category": "video",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.youku.phone",
+   "appName": "优酷",
+   "category": "video",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.hunantv.imgo.activity",
+   "appName": "芒果TV",
+   "category": "video",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.baidu.haokan",
+   "appName": "好看视频",
+   "category": "video",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.ss.android.article.video",
+   "appName": "西瓜视频",
+   "category": "video",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.sohu.sohuvideo",
+   "appName": "搜狐视频",
+   "category": "video",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.cmcc.cmvideo",
+   "appName": "咪咕视频",
+   "category": "video",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.lemon.lv",
+   "appName": "剪映",
+   "category": "video",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.lemon.lvoverseas",
+   "appName": "CapCut",
+   "category": "video",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.tencent.weishi",
+   "appName": "微视",
+   "category": "video",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.duowan.kiwi",
+   "appName": "虎牙直播",
+   "category": "video",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "air.tv.douyu.android.inc",
+   "appName": "斗鱼直播",
+   "category": "video",
+   "splashSupport": true,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.google.android.youtube",
+   "appName": "YouTube",
+   "category": "video",
+   "splashSupport": false,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.netflix.mediaclient",
+   "appName": "Netflix",
+   "category": "video",
+   "splashSupport": false,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.amazon.avod.thirdpartyclient",
+   "appName": "Prime Video",
+   "category": "video",
+   "splashSupport": false,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.disney.disneyplus",
+   "appName": "Disney+",
+   "category": "video",
+   "splashSupport": false,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.hulu.plus",
+   "appName": "Hulu",
+   "category": "video",
+   "splashSupport": false,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.mxtech.videoplayer.ad",
+   "appName": "MX Player",
+   "category": "video",
+   "splashSupport": false,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "org.videolan.vlc",
+   "appName": "VLC",
+   "category": "video",
+   "splashSupport": false,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.ss.android.article.news",
+   "appName": "今日头条",
+   "category": "news-feed",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": true,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.ss.android.article.lite",
+   "appName": "今日头条极速版",
+   "category": "news-feed",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.netease.newsreader.activity",
+   "appName": "网易新闻",
+   "category": "news-feed",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": true,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.sina.news",
+   "appName": "新浪新闻",
+   "category": "news-feed",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": true,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.tencent.news",
+   "appName": "腾讯新闻",
+   "category": "news-feed",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": true,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.phoenix.newclient",
+   "appName": "凤凰新闻",
+   "category": "news-feed",
+   "splashSupport": true,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.sohu.newsclient",
+   "appName": "搜狐新闻",
+   "category": "news-feed",
+   "splashSupport": true,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.ruanmei.ithome",
+   "appName": "IT之家",
+   "category": "news-feed",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.wondertek.paper",
+   "appName": "澎湃新闻",
+   "category": "news-feed",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.hupu.games",
+   "appName": "虎扑",
+   "category": "news-feed",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": true,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.ss.android.auto.automobile",
+   "appName": "懂车帝",
+   "category": "news-feed",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.cubic.autohome",
+   "appName": "汽车之家",
+   "category": "news-feed",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": true,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.zol.android",
+   "appName": "中关村在线",
+   "category": "news-feed",
+   "splashSupport": false,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": true,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.smzdm.client.android",
+   "appName": "什么值得买",
+   "category": "news-feed",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.jifen.qukan",
+   "appName": "趣头条",
+   "category": "news-feed",
+   "splashSupport": true,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "net.csdn.csdnplus",
+   "appName": "CSDN",
+   "category": "news-feed",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.nytimes.android",
+   "appName": "The New York Times",
+   "category": "news-feed",
+   "splashSupport": false,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "bbc.mobile.news.ww",
+   "appName": "BBC News",
+   "category": "news-feed",
+   "splashSupport": false,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "flipboard.app",
+   "appName": "Flipboard",
+   "category": "news-feed",
+   "splashSupport": false,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.google.android.apps.magazines",
+   "appName": "Google News",
+   "category": "news-feed",
+   "splashSupport": false,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.taobao.taobao",
+   "appName": "淘宝",
+   "category": "ecommerce",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.tmall.wireless",
+   "appName": "天猫",
+   "category": "ecommerce",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.jingdong.app.mall",
+   "appName": "京东",
+   "category": "ecommerce",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.jingdong.pdj",
+   "appName": "京东到家",
+   "category": "ecommerce",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.xunmeng.pinduoduo",
+   "appName": "拼多多",
+   "category": "ecommerce",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.achievo.vipshop",
+   "appName": "唯品会",
+   "category": "ecommerce",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.taobao.idlefish",
+   "appName": "闲鱼",
+   "category": "ecommerce",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.wuba.zhuanzhuan",
+   "appName": "转转",
+   "category": "ecommerce",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.mogujie",
+   "appName": "蘑菇街",
+   "category": "ecommerce",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.shizhuang.duapp",
+   "appName": "得物",
+   "category": "ecommerce",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.suning.mobile.ebuy",
+   "appName": "苏宁易购",
+   "category": "ecommerce",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.xiaomi.shop",
+   "appName": "小米商城",
+   "category": "ecommerce",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.dangdang.buy2",
+   "appName": "当当",
+   "category": "ecommerce",
+   "splashSupport": true,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "cn.TuHu.android",
+   "appName": "途虎养车",
+   "category": "ecommerce",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.netease.yanxuan",
+   "appName": "网易严选",
+   "category": "ecommerce",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.wudaokou.hippo",
+   "appName": "盒马",
+   "category": "ecommerce",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.alibaba.wireless",
+   "appName": "1688(阿里巴巴)",
+   "category": "ecommerce",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.einnovation.temu",
+   "appName": "Temu",
+   "category": "ecommerce",
+   "splashSupport": false,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.amazon.mShop.android.shopping",
+   "appName": "Amazon Shopping",
+   "category": "ecommerce",
+   "splashSupport": false,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.ebay.mobile",
+   "appName": "eBay",
+   "category": "ecommerce",
+   "splashSupport": false,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.alibaba.aliexpresshd",
+   "appName": "AliExpress",
+   "category": "ecommerce",
+   "splashSupport": false,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.etsy.android",
+   "appName": "Etsy",
+   "category": "ecommerce",
+   "splashSupport": false,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.walmart.android",
+   "appName": "Walmart",
+   "category": "ecommerce",
+   "splashSupport": false,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.target.ui",
+   "appName": "Target",
+   "category": "ecommerce",
+   "splashSupport": false,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.contextlogic.wish",
+   "appName": "Wish",
+   "category": "ecommerce",
+   "splashSupport": false,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.flipkart.android",
+   "appName": "Flipkart",
+   "category": "ecommerce",
+   "splashSupport": true,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.netease.cloudmusic",
+   "appName": "网易云音乐",
+   "category": "music-audio",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.tencent.qqmusic",
+   "appName": "QQ音乐",
+   "category": "music-audio",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.kugou.android",
+   "appName": "酷狗音乐",
+   "category": "music-audio",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "cn.kuwo.player",
+   "appName": "酷我音乐",
+   "category": "music-audio",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.ximalaya.ting.android",
+   "appName": "喜马拉雅",
+   "category": "music-audio",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "cmccwm.mobilemusic",
+   "appName": "咪咕音乐",
+   "category": "music-audio",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.spotify.music",
+   "appName": "Spotify",
+   "category": "music-audio",
+   "splashSupport": false,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.apple.android.music",
+   "appName": "Apple Music",
+   "category": "music-audio",
+   "splashSupport": false,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.soundcloud.android",
+   "appName": "SoundCloud",
+   "category": "music-audio",
+   "splashSupport": false,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.google.android.apps.youtube.music",
+   "appName": "YouTube Music",
+   "category": "music-audio",
+   "splashSupport": false,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.baidu.searchbox",
+   "appName": "百度",
+   "category": "browser-search",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": true,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.UCMobile",
+   "appName": "UC浏览器",
+   "category": "browser-search",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": true,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.tencent.mtt",
+   "appName": "QQ浏览器",
+   "category": "browser-search",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": true,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.quark.browser",
+   "appName": "夸克",
+   "category": "browser-search",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": true,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.android.chrome",
+   "appName": "Chrome",
+   "category": "browser-search",
+   "splashSupport": false,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "org.mozilla.firefox",
+   "appName": "Firefox",
+   "category": "browser-search",
+   "splashSupport": false,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.microsoft.emmx",
+   "appName": "Microsoft Edge",
+   "category": "browser-search",
+   "splashSupport": false,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.opera.browser",
+   "appName": "Opera",
+   "category": "browser-search",
+   "splashSupport": false,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "mark.via",
+   "appName": "via浏览器",
+   "category": "browser-search",
+   "splashSupport": false,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.brave.browser",
+   "appName": "Brave",
+   "category": "browser-search",
+   "splashSupport": false,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.duckduckgo.mobile.android",
+   "appName": "DuckDuckGo",
+   "category": "browser-search",
+   "splashSupport": false,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "cn.wps.moffice_eng",
+   "appName": "WPS",
+   "category": "tools-system",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.baidu.netdisk",
+   "appName": "百度网盘",
+   "category": "tools-system",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.autonavi.minimap",
+   "appName": "高德地图",
+   "category": "tools-system",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.baidu.BaiduMap",
+   "appName": "百度地图",
+   "category": "tools-system",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.tencent.map",
+   "appName": "腾讯地图",
+   "category": "tools-system",
+   "splashSupport": true,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.snda.wifilocating",
+   "appName": "WiFi万能钥匙",
+   "category": "tools-system",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": true,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.xunlei.downloadprovider",
+   "appName": "迅雷",
+   "category": "tools-system",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.moji.mjweather",
+   "appName": "墨迹天气",
+   "category": "tools-system",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.mt.mtxx.mtxx",
+   "appName": "美图秀秀",
+   "category": "tools-system",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.youdao.dict",
+   "appName": "有道词典",
+   "category": "tools-system",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.youdao.note",
+   "appName": "有道云笔记",
+   "category": "tools-system",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.tencent.qqpimsecure",
+   "appName": "腾讯手机管家",
+   "category": "tools-system",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.qihoo360.mobilesafe",
+   "appName": "360手机卫士",
+   "category": "tools-system",
+   "splashSupport": true,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.coolapk.market",
+   "appName": "酷安",
+   "category": "tools-system",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.estrongs.android.pop",
+   "appName": "ES文件浏览器",
+   "category": "tools-system",
+   "splashSupport": false,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "bin.mt.plus",
+   "appName": "MT管理器",
+   "category": "tools-system",
+   "splashSupport": false,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.gotokeep.keep",
+   "appName": "Keep",
+   "category": "tools-system",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.netease.mail",
+   "appName": "网易邮箱大师",
+   "category": "tools-system",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.sohu.inputmethod.sogou",
+   "appName": "搜狗输入法",
+   "category": "tools-system",
+   "splashSupport": false,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.baidu.input",
+   "appName": "百度输入法",
+   "category": "tools-system",
+   "splashSupport": false,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.iflytek.inputmethod",
+   "appName": "讯飞输入法",
+   "category": "tools-system",
+   "splashSupport": false,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.google.android.gm",
+   "appName": "Gmail",
+   "category": "tools-system",
+   "splashSupport": false,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.android.vending",
+   "appName": "Google Play 商店",
+   "category": "tools-system",
+   "splashSupport": false,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.google.android.apps.maps",
+   "appName": "Google Maps",
+   "category": "tools-system",
+   "splashSupport": false,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.dragon.read",
+   "appName": "番茄小说",
+   "category": "reading",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.kmxs.reader",
+   "appName": "七猫免费小说",
+   "category": "reading",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.qidian.QDReader",
+   "appName": "起点读书",
+   "category": "reading",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.zhangyue.read.iReader",
+   "appName": "掌阅",
+   "category": "reading",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.tencent.weread",
+   "appName": "微信读书",
+   "category": "reading",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.kuaikan.comic",
+   "appName": "快看漫画",
+   "category": "reading",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.xs.fm",
+   "appName": "番茄畅听",
+   "category": "reading",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.luojilab.player",
+   "appName": "得到",
+   "category": "reading",
+   "splashSupport": true,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.shuqi.controller",
+   "appName": "书旗小说",
+   "category": "reading",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.qq.reader",
+   "appName": "QQ阅读",
+   "category": "reading",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.qq.ac.android",
+   "appName": "腾讯动漫",
+   "category": "reading",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.bilibili.comic",
+   "appName": "哔哩哔哩漫画",
+   "category": "reading",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.duokan.reader",
+   "appName": "多看阅读",
+   "category": "reading",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.amazon.kindle",
+   "appName": "Kindle",
+   "category": "reading",
+   "splashSupport": false,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.google.android.apps.books",
+   "appName": "Google Play Books",
+   "category": "reading",
+   "splashSupport": false,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.tencent.tmgp.sgame",
+   "appName": "王者荣耀",
+   "category": "games",
+   "splashSupport": false,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.miHoYo.Yuanshen",
+   "appName": "原神",
+   "category": "games",
+   "splashSupport": false,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.miHoYo.bh3.bh3game",
+   "appName": "崩坏3",
+   "category": "games",
+   "splashSupport": false,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.happyelements.AndroidAnimal",
+   "appName": "开心消消乐",
+   "category": "games",
+   "splashSupport": false,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.tencent.tmgp.pubgmhd",
+   "appName": "和平精英",
+   "category": "games",
+   "splashSupport": false,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.supercell.clashofclans",
+   "appName": "部落冲突",
+   "category": "games",
+   "splashSupport": false,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.supercell.clashroyale",
+   "appName": "皇室战争",
+   "category": "games",
+   "splashSupport": false,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.king.candycrushsaga",
+   "appName": "Candy Crush Saga",
+   "category": "games",
+   "splashSupport": false,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.tencent.ig",
+   "appName": "PUBG Mobile",
+   "category": "games",
+   "splashSupport": false,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.roblox.client",
+   "appName": "Roblox",
+   "category": "games",
+   "splashSupport": false,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.mojang.minecraft",
+   "appName": "Minecraft",
+   "category": "games",
+   "splashSupport": false,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.tencent.android.qqdownloader",
+   "appName": "应用宝",
+   "category": "games",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.xiaomi.market",
+   "appName": "小米应用商店",
+   "category": "games",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": true,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.huawei.appmarket",
+   "appName": "华为应用市场",
+   "category": "games",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.oppo.market",
+   "appName": "OPPO软件商店",
+   "category": "games",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.bbk.appstore",
+   "appName": "vivo应用商店",
+   "category": "games",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.taptap.global",
+   "appName": "TapTap(国际版)",
+   "category": "games",
+   "splashSupport": true,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.chaoxing.mobile",
+   "appName": "学习通",
+   "category": "education",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.baidu.homework",
+   "appName": "作业帮",
+   "category": "education",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.handsgo.jiakao.android",
+   "appName": "驾考宝典",
+   "category": "education",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.jiongji.andriod.card",
+   "appName": "百词斩",
+   "category": "education",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "cn.xuexi.android",
+   "appName": "学习强国",
+   "category": "education",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.tencent.wemeeting.app",
+   "appName": "腾讯会议",
+   "category": "education",
+   "splashSupport": true,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "us.zoom.videomeetings",
+   "appName": "Zoom",
+   "category": "education",
+   "splashSupport": false,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.fenbi.android.souti",
+   "appName": "小猿搜题",
+   "category": "education",
+   "splashSupport": true,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.duolingo",
+   "appName": "Duolingo",
+   "category": "education",
+   "splashSupport": false,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "org.coursera.android",
+   "appName": "Coursera",
+   "category": "education",
+   "splashSupport": false,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "org.khanacademy.android",
+   "appName": "Khan Academy",
+   "category": "education",
+   "splashSupport": false,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.ted.android",
+   "appName": "TED",
+   "category": "education",
+   "splashSupport": false,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.ichi2.anki",
+   "appName": "AnkiDroid",
+   "category": "education",
+   "splashSupport": false,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.google.android.apps.classroom",
+   "appName": "Google Classroom",
+   "category": "education",
+   "splashSupport": false,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.google.android.apps.translate",
+   "appName": "Google 翻译",
+   "category": "education",
+   "splashSupport": false,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.eg.android.AlipayGphone",
+   "appName": "支付宝",
+   "category": "finance-life",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.unionpay",
+   "appName": "云闪付",
+   "category": "finance-life",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.icbc",
+   "appName": "工商银行",
+   "category": "finance-life",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.chinamworld.main",
+   "appName": "建设银行",
+   "category": "finance-life",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.chinamworld.BOCMB",
+   "appName": "中国银行",
+   "category": "finance-life",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.android.bankabc",
+   "appName": "农业银行",
+   "category": "finance-life",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.bankcomm.Bankcomm",
+   "appName": "交通银行",
+   "category": "finance-life",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.cmbchina.ccd.pluto.spongeactivity",
+   "appName": "招商银行",
+   "category": "finance-life",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.psbc.rpc",
+   "appName": "邮储银行",
+   "category": "finance-life",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.pingan.paces.ccms",
+   "appName": "平安口袋银行",
+   "category": "finance-life",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.xueqiu.android",
+   "appName": "雪球",
+   "category": "finance-life",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.hexin.plat.android.supremacy",
+   "appName": "同花顺(至尊版)",
+   "category": "finance-life",
+   "splashSupport": true,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.paypal.android.p2p",
+   "appName": "PayPal",
+   "category": "finance-life",
+   "splashSupport": false,
+   "ruleExists": false,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "none",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.sankuai.meituan",
+   "appName": "美团",
+   "category": "finance-life",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "me.ele",
+   "appName": "饿了么",
+   "category": "finance-life",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.dianping.v1",
+   "appName": "大众点评",
+   "category": "finance-life",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.sdu.didi.psnger",
+   "appName": "滴滴出行",
+   "category": "finance-life",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.MobileTicket",
+   "appName": "铁路12306",
+   "category": "finance-life",
+   "splashSupport": false,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_APPLICABLE",
+   "matchStatus": "NOT_APPLICABLE",
+   "actionStatus": "NOT_APPLICABLE",
+   "finalStatus": "NOT_APPLICABLE",
+   "failureReason": "catalog-no-splash-scene",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.ctrip.android.view.ctriptrip",
+   "appName": "携程旅行",
+   "category": "finance-life",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.Qunar",
+   "appName": "去哪儿旅行",
+   "category": "finance-life",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.taobao.trip",
+   "appName": "飞猪",
+   "category": "finance-life",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.dp.android.elong",
+   "appName": "艺龙旅行",
+   "category": "finance-life",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.mfw.roadbook",
+   "appName": "马蜂窝",
+   "category": "finance-life",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.tuniu.app.ui",
+   "appName": "途牛旅游",
+   "category": "finance-life",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.jingyao.easybike",
+   "appName": "哈啰",
+   "category": "finance-life",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.t3go.passenger",
+   "appName": "T3出行",
+   "category": "finance-life",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.caocao.app",
+   "appName": "曹操出行",
+   "category": "finance-life",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.umetrip.android.msky.app",
+   "appName": "航旅纵横",
+   "category": "finance-life",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "veryzhun.vzcom",
+   "appName": "飞常准",
+   "category": "finance-life",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.sf.activity",
+   "appName": "顺丰速运",
+   "category": "finance-life",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.cainiao.wireless",
+   "appName": "菜鸟裹裹",
+   "category": "finance-life",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.hpbr.bosszhipin",
+   "appName": "BOSS直聘",
+   "category": "finance-life",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.anjuke.android",
+   "appName": "安居客",
+   "category": "finance-life",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.lianjia.beike",
+   "appName": "贝壳找房",
+   "category": "finance-life",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.wuba",
+   "appName": "58同城",
+   "category": "finance-life",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.lingan.seeyou",
+   "appName": "美柚",
+   "category": "misc",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.ct.client",
+   "appName": "中国电信",
+   "category": "misc",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.greenpoint.android.mc10086.activity",
+   "appName": "中国移动",
+   "category": "misc",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.sinovatech.unicom.ui",
+   "appName": "中国联通",
+   "category": "misc",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.huochepiao.user",
+   "appName": "智行火车票",
+   "category": "misc",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.flightmanager.view",
+   "appName": "航班管家",
+   "category": "misc",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": true,
+    "feedList": false,
+    "gkdSnapshot": false
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.miui.player",
+   "appName": "小米音乐(预装)",
+   "category": "misc",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.miui.video",
+   "appName": "小米视频(预装)",
+   "category": "misc",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.android.browser",
+   "appName": "小米浏览器(预装)",
+   "category": "misc",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  },
+  {
+   "packageName": "com.huawei.browser",
+   "appName": "华为浏览器(预装)",
+   "category": "misc",
+   "splashSupport": true,
+   "ruleExists": true,
+   "ruleSources": {
+    "builtinSubscription": false,
+    "feedList": false,
+    "gkdSnapshot": true
+   },
+   "detectionStatus": "NOT_TESTED",
+   "matchStatus": "NOT_TESTED",
+   "actionStatus": "NOT_TESTED",
+   "finalStatus": "NOT_TESTED",
+   "failureReason": "",
+   "testEvidence": "l1-rule-existence",
+   "lastTestVersion": "7.9.4",
+   "statusVocabulary": [
+    "PASS",
+    "FAIL",
+    "NOT_TESTED",
+    "NOT_APPLICABLE"
+   ]
+  }
+ ]
+}

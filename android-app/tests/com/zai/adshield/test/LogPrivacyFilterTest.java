@@ -37,6 +37,8 @@ public final class LogPrivacyFilterTest {
         s7_maxEvents();
         TestHost.suite("过滤 S8 · LogEvents 工厂自洽（零剥离契约）");
         s8_factorySchema();
+        TestHost.suite("过滤 S9 · SCAN_MISS 失败码纯函数（v7.9.8）");
+        s9_scanMissCode();
         TestHost.done();
     }
 
@@ -200,13 +202,18 @@ public final class LogPrivacyFilterTest {
                 com.zai.adshield.core.DecisionEvidence.SRC_IMAGE, "不在词族的文本", false));
         all.put(LogEvents.verify("com.app.six", true));
         all.put(LogEvents.verify("com.app.seven", false));
-        all.put(LogEvents.stats(new int[]{1, 2, 3, 4, 5, 6, 7, 8}, 9, 10, 11));
+        all.put(LogEvents.stats(new int[]{1, 2, 3, 4, 5, 6, 7, 8}, 9, 10, 11, "DEV_Test.Brand"));
         all.put(LogEvents.gkdError("java.io.IOException"));
         all.put(LogEvents.videoPoll("com.app.eight", 1500L));
         all.put(LogEvents.crash("java.lang.NullPointerException"));
+        /* v7.9.8 SCAN_MISS：白名单事件类型首次接线（零候选窗结构化诊断） */
+        all.put(LogEvents.scanMiss("com.app.nine", "com.app.nine.MainActivity", false,
+                "NO_RULE_ZERO_CAND", 3, 4200L));
+        all.put(LogEvents.scanMiss("com.app.ten", "com.app.ten.AdDialog", true,
+                "VIDEO_LIKE_ZERO_CAND", 1, 2600L));
         LogPrivacyFilter.Result r = LogPrivacyFilter.sanitizeEvents(all);
         TestHost.check(!r.privacyRejected, "S8a 工厂输出零危险键");
-        TestHost.check(r.events.length() == 11, "S8b 工厂输出零事件丢弃");
+        TestHost.check(r.events.length() == 13, "S8b 工厂输出零事件丢弃");
         // click 词族外文本：工厂主动不带 → 剥离数为 0（不是靠服务端剥离兜底）
         TestHost.check(r.stripped == 0, "S8c 工厂输出零字段剥离（词族外 text 工厂已丢弃）");
         // 圆整：数字字段以字符串入（服务端互转契约），可回读
@@ -219,6 +226,34 @@ public final class LogPrivacyFilterTest {
         TestHost.checkEq("跳过广告", ck.optString("text"), "S8f 词族内 text 保留");
         TestHost.checkEq("TEXT", ck.optString("candidateSource"), "S8g candidateSource 枚举映射");
         TestHost.checkEq("DISPATCHED", ck.optString("clickResult"), "S8h clickResult 枚举");
+        // SCAN_MISS 白名单契约（v7.9.8——服务端字段面零新增）
+        JSONObject sm = r.events.optJSONObject(11);
+        TestHost.checkEq("SCAN_MISS", sm.optString("type"), "S8i SCAN_MISS 类型白名单内");
+        TestHost.checkEq("SPLASH", sm.optString("ui"), "S8j ui 枚举（开屏）");
+        TestHost.checkEq("NO_RULE_ZERO_CAND", sm.optString("errClass"), "S8k 稳定失败码入 errClass");
+        TestHost.checkEq("3", sm.optString("scanCount"), "S8l 零候选次数");
+        TestHost.checkEq("4200", sm.optString("intervalMs"), "S8m 静默时长");
+        JSONObject sm2 = r.events.optJSONObject(12);
+        TestHost.checkEq("INTERSTITIAL", sm2.optString("ui"), "S8n ui 枚举（弹窗窗期）");
+        // STATS 设备码（v7.9.8）：白名单形态携带——errClass 字段面
+        JSONObject stt = r.events.optJSONObject(7);
+        TestHost.checkEq("DEV_Test.Brand", stt.optString("errClass"), "S8o 设备码经 STATS 上行");
+    }
+
+    /* ── S9 SCAN_MISS 失败码纯函数（v7.9.8）── */
+    static void s9_scanMissCode() {
+        TestHost.checkEq("VIDEO_LIKE_ZERO_CAND",
+                LogEvents.scanMissCode(false, 2500L, false),
+                "S9a 零内容事件+窗龄≥2s → 视频容器静默铁证");
+        TestHost.checkEq("SILENT_TREE_ZERO_CAND",
+                LogEvents.scanMissCode(false, 1200L, true),
+                "S9b 零内容事件+窗龄尚短 → 树静默观察中");
+        TestHost.checkEq("NO_RULE_ZERO_CAND",
+                LogEvents.scanMissCode(true, 800L, false),
+                "S9c 有内容事件+无规则 → 补规则/订阅可解");
+        TestHost.checkEq("RULE_MISS_ZERO_CAND",
+                LogEvents.scanMissCode(true, 800L, true),
+                "S9d 有内容事件+有规则 → 规则未命中（需看样本）");
     }
 
     static JSONArray arr(JSONObject... es) {

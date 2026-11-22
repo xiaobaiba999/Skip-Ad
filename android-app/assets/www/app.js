@@ -1,4 +1,4 @@
-/* 开屏卫士 v7.9.7 · 版本体系收口：versionName 7.9.7 = versionCode 79700（v7.1.0 起标准公式 major*10000+minor*1000+patch*100，Tag/Release/APK 同名）+ Bug 反馈一次性提示 · 引擎与日志业务保持 v7.9.6plus 实测形态 */
+/* 开屏卫士 v7.9.8 · 日志上传可靠性专项：冻结批次幂等（同 batchId 必同 payload——彻底终结「第一次失败、第二次被服务端拒」）+ 错误八类如实分类 + 手动/自动额度分账 + Bug 反馈提示 24h 节流 + 引擎日志导出功能下线 + SCAN_MISS 结构化诊断 · 广告跳过核心零改动 */
 "use strict";
 
 /* ══════════ 环境 ══════════ */
@@ -23,8 +23,8 @@ const store = {
 };
 
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "7.9.7"; }
-function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "79700"; }
+function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "7.9.8"; }
+function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "79800"; }
 
 /* ══════════ 吉祥物（v4.1.0 全新形象：白机器人小侠 + 绿披风跳跃） ══════════
  * 与启动器图标同源；state: on（跳跃浮动）/ off（灰度待命） */
@@ -35,17 +35,17 @@ function mascotImg(size, state, head) {
 
 $("#brand-logo").innerHTML = mascotImg(30, "on", true);
 
-/* ═══ v7.9.7 版本记录（版本体系收口 + Bug 反馈提示）═══ */
+/* ═══ v7.9.8 版本记录（日志上传可靠性专项 + 反馈提示优化）═══ */
 const CURRENT_RELEASE = {
   date: "2026-11-23",
-  title: "版本体系收口：versionName 7.9.7 = versionCode 79700（标准三段式同名同码）+ Bug 反馈一次性提示",
+  title: "日志上传可靠性专项修复 + Bug 反馈提示 24h 节流 + 引擎日志导出下线 + 扫描未命中结构化诊断",
   features: [
-    "版本体系收口：彻底告别 7.9.6plus→82300 的名码不对应——从本版起 versionName = Git Tag = Release = APK versionName，versionCode 严格遵循 v7.1.0 起标准公式 major*10000+minor*1000+patch*100（7.9.7→79700），以后每一版都如此",
-    "Bug 反馈提示：新版本首次进入一次性轻提示「发现 Bug 或使用不舒服？可到 我的→引擎日志→一键上传 反馈」（广告没跳过/跳过不准确/App 卡顿/误跳/其他异常），可「去上传日志」直达入口或「知道了」关闭；只提醒绝不自动上传、不采集任何新数据、同版本不弹第二次",
-    "更新检测保持 versionCode 主判（远端 > 本地才提示，79700=79700 不自误报）+ 全屏更新页 + 下载前绑定 SHA-256/大小安装前校验全链保持",
-    "引擎与日志系统零改动：广告跳过核心/无障碍扫描/日志采集/手动上传/自动上传额度（24 小时最多成功 3 次·只记服务端确认·失败不耗额度）全部保持 v7.9.6plus 实测形态",
+    "日志上传根治「第一次失败、第二次被服务端拒」：上传批次冻结（同 batchId 必同 payload）+ 读超时 15s→45s + 失败按真实原因八类如实提示（网络连接失败/上传超时/服务端拒绝/频率限制/格式异常/服务暂不可用等——不再一律「稍后再试」）",
+    "手动与自动上传额度分账：手动成功不再占用自动 24 小时 3 次限额；服务端限流仍如实转达",
+    "Bug 反馈提示升级为 24 小时节流：确认后 24h 内不再弹、超过 24h 下次进入 App 重新提醒、未确认不消耗资格；「去上传日志」仍只导航不代传",
+    "引擎日志页移除「导出」按钮（日志采集/查看/一键上传全保留）；扫描未命中新增结构化诊断事件（无规则/规则未命中/视频容器静默等稳定失败码 + 设备码），一次上传即可定位「为什么没跳过」",
   ],
-  summary: "版本体系恢复正常：7.9.7 → 79700（Tag/Release/APK 同名同码）+ 进入 App 一次性提示「发现 Bug 或使用不舒服可到 我的→引擎日志→一键上传 反馈」（只提醒不自动上传）。",
+  summary: "v7.9.8：上传幂等与错误如实化修复轮——冻结批次终结两连失败，反馈提示 24h 节流，导出下线，未命中诊断补齐证据链。",
 
 };
 
@@ -1188,28 +1188,39 @@ function hideUpdateGate() {
   if (gate) gate.remove();
 }
 
-/* ══════════ v7.9.7 Bug 反馈提示（一次性 · 纯本地 · 绝不自动上传）══════════
- * 用户指令：进入 App 后明确知道「发现 Bug 或使用起来不舒服 → 我的 →
- * 引擎日志 → 一键上传」这个反馈入口。设计约束（全部硬性）：
- *  · 只提醒：两个按钮任何一个被点击都只记录 bugTipShown=当前版本号
- *    （SharedPreferences kvSet 白名单键 / 浏览器预览 localStorage），
- *    绝不触发任何上传、绝不采集任何新数据、绝不创建 Issue；
- *  · 一次性：标记按版本号存储——同版本第二次进入不再弹；新版本首次
- *    进入会再提醒一次（用户指令「新版本首次进入显示一次」）；
- *  · 更新页优先：启动更新检查发现新版本显示全屏更新页时本轮不弹
- *    （z-index 110 < 更新页 120），升级后首启再提示；
- *  · 零性能影响：无 Accessibility 扫描挂钩、无 OCR、无截图、无 Worker、
- *    无 Service、无网络请求（纯本地 UI 状态，检查失败也不影响）；
- *  · 日志系统零改动：采集/手动上传/自动上传额度（24h 最多成功 3 次）
- *    全部保持 v7.9.6plus 实测形态——「去上传日志」只做页面导航，
- *    是否真的上传由用户在「我的」页自己决定。 */
+/* ══════════ v7.9.8 Bug 反馈提示（24h 节流 · 纯本地 · 绝不自动上传）══════════
+ * 用户指令（取代 v7.9.7 一次性提示）：
+ *  · 每次进入 App 都有机会看到提示（冷启动 init 评估，非前后台切换）；
+ *  · 「知道了」/「去上传日志」任一确认 → 记录 bug_feedback_confirmed_at
+ *    （epoch 毫秒，SharedPreferences kvSet 白名单键 / 浏览器 localStorage
+ *    兑底），24h 内不再显示；超过 24h 下次进入 App 重新显示；
+ *  · 用户未确认不永久消耗资格（无任何永久 true/false 标记——只看时间戳）；
+ *  · Activity 重建/旋转防护：展示时记 bug_feedback_shown_at，5 分钟短窗内
+ *    重建不再重复弹（短窗只防抖不耗资格）；
+ *  · 前后台切换不重复弹（visibilitychange 不评估——仅 init 调 maybeShowBugTip）；
+ *  · 更新提示优先：#update-gate 在场不弹（z-index 110 < 更新页 120）；
+ *  · 「去上传日志」只做导航（切「我的」页 + 滚到引擎日志卡片），绝不代替
+ *    用户点击上传、绝不自动建 Issue、绝不消耗上传次数；同时记确认时间戳
+ *    （从日志页返回 App 不立即重复弹）。 */
+const BUG_TIP_THROTTLE_MS = 24 * 60 * 60 * 1000;  /* 确认后 24h 节流 */
+const BUG_TIP_RESHOW_GUARD_MS = 5 * 60 * 1000;    /* 展示后 5min 防重建重复弹 */
 let bugTipShownThisSession = false;
-function bugTipDismissed() {
-  try { return store.get("bugTipShown", "") === appVer(); } catch (e) { return true; }
+function bugTipThrottled() {
+  try {
+    const t = parseInt(store.get("bug_feedback_confirmed_at", "0"), 10) || 0;
+    return t > 0 && (Date.now() - t) < BUG_TIP_THROTTLE_MS;
+  } catch (e) { return true; }
+}
+function bugTipRecentlyShown() {
+  try {
+    const t = parseInt(store.get("bug_feedback_shown_at", "0"), 10) || 0;
+    return t > 0 && (Date.now() - t) < BUG_TIP_RESHOW_GUARD_MS;
+  } catch (e) { return true; }
 }
 function showBugTip() {
   if (bugTipShownThisSession) return;
   bugTipShownThisSession = true;
+  try { store.set("bug_feedback_shown_at", String(Date.now())); } catch (e) {}
   let tip = $("#bug-tip");
   if (tip) tip.remove();
   tip = document.createElement("div");
@@ -1217,30 +1228,31 @@ function showBugTip() {
   tip.innerHTML =
     '<div class="ug-card" role="dialog" aria-modal="true" aria-label="反馈提示">'
     + '<img class="ug-logo" src="mascot-head.png" width="56" height="56" alt="开屏卫士图标">'
-    + '<div class="ug-app-name">发现 Bug 或使用不舒服？</div>'
+    + '<div class="ug-app-name">使用过程中发现问题了吗？</div>'
     + '<div class="ug-badge">帮助改进开屏卫士</div>'
     + '<div class="ug-notes">'
-    + '<div class="ug-note-item">• 广告没有跳过</div>'
-    + '<div class="ug-note-item">• 跳过不准确</div>'
-    + '<div class="ug-note-item">• App 卡顿</div>'
-    + '<div class="ug-note-item">• 误跳（不该跳的跳了）</div>'
-    + '<div class="ug-note-item">• 其他异常</div>'
+    + '<div class="ug-note-item">• 开屏广告没有跳过</div>'
+    + '<div class="ug-note-item">• 广告跳过不准确</div>'
+    + '<div class="ug-note-item">• 弹窗无法关闭</div>'
+    + '<div class="ug-note-item">• App 出现卡顿或异常</div>'
+    + '<div class="ug-note-item">• 其他使用体验问题</div>'
     + '</div>'
     + '<div class="ug-size">可以进入「我的 → 引擎日志 → 一键上传」上传日志，'
-    + '帮助我们定位问题。仅在你主动点击时才会上传。</div>'
+    + '帮助开发者定位和改进问题。仅在你主动点击时才会上传。</div>'
     + '<button class="ug-btn-primary" id="bug-tip-go">去上传日志</button>'
     + '<button class="ug-btn-ghost" id="bug-tip-ok">知道了</button>'
     + '</div>';
   document.body.appendChild(tip);
-  const dismiss = () => {
-    try { store.set("bugTipShown", appVer()); } catch (e) {}
+  const confirm = () => {
+    /* 两个按钮都记确认时间（24h 节流主闸）——不自动上传任何东西 */
+    try { store.set("bug_feedback_confirmed_at", String(Date.now())); } catch (e) {}
     const t = $("#bug-tip");
     if (t) t.remove();
   };
-  /* 「去上传日志」：只做导航——切到「我的」页并滚到引擎日志卡片，
-   * 绝不代替用户点击上传（最终决定权属于用户） */
+  /* 「去上传日志」：确认节流 + 只做导航——切到「我的」页并滚到引擎日志
+   * 卡片，绝不代替用户点击上传（最终决定权属于用户） */
   $("#bug-tip-go").addEventListener("click", () => {
-    dismiss();
+    confirm();
     try {
       const me = Array.from($$(".tabbtn")).find((b) => b.dataset && b.dataset.page === "me");
       if (me) me.click();
@@ -1249,27 +1261,19 @@ function showBugTip() {
       if (card) setTimeout(() => { try { card.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (e) {} }, 80);
     } catch (e) {}
   });
-  /* 「知道了」：只记录标记，不上传任何东西 */
-  $("#bug-tip-ok").addEventListener("click", dismiss);
+  /* 「知道了」：只记确认时间，不上传任何东西 */
+  $("#bug-tip-ok").addEventListener("click", confirm);
 }
 function maybeShowBugTip() {
   try {
-    if (bugTipDismissed()) return;          // 本版本已提示过（含点过任一按钮）
-    if ($("#update-gate")) return;          // 更新页在场——升级优先，本轮不打扰
+    if (bugTipThrottled()) return;         // 24h 内已确认——节流
+    if (bugTipRecentlyShown()) return;     // 5min 内已展示过——防 Activity 重建重复弹
+    if ($("#update-gate")) return;         // 更新页在场——升级优先，本轮不打扰
     showBugTip();
   } catch (e) { /* 提示失败静默——绝不影响正常使用 */ }
 }
 
-/* ══════════ 引擎画像（日志上传正文 · v4.2.0 更具体） ══════════ */
-function fmtTs(t) {
-  try {
-    const d = new Date(t);
-    const p = (n) => String(n).padStart(2, "0");
-    return p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds());
-  } catch (e) { return "--:--:--"; }
-}
-
-/* ═══ v4.5.0 包名缩写（修「android」歧义）═══
+/* ═══ v4.5.0 包名缩写（修「android」歧义；v7.9.8：报告页在用——保留）═══
  * 末段是通用词（android/app/main/ui/...）时取两段——否则 me.ele.android
  * （饿了么）等应用在日志/战绩里全部显示为「android」，误导排查方向。 */
 const GENERIC_TAILS = new Set(["android", "app", "main", "ui", "mobile", "phone", "client", "core", "sdk", "online", "lite"]);
@@ -1279,54 +1283,6 @@ function shortPkgName(pkg) {
   const last = parts[parts.length - 1];
   if (GENERIC_TAILS.has(last) && parts.length >= 3) return parts[parts.length - 2] + "." + last;
   return last;
-}
-
-function engineProfile() {
-  const st = getRealState();
-  const s = st.stats || {};
-  let rules = 0, pkgs = 0;
-  try { Object.keys(st.rules || {}).forEach(k => { const n = (st.rules[k] || []).length; rules += n; if (n) pkgs++; }); } catch (e) {}
-  const lines = [];
-  lines.push("- 版本：v" + appVer() + " · 环境：" + (HAS_BRIDGE ? "Android APK" : "浏览器预览") + " · 手动上传");
-  lines.push("- 真实引擎：秒跳 " + (s.auto || 0) + " · 弹窗关闭 " + (s.popup || 0) + " · 返回键 " + (s.back || 0)
-    + " · 反馈面板收起 " + (s.feedback || 0) + " · 手动样本 " + (s.manual || 0) + " · 学习规则 " + rules + " 条（" + pkgs + " 个应用）");
-  // Top5 应用战绩（秒跳/弹窗/手动）——v4.5.0：shortPkgName 修「android」歧义
-  try {
-    const byApp = s.byApp || {};
-    const top = Object.keys(byApp).map(k => {
-      const a = byApp[k] || {};
-      return { k, score: (a.auto || 0) + (a.popup || 0) + (a.manual || 0), a };
-    }).filter(x => x.score > 0).sort((x, y) => y.score - x.score).slice(0, 5);
-    if (top.length) {
-      lines.push("- 应用战绩 Top5：" + top.map(x => {
-        return shortPkgName(x.k) + "(" + (x.a.auto || 0) + "/" + (x.a.popup || 0) + "/" + (x.a.manual || 0) + ")";
-      }).join(" · "));
-    }
-  } catch (e) {}
-  // 订阅命中（内置 + 远程）
-  let subLine = "- 订阅：";
-  try {
-    const sub = JSON.parse(AndroidApp.subState());
-    subLine += "内置 " + (sub.builtinApps || 0) + " 款/" + (sub.builtinRules || 0) + " 条（命中 " + (sub.builtinHits || 0) + "）";
-    if (sub.remoteOk) subLine += " · 远程「" + (sub.remoteName || "") + "」" + (sub.remoteApps || 0) + " 款/" + (sub.remoteRules || 0) + " 条（命中 " + (sub.remoteHits || 0) + "）";
-  } catch (e) { subLine += "内置"; }
-  lines.push(subLine);
-  // 能耗画像（v5.3.0：探针/省电档案/位置学习拦截维度）
-  try {
-    const en = JSON.parse(AndroidApp.energyStats());
-    if (en && en.ok) {
-      let el = "- 能耗画像（本次开机）：事件 " + en.events + " · 探针 " + (en.probes || 0) + " · 扫描 " + en.scans;
-      if (en.profileSkips) el += "（省电档案跳过 " + en.profileSkips + " 窗）";
-      el += " · 手势估算 " + en.microWh + "µWh";
-      lines.push(el);
-      if (en.posDropped) lines.push("- 位置学习验证：拦截误学 " + en.posDropped + " 次（点击后 1.5s 窗口未关 = 普通点击）");
-    }
-  } catch (e) {}
-  // 引擎日志：最近 16 条（带时间戳）
-  const log = (st.log || []).slice(-16).map(l => "  - [" + fmtTs(l.t || 0) + "] " + (l.msg || ""));
-  lines.push("- 引擎日志（最近 16 条）：");
-  lines.push(log.length ? log.join("\n") : "  - （暂无）");
-  return lines.join("\n");
 }
 
 /* ══════════ 我的：日志 ══════════ */
@@ -1344,23 +1300,12 @@ $("#btn-refresh-log").addEventListener("click", () => {
   toast("日志已刷新");
 });
 
-/* ══════════ v5.5.0 日志上传强反馈 ══════════
- * 三重成功反馈（避免用户不确定是否提交成功）：
- *  ① 全屏弹窗确认（含 Issue 编号 + 「上传成功，感谢反馈」+ 查看链接）
- *  ② 顶部醒目横幅（绿色，滑入动画，8s 自动收起 / 手动关闭）
- *  ③ 系统通知（AndroidApp.postNotify，独立 upload 通道）
- * 上传全程阶段化 loading（收集 → 脱敏 → 提交）；失败给明确原因 + 一键重试。
- * 日志四类内容：应用版本 / 设备信息 / 拦截日志 / 异常堆栈，提交前
- * maskText 正则脱敏（Java 侧 Net.maskSensitive 再脱敏一次，双端双层）。 */
-
-/* 脱敏（第一层，与 Net.maskSensitive 同规则）：手机号 / 身份证 / 邮箱 / IP */
-function maskText(s) {
-  return String(s == null ? "" : s)
-    .replace(/(?<![0-9])(1[3-9]\d)\d{4}(\d{4})(?![0-9])/g, "$1****$2")
-    .replace(/(?<![0-9A-Za-z])(\d{3})\d{12}(\d{2}[\dXx])(?![0-9A-Za-z])/g, "$1************$2")
-    .replace(/[A-Za-z0-9._%+-]+@([A-Za-z0-9.-]+\.[A-Za-z]{2,})/g, "***@$1")
-    .replace(/(?<![0-9])(\d{1,3}\.\d{1,3})\.\d{1,3}\.\d{1,3}(?![0-9])/g, "$1.*.*");
-}
+/* ══════════ v7.9.8 日志上传（导出功能已下线——用户指令）═════════
+ * v7.9.7 曾上线的本地导出（导出按钮/收集→脱敏→写文件/分享面板/确认弹窗）
+ * 整链下线；保留：日志采集（服务侧常开）/ 查看能力（renderLog+刷新按钮）/
+ * 一键上传（doUploadLog）+ 自动上传规则（24h 最多成功 3 次·只记自动账本）
+ * 全部零改动。上传错误按真实分类码（errKind）八类人话呈现——绝不把所有
+ * 失败统一成「稍后再试」。 */
 
 /* 上传阶段化 loading：按钮转圈 + 阶段文案 */
 function setUploadPhase(btn, phase) {
@@ -1368,119 +1313,38 @@ function setUploadPhase(btn, phase) {
   btn.innerHTML = SPIN + esc(phase);
   btn.disabled = true;
 }
-function resetUploadBtn(btn) {
-  btn.innerHTML = "一键上传";
-  btn.disabled = false;
+
+/* v7.9.8 错误分类码 → 人话提示（用户八类表；基于 LogUploader.classifyError
+ * 的真实 HTTP 状态码/服务端码/网络异常类型——绝不猜测原因） */
+function uploadErrText(res) {
+  const k = String((res && res.errKind) || "");
+  const raw = String((res && res.lastError) || "");
+  if (k === "NET_CONNECT_FAIL") return "网络连接失败，请检查网络后重试——日志已保留（不会丢失）";
+  if (k === "NET_TIMEOUT") return "上传超时，请稍后重试——若服务端已收到，重试会自动复用原 Issue，不会重复提交";
+  if (k === "RATE_LIMITED") return "上传次数已达到限制，请稍后重试";
+  if (k === "INVALID_REQUEST" || k === "HTTP_400") return "上传数据格式异常（" + (raw || "400") + "）——该情况请反馈给开发者";
+  if (k === "UNAUTHORIZED") return "服务端拒绝了本次上传（UNAUTHORIZED），请查看诊断信息";
+  if (k === "PRIVACY_REJECTED" || k === "IDEMPOTENCY_CONFLICT" || k === "PAYLOAD_TOO_LARGE"
+      || k === "MANUAL_RECONCILIATION_REQUIRED") {
+    return "服务端拒绝了本次上传（" + k + "），请查看诊断信息——该批已隔离保留本地检视";
+  }
+  if (k === "RELAY_SERVER_ERROR" || k === "RELAY_TEMP_ERROR") return "日志接收服务暂时不可用，请稍后重试——日志已保留";
+  if (k === "PROTOCOL_UNEXPECTED_BODY") return "上传服务响应异常，请稍后重试";
+  if (k === "NET_IO") return "网络传输异常，请稍后重试——日志已保留";
+  return "上传失败，请查看错误详情（" + (raw || k || "未知") + "）——日志已保留，可随时再次上传";
 }
 
-/* v5.8.0：顶部成功横幅已移除（用户实锤：上传成功后顶部不要再出弹窗——
- * 只要一个确认弹窗就够用了，防呆单一反馈通道）。 */
-
-/* 三重反馈之一：全屏弹窗确认 */
-/* v5.8.0 唯一确认弹窗：一个 ✓、一行结果、一个「好的」——零跳转零其他反馈 */
-function showExportDoneModal(path, bytes) {
-  closeModal();
-  const wrap = document.createElement("div");
-  wrap.id = "upload-done-modal";
-  wrap.style.cssText = "position:fixed;inset:0;z-index:130;background:rgba(4,12,8,.6);"
-    + "display:flex;align-items:center;justify-content:center;padding:24px;";
-  wrap.innerHTML =
-    '<div role="dialog" aria-modal="true" aria-label="导出成功" style="background:#fff;border-radius:16px;'
-    + 'max-width:320px;width:100%;padding:22px 20px 16px;text-align:center;box-shadow:0 18px 50px rgba(0,0,0,.28)">'
-    + '<div style="width:56px;height:56px;margin:0 auto 12px;border-radius:50%;background:#10B981;'
-    + 'display:flex;align-items:center;justify-content:center;font-size:28px;color:#fff;font-weight:700">✓</div>'
-    + '<div style="font-size:17px;font-weight:700;color:#0c2015">日志已导出到本地</div>'
-    + '<div style="font-size:13px;color:#5b6b60;margin:8px 0 14px">' + esc(path) + '<br>（' + esc(bytes || "?") + ' 字节 · 可用「分享」发送给开发者）</div>'
-    + '<button data-act="close" style="width:100%;border:0;border-radius:10px;background:#10B981;'
-    + 'color:#fff;font-size:14px;font-weight:600;padding:11px 0">好的</button></div>';
-  document.body.appendChild(wrap);
-  wrap.addEventListener("click", (ev) => {
-    const act = ev.target.getAttribute && ev.target.getAttribute("data-act");
-    if (act === "close" || ev.target === wrap) closeModal();
-  });
-}
-function closeModal() {
-  const m = $("#upload-done-modal");
-  if (m) m.remove();
-}
-
-/* 失败原因 → 人话提示 */
-function humanizeUploadError(err) {
-  const e = String(err || "");
-  if (e.includes("空间") || e.includes("storage")) return "存储空间不足或不可写——请检查存储后重试";
-  if (e.includes("导出失败")) return e;
-  return e || "导出失败（未知原因）";
-}
-
-/* 失败提示（含重试按钮；v8.1.0：retryFn 参数化——上传/导出各自重试） */
-function showUploadFail(box, err, retryFn) {
+/* 失败提示（含重试按钮；文案已人话化） */
+function showUploadFail(box, text, retryFn) {
   box.className = "fb-result err";
-  box.innerHTML = esc(humanizeUploadError(err))
+  box.innerHTML = esc(text)
     + ' <button id="btn-upload-retry" style="border:0;border-radius:999px;background:#fff;color:#b91c1c;'
     + 'font-size:12px;font-weight:700;padding:4px 12px;margin-left:6px">重试</button>';
   const rb = $("#btn-upload-retry");
   if (rb) rb.addEventListener("click", () => (retryFn || doUploadLog)());
 }
 
-/* 导出主流程（v7.9.7；v8.1.0 降为次按钮：一键上传为主）：收集（四类内容）→
- * 脱敏 → 写入本地文件 → 分享可选 */
-async function doExportLog() {
-  const box = $("#upload-log-result");
-  const btn = $("#btn-export-log");
-  if (!btn) return; // v8.1.0：入口迁至「导出」次按钮
-  if (!HAS_BRIDGE) { box.className = "fb-result err"; box.textContent = "仅 APK 内可导出（浏览器预览无文件系统）"; return; }
-
-  closeModal();
-  box.className = "fb-result";
-  box.textContent = "";
-  setUploadPhase(btn, "收集日志…");
-
-  // ① 四类内容收集（应用版本 / 设备信息 / 拦截日志 / 异常堆栈）
-  let dev = {}, crash = "";
-  try { dev = JSON.parse(AndroidApp.deviceInfo()); } catch (e) {}
-  await new Promise(r => setTimeout(r, 250)); // 阶段可感知（收集<->脱敏间隔）
-  try { crash = AndroidApp.crashDump() || ""; } catch (e) { crash = ""; }
-  setUploadPhase(btn, "本地脱敏…");
-
-  const title = "[引擎日志][v" + appVer() + "] " + (dev.brand || "") + " " + (dev.model || "设备") + "（本地导出）";
-  const bodyLines = [
-    "## 设备",
-    "- " + (dev.brand || "") + " " + (dev.model || "") + " · " + (dev.os || "") + " · SDK " + (dev.sdk || "?"),
-    "- 应用版本：v" + appVer() + "（build " + appCode() + "） · 环境：Android APK · 本地导出（不上传）",
-    "",
-    "## 状态",
-    engineProfile(),
-  ];
-  if (crash) {
-    bodyLines.push("", "## 上次崩溃堆栈（自动附带，已读后即删）", "```", crash.trim(), "```");
-  } else {
-    bodyLines.push("", "## 上次崩溃堆栈", "（无——本次开机周期内进程未崩溃）");
-  }
-  // ② 本地脱敏（第一层；Java exportLog 写入前还会再脱敏一次——双层保持）
-  const body = maskText(bodyLines.join("\n"));
-
-  setUploadPhase(btn, "写入文件…");
-  let res = null;
-  try { res = JSON.parse(AndroidApp.exportLog(title, body)); } catch (e) { res = { ok: false, error: "导出异常" }; }
-  btn.innerHTML = "导出";
-  btn.disabled = false;
-
-  if (res && res.ok) {
-    box.className = "fb-result ok";
-    box.innerHTML = "已导出：" + esc(res.path)
-      + ' <button id="btn-share-log" style="border:0;border-radius:999px;background:#fff;color:#047857;'
-      + 'font-size:12px;font-weight:700;padding:4px 12px;margin-left:6px">分享</button>';
-    const sb = $("#btn-share-log");
-    if (sb) sb.addEventListener("click", () => {
-      try { AndroidApp.shareLogText(title + "\n\n" + body); } catch (e) {}
-    });
-    showExportDoneModal(res.path, res.bytes);      // 唯一反馈：一个确认弹窗（v5.8.0 形态保持）
-  } else {
-    showUploadFail(box, res && res.error, doExportLog);          // 明确原因 + 重试（导出）
-  }
-}
-
-/* ══════ 一键上传主流程（v8.2.2 简化版）══════
+/* ══════ 一键上传主流程（v8.2.2 简化版 · v7.9.8 冻结幂等）══════
  * 用户点一次 → LogUploader.submitNow（分块 ≤48 逐块上传 Worker）→ 回调：
  * 成功显示 Issue 编号与【经 GitHub 匿名 API 核实的真实链接】；失败显示
  * 原因并保留可重试；服务端限流如实告知。手动上传不受 24h/3 额度限制。
@@ -1495,7 +1359,6 @@ function doUploadLog(fromSettings) {
     return;
   }
   if (!fromSettings) {
-    closeModal();
     box.className = "fb-result";
     box.textContent = "";
   }
@@ -1519,14 +1382,15 @@ function resetUploadButtons() {
 /* v8.2.2 一键上传结果回调（MainActivity evaluateJavascript 回调）——
  * 成功显示 Issue 编号与【经验证的真实链接】（服务端返回 issueNumber 后经
  * GitHub 匿名 API 核实 html_url 才可点击——绝不拼接未经确认的仓库地址）；
- * 无日志时四态区分（未产生/已传完/采集失败/读取失败），失败保留可重试。 */
+ * 无日志时四态如实区分；v7.9.8 失败按 errKind 八类人话呈现（分类依据
+ * 真实 HTTP 状态码/服务端码/网络异常类型——绝不统一「稍后再试」）。 */
 window.__logUploadCb = function (res) {
   resetUploadButtons();
   const box = $("#upload-log-result");
   res = res || {};
   if (res.busy) {
     toast("后台正在上传中，请稍候再试");
-    showUploadFail(box, "后台正在上传中，请稍候再试", doUploadLog);
+    showUploadFail(box, "后台正在上传中，请稍候再试（上传中重复点击不会重复提交）", doUploadLog);
     return;
   }
   if ((res.acked || 0) > 0) {
@@ -1552,17 +1416,21 @@ window.__logUploadCb = function (res) {
     }
     toast("日志上传成功");
   } else if ((res.waited || 0) > 0) {
-    toast("服务端限流，稍后自动重试");
-    showUploadFail(box, "服务端限流（24h 窗口）——日志已保留，稍后自动/手动重试均可", doUploadLog);
+    const mins = res.retryAfterMs ? Math.ceil(Number(res.retryAfterMs) / 60000) : 0;
+    toast("上传次数已达到限制");
+    showUploadFail(box, "上传次数已达到限制，请稍后重试"
+      + (mins > 0 ? "（约 " + mins + " 分钟后可再试）" : "")
+      + "——日志已保留，稍后自动/手动重试均可", doUploadLog);
   } else if ((res.rejected || 0) > 0) {
     toast("服务端拒收本批日志");
-    showUploadFail(box, "服务端拒收（" + (res.lastError || "未知原因") + "）——该批已隔离保留本地检视，不影响后续新日志上传", doUploadLog);
+    showUploadFail(box, "服务端拒绝了本次上传（" + (res.lastError || "未知原因")
+      + "），请查看诊断信息——该批已隔离保留本地检视，不影响后续新日志上传", doUploadLog);
   } else if (res.lastError) {
-    toast("日志上传失败，请稍后重试");
-    showUploadFail(box, "上传失败：" + (res.lastError || "未知原因") + "——日志已保留，可随时再次上传", doUploadLog);
+    toast("日志上传失败");
+    showUploadFail(box, uploadErrText(res), doUploadLog);
   } else if (res.emptyReason === "never-collected") {
     box.className = "fb-result";
-    box.textContent = "引擎尚未产生日志事件——应用运行与跳过广告时会自动记录，产生后即可上传";
+    box.textContent = "暂无可上传的新日志——应用运行与跳过广告时会自动记录，产生后即可上传";
     toast("暂无已产生的日志");
   } else if (res.emptyReason === "all-uploaded") {
     box.className = "fb-result ok";
@@ -1589,15 +1457,14 @@ window.__logUploadCb = function (res) {
     box.textContent = "上传服务未配置（本版本不可用）";
     toast("上传服务未配置");
   } else {
-    toast("日志上传失败，请稍后重试");
-    showUploadFail(box, "上传未完成（" + (res.lastError || "未知原因") + "）——请稍后重试", doUploadLog);
+    toast("日志上传失败");
+    showUploadFail(box, uploadErrText(res), doUploadLog);
   }
   refreshLogUploadNote();
 };
 
 $("#btn-upload-log").addEventListener("click", () => { void doUploadLog(); });
-const __btnExportLog = $("#btn-export-log");
-if (__btnExportLog) __btnExportLog.addEventListener("click", () => { void doExportLog(); });
+/* v7.9.8：导出按钮 #btn-export-log 已随导出功能下线（index.html 同步移除） */
 
 /* ══════════ v7.1.0 卫士使用报告 · v7.2.0 饼图常驻 + 明细折叠 ══════════
  * （用户实锤：报告生成后太长看着难受——顶部拦截分布饼图常驻 + 五段明细

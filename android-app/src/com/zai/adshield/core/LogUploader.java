@@ -36,6 +36,19 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * 失败后的重试节奏 = 下一次心跳（自动）或用户再点一次（手动）——没有更
  * 多的状态要维护。
  *
+ * ═══ v7.9.8 专项修复（真机实锤「第一次失败、第二次被服务端拒」）═══
+ *  · 冻结批次：runUpload 封批时把 payload 整体冻结进 manifest（LogStore
+ *    sealBatch），重试字节级复用——同 batchId 必同 payload，服务端幂等
+ *    必然 ALREADY_ACCEPTED 复用原编号，绝不二建 Issue；
+ *  · 读超时 15s→45s：Worker→GitHub 建 Issue 可超 15s，旧值把「服务端
+ *    实际成功但响应未及」变成客户端「失败」——正是两连失败的导火索；
+ *  · 错误分类（classifyError 纯函数·JVM 可回归）：网络层区分连接失败/
+ *    超时/IO，HTTP 层区分 429/400/401/403/5xx，服务端码原样透出——
+ *    UI 按八类人话呈现，不再一律「稍后再试」；
+ *  · 额度分账：手动成功只记全部账本（ok-times），自动成功另记
+ *    auto-ok-times——手动不再挤占自动 24h/3 闸（服务端共享限额仍由
+ *    RATE_LIMITED 如实转达）。
+ *
  * 服务端契约（skip-ad-log-relay 源码不可读——按已部署客户端契约原样保持）：
  * 请求体九键 schemaVersion 1 / 每批 ≤48 事件 / batchId UUID v4 稳定复用 /
  * X-Skip-Ad-Client 头；成功 = 2xx + ok=true（issueNumber）；RATE_LIMITED +
@@ -95,18 +108,33 @@ public final class LogUploader {
 
     /* ═══ HTTP seam（真实实现 + JVM 测试替身同接口——真实代码路径可测）═══ */
 
-    /** 响应信封（非 2xx 响应体也解析——错误码/issueNumber 全字段可读）。 */
+    /** 响应信封（非 2xx 响应体也解析——错误码/issueNumber 全字段可读）。
+     * v7.9.8：网络层失败不再丢细节——errKind 携带 connect/timeout/io
+     * 分类（httpCode=0 无 HTTP 响应；errKind=null 表示有 HTTP 响应）。 */
     public static final class Resp {
+        public final int httpCode;      // 0 = 网络层失败（未重到 HTTP 响应）
         public final boolean http2xx;
         public final JSONObject json;
         public final boolean bodyOk;
         public final String code;
+        public final String errKind;   // connect / timeout / io（HTTP 响应在场时 null）
 
         public Resp(int httpCode, JSONObject json) {
+            this(httpCode, json, null);
+        }
+
+        public Resp(int httpCode, JSONObject json, String errKind) {
+            this.httpCode = httpCode;
             this.http2xx = httpCode >= 200 && httpCode < 300;
             this.json = json;
             this.bodyOk = json != null && json.optBoolean("ok", false);
             this.code = json == null ? null : json.optString("code", null);
+            this.errKind = errKind;
+        }
+
+        /** 网络层失败（无 HTTP 响应）——kind: connect/timeout/io。 */
+        public static Resp netError(String kind) {
+            return new Resp(0, null, kind);
         }
     }
 
@@ -120,7 +148,11 @@ public final class LogUploader {
     /** 生产实现（HttpURLConnection——与 Net 同族）。 */
     static final class RealHttp implements Http {
         private static final int CONNECT_TIMEOUT = 15_000;
-        private static final int READ_TIMEOUT = 15_000;
+        /* v7.9.8：15s→45s——Worker 同步建 GitHub Issue（含重试）可超 15s；
+         * 旧值把「服务端实际成功但响应未及」变成客户端「失败」，重试
+         * 又因旧版 payload 漂移命中 IDEMPOTENCY_CONFLICT（真机两连失败
+         * 的完整链条——冻结批次 + 长超时双修复）。 */
+        private static final int READ_TIMEOUT = 45_000;
         /** 公开仓 Issue API（匿名 60 次/小时——上传频次远低于此）。 */
         private static final String ISSUE_API = "https://api.github.com/repos/xiaobaiba999/Skip-Ad/issues/";
         /** URL 白名单：仅接受 https + github.com 域的真实链接。 */
@@ -147,8 +179,14 @@ public final class LogUploader {
                 int code = c.getResponseCode();
                 InputStream in = code >= 400 ? c.getErrorStream() : c.getInputStream();
                 return new Resp(code, parseJson(readAll(in)));
+            } catch (java.net.SocketTimeoutException te) {
+                return Resp.netError("timeout"); // 连接/读取超时——可重试，UI 呈「上传超时」
+            } catch (java.net.ConnectException ce) {
+                return Resp.netError("connect"); // 连接拒绝/不可达
+            } catch (java.net.UnknownHostException uhe) {
+                return Resp.netError("connect"); // DNS 解析失败（域名被污染/无网）
             } catch (Throwable t) {
-                return null; // 网络异常——保留重试
+                return Resp.netError("io");   // 其余 IO/协议异常——保留重试
             } finally {
                 if (c != null) c.disconnect();
             }
@@ -205,7 +243,8 @@ public final class LogUploader {
 
     private static volatile LogUploader instance;
 
-    /** Android 生产入口。 */
+    /** Android 生产入口。v7.9.8：deviceCode（Build 品牌型号脱敏码——随
+     *  STATS 事件 errClass 字段上行，服务端白名单内；JVM 测试传 null）。 */
     public static LogUploader get(Context ctx) {
         if (instance == null) {
             synchronized (LogUploader.class) {
@@ -213,7 +252,7 @@ public final class LogUploader {
                     Context app = ctx.getApplicationContext();
                     instance = new LogUploader(LogStore.get(app), new RealHttp(),
                             new LogStore.AndroidEnv(app), appVersionOf(app), versionCodeOf(app),
-                            androidVersionOf());
+                            androidVersionOf(), deviceCodeOf());
                 }
             }
         }
@@ -223,7 +262,27 @@ public final class LogUploader {
     /** JVM 测试入口（真实 runUpload 代码路径 + HTTP 替身）。 */
     public static LogUploader forTest(LogStore store, Http http, LogStore.StoreEnv env,
                                       String appVersion, int versionCode, String androidVersion) {
-        return new LogUploader(store, http, env, appVersion, versionCode, androidVersion);
+        return new LogUploader(store, http, env, appVersion, versionCode, androidVersion, null);
+    }
+
+    /** 设备码：Build.BRAND_MODEL 清洗为服务端 errClass 白名单形态
+     *  （[A-Za-z0-9_.$] ≤80），前缀 DEV_ 标识语义（如 DEV_Xiaomi.2410DPN6CC）。
+     *  隐私口径：仅品牌与型号——无序列号/无 AndroidId/无任何设备标识符。 */
+    static String deviceCodeOf() {
+        try {
+            String raw = String.valueOf(android.os.Build.BRAND) + "."
+                    + String.valueOf(android.os.Build.MODEL);
+            StringBuilder sb = new StringBuilder("DEV_");
+            for (int i = 0; i < raw.length() && sb.length() < 80; i++) {
+                char ch = raw.charAt(i);
+                boolean ok = (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z')
+                        || (ch >= '0' && ch <= '9') || ch == '.' || ch == '_' || ch == '$';
+                sb.append(ok ? ch : '_');
+            }
+            return sb.toString();
+        } catch (Throwable t) {
+            return null;
+        }
     }
 
     private static String appVersionOf(Context ctx) {
@@ -257,17 +316,19 @@ public final class LogUploader {
     private final String appVersion;
     private final int versionCode;
     private final String androidVersion;
+    private final String deviceCode;
     private final AtomicBoolean running = new AtomicBoolean(false);
 
     /** 手动/自动互斥（同一时刻至多一个上传在跑——绝不并发提交同一事件）。 */
     private LogUploader(LogStore store, Http http, LogStore.StoreEnv env,
-                        String appVersion, int versionCode, String androidVersion) {
+                        String appVersion, int versionCode, String androidVersion, String deviceCode) {
         this.store = store;
         this.http = http;
         this.env = env;
         this.appVersion = appVersion;
         this.versionCode = versionCode;
         this.androidVersion = androidVersion;
+        this.deviceCode = deviceCode;
     }
 
     /* ═══ 结果摘要（UI 回调契约）═══ */
@@ -280,12 +341,14 @@ public final class LogUploader {
         public int waited;        // 服务端限流块数
         public String issueNumbers = "";  // 逗号分隔（与 acked 对应顺序）
         public String issueUrls = "";     // 逗号分隔（未验证到真实 URL 的位置为空串）
-        public int acked24h;      // 24h 内成功块数（含本次）
+        public int acked24h;      // 24h 内成功块数（含本次——全部账本）
         public int pending;       // 剩余待传块数（估算）
         public int pendingEvents; // 剩余事件数
         public long totalCollected;
         public String emptyReason = "";   // acked==0 且无块可传时的四态区分
-        public String lastError = "";
+        public String lastError = "";     // 原始错误（服务端码/HTTP 状态）
+        public String errKind = "";       // v7.9.8 稳定分类码（UI 八类人话映射依据）
+        public long retryAfterMs = 0;      // v7.9.8 RATE_LIMITED retryAfter（服务端口径）
 
         public String toJson() {
             JSONObject o = new JSONObject();
@@ -303,21 +366,61 @@ public final class LogUploader {
                 o.put("totalCollected", totalCollected);
                 o.put("emptyReason", emptyReason);
                 o.put("lastError", lastError);
+                o.put("errKind", errKind);
+                o.put("retryAfterMs", retryAfterMs);
             } catch (Throwable ignored) {
             }
             return o.toString();
         }
     }
 
+    /* ═══ v7.9.8 错误分类（稳定码 · 纯函数 · JVM 可回归）═══
+     * 依据真实 HTTP 状态码 / 服务端错误码 / 网络层异常类型三路判定，
+     * 绝不猜測。UI 按用户八类表映射人话提示。 */
+
+    public static final String ERR_NET_CONNECT = "NET_CONNECT_FAIL";   // 网络连接失败
+    public static final String ERR_NET_TIMEOUT = "NET_TIMEOUT";         // 请求超时
+    public static final String ERR_NET_IO = "NET_IO";                   // 网络传输异常
+    public static final String ERR_RATE_LIMITED = "RATE_LIMITED";       // 频率限制（429/服务端码）
+    public static final String ERR_RELAY_5XX = "RELAY_SERVER_ERROR";    // 中转/GitHub 上游异常
+    public static final String ERR_RELAY_TEMP = "RELAY_TEMP_ERROR";     // 服务端临时错误（可重试）
+    public static final String ERR_PROTOCOL = "PROTOCOL_UNEXPECTED_BODY"; // 2xx 但无 ok=true
+    public static final String ERR_UNKNOWN = "UNKNOWN";                 // 未知
+
+    /** 错误分类：网络层（errKind）→ 服务端 JSON 码 → HTTP 状态码三路优先级。 */
+    public static String classifyError(Resp res) {
+        if (res == null) return ERR_NET_IO;
+        if (res.errKind != null) {
+            if ("connect".equals(res.errKind)) return ERR_NET_CONNECT;
+            if ("timeout".equals(res.errKind)) return ERR_NET_TIMEOUT;
+            return ERR_NET_IO;
+        }
+        String code = res.code;
+        if (code != null && code.length() > 0) {
+            if ("RATE_LIMITED".equals(code)) return ERR_RATE_LIMITED;
+            if (isTerminalRejection(code)) return code;      // 服务端终态码原样透出
+            if ("TEMPORARY_ERROR".equals(code)) return ERR_RELAY_TEMP;
+            return code;                                     // 其余服务端码透出
+        }
+        if (res.http2xx && !res.bodyOk) return ERR_PROTOCOL; // 2xx 但 body 无 ok=true
+        if (res.httpCode == 429) return ERR_RATE_LIMITED;
+        if (res.httpCode == 400) return "INVALID_REQUEST";
+        if (res.httpCode == 401 || res.httpCode == 403) return "UNAUTHORIZED";
+        if (res.httpCode >= 500) return ERR_RELAY_5XX;
+        if (res.httpCode > 0) return "HTTP_" + res.httpCode;
+        return ERR_UNKNOWN;
+    }
+
     /* ═══ 自动上传（心跳检查点——KeepAliveReceiver 顺带调用）═══ */
 
     /** 自动上传资格（纯函数·JVM 可回归）：距上次自动尝试 ≥ minInterval 且
-     *  存在待传事件且 24h 成功数 <3。失败不耗额度（ok-times 只记成功）。 */
+     *  存在待传事件且 24h 自动成功数 <3（v7.9.8：只看自动账本——手动成功
+     *  不再挤占自动闸）。失败不耗额度（auto-ok-times 只记成功）。 */
     public static boolean autoEligible(long lastAutoAttemptAt, long now, long minIntervalMs,
-                                       int pendingEvents, int okCount24h) {
+                                       int pendingEvents, int autoOkCount24h) {
         if (now - lastAutoAttemptAt < minIntervalMs) return false;
         if (pendingEvents <= 0) return false;  // 没有新日志——零网络请求直接跳过
-        return okCount24h < 3;
+        return autoOkCount24h < 3;
     }
 
     /** 自动检查点（后台线程一次性上传——无守护线程无退避表）。 */
@@ -327,7 +430,7 @@ public final class LogUploader {
             long now = System.currentTimeMillis();
             long last = prefLong("lastAutoAttemptAt", 0L);
             if (!autoEligible(last, now, minIntervalMs,
-                    store.pendingEventCount(), store.okCount24h(now))) return;
+                    store.pendingEventCount(), store.autoOkCount24h(now))) return;
             env.prefPut("lastAutoAttemptAt", String.valueOf(now));
             if (!running.compareAndSet(false, true)) return;
             Thread t = new Thread(() -> {
@@ -377,9 +480,12 @@ public final class LogUploader {
     /* ═══ 上传主循环（唯一执行路径——手动/自动同一份代码）═══ */
 
     /**
-     * 逐块上传直到：事件传完 / 服务端限流 / 网络·瞬时错误（保留同 batchId
-     * 下次重试）/ 终态拒收（该块隔离，继续后续块）。STATS 快照仅注入本次
-     * 运行的首块（内存注入不落盘——空缓冲绝不产生仅含 STATS 的垃圾 Issue）。
+     * v7.9.8 冻结循环：头部已有未决冻结批次 → 字节级复用（同 batchId 同
+     * payload——服务端必然 ALREADY_ACCEPTED 复用原编号）；否则从 pending
+     * 头部封批并冻结后 POST。逐块推进直到：事件传完 / 服务端限流 /
+     * 网络·瞬时错误（保留冻结批次下次重试）/ 终态拒收（该块隔离，继续
+     * 后续块）。STATS 快照注入本次运行的【首个新封批次】（冻结重试块
+     * 自带历史快照——绝不重构漂移 payload）。
      * public 供 JVM 测试直驱真实代码路径（生产入口仍是 submitNow /
      * requestAutoCheck——两者只是包一层互斥与线程）。
      */
@@ -387,25 +493,35 @@ public final class LogUploader {
         Summary s = new Summary();
         try {
             JSONObject statsEvent = buildStatsEvent();
-            boolean statsPending = statsEvent != null; // 只注入一次（首块）
+            boolean statsPending = statsEvent != null; // 注入本次运行首个新封批次
             while (true) {
-                JSONArray events = store.pendingEvents();
-                if (events.length() == 0) break;
-                int realCount = Math.min(EVENTS_PER_BATCH - (statsPending ? 1 : 0), events.length());
-                if (realCount <= 0) break;
-                String batchId = store.headBatchIdOrAppend(); // POST 前落盘——同号重试
-                if (!isValidUuid(batchId)) {
+                LogStore.FrozenBatch fb = store.headFrozenOrNull();
+                if (fb == null || fb.realCount < 0) {
+                    // 无冻结头部（或 v1 遗留待补冻）→ 从 pending 头部封批
+                    JSONArray pending = store.pendingEvents();
+                    if (pending.length() == 0 && fb == null) break;
+                    int realCount = Math.min(EVENTS_PER_BATCH - (statsPending ? 1 : 0),
+                            pending.length());
+                    if (realCount <= 0) break;
+                    JSONArray chunk = new JSONArray();
+                    if (statsPending) chunk.put(statsEvent);
+                    for (int i = 0; i < realCount; i++) chunk.put(pending.optJSONObject(i));
+                    fb = store.sealBatch(chunk, isoNow()); // POST 前落盘冻结
+                    statsPending = false;
+                } else {
+                    statsPending = false; // 首个新封批次顺延（冻结块自带历史快照）
+                }
+                if (fb == null || !isValidUuid(fb.batchId)) {
                     s.lastError = "client-defense: batchId";
+                    s.errKind = ERR_UNKNOWN;
                     break;
                 }
-                JSONArray chunk = new JSONArray();
-                if (statsPending) chunk.put(statsEvent);
-                for (int i = 0; i < realCount; i++) chunk.put(events.optJSONObject(i));
-                JSONObject body = buildBody(batchId, store.installInstanceId(), appVersion,
-                        versionCode, androidVersion, isoNow(),
-                        LogPrivacyFilter.VERSION, chunk);
+                JSONObject body = buildBody(fb.batchId, store.installInstanceId(), appVersion,
+                        versionCode, androidVersion, fb.createdAt,
+                        LogPrivacyFilter.VERSION, fb.events);
                 if (body == null) {
                     s.lastError = "client-defense: body";
+                    s.errKind = ERR_UNKNOWN;
                     break;
                 }
                 s.uploaded++;
@@ -413,8 +529,8 @@ public final class LogUploader {
                 boolean ok = res != null && res.http2xx && res.bodyOk; // 2xx≠成功——body ok=true 才算
                 if (ok) {
                     int issue = res.json != null ? res.json.optInt("issueNumber", 0) : 0;
-                    store.consumeHead(realCount);
-                    store.recordOk(System.currentTimeMillis());
+                    store.consumeHead(Math.max(0, fb.realCount));
+                    store.recordOk(System.currentTimeMillis(), manual);
                     s.acked++;
                     if (issue > 0) {
                         s.issueNumbers = s.issueNumbers.length() == 0
@@ -425,30 +541,37 @@ public final class LogUploader {
                         env.prefPut("lastIssueNumber", String.valueOf(issue));
                         if (url != null) env.prefPut("lastIssueUrl", url);
                     }
-                    statsPending = false; // STATS 已随首块发出
                     continue;
                 }
                 String code = res == null || res.json == null ? null : res.code;
                 if ("RATE_LIMITED".equals(code)) {
                     s.waited++;
                     s.lastError = "rate-limited";
-                    break; // 保留——服务端窗口，稍后自动/手动再试
+                    s.errKind = ERR_RATE_LIMITED;
+                    if (res != null && res.json != null) {
+                        long ra = res.json.optLong("retryAfter", 0L);
+                        if (ra > 0) s.retryAfterMs = Math.min(ra * 1000L, 24L * 3600 * 1000);
+                    }
+                    break; // 保留冻结批次——服务端窗口，稍后自动/手动再试
                 }
                 if (code != null && isTerminalRejection(code)) {
                     String err = res != null && res.json != null
                             ? res.json.optString("error", "") : "";
-                    store.rejectHead(realCount, code, err);
+                    store.rejectHead(Math.max(0, fb.realCount), code, err);
                     s.rejected++;
                     s.lastError = code;
-                    statsPending = false; // 该块已了结（含注入的 STATS）
+                    s.errKind = code;
                     continue; // 后续块独立内容——继续
                 }
-                s.lastError = code == null ? "network" : code;
-                break; // 网络/瞬时错误——保留同 batchId，下次心跳或手动重试
+                s.lastError = code == null
+                        ? (res == null ? "network" : String.valueOf(res.httpCode)) : code;
+                s.errKind = classifyError(res);
+                break; // 网络/瞬时错误——保留冻结批次，下次心跳或手动重试
             }
             finalizeSummary(s);
         } catch (Throwable t) {
             s.lastError = "loop: " + t.getClass().getSimpleName();
+            s.errKind = ERR_UNKNOWN;
             try {
                 finalizeSummary(s);
             } catch (Throwable ignored) {
@@ -490,15 +613,17 @@ public final class LogUploader {
         }
     }
 
-    /* ── STATS 快照（真实静态计数器——JVM 同路径可测）── */
-
+    /* ── STATS 快照（真实静态计数器——JVM 同路径可测）──
+     * v7.9.8：errClass 携带设备码（DEV_Brand.Model——白名单形态，无任何
+     * 设备标识符），分析侧可区分机型归因（用户指令：设备型号入诊断）。 */
     private JSONObject buildStatsEvent() {
         try {
             return LogEvents.stats(
                     com.zai.adshield.SubscriptionManager.subStatV2Snapshot(),
                     DecisionEvidence.outcomeSnapshot()[0],
                     DecisionEvidence.outcomeSnapshot()[2],
-                    DecisionEvidence.outcomeSnapshot()[5]);
+                    DecisionEvidence.outcomeSnapshot()[5],
+                    deviceCode);
         } catch (Throwable t) {
             return null;
         }

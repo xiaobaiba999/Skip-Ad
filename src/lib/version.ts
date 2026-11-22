@@ -1,6 +1,6 @@
 /** 版本与 GitHub 仓库信息（Web 端与发布节奏共用） */
-export const APP_VERSION = "7.9.7";
-export const VERSION_CODE = 79700; // v7.1.0 起标准公式 major*10000 + minor*1000 + patch*100（7.9.6plus→82300 名码不对应已于 v7.9.7 收口：versionName = Tag = Release = APK）
+export const APP_VERSION = "7.9.8";
+export const VERSION_CODE = 79800; // v7.1.0 起标准公式 major*10000 + minor*1000 + patch*100（7.9.8→79800；82300 历史用户升级路径见 docs/CHANGELOG.md v7.9.8 节）
 export const GITHUB_REPO = "xiaobaiba999/Skip-Ad";
 export const GITHUB_API = `https://api.github.com/repos/${GITHUB_REPO}`;
 export const GITHUB_HOME = `https://github.com/${GITHUB_REPO}`;
@@ -19,15 +19,15 @@ export interface VersionEntry {
  *  旧版本内容归档在 GitHub Releases 与 git 历史） */
 export const VERSION_HISTORY: VersionEntry[] = [
   {
-    version: "7.9.7",
-    code: 79700,
+    version: "7.9.8",
+    code: 79800,
     date: "2026-11-23",
-    tagline: "版本体系收口：versionName 7.9.7 = versionCode 79700（标准三段式同名同码）+ Bug 反馈一次性提示",
+    tagline: "日志上传可靠性专项：冻结批次终结「第一次失败、第二次被服务端拒」+ 错误八类如实分类 + 反馈提示 24h 节流 + 导出下线 + 未命中结构化诊断",
     notes: [
-      "版本体系收口：彻底告别 7.9.6plus→82300 的名码不对应——从本版起 versionName = Git Tag = Release = APK versionName，versionCode 严格遵循 v7.1.0 起标准公式 major*10000+minor*1000+patch*100（7.9.7→79700），以后每一版都如此",
-      "Bug 反馈提示：新版本首次进入一次性轻提示「发现 Bug 或使用不舒服？可到 我的→引擎日志→一键上传 反馈」（广告没跳过/跳过不准确/App 卡顿/误跳/其他异常），可「去上传日志」直达入口或「知道了」关闭；只提醒绝不自动上传、不采集任何新数据、同版本不弹第二次",
-      "更新检测保持 versionCode 主判（远端 > 本地才提示，79700=79700 不自误报）+ 全屏更新页 + SHA-256/大小安装前校验全链保持",
-      "引擎与日志系统零改动：广告跳过核心/无障碍扫描/日志采集/手动上传/自动上传额度（24 小时最多成功 3 次·只记服务端确认·失败不耗额度）全部保持 v7.9.6plus 实测形态",
+      "日志上传根治「第一次失败、第二次被服务端拒」：上传批次冻结（同 batchId 必同 payload——服务端幂等必然命中复用原 Issue）+ 读超时 15s→45s，失败按真实原因八类如实提示（网络连接失败/上传超时/服务端拒绝/频率限制/格式异常/服务暂不可用——不再一律「稍后再试」）",
+      "手动与自动上传额度分账：手动成功不再占用自动 24 小时 3 次限额；服务端限流 retryAfter 如实透传",
+      "Bug 反馈提示升级 24h 节流：确认后 24h 内不再弹、超 24h 下次进入重新提醒、未确认不消耗资格；「去上传日志」仍只导航不代传",
+      "引擎日志页移除「导出」按钮（采集/查看/一键上传全保留）；扫描未命中新增 SCAN_MISS 结构化诊断（无规则/规则未命中/视频容器静默四稳定失败码 + 设备码）——一次上传即可定位「为什么没跳过」",
     ],
   },];
 

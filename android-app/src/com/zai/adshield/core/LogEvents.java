@@ -118,12 +118,18 @@ public final class LogEvents {
      * （[VERIFIED_SUCCESS, RETRY, MISS, FALSE_CLICK, SAFE_BLOCK, UNKNOWN] →
      * taskSuccess/taskMiss/taskUnknown——RETRY/FALSE_CLICK/SAFE_BLOCK 有
      * 专用事件面，不入 task 四格口径）。
+     * v7.9.8：deviceCode（Build 品牌型号白名单形态码，如 DEV_Xiaomi.2410DPN6CC）
+     * 经 errClass 字段上行——服务端白名单内的唯一自由文本位；null/空则省略。
      */
-    public static JSONObject stats(int[] gkd8, int taskSuccess, int taskMiss, int taskUnknown) {
+    public static JSONObject stats(int[] gkd8, int taskSuccess, int taskMiss, int taskUnknown,
+                                   String deviceCode) {
         try {
             JSONObject e = new JSONObject();
             e.put("type", "STATS");
             e.put("at", now());
+            if (deviceCode != null && deviceCode.length() > 0) {
+                putStr(e, "errClass", deviceCode, 80);
+            }
             if (gkd8 != null && gkd8.length >= 8) {
                 e.put("gkdConsulted", clampInt(gkd8[0], 0, 1_000_000_000));
                 e.put("gkdMatched", clampInt(gkd8[1], 0, 1_000_000_000));
@@ -141,6 +147,53 @@ public final class LogEvents {
         } catch (Throwable t) {
             return null;
         }
+    }
+
+    /* ═══ SCAN_MISS：扫描未命中结构化诊断（v7.9.8 新增——白名单事件类型
+     *  自 v8.0.0 契约就存在但从未使用；零候选窗是「为什么没跳过」的最大
+     *  证据空洞：AD_TASK 只覆盖有任务窗，纯零候选窗此前零事件）═══
+     *
+     * 字段全部在服务端白名单内（绝无新增字段面）：
+     *  · pkg/activity —— 应用包与窗口类；
+     *  · ui —— SPLASH（开屏扫描）/ INTERSTITIAL（弹窗窗期）；
+     *  · errClass —— 稳定失败码（NO_RULE_ZERO_CAND / RULE_MISS_ZERO_CAND /
+     *    SILENT_TREE_ZERO_CAND / VIDEO_LIKE_ZERO_CAND）；
+     *  · scanCount —— 本窗零候选连续次数；
+     *  · intervalMs —— 树静默时长（零内容事件窗 = 窗龄——视频容器铁证）。
+     * 隐私：零新增扫描——全部字段来自既有扫描路径已产生的信息；
+     * 采集频率同 logScanMiss（每窗一条 + 同包 8s 节流）。 */
+    public static JSONObject scanMiss(String pkg, String act, boolean popup, String failCode,
+                                      int zeroStreak, long silenceMs) {
+        try {
+            JSONObject e = new JSONObject();
+            e.put("type", "SCAN_MISS");
+            e.put("at", now());
+            putStr(e, "pkg", pkg, 96);
+            putStr(e, "activity", act, 96);
+            e.put("ui", popup ? "INTERSTITIAL" : "SPLASH");
+            putStr(e, "errClass", failCode, 80);
+            e.put("scanCount", clampInt(zeroStreak, 0, 9_999));
+            e.put("intervalMs", clampInt((int) Math.max(0, Math.min(silenceMs, 600_000L)), 0, 600_000));
+            return e;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /**
+     * SCAN_MISS 失败码（纯函数·JVM 可回归）：
+     *  · 树零内容事件（SurfaceView/TextureView 视频在放）且窗龄 ≥2s
+     *    → VIDEO_LIKE_ZERO_CAND（视频容器静默铁证）；
+     *  · 无任何规则/订阅覆盖 → NO_RULE_ZERO_CAND（补规则/订阅可解）；
+     *  · 有规则/订阅覆盖但零命中 → RULE_MISS_ZERO_CAND（规则过时或形态
+     *    不匹配——需看候选样本）；
+     *  · 零内容事件但窗龄尚短 → SILENT_TREE_ZERO_CAND（树静默观察中）。
+     */
+    public static String scanMissCode(boolean hasContentEvent, long silenceOrElapsedMs,
+                                      boolean rulesPresent) {
+        if (!hasContentEvent && silenceOrElapsedMs >= 2_000L) return "VIDEO_LIKE_ZERO_CAND";
+        if (!hasContentEvent) return "SILENT_TREE_ZERO_CAND";
+        return rulesPresent ? "RULE_MISS_ZERO_CAND" : "NO_RULE_ZERO_CAND";
     }
 
     /* ═══ 错误面（GKD 拉取 / 视频轮询 / 崩溃）═══ */

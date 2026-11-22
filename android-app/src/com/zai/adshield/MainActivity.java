@@ -27,7 +27,7 @@ import org.json.JSONObject;
  * · WebView 装载离线页面 assets/www（首页 / 学习中心 / 关于）
  * · 启动即静默检查 GitHub Releases：发现新版 → 页面顶部弹出更新横幅，
  *   页内直接下载（系统 DownloadManager）→ 进度条 → 完成后拉起安装，全程不跳浏览器
- * · v7.9.7：问题反馈/引擎日志本地导出（exportLog 桥 + shareLogText 分享）——内置混淆令牌已随 PAT 移除下线，客户端零凭据；v8.0.0 起日志上传走中转服务（logUploadSubmitNow 桥），v8.2.1 手动一键上传可复活耗尽型失败批次
+ * · v7.9.7：问题反馈/引擎日志本地导出曾上线（exportLog 桥）；v7.9.8 用户指令下线导出功能（UI 导出按钮 + exportLog/shareLogText 桥一并移除——日志采集/查看/一键上传全保留）；日志上传走中转服务（logUploadSubmitNow 桥）
  * · v3.5.0 保活：通知权限引导（Android 13+）、jump_a11y 通知一键恢复直达、
  *   电池优化白名单与 keepOn 状态桥接（配合 KeepAliveReceiver）
  * · v3.6.0 自动拉活：清理后台后服务被杀但系统设置仍登记时，打开 App
@@ -412,15 +412,17 @@ public class MainActivity extends Activity {
         public void kvSet(String key, String value) {
             // v4.5.0 安全：value 长度上限（防 prefs 膨胀/DoS；正常页面状态远小于此）
             if (value != null && value.length() > 262144) return;
-            /* v7.3.0 安全：key 白名单——JS 侧（app.js store.set）合法写入的键
-             * 只有 "state"（页面状态/战绩/开关）与 "bugTipShown"（v7.9.7 Bug
-             * 反馈一次性提示标记——纯 UI 显示位，值仅为当前版本号字符串，
-             * 非引擎/规则/订阅数据，写面无任何安全影响）。其余键（subUrl、
-             * subCache、dl 系列与曾用的 autoLogAt 等）是服务/订阅/下载链路
-             * 的持久化字段：一旦前端出现注入（XSS），「kvSet 写 subCache
-             * 恶意规则」即可让服务重启时静默加载被投毒的自动点击规则——
-             * 白名单把这个通道焊死。 */
-            if (!"state".equals(key) && !"bugTipShown".equals(key)) return;
+            /* v4.5.0/v7.3.0 安全：key 白名单——JS 侧（app.js store.set）合法写入
+             * 的键只有 "state"（页面状态/战绩/开关）与 v7.9.8 Bug 反馈提示两个
+             * 纯 UI 时间戳键：bug_feedback_confirmed_at（用户确认时刻——24h
+             * 节流主闸）与 bug_feedback_shown_at（本次展示时刻——防 Activity
+             * 重建/旋转短窗内重复弹）。两者值均为 epoch 毫秒数字符串，非
+             * 引擎/规则/订阅数据，写面无任何安全影响。其余键（subUrl、
+             * subCache、dl 系列等）是服务/订阅/下载链路的持久化字段：一旦
+             * 前端出现注入（XSS），「kvSet 写 subCache 恶意规则」即可让服务
+             * 重启时静默加载被投毒的自动点击规则——白名单把这个通道焊死。 */
+            if (!"state".equals(key) && !"bug_feedback_confirmed_at".equals(key)
+                    && !"bug_feedback_shown_at".equals(key)) return;
             SharedPreferences.Editor e = a.getSharedPreferences("adshield", Context.MODE_PRIVATE).edit();
             if (value == null) e.remove(key);
             else e.putString(key, value);
@@ -815,62 +817,10 @@ public class MainActivity extends Activity {
          * Issue 浏览器预填）。自动上传授权 = 独立开关（默认关，见
          * AdSkipService.KEY_AUTO_LOG_UPLOAD；v7.9.7 中转服务未上线结构性关闭）。 */
 
-        /** 导出引擎日志到本地文件（应用外部私有目录 logs/，无新权限）。
-         *  @return {ok:true, path, bytes} 或 {ok:false, error} */
-        @JavascriptInterface
-        public String exportLog(String title, String body) {
-            try {
-                long now = System.currentTimeMillis();
-                String t = title == null ? "" : (title.length() > 128 ? title.substring(0, 128) : title);
-                String b = body == null ? "" : (body.length() > 24000 ? body.substring(0, 24000) : body);
-                // v8.2.1：Java 侧二道脱敏（app.js 注释一直声称的双层——未落实现已
-                // 补齐；与 JS maskText 同规则：手机号/身份证/邮箱/IP）
-                t = com.zai.adshield.Net.maskSensitive(t);
-                b = com.zai.adshield.Net.maskSensitive(b);
-                String stamp = new java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.US).format(new java.util.Date(now));
-                java.io.File dir = a.getExternalFilesDir("logs");
-                if (dir == null) dir = a.getFilesDir();
-                //noinspection ResultOfMethodCallIgnored
-                dir.mkdirs();
-                java.io.File f = new java.io.File(dir, "adshield-log-" + stamp + ".md");
-                java.io.OutputStream os = new java.io.FileOutputStream(f);
-                os.write(("# " + t + "\n\n" + b + "\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
-                os.close();
-                org.json.JSONObject out = new org.json.JSONObject();
-                out.put("ok", true);
-                out.put("path", f.getAbsolutePath());
-                out.put("bytes", f.length());
-                return out.toString();
-            } catch (Throwable t) {
-                try {
-                    org.json.JSONObject out = new org.json.JSONObject();
-                    out.put("ok", false);
-                    out.put("error", "导出失败：" + t.getClass().getSimpleName());
-                    return out.toString();
-                } catch (Throwable ignored) {
-                    return "{\"ok\":false,\"error\":\"导出失败\"}";
-                }
-            }
-        }
-
-        /** 系统分享面板分享纯文本日志（用户自行选择投递渠道；零凭据零上传）。 */
-        @JavascriptInterface
-        public void shareLogText(String text) {
-            try {
-                final String safe = text == null ? "" : (text.length() > 24000 ? text.substring(0, 24000) : text);
-                a.runOnUiThread(() -> {
-                    try {
-                        Intent it = new Intent(Intent.ACTION_SEND);
-                        it.setType("text/plain");
-                        it.putExtra(Intent.EXTRA_TEXT, safe);
-                        it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                        a.startActivity(Intent.createChooser(it, "分享引擎日志"));
-                    } catch (Exception ignored) {
-                    }
-                });
-            } catch (Throwable ignored) {
-            }
-        }
+        /* ═══ v7.9.8：exportLog/shareLogText 桥已随导出功能下线移除 ═══
+         * （用户指令：移除引擎日志页导出按钮及对应无用事件绑定/弹窗/导出
+         * 逻辑；日志采集/查看/一键上传与自动上传规则零改动。Net.maskSensitive
+         * 保留在 Net 工具库——LogPrivacyFilter 同族正则与 JVM 测试仍在用。） */
 
         /** v7.9.7：自动日志上传授权状态（默认关）。 */
         @JavascriptInterface
@@ -1237,7 +1187,7 @@ public class MainActivity extends Activity {
     /* ═══ v4.5.0 WebView 硬化：URL 劫持防护（攻击面收缩核心）═══
      * 本地离线页装载了带能力的 JS 桥——若页面被诱导跳转到远程页面（更新
      * 横幅里的链接/订阅预览/恶意注入），远程页面将直接拿到 AndroidApp 桥
-     * （kvSet 任意写、shareLogText 分享等）。v7.9.7 起 netPostIssue（内置
+     * （kvSet 任意写等已收敛白名单）。v7.9.7 起 netPostIssue（内置
      * 令牌直发 GitHub Issue）已随 PAT 移除下线——桥已无任何凭据能力，
      * 劫持面进一步收缩，但白名单制保持不变（纵深防御不因单点移除而松绑）。
      * 对策：shouldOverrideUrlLoading 白名单制——只允许本应用 asset 目录

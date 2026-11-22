@@ -3643,6 +3643,31 @@ public class AdSkipService extends AccessibilityService {
             }
             sb.append(" ——上传日志可帮我们补规则");
             appendLog(sb.toString());
+            /* ═══ v7.9.8 SCAN_MISS 结构化诊断事件（任务四：为什么没跳过的证据链）═══
+             * 与扫描日志同频（每窗一条 + 同包 8s 节流——上方过滤全部通过才到这里），
+             * 零新增扫描：失败码/静默时长/零候选次数全部来自本方法与既有扫描状态。
+             * 字段全部在服务端白名单内（type/pkg/activity/ui/errClass/scanCount/
+             * intervalMs）；稳定失败码四枚（LogEvents.scanMissCode 纯函数 JVM 可回归）。 */
+            try {
+                Long lastContentAt = contentAt.get(pkg);
+                boolean hasContentEvent = lastContentAt != null;
+                long silenceOrElapsed = hasContentEvent
+                        ? Math.max(0, now - lastContentAt.longValue())
+                        : Math.max(0, now - winStart);
+                boolean rulesPresent = false;
+                try {
+                    rulesPresent = com.zai.adshield.core.RuleEngine.rowsFor(pkg).length > 0
+                            || SubscriptionManager.coversPkg(pkg);
+                } catch (Throwable ignoredRules) {
+                }
+                Integer zBox = zeroCandScans.get(pkg + "|" + winStart);
+                int zStreak = zBox == null ? 0 : zBox.intValue();
+                tapEvent(com.zai.adshield.core.LogEvents.scanMiss(
+                        pkg, cls, popup,
+                        com.zai.adshield.core.LogEvents.scanMissCode(hasContentEvent, silenceOrElapsed, rulesPresent),
+                        zStreak, silenceOrElapsed));
+            } catch (Throwable ignoredScanMiss) {
+            }
         } catch (Throwable ignored) {
         }
     }

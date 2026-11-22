@@ -81,8 +81,12 @@ const NEED = [
   "showUpdateGate",      // v7.9.6plus 全屏更新页
   "versionCodeFromNotes",// v7.9.6plus versionCode 元数据解析
   "isNewerByCode",       // v7.9.6plus versionCode 主判
-  "maybeShowBugTip",     // v7.9.7 Bug 反馈一次性提示（评估入口）
-  "showBugTip",          // v7.9.7 Bug 反馈提示卡渲染
+  "maybeShowBugTip",     // Bug 反馈提示评估入口（v7.9.8 升 24h 节流）
+  "showBugTip",          // Bug 反馈提示卡渲染
+  "bugTipThrottled",     // v7.9.8 24h 节流判定（时间戳主闸）
+  "uploadErrText",       // v7.9.8 上传错误八类人话映射
+  "doUploadLog",         // 一键上传主流程（导出下线后唯一日志出口）
+  "resetUploadButtons",  // 上传双入口按钮复位
 ];
 
 let runErr = null;
