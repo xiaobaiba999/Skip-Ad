@@ -128,8 +128,8 @@ function freshSession() {
 
 console.log("═══ S0 加载与版本兜底 ═══");
 A("app.js 全量顶层加载成功（stub 环境）", true);
-A('appVer() 浏览器兜底 = "7.9.8"', T.appVer() === "7.9.8");
-A('appCode() 浏览器兜底 = "79800"', T.appCode() === "79800");
+A('appVer() 浏览器兜底 = "7.9.9"', T.appVer() === "7.9.9");
+A('appCode() 浏览器兜底 = "79900"', T.appCode() === "79900");
 A("HAS_BRIDGE=false（浏览器路径·localStorage）", T.HAS_BRIDGE === false);
 
 console.log("═══ S1 首次进入：显示 ═══");
