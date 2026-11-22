@@ -204,6 +204,11 @@ def main():
     # 误报为步骤失败，run 45014027351）。禁止回到裸调用形态。
     A("S6g 生成清单步骤 errexit 安全（|| RC=$? 捕获，防 bash -e 误报 SKIP 失败）",
       "|| RC=$?" in yml and "RC=$?" not in yml.replace("|| RC=$?", ""))
+    # run 45015963257 实锤：release.published 触发先于 APK 资产上传完成（先创建
+    # 正式 Release 再传资产的竞态），事件快照 assets 为空 → 下载步骤直接失败。
+    # 修复闸：下载步骤必须含资产轮询等待（无 .apk 时轮询 API 刷新 rel.json）。
+    A("S6h 资产上传竞态等待（事件快照空 assets → 轮询 API 等待资产到位）",
+      "轮询 API 等待" in yml and "releases/tags/" in yml and "seq 1 20" in yml)
 
     print()
     print("══════════════════════════")

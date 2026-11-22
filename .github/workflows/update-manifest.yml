@@ -86,17 +86,38 @@ jobs:
           echo "SKIP: ${{ steps.rel.outputs.tag }} 为 Pre-release——正式清单只对应最新正式 Release，本次不改动。"
           echo "如需把该版本推为正式更新：以非 Pre-release 状态重新发布。"
 
-      - name: 下载 Release APK 资产
+      - name: 下载 Release APK 资产（含资产上传竞态等待）
         if: steps.rel.outputs.prerelease != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           ASSET_URL=$(jq -r '[.assets[] | select(.name | test("\\.apk$"))][0].browser_download_url // empty' /tmp/rel.json)
-          ASSET_NAME=$(jq -r '[.assets[] | select(.name | test("\\.apk$"))][0].name // empty' /tmp/rel.json)
+          # ── 资产上传竞态根治（run 45015963257 实锤）────────────────────
+          # release.published 在 Release 发布瞬间触发，而发布流程通常
+          # 「先创建正式 Release → 再上传 APK 资产」——事件 payload 的
+          # assets 是发布时刻快照，此刻可能为空。轮询 API 等待资产到位
+          # （每 15s × 最多 20 次 = 5 分钟），到位后刷新 /tmp/rel.json
+          # 使后续校验步骤使用同一份最新数据。
           if [ -z "$ASSET_URL" ]; then
-            echo "✗ Release 无 .apk 资产——工作流失败（正式 Release 必须带 APK）"; exit 1
+            TAG="${{ steps.rel.outputs.tag }}"
+            echo "事件快照无 .apk 资产（发布先于资产上传的竞态）——轮询 API 等待（最长 5 分钟）…"
+            for i in $(seq 1 20); do
+              sleep 15
+              if gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}" > /tmp/rel.json 2>/dev/null; then
+                ASSET_URL=$(jq -r '[.assets[] | select(.name | test("\\.apk$"))][0].browser_download_url // empty' /tmp/rel.json)
+                if [ -n "$ASSET_URL" ]; then
+                  echo "第 $i 次轮询：资产已到位"
+                  break
+                fi
+              fi
+              echo "  第 $i 次：资产仍未上传——继续等待…"
+            done
           fi
+          if [ -z "$ASSET_URL" ]; then
+            echo "✗ Release 无 .apk 资产（等待 5 分钟仍无）——正式 Release 必须带 APK"; exit 1
+          fi
+          ASSET_NAME=$(jq -r '[.assets[] | select(.name | test("\\.apk$"))][0].name // empty' /tmp/rel.json)
           echo "下载资产: $ASSET_NAME"
           curl -fL --retry 3 --retry-delay 2 -H "Authorization: Bearer $GH_TOKEN" \
             -o "/tmp/app-release.apk" "$ASSET_URL"
