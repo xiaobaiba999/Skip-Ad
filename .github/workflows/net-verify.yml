@@ -95,6 +95,7 @@ jobs:
 
       - name: 2/5 Worker 健康检查（/healthz）
         id: healthz
+        if: always()   # 与清单检查独立——Worker 诊断不因清单源故障而跳过
         run: |
           set -uo pipefail
           HEALTHZ="https://skip-ad-log-relay.2927609408.workers.dev/healthz"
@@ -115,6 +116,7 @@ jobs:
 
       - name: 3/5 Worker 真实上传 E2E（POST /api/logs/receive → GitHub Issue）
         id: upload
+        if: always()   # /healthz 异常也尝试真实上传（完整诊断链）
         run: |
           set -uo pipefail
           RELAY="https://skip-ad-log-relay.2927609408.workers.dev/api/logs/receive"
@@ -169,13 +171,21 @@ jobs:
           echo "  分类：HTTP $CODE 非 200 → 服务端拒绝/网关异常；200 但 ok≠true → 契约/限流响应"
           exit 1
 
-      - name: 4/5 同 batchId 幂等重试（绝不二建 Issue）
+      - name: 4/5 同 batchId 幂等/恢复重试（绝不二建 Issue）
         id: idem
-        if: steps.upload.outputs.issue != ''
+        if: always() && steps.upload.outputs.code != ''
         run: |
           set -uo pipefail
           RELAY="https://skip-ad-log-relay.2927609408.workers.dev/api/logs/receive"
           EXPECT_ISSUE="${{ steps.upload.outputs.issue }}"
+          FIRST_CODE="${{ steps.upload.outputs.code }}"
+          # 服务端 503 TEMPORARY_ERROR 携带 retryAfter（批次已保留待恢复）——
+          # 按服务端口径等待后同 batchId 重试（真实恢复路径，绝不换号）
+          WAIT=$(echo '${{ steps.upload.outputs.body }}' | jq -r '.retryAfter // 60' 2>/dev/null || echo 60)
+          case "$WAIT" in (*[!0-9]*|"") WAIT=60;; esac
+          [ "$WAIT" -gt 120 ] && WAIT=120
+          echo "首次结果：HTTP $FIRST_CODE（issue=${EXPECT_ISSUE:-无}）→ 等待 ${WAIT}s 后同 batchId 重试…"
+          sleep "$WAIT"
           T0=$(date +%s%3N)
           RESP=$(curl -sS --max-time 60 -w '\n%{http_code}' \
             -X POST "$RELAY" \
@@ -190,24 +200,38 @@ jobs:
           echo "响应摘要：$(echo "$BODY" | head -c 500)"
           ISSUE2=$(echo "$BODY" | jq -r '.issueNumber // empty' 2>/dev/null || true)
           CODE2=$(echo "$BODY" | jq -r '.code // empty' 2>/dev/null || true)
-          if [ "$ISSUE2" = "$EXPECT_ISSUE" ]; then
+          OK2=$(echo "$BODY" | jq -r '.ok // empty' 2>/dev/null || true)
+          if [ -n "$EXPECT_ISSUE" ] && [ "$ISSUE2" = "$EXPECT_ISSUE" ]; then
             echo "✓ 幂等命中：同 batchId 返回原 Issue #$EXPECT_ISSUE（未二建）"
+            echo "issue2=$ISSUE2" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           if [ "$CODE2" = "ALREADY_ACCEPTED" ]; then
             echo "✓ 幂等命中：ALREADY_ACCEPTED（原批次已接受——重试安全）"
+            echo "issue2=$ISSUE2" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          echo "✗ 幂等异常：重试返回 issue=$ISSUE2 code=$CODE2（期望 $EXPECT_ISSUE）"
+          # 首次 503（结果未知）→ 重试成功 = 恢复路径生效（同 batchId 建立原 Issue）
+          if [ "$FIRST_CODE" != "200" ] && [ "$CODE" = "200" ] && [ "$OK2" = "true" ] && [ -n "$ISSUE2" ]; then
+            echo "✓ 恢复路径生效：首次 $FIRST_CODE（结果未知）→ 同 batchId 重试建立 Issue #$ISSUE2（未二建未换号）"
+            echo "issue2=$ISSUE2" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "$CODE" = "503" ] || [ "$CODE2" = "TEMPORARY_ERROR" ]; then
+            echo "✗ Worker→GitHub 上游持续失败（$FIRST_CODE → $CODE，TEMPORARY_ERROR）——服务端 Issue 创建链路故障（与客户端网络无关）"
+            exit 1
+          fi
+          echo "✗ 幂等/恢复异常：重试 HTTP $CODE · code=$CODE2 · issue=$ISSUE2（期望 ${EXPECT_ISSUE:-首次成功编号}）"
           exit 1
 
       - name: 5/5 GitHub Issue 真实存在核验 + E2E 测试清理
-        if: always() && steps.upload.outputs.issue != ''
+        if: always() && (steps.upload.outputs.issue != '' || steps.idem.outputs.issue2 != '')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -uo pipefail
           ISSUE="${{ steps.upload.outputs.issue }}"
+          if [ -z "$ISSUE" ]; then ISSUE="${{ steps.idem.outputs.issue2 }}"; fi
           BATCH="${{ steps.upload.outputs.batchId }}"
           echo "核验 Issue #$ISSUE 在公开仓真实存在…"
           if gh api "repos/${GITHUB_REPOSITORY}/issues/$ISSUE" > /tmp/issue.json 2>/dev/null; then
@@ -233,8 +257,7 @@ jobs:
           echo "清单五源   : ${{ steps.manifest.outputs.ok }}/${{ steps.manifest.outputs.total }} 生效"
           echo "Worker 健康: HTTP ${{ steps.healthz.outputs.code }}"
           echo "真实上传   : HTTP ${{ steps.upload.outputs.code }} → Issue #${{ steps.upload.outputs.issue || '未创建' }}"
-          echo "幂等重试   : ${{ steps.idem.conclusion }}"
-          echo "（幂等重试 conclusion=success = 同 batchId 复用原 Issue 未二建）"
+          echo "幂等/恢复   : ${{ steps.idem.conclusion }}（重试 Issue #${{ steps.idem.outputs.issue2 || '—' }}；conclusion=success = 同 batchId 复用原 Issue 未二建/恢复路径生效）"
           echo "──────────────────────────────────────────────"
           echo "注：runner 为海外无墙网络——本结果证明服务端链路健康度；"
           echo "    中国大陆网络对 workers.dev 的可达性以真机反馈为准（v7.9.9"
