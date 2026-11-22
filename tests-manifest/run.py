@@ -199,6 +199,11 @@ def main():
     A("S6d 并发闸（防重复生成竞态）", "concurrency:" in yml and "update-manifest" in yml)
     A("S6e GITHUB_TOKEN（零 PAT 红线）", "secrets.GITHUB_TOKEN" in yml and "github_pat" not in yml)
     A("S6f 线上核验步骤（不伪造部署成功）", "线上核验" in yml)
+    # 上线实测踩坑回归闸：GitHub Actions 以 bash -e 执行 run 脚本——python 非零
+    # 退出必须「|| RC=$?」捕获，裸调用后取 $? 永不执行（幂等 SKIP exit 3 曾被
+    # 误报为步骤失败，run 45014027351）。禁止回到裸调用形态。
+    A("S6g 生成清单步骤 errexit 安全（|| RC=$? 捕获，防 bash -e 误报 SKIP 失败）",
+      "|| RC=$?" in yml and "RC=$?" not in yml.replace("|| RC=$?", ""))
 
     print()
     print("══════════════════════════")

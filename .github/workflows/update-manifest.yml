@@ -107,12 +107,15 @@ jobs:
         id: gen
         run: |
           set -uo pipefail
+          # GitHub Actions 以 bash -e 执行本脚本——python 非零退出必须用「|| RC=$?」
+          # 捕获；裸调用后取 $? 永不执行（上线实测踩坑：幂等 SKIP exit 3 被 -e
+          # 提前终止误报为步骤失败）。
+          RC=0
           python3 scripts/update_manifest.py \
             --release-json /tmp/rel.json \
             --apk /tmp/app-release.apk \
             --repo-manifest update/latest.json \
-            --out /tmp/latest.json
-          RC=$?
+            --out /tmp/latest.json || RC=$?
           if [ $RC -eq 0 ]; then
             echo "skipped=false" >> "$GITHUB_OUTPUT"
             exit 0
