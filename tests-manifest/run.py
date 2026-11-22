@@ -211,10 +211,12 @@ def main():
       "轮询 API 等待" in yml and "releases/tags/" in yml and "seq 1 20" in yml)
     # run 45016268114 实锤：git pull --rebase 要求 index 干净——「git add 后未
     # commit 即 rebase」exit 128。提交步骤必须先 commit 再 pull --rebase。
-    commit_pos = yml.find("git commit -m")
-    rebase_pos = yml.find("git pull --rebase")
+    # （行首正则匹配实际命令行——排除注释行中的同名引用）
+    import re as _re
+    _commit_m = _re.search(r"^[ \t]*git commit -m", yml, _re.M)
+    _rebase_m = _re.search(r"^[ \t]*git pull --rebase", yml, _re.M)
     A("S6i 提交步骤顺序正确（先 commit 后 pull --rebase，index 不净时 rebase 会 128）",
-      0 < commit_pos < rebase_pos)
+      bool(_commit_m and _rebase_m and _commit_m.start() < _rebase_m.start()))
 
     print()
     print("══════════════════════════")
