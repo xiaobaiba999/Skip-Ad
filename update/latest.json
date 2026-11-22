@@ -1,17 +1,17 @@
 {
   "schemaVersion": 1,
-  "versionName": "7.9.7",
-  "versionCode": 79700,
-  "releaseTag": "v7.9.7",
-  "releaseName": "v7.9.7",
-  "releaseNotes": "versionCode: 79700\n\n# 开屏卫士 v7.9.7\n\n版本体系收口 + Bug 反馈一次性提示。从本版起 versionName = Git Tag = Release = APK versionName，versionCode 严格遵循 v7.1.0 起标准公式 major*10000+minor*1000+patch*100（7.9.7 → 79700），彻底告别 7.9.6plus→82300 的名码不对应。\n\n## 本次更新\n\n1. 版本体系收口：versionName 7.9.7 · versionCode 79700 · Tag/Release/APK 同名同码；versionCode 规则经 dist 全量 51 个历史 APK aapt 实测核验（v7.1.0 起 major*10000+minor*1000+patch*100），以后每一版都如此\n2. Bug 反馈提示：新版本首次进入一次性轻提示「发现 Bug 或使用不舒服？可到 我的→引擎日志→一键上传 反馈」（广告没跳过/跳过不准确/App 卡顿/误跳/其他异常）；「去上传日志」直达入口（仅导航，绝不代替你点击上传）或「知道了」关闭；只提醒、绝不自动上传、不采集任何新数据、同版本不弹第二次\n3. 更新检测保持 versionCode 主判：远端 versionCode 高于本地才提示（79700 = 79700 不自误报）；Draft/Pre-release 不作正式更新推送；网络异常静默进入 App\n4. 引擎与日志系统零改动：广告跳过核心/无障碍扫描/日志采集/手动上传/自动上传额度（24 小时最多成功 3 次·只记服务端确认·失败不耗额度）全部保持 v7.9.6plus 实测形态\n5. 旧版本升级：v7.9.6/7.9.5/7.9.0/7.8.0/7.6.1 检查更新即可发现本版并覆盖升级（79700 > 各旧版 versionCode，签名一致数据保留）\n\n## 下载\n\n- 官方 APK：adshield-v7.9.7.apk（本页资产 · GitHub Releases 官方源 · HTTPS）\n- 文件大小：886,326 字节\n- SHA-256：`2367a2fbb4d7b49c596e7f930383468b7fc310abbd185a2a462d2e9ddf4cd4c7`\n\n## 安装说明\n\n- 已安装 v7.9.6 及更早正式版本：直接安装本 APK 覆盖升级（versionCode 79700 > 79600 及以下全部，签名一致，数据保留）\n- 已安装 v7.9.6plus（versionCode 82300）：Android 判定 79700 为降级**无法覆盖安装**——可继续使用当前版本（无功能损失），或手动卸载后安装本版（卸载会清学习规则/战绩/日志），或等待未来 versionCode > 82300 的正式版本无缝升级\n- 新安装：直接安装即可（Android 8+ 首次安装需允许「安装未知应用」授权）\n\n## 版本信息\n\n- versionName：7.9.7\n- versionCode：79700（major*10000 + minor*1000 + patch*100）\n- 签名证书 SHA-256：05ada6e3f7a4fc6bf77449611c24f51e1ef4caa0a91a5cdd02c4d877738e6f79（与历史正式版本一致）\n- APK 零凭据（无 GitHub Token/私钥/Secret——写凭据全部只在服务端）",
-  "publishedAt": "2026-11-22T07:55:06Z",
-  "apkUrl": "https://github.com/xiaobaiba999/Skip-Ad/releases/download/v7.9.7/adshield-v7.9.7.apk",
-  "apkFileName": "adshield-v7.9.7.apk",
-  "apkSha256": "2367a2fbb4d7b49c596e7f930383468b7fc310abbd185a2a462d2e9ddf4cd4c7",
-  "apkSize": 886326,
+  "versionName": "7.9.8",
+  "versionCode": 79800,
+  "releaseTag": "v7.9.8",
+  "releaseName": "Skip-Ad v7.9.8",
+  "releaseNotes": "versionCode: 79800\n\n# 开屏卫士 v7.9.8\n\n更新检查架构根治轮：彻底脱离 GitHub 匿名 REST API 限流 + 日志上传可靠性修复。\n\n## 本次更新\n\n1. **更新检查静态清单链路**：检查更新不再调用 GitHub Releases REST API（匿名 60 次/小时/IP 配额——国内共享出口 IP 下所有用户同池互耗，进入更新页即「GitHub API 限流」）。改为拉取仓库 main 分支静态清单（raw.githubusercontent.com · Fastly CDN · 无 REST 配额），由 GitHub Actions 工作流在正式 Release 发布时从真实 APK 资产自动生成（包名/versionName/versionCode/SHA256/大小全量校验 + 陈旧守卫）\n2. **缓存与请求治理四道闸**：15 分钟本地缓存（网络失败回退最后有效缓存，绝不因过期删除）；ETag/Last-Modified 条件请求（HTTP 304 直接用缓存不误判解析失败）；多入口并发合并（同一次检查只发一个网络请求，共享结果）；手动检查 30 秒冷却 + 失败指数退避（1min×2^k 封顶 6h）+ 自动检查每进程至多联网一次\n3. **日志上传稳定性修复**：冻结批次终结「第一次失败、第二次被服务端拒」（重试字节级复用同 batchId，服务端幂等复用原 Issue 编号，绝不二建）；读超时 15s→45s；错误八类如实分类（网络/超时/限流/认证/权限/服务端/协议/未知——不再一律「稍后再试」）；反馈提示 24h 节流\n4. **错误提示人话化**：更新检查错误十类映射（DNS/超时/TLS/网络/HTTP/清单非法/包名不匹配/版本无效/无缓存/服务端异常），移除把 GitHub 限流暴露给用户的提示\n\n## 下载与安装\n\n- 官方 APK：adshield-v7.9.8.apk（本页资产 · GitHub Releases 官方源 · HTTPS）\n- 文件大小：890,422 字节\n- SHA-256：`db357668b70aa410f7cc470985d09503a83d8d1b3ded2d0cb76dcb2caaa028ce`\n- 已安装 v7.9.7 及更早正式版本：直接安装覆盖升级（versionCode 79800 > 79700 及以下全部，签名一致，无障碍授权/学习数据/白名单全部保留）\n- 已安装 v7.9.6plus（versionCode 82300）：Android 判定 79800 为降级无法覆盖安装——可继续使用当前版本，或手动卸载后安装本版（卸载会清学习规则/战绩/日志），或等待未来 versionCode > 82300 的正式版本无缝升级\n- 新安装：直接安装即可（Android 8+ 首次安装需允许「安装未知应用」授权）\n\n## 测试说明\n\n本版本【未进行真机测试】（用户明确授权跳过真机测试优先发布）。已通过的自动化测试（全部在本轮真实执行）：\n\n- Java/JVM 测试：63 套件 7274 断言全部通过（含更新清单解析 62 项、更新仓库缓存/单飞/退避 49 项、网络请求源码审计 19 项、日志上传冻结批次/幂等/错误分类回归）\n- JavaScript 行为测试：116 断言全部通过（更新检查错误映射/双源降级/包名拒绝 48 项 · Bug 提示 24h 节流 46 项 · 上传错误八类映射 22 项）\n- 更新清单工作流测试：32 断言全部通过（真实 Release+APK 全字段校验 · 八类拒绝面 · 陈旧守卫 · 幂等重跑 · Draft/Pre-release 拒绝）\n- 版本号同步检查：versionName 7.9.8 = versionCode 79800（major*10000+minor*1000+patch*100）双端一致\n- APK 元数据检查：包名 com.zai.adshield · 签名证书 SHA-256 05ada6e3…（与历史正式版本一致）· dex 零凭据（无 Token/私钥形态）\n- 敏感信息扫描：通过（无令牌形态 · 无内嵌凭据 · 本机凭据未入库）\n\n本版本不宣称已验证真实广告跳过率提升；不宣称已完成 1000+ App 真机兼容性测试（兼容性矩阵为本地自动化测试与历史真机样本，未做新一轮真机验证）。广告跳过率与 1000+ App 兼容性优化是下一阶段工作重点。\n\n## 版本信息\n\n- versionName：7.9.8\n- versionCode：79800（major*10000 + minor*1000 + patch*100）\n- 签名证书 SHA-256：05ada6e3f7a4fc6bf77449611c24f51e1ef4caa0a91a5cdd02c4d877738e6f79（与历史正式版本一致，可直接覆盖升级）\n- APK 零凭据（无 GitHub Token/私钥/Secret——凭据全部只在服务端）",
+  "publishedAt": "2026-11-22T11:10:01Z",
+  "apkUrl": "https://github.com/xiaobaiba999/Skip-Ad/releases/download/v7.9.8/adshield-v7.9.8.apk",
+  "apkFileName": "adshield-v7.9.8.apk",
+  "apkSha256": "db357668b70aa410f7cc470985d09503a83d8d1b3ded2d0cb76dcb2caaa028ce",
+  "apkSize": 890422,
   "packageName": "com.zai.adshield",
   "minSupportedVersionCode": 0,
   "mandatoryUpdate": false,
-  "manifestUpdatedAt": "2026-11-22T07:55:06Z"
+  "manifestUpdatedAt": "2026-11-22T11:10:01Z"
 }
