@@ -1,0 +1,224 @@
+# 静态更新清单自动生成（update-manifest）——v7.9.8 更新检查架构改造
+# ═══════════════════════════════════════════════════════════════════
+# 背景：客户端 v7.9.7 及以前检查更新直连 GitHub Releases REST API
+# （api.github.com/repos/.../releases/latest，匿名 60 次/小时/IP 出口
+# 配额）。国内移动网络共享出口 IP 场景下，所有用户共同消耗同一配额池
+# ——进入更新页即「GitHub API 限流（匿名 60 次/小时/IP）」。
+#
+# 新架构：客户端只拉取 main 分支静态清单（raw.githubusercontent.com，
+# Fastly CDN，无 REST API 配额），本工作流在正式 Release 发布时从
+# 【真实 Release + 真实 APK 资产】自动生成清单：
+#   · release.published 触发（Draft/Pre-release 拒绝——正式清单只对应
+#     最新正式 Release；Pre-release 优雅跳过不覆盖）；
+#   · workflow_dispatch 手动修复/重生成（同一套校验逻辑，零特殊通道）；
+#   · APK 全量校验：包名 / versionName=tag / versionCode=tag 公式
+#     （major*10000+minor*1000+patch*100）/ SHA256 实算=资产 digest /
+#     大小实测=资产 size（scripts/update_manifest.py + apk_meta.py）；
+#   · 陈旧守卫：旧版本 Release 不覆盖新版本清单；versionCode 不得复用；
+#   · 凭据：仅 Actions 自带 GITHUB_TOKEN（最小权限），仓库零 PAT/私钥。
+#
+# GitHub Pages 备用地址（xiaobaiba999.github.io/Skip-Ad/update/latest.json）
+# 仅在仓库启用 Pages 且 Source=GitHub Actions 时自动部署；未启用则如实
+# 报告，不伪造部署成功（主源 raw.githubusercontent.com 不依赖 Pages）。
+name: update-manifest
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '指定 Release tag（留空 = 最新正式 Release）'
+        required: false
+        default: ''
+
+permissions:
+  contents: write   # 提交 update/latest.json 到 main
+  pages: write      # Pages 备用地址部署（启用后）
+  id-token: write   # Pages 部署 OIDC
+
+# 同一时间至多一个清单生成任务（防并发重复/竞态）
+concurrency:
+  group: update-manifest
+  cancel-in-progress: false
+
+jobs:
+  manifest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出 main（清单提交目标 = raw 主源读取分支）
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: 解析目标 Release（release 事件优先，其次 dispatch 指定 tag，再次最新正式 Release）
+        id: rel
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT_PATH: ${{ github.event_path }}
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+        run: |
+          set -euo pipefail
+          if [ -n "${EVENT_PATH:-}" ] && [ -f "$EVENT_PATH" ] && jq -e '.release' "$EVENT_PATH" >/dev/null 2>&1; then
+            jq '.release' "$EVENT_PATH" > /tmp/rel.json
+            echo "source=release-event" >> "$GITHUB_OUTPUT"
+          elif [ -n "${INPUT_TAG:-}" ]; then
+            gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${INPUT_TAG}" > /tmp/rel.json
+            echo "source=dispatch-tag" >> "$GITHUB_OUTPUT"
+          else
+            gh api "repos/${GITHUB_REPOSITORY}/releases/latest" > /tmp/rel.json
+            echo "source=dispatch-latest" >> "$GITHUB_OUTPUT"
+          fi
+          TAG=$(jq -r '.tag_name' /tmp/rel.json)
+          DRAFT=$(jq -r '.draft' /tmp/rel.json)
+          PRE=$(jq -r '.prerelease' /tmp/rel.json)
+          {
+            echo "tag=$TAG"
+            echo "draft=$DRAFT"
+            echo "prerelease=$PRE"
+          } >> "$GITHUB_OUTPUT"
+          echo "目标 Release: $TAG（draft=$DRAFT prerelease=$PRE）"
+
+      - name: Pre-release 优雅跳过（不覆盖正式清单）
+        if: steps.rel.outputs.prerelease == 'true'
+        run: |
+          echo "SKIP: ${{ steps.rel.outputs.tag }} 为 Pre-release——正式清单只对应最新正式 Release，本次不改动。"
+          echo "如需把该版本推为正式更新：以非 Pre-release 状态重新发布。"
+
+      - name: 下载 Release APK 资产
+        if: steps.rel.outputs.prerelease != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          ASSET_URL=$(jq -r '[.assets[] | select(.name | test("\\.apk$"))][0].browser_download_url // empty' /tmp/rel.json)
+          ASSET_NAME=$(jq -r '[.assets[] | select(.name | test("\\.apk$"))][0].name // empty' /tmp/rel.json)
+          if [ -z "$ASSET_URL" ]; then
+            echo "✗ Release 无 .apk 资产——工作流失败（正式 Release 必须带 APK）"; exit 1
+          fi
+          echo "下载资产: $ASSET_NAME"
+          curl -fL --retry 3 --retry-delay 2 -H "Authorization: Bearer $GH_TOKEN" \
+            -o "/tmp/app-release.apk" "$ASSET_URL"
+          ls -la /tmp/app-release.apk
+
+      - name: 生成清单（真实资产全量校验：包名/同名同码/SHA256/大小 + 陈旧守卫）
+        if: steps.rel.outputs.prerelease != 'true'
+        id: gen
+        run: |
+          set -uo pipefail
+          python3 scripts/update_manifest.py \
+            --release-json /tmp/rel.json \
+            --apk /tmp/app-release.apk \
+            --repo-manifest update/latest.json \
+            --out /tmp/latest.json
+          RC=$?
+          if [ $RC -eq 0 ]; then
+            echo "skipped=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          elif [ $RC -eq 3 ]; then
+            echo "skipped=true" >> "$GITHUB_OUTPUT"
+            echo "SKIP: 陈旧守卫命中（仓库清单不旧于本 Release）——不改动。"
+            exit 0
+          else
+            echo "✗ 清单生成校验失败（exit $RC）——绝不产出未经核验的清单"
+            exit $RC
+          fi
+
+      - name: 提交 update/latest.json 到 main（raw 主源）
+        if: steps.rel.outputs.prerelease != 'true' && steps.gen.outputs.skipped != 'true'
+        run: |
+          set -euo pipefail
+          cp /tmp/latest.json update/latest.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add update/latest.json
+          if git diff --cached --quiet; then
+            echo "清单内容与 main 现状一致——无需提交（幂等重跑）"
+            exit 0
+          fi
+          git pull --rebase origin main
+          git commit -m "chore(update-manifest): ${{ steps.rel.outputs.tag }} → latest.json" -m "由 release 工作流自动生成：真实 Release + 真实 APK 资产全量校验（包名 / versionName=tag / versionCode=tag 公式 / SHA256 实算=资产 digest / 大小实测=资产 size）。客户端从此只读静态清单，不再消耗 GitHub 匿名 REST API 60 次/小时配额。"
+          git push
+          echo "COMMITTED=true" >> "$GITHUB_ENV"
+          echo "已提交 ${{ steps.rel.outputs.tag }} 清单到 main"
+
+      - name: GitHub Pages 状态检查（备用静态地址）
+        if: steps.rel.outputs.prerelease != 'true' && steps.gen.outputs.skipped != 'true'
+        id: pages
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          PAGES=$(gh api "repos/${GITHUB_REPOSITORY}/pages" 2>/dev/null || true)
+          if [ -z "$PAGES" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "ℹ GitHub Pages 未启用——备用地址 https://${GITHUB_REPOSITORY_OWNER}.github.io/... 暂不可用（不阻塞主清单 raw 源）。"
+            echo "  如需启用备用地址（可选）：Settings → Pages → Build and deployment → Source 选「GitHub Actions」，此后本工作流自动部署。"
+          else
+            SRC_TYPE=$(echo "$PAGES" | jq -r '.source.type // ""')
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "source_type=$SRC_TYPE" >> "$GITHUB_OUTPUT"
+            echo "ℹ GitHub Pages 已启用（source=$SRC_TYPE）"
+          fi
+
+      - name: 配置 Pages（启用后；Source 非 workflow 时部署步骤会失败并如实呈现）
+        if: steps.pages.outputs.enabled == 'true'
+        uses: actions/configure-pages@v5
+
+      - name: 上传 Pages 工件（update/ 目录）
+        if: steps.pages.outputs.enabled == 'true'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: 'update'
+
+      - name: 部署 Pages（备用静态地址）
+        if: steps.pages.outputs.enabled == 'true'
+        uses: actions/deploy-pages@v4
+
+      - name: 线上核验（raw 主源真实可达性——不伪造部署成功）
+        if: steps.rel.outputs.prerelease != 'true' && steps.gen.outputs.skipped != 'true'
+        run: |
+          set -uo pipefail
+          RAW_URL="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/update/latest.json"
+          EXPECT_VC=$(jq -r '.versionCode' /tmp/latest.json)
+          EXPECT_SHA=$(jq -r '.apkSha256' /tmp/latest.json)
+          echo "核验 $RAW_URL（期望 versionCode=$EXPECT_VC）"
+          for i in 1 2 3 4 5 6; do
+            BODY=$(curl -fsSL --max-time 30 "$RAW_URL" || true)
+            if [ -n "$BODY" ]; then
+              VC=$(echo "$BODY" | jq -r '.versionCode // empty' || true)
+              SHA=$(echo "$BODY" | jq -r '.apkSha256 // empty' || true)
+              if [ "$VC" = "$EXPECT_VC" ] && [ "$SHA" = "$EXPECT_SHA" ]; then
+                echo "✓ 线上清单已生效：versionCode=$VC · SHA256=${SHA:0:16}…（第 $i 次探测）"
+                exit 0
+              fi
+              echo "  第 $i 次：线上 versionCode=$VC 与期望不一致（raw CDN 边缘缓存最长 5 分钟）——继续等待…"
+            else
+              echo "  第 $i 次：raw 源暂不可达（网络抖动/缓存延迟）——继续等待…"
+            fi
+            sleep 60
+          done
+          echo "⚠ 6 分钟内线上核验未确认（CDN 缓存或网络延迟）——清单已提交到 main，请稍后手动核验 $RAW_URL"
+          exit 0
+
+      - name: 结果汇总
+        if: always()
+        run: |
+          echo "══════════ update-manifest 结果 ══════════"
+          echo "目标 Release : ${{ steps.rel.outputs.tag }}（draft=${{ steps.rel.outputs.draft }} prerelease=${{ steps.rel.outputs.prerelease }}）"
+          if [ "${{ steps.rel.outputs.prerelease }}" = "true" ]; then
+            echo "清单动作     : 跳过（Pre-release 不覆盖正式清单）"
+          elif [ "${{ steps.gen.outputs.skipped }}" = "true" ]; then
+            echo "清单动作     : 跳过（陈旧守卫/幂等）"
+          elif [ "${COMMITTED:-}" = "true" ]; then
+            echo "清单动作     : 已提交 main（raw 主源生效）"
+          else
+            echo "清单动作     : 见上方各步骤日志"
+          fi
+          if [ "${{ steps.pages.outputs.enabled }}" = "true" ]; then
+            echo "备用地址     : Pages 已启用（部署见上方日志）"
+          else
+            echo "备用地址     : Pages 未启用（可选配置，不阻塞主源）"
+          fi
+          echo "══════════════════════════════════════════"
