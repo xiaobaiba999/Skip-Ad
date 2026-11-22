@@ -56,25 +56,25 @@ def run_gen(release, apk, repo_manifest=None, out=None, expect_pkg="com.zai.adsh
 
 
 def real_release():
-    """真实 v7.9.8 正式 Release JSON（id=454388523 · 资产 digest 与工作流核验一致）。"""
-    # v7.9.8 正式 Release 真实数据（Release id=454388523 · 资产 digest 实测核验）
+    """真实 v7.9.9 正式 Release JSON（id=454424925 · 资产 digest 与工作流核验一致）。"""
+    # v7.9.9 正式 Release 真实数据（Release id=454424925 · 资产 digest 实测核验）
     return {
-        "tag_name": "v7.9.8",
-        "name": "Skip-Ad v7.9.8",
+        "tag_name": "v7.9.9",
+        "name": "Skip-Ad v7.9.9",
         "draft": False,
         "prerelease": False,
-        "published_at": "2026-11-22T11:10:01Z",
-        "body": "versionCode: 79800\n\n# 开屏卫士 v7.9.8\n\n1. 更新检查静态清单链路\n2. 缓存/ETag/请求合并/失败回退\n3. 日志上传稳定性修复",
+        "published_at": "2026-11-22T12:15:29Z",
+        "body": "versionCode: 79900\n\n# 开屏卫士 v7.9.9\n\n1. 更新检查源链重构（jsDelivr 四接入点）\n2. 日志上传超时阶段化\n3. 发布链路 purge 与端到端验证",
         "assets": [{
-            "name": "adshield-v7.9.8.apk",
-            "size": 890422,
-            "digest": "sha256:db357668b70aa410f7cc470985d09503a83d8d1b3ded2d0cb76dcb2caaa028ce",
-            "browser_download_url": "https://github.com/xiaobaiba999/Skip-Ad/releases/download/v7.9.8/adshield-v7.9.8.apk",
+            "name": "adshield-v7.9.9.apk",
+            "size": 894518,
+            "digest": "sha256:2a16970e7151234c7b69aca9a9977154a946bd46803fc4ba6d5c08d5437d18be",
+            "browser_download_url": "https://github.com/xiaobaiba999/Skip-Ad/releases/download/v7.9.9/adshield-v7.9.9.apk",
         }],
     }
 
 
-REAL_APK = "/tmp/adshield-v7.9.8.apk"  # 真实 Release 资产（本轮从 61365ec 重新构建，工作流已核验 digest）
+REAL_APK = "/tmp/adshield-v7.9.9.apk"  # 真实 Release 资产（本轮从 6930aef 构建，工作流已核验 digest）
 
 
 def write_json(obj, path):
@@ -94,17 +94,17 @@ def main():
     print("═══ S1 真实 Release + 真实 APK → 清单生成 ═══")
     rc, out = run_gen(rel_path, REAL_APK, out=out_path)
     A("S1a 生成成功（exit 0）", rc == 0)
-    A("S1b 输出含真实 versionName/versionCode", "versionName 7.9.8" in out and "versionCode 79800" in out)
+    A("S1b 输出含真实 versionName/versionCode", "versionName 7.9.9" in out and "versionCode 79900" in out)
     with open(out_path, encoding="utf-8") as f:
         m = json.load(f)
     repo_manifest = json.load(open(os.path.join(ROOT, "update/latest.json"), encoding="utf-8"))
     A("S1c schemaVersion=1", m["schemaVersion"] == 1)
-    A("S1d 真实字段：tag/publishedAt/apkUrl", m["releaseTag"] == "v7.9.8"
-      and m["publishedAt"] == "2026-11-22T11:10:01Z"
-      and m["apkUrl"].endswith("/v7.9.8/adshield-v7.9.8.apk"))
+    A("S1d 真实字段：tag/publishedAt/apkUrl", m["releaseTag"] == "v7.9.9"
+      and m["publishedAt"] == "2026-11-22T12:15:29Z"
+      and m["apkUrl"].endswith("/v7.9.9/adshield-v7.9.9.apk"))
     A("S1e 真实 SHA256（实算=API digest）",
-      m["apkSha256"] == "db357668b70aa410f7cc470985d09503a83d8d1b3ded2d0cb76dcb2caaa028ce")
-    A("S1f 真实大小 890422", m["apkSize"] == 890422)
+      m["apkSha256"] == "2a16970e7151234c7b69aca9a9977154a946bd46803fc4ba6d5c08d5437d18be")
+    A("S1f 真实大小 894518", m["apkSize"] == 894518)
     A("S1g packageName 真实", m["packageName"] == "com.zai.adshield")
     A("S1h mandatoryUpdate=false / minSupported=0", m["mandatoryUpdate"] is False and m["minSupportedVersionCode"] == 0)
     A("S1i 与仓库 update/latest.json 同源一致（versionCode/SHA/URL）",
@@ -115,8 +115,8 @@ def main():
     r = subprocess.run([sys.executable, META, "--json", REAL_APK], capture_output=True, text=True)
     meta = json.loads(r.stdout)
     A("S2a 包名", meta.get("package") == "com.zai.adshield")
-    A("S2b versionName", meta.get("versionName") == "7.9.8")
-    A("S2c versionCode", meta.get("versionCode") == 79800)
+    A("S2b versionName", meta.get("versionName") == "7.9.9")
+    A("S2c versionCode", meta.get("versionCode") == 79900)
 
     print("═══ S3 校验链拒绝面 ═══")
 
@@ -142,11 +142,11 @@ def main():
     rc, out = run_gen(rel_path, REAL_APK, expect_pkg="com.other.app")
     A("S3d 包名闸（expect-package 错配 → 拒绝）", rc == 2 and "包名" in out)
 
-    p = bad_release(lambda r: r.update(tag_name="v7.9.9"))
+    p = bad_release(lambda r: r.update(tag_name="v8.0.0"))
     rc, out = run_gen(p, REAL_APK)
     A("S3e tag≠APK versionName/公式 → 拒绝", rc == 2 and ("versionName" in out or "versionCode" in out))
 
-    p = bad_release(lambda r: r.update(body="versionCode: 79900\n正文"))
+    p = bad_release(lambda r: r.update(body="versionCode: 79800\n正文"))
     rc, out = run_gen(p, REAL_APK)
     A("S3f 正文 versionCode 不一致 → 拒绝", rc == 2 and "正文 versionCode" in out)
 
@@ -160,7 +160,7 @@ def main():
 
     print("═══ S4 陈旧守卫 ═══")
     newer_repo = os.path.join(tmp, "repo_newer.json")
-    write_json({"schemaVersion": 1, "versionName": "7.9.9", "versionCode": 79900,
+    write_json({"schemaVersion": 1, "versionName": "7.9.10", "versionCode": 79910,
                 "apkSha256": "0" * 64}, newer_repo)
     rc, out = run_gen(rel_path, REAL_APK, repo_manifest=newer_repo)
     A("S4a 旧 Release 不覆盖新清单 → SKIP(3)", rc == 3 and "不覆盖" in out)
