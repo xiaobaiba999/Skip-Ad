@@ -35,11 +35,55 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *
  * 触发模型（事件优先 · 时间兜底——不轮询凑次数）：
  *  · requestAutoCheck(minIntervalMs)：KeepAliveReceiver 心跳顺带（8h 客户端
- *    节拍 + 授权门 + RELAY_URL 门）；
+ *    节拍 + 授权门 + RELAY_URL 门 + v8.1.0 本地 24h/3 前置闸）；
  *  · requestUploadNow()：用户手动「立即提交」（同服务端限额，不绕过 24h/3）；
+ *  · submitNowBlocking()：v8.1.0 一键上传（手动路径强化版——强制封批 +
+ *    阻塞执行 + 结果 Summary 回调 UI；手动不受自动 24h/3 额度限制，
+ *    服务端 RATE_LIMITED 幂等兑底）；
  *  · 网络恢复/批次到期由心跳检查点吸收（不另设高频闹钟）。
  */
 public final class LogUploadDispatcher {
+
+    /** v8.1.0 一键上传结果摘要（纯数据——MainActivity 回调 app.js 渲染用）。
+     *  字段语义：sealed=本次封批数；uploaded=尝试上传批数；acked=服务端确认数；
+     *  waited=服务端限流（24h 窗口拒收）；failed=终态失败；retried=退避重试中；
+     *  pending=剩余到期批次；pendingEvents=剩余缓冲事件；acked24h=24h 已确认
+     *  批次；busy=因占用跳过；issueNumbers=逗号分隔 Issue 编号；lastError=末次
+     *  错误码。toJson() 由 JS 侧直接 JSON.parse。 */
+    public static final class Summary {
+        public int sealed;
+        public int uploaded;
+        public int acked;
+        public int waited;
+        public int failed;
+        public int retried;
+        public int pending;
+        public int pendingEvents;
+        public int acked24h;
+        public boolean busy;
+        public String issueNumbers = "";
+        public String lastError = "";
+
+        public String toJson() {
+            JSONObject o = new JSONObject();
+            try {
+                o.put("sealed", sealed);
+                o.put("uploaded", uploaded);
+                o.put("acked", acked);
+                o.put("waited", waited);
+                o.put("failed", failed);
+                o.put("retried", retried);
+                o.put("pending", pending);
+                o.put("pendingEvents", pendingEvents);
+                o.put("acked24h", acked24h);
+                o.put("busy", busy);
+                o.put("issueNumbers", issueNumbers);
+                o.put("lastError", lastError);
+            } catch (Throwable ignored) {
+            }
+            return o.toString();
+        }
+    }
 
     /** 客户端标识头（公开常量——非秘密；服务端形态闸过滤非客户端流量）。 */
     public static final String CLIENT_HEADER = "com.zai.adshield";
@@ -69,16 +113,28 @@ public final class LogUploadDispatcher {
 
     /* ── 对外入口 ── */
 
-    /** 自动检查点（KeepAliveReceiver 心跳顺带调用；门卫：地址+最小间隔——授权门在上游）。 */
+    /** 自动检查点（KeepAliveReceiver 心跳顺带调用；门卫：地址+最小间隔+本地
+     *  24h/3 前置闸——授权门在上游）。v8.1.0 新增本地前置闸：24h 内已 ACK
+     *  ≥3 批则不再发起自动上传（省电省流量；服务端滑窗仍为权威——双保险）。
+     *  手动路径（requestUploadNow/submitNowBlocking）【不】受此闸（用户明确
+     *  意图优先，服务端 RATE_LIMITED 幂等兜底）。 */
     public void requestAutoCheck(long minIntervalMs) {
         try {
             if (com.zai.adshield.Net.LOG_RELAY_URL.length() == 0) return; // 中转未上线：结构性关闭
             long last = ctx.getSharedPreferences("logupload", Context.MODE_PRIVATE).getLong("lastAttemptAt", 0L);
             long now = System.currentTimeMillis();
-            if (now - last < minIntervalMs) return;
+            if (!autoCheckEligible(last, now, minIntervalMs,
+                    LogBatchStore.get(ctx).ackedCount24h(now))) return;
             dispatch();
         } catch (Throwable ignored) {
         }
+    }
+
+    /** v8.1.0 自动上传资格判定（提取为纯函数——JVM 可回归）：间隔达标 +
+     *  本地 24h ACK 计数 <3（服务端滑窗为权威的第二道本地闸）。 */
+    public static boolean autoCheckEligible(long lastAttemptAt, long now, long minIntervalMs, int acked24h) {
+        if (now - lastAttemptAt < minIntervalMs) return false;
+        return acked24h < 3;
     }
 
     /** 手动「立即提交」（用户主动操作；同样走服务端限额与幂等——不绕 24h/3）。 */
@@ -87,6 +143,36 @@ public final class LogUploadDispatcher {
             if (com.zai.adshield.Net.LOG_RELAY_URL.length() == 0) return; // 服务未上线：无行为
             dispatch();
         } catch (Throwable ignored) {
+        }
+    }
+
+    /** v8.1.0 一键上传（阻塞执行——调用方【必须】已在后台线程；与自动循环
+     *  互斥：同一 running CAS 门，拿不到短等 500ms 重试一次仍占用则返回 busy）。
+     *  手动路径强制封批（forceSeal——缓冲不足 20 条也封，轻用户点按钮不再
+     *  静默空转）；手动不受自动 24h/3 额度限制（服务端 RATE_LIMITED 幂等
+     *  兑底——被拒即 WAIT 退避，绝不绕过）。返回 Summary 供 UI 回调。 */
+    public Summary submitNowBlocking() {
+        Summary s = new Summary();
+        try {
+            if (com.zai.adshield.Net.LOG_RELAY_URL.length() == 0) {
+                s.lastError = "relay-offline";
+                return s;
+            }
+            if (!running.compareAndSet(false, true)) {
+                try { Thread.sleep(500); } catch (Throwable ignored) { }
+                if (!running.compareAndSet(false, true)) {
+                    s.busy = true;
+                    return s;
+                }
+            }
+            try {
+                return runLoop(true);
+            } finally {
+                running.set(false);
+            }
+        } catch (Throwable t) {
+            s.lastError = "internal: " + t.getClass().getSimpleName();
+            return s;
         }
     }
 
@@ -107,6 +193,16 @@ public final class LogUploadDispatcher {
     /* ── 主循环 ── */
 
     private void runLoop() {
+        runLoop(false);
+    }
+
+    /** v8.1.0：runLoop(forceSeal) 返回结果摘要（一键上传 UI 反馈用）；
+     *  forceSeal=true（手动一键上传）：缓冲不足 20 条也封批（>0 即封）——
+     *  旧版手动路径继承自动路径的 20 条阈值，轻度用户可能数周攒不满 →
+     *  点「立即提交」静默空转零反馈（真机反馈「导出代替上传」体验的一部分）。
+     *  自动路径 forceSeal=false：20 条阈值语义不变（不凑次数红线保持）。 */
+    private Summary runLoop(boolean forceSeal) {
+        Summary s = new Summary();
         try {
             LogBatchStore store = LogBatchStore.get(ctx);
             // STATS 快照先行（六态 + GKD 八格——纯静态计数器读取，开机周期累计口径）
@@ -116,19 +212,35 @@ public final class LogUploadDispatcher {
                         snapshot6(0), snapshot6(2), snapshot6(5)));
             } catch (Throwable ignored) {
             }
-            // 心跳检查点封批（阈值 20；单批 ≤48——堆积分多批，guard 防御环；
-            // 空批/隐私拒收即止——绝不凑次数）
+            // 封批（自动：阈值 20 不凑次数；手动：>0 即封；单批 ≤48——堆积
+            // 分多批，guard 防御环；空批/隐私拒收即止）
             int sealGuard = 0;
-            while (store.pendingEventCount() >= SEAL_THRESHOLD && sealGuard++ < 24) {
+            while (shouldSeal(store.pendingEventCount(), forceSeal) && sealGuard++ < 24) {
                 if (store.sealBatch(appVersion(), versionCode()) == null) break;
+                s.sealed++;
             }
             long now = System.currentTimeMillis();
             List<JSONObject> due = store.dueBatches(now, MAX_BATCHES_PER_RUN);
+            s.uploaded = due.size();
             for (JSONObject batch : due) {
-                uploadOne(store, batch);
+                uploadOne(store, batch, s);
             }
-        } catch (Throwable ignored) {
+            try {
+                s.pending = store.dueBatches(System.currentTimeMillis(), Integer.MAX_VALUE).size();
+                s.pendingEvents = store.pendingEventCount();
+                s.acked24h = store.ackedCount24h(System.currentTimeMillis());
+            } catch (Throwable ignored) {
+            }
+        } catch (Throwable t) {
+            s.lastError = "loop: " + t.getClass().getSimpleName();
         }
+        return s;
+    }
+
+    /** v8.1.0 封批决策（提取为纯函数——JVM 可回归）：自动路径阈值 20（不凑
+     *  次数）；手动路径 >0 即封（一键上传绝不空转）。空批永不封（红线）。 */
+    public static boolean shouldSeal(int pendingCount, boolean forceSeal) {
+        return forceSeal ? pendingCount > 0 : pendingCount >= SEAL_THRESHOLD;
     }
 
     /** DecisionEvidence 六态快照取格（[VERIFIED_SUCCESS, RETRY, MISS, FALSE_CLICK, SAFE_BLOCK, UNKNOWN]）。 */
@@ -141,7 +253,7 @@ public final class LogUploadDispatcher {
         return 0;
     }
 
-    private void uploadOne(LogBatchStore store, JSONObject batch) {
+    private void uploadOne(LogBatchStore store, JSONObject batch, Summary s) {
         String batchId = batch.optString("batchId", "");
         if (!LogUploadPolicy.isValidUuid(batchId)) return; // 防御：坏记录绝不外发
         try {
@@ -168,21 +280,29 @@ public final class LogUploadDispatcher {
             int action = LogUploadPolicy.decide(ok, code, attemptsOf(batch));
             switch (action) {
                 case LogUploadPolicy.ACK:
-                    store.markAcked(batchId,
-                            res != null && res.json != null ? res.json.optInt("issueNumber", 0) : 0,
-                            System.currentTimeMillis());
+                    int issue = res != null && res.json != null ? res.json.optInt("issueNumber", 0) : 0;
+                    store.markAcked(batchId, issue, System.currentTimeMillis());
+                    s.acked++;
+                    if (issue > 0) {
+                        s.issueNumbers = s.issueNumbers.length() == 0
+                                ? String.valueOf(issue) : s.issueNumbers + "," + issue;
+                    }
                     return;
                 case LogUploadPolicy.WAIT: {
                     long ra = res != null && res.json != null ? res.json.optLong("retryAfter", 0) : 0;
                     store.markState(batchId, LogBatchStore.STATE_PENDING,
                             System.currentTimeMillis() + LogUploadPolicy.waitDelayMs(ra),
                             "RATE_LIMITED (server window)");
+                    s.waited++;
+                    s.lastError = "rate-limited";
                     return;
                 }
                 case LogUploadPolicy.FAIL:
                     store.markState(batchId, LogBatchStore.STATE_FAILED, 0,
                             (code == null ? "network" : code) + ": "
                                     + (res != null && res.json != null ? res.json.optString("error", "") : ""));
+                    s.failed++;
+                    s.lastError = code == null ? "network" : code;
                     return;
                 default: { // RETRY——同 batchId 退避（服务端幂等兜底超时-已建场景）
                     int attempts = attemptsOf(batch) + 1; // 本次 POST 已计入 markState(UPLOADING)
@@ -190,6 +310,8 @@ public final class LogUploadDispatcher {
                             System.currentTimeMillis() + LogUploadPolicy.retryDelayMs(attempts),
                             "retry " + attempts + "/" + LogUploadPolicy.MAX_ATTEMPTS
                                     + (code == null ? ": network" : ": " + code));
+                    s.retried++;
+                    s.lastError = code == null ? "network" : code;
                 }
             }
         } catch (Throwable t) {

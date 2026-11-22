@@ -486,10 +486,10 @@ function refreshLogUploadNote() {
 (function bindLogUploadActions() {
   const nowBtn = $("#btn-log-upload-now");
   if (nowBtn) nowBtn.addEventListener("click", () => {
+    // v8.1.0：统一走 doUploadLog（真上传 + 强制封批 + 结果回调反馈）——
+    // 旧版 void 调用零反馈（点完只有一句 toast，成败无从知晓）
     if (HAS_BRIDGE && AndroidApp.logUploadSubmitNow) {
-      try { AndroidApp.logUploadSubmitNow(); } catch (e) {}
-      toast("已触发立即提交（后台执行 · 同一服务端限额）");
-      setTimeout(refreshLogUploadNote, 400);
+      doUploadLog(true);
     } else {
       toast("当前环境不支持自动上传");
     }
@@ -1103,7 +1103,7 @@ function setUploadPhase(btn, phase) {
   btn.disabled = true;
 }
 function resetUploadBtn(btn) {
-  btn.innerHTML = "上传日志";
+  btn.innerHTML = "一键上传";
   btn.disabled = false;
 }
 
@@ -1146,20 +1146,22 @@ function humanizeUploadError(err) {
   return e || "导出失败（未知原因）";
 }
 
-/* 失败提示（含重试按钮） */
-function showUploadFail(box, err) {
+/* 失败提示（含重试按钮；v8.1.0：retryFn 参数化——上传/导出各自重试） */
+function showUploadFail(box, err, retryFn) {
   box.className = "fb-result err";
   box.innerHTML = esc(humanizeUploadError(err))
     + ' <button id="btn-upload-retry" style="border:0;border-radius:999px;background:#fff;color:#b91c1c;'
     + 'font-size:12px;font-weight:700;padding:4px 12px;margin-left:6px">重试</button>';
   const rb = $("#btn-upload-retry");
-  if (rb) rb.addEventListener("click", () => doExportLog());
+  if (rb) rb.addEventListener("click", () => (retryFn || doUploadLog)());
 }
 
-/* 导出主流程（v7.9.7）：收集（四类内容）→ 脱敏 → 写入本地文件 → 分享可选 */
+/* 导出主流程（v7.9.7；v8.1.0 降为次按钮：一键上传为主）：收集（四类内容）→
+ * 脱敏 → 写入本地文件 → 分享可选 */
 async function doExportLog() {
   const box = $("#upload-log-result");
-  const btn = $("#btn-upload-log");
+  const btn = $("#btn-export-log");
+  if (!btn) return; // v8.1.0：入口迁至「导出」次按钮
   if (!HAS_BRIDGE) { box.className = "fb-result err"; box.textContent = "仅 APK 内可导出（浏览器预览无文件系统）"; return; }
 
   closeModal();
@@ -1194,7 +1196,8 @@ async function doExportLog() {
   setUploadPhase(btn, "写入文件…");
   let res = null;
   try { res = JSON.parse(AndroidApp.exportLog(title, body)); } catch (e) { res = { ok: false, error: "导出异常" }; }
-  resetUploadBtn(btn);
+  btn.innerHTML = "导出";
+  btn.disabled = false;
 
   if (res && res.ok) {
     box.className = "fb-result ok";
@@ -1207,11 +1210,86 @@ async function doExportLog() {
     });
     showExportDoneModal(res.path, res.bytes);      // 唯一反馈：一个确认弹窗（v5.8.0 形态保持）
   } else {
-    showUploadFail(box, res && res.error);          // 明确原因 + 重试按钮
+    showUploadFail(box, res && res.error, doExportLog);          // 明确原因 + 重试（导出）
   }
 }
 
-$("#btn-upload-log").addEventListener("click", () => { void doExportLog(); });
+/* ══════ v8.1.0 一键上传主流程（真机实锤「导出≠上传」根治）══════
+ * 用户点一次 → 封批（不足 20 条也封）→ 上传 Worker → 回调结果：
+ * 成功显示 Issue 编号；失败显示原因；服务端限流如实告知。手动上传
+ * 不受自动 24h/3 额度限制（服务端 RATE_LIMITED 幂等兑底）。
+ * 双入口：「我的」页主按钮 / 设置页「立即提交」——触发按钮各自 phase，
+ * 结果统一渲染到「我的」页结果区 + toast + 设置页状态行刷新。 */
+function doUploadLog(fromSettings) {
+  const box = $("#upload-log-result");
+  const btn = fromSettings ? $("#btn-log-upload-now") : $("#btn-upload-log");
+  if (!btn) return;
+  if (!HAS_BRIDGE || !AndroidApp.logUploadSubmitNow) {
+    toast("仅 APK 内可上传（浏览器预览无上传通道）");
+    return;
+  }
+  if (!fromSettings) {
+    closeModal();
+    box.className = "fb-result";
+    box.textContent = "";
+  }
+  setUploadPhase(btn, "上传中…");
+  try {
+    AndroidApp.logUploadSubmitNow("__logUploadCb");
+  } catch (e) {
+    resetUploadButtons();
+    showUploadFail(box, "上传调用失败", doUploadLog);
+  }
+}
+
+/* v8.1.0 复位双入口按钮（回调时两个都复位——触发者不确定） */
+function resetUploadButtons() {
+  const main = $("#btn-upload-log");
+  if (main) { main.innerHTML = "一键上传"; main.disabled = false; }
+  const now = $("#btn-log-upload-now");
+  if (now) { now.innerHTML = "立即提交"; now.disabled = false; }
+}
+
+/* v8.1.0 一键上传结果回调（MainActivity evaluateJavascript 回调） */
+window.__logUploadCb = function (res) {
+  resetUploadButtons();
+  const box = $("#upload-log-result");
+  res = res || {};
+  if (res.busy) {
+    toast("后台正在上传中，请稍候再试");
+    showUploadFail(box, "后台正在上传中，请稍候再试", doUploadLog);
+    return;
+  }
+  if ((res.acked || 0) > 0) {
+    const issues = String(res.issueNumbers || "").split(",").filter(Boolean).map(n => "#" + n).join("、");
+    box.className = "fb-result ok";
+    box.innerHTML = "日志上传成功" + (issues ? "（Issue " + esc(issues) + "）" : "")
+      + "<br>24 小时内已成功上传 " + (res.acked24h || 0) + "/3 批（自动限额，手动上传不受限）";
+    toast("日志上传成功");
+  } else if ((res.waited || 0) > 0) {
+    toast("服务端限流，稍后自动重试");
+    showUploadFail(box, "服务端限流（24h 窗口）——稍后将自动重试，无需手动", doUploadLog);
+  } else if ((res.failed || 0) > 0) {
+    toast("日志上传失败，请稍后重试");
+    showUploadFail(box, "上传失败：" + (res.lastError || "未知原因") + "——请稍后重试", doUploadLog);
+  } else if ((res.retried || 0) > 0 || (res.pending || 0) > 0) {
+    box.className = "fb-result";
+    box.textContent = "上传进行中——已安排自动退避重试（最多 6 次，失败批次保留检视）";
+    toast("上传进行中，已安排自动重试");
+  } else if ((res.sealed || 0) === 0 && (res.pendingEvents || 0) === 0 && (res.pending || 0) === 0) {
+    box.className = "fb-result";
+    box.textContent = "暂无可上传的新日志（使用产生事件后再试；自动上传不受影响）";
+    toast("暂无可上传的新日志");
+  } else {
+    toast("日志上传失败，请稍后重试");
+    showUploadFail(box, "上传未完成（" + (res.lastError || "未知原因") + "）——请稍后重试", doUploadLog);
+  }
+  refreshLogUploadNote();
+};
+
+$("#btn-upload-log").addEventListener("click", () => { void doUploadLog(); });
+const __btnExportLog = $("#btn-export-log");
+if (__btnExportLog) __btnExportLog.addEventListener("click", () => { void doExportLog(); });
 
 /* ══════════ v7.1.0 卫士使用报告 · v7.2.0 饼图常驻 + 明细折叠 ══════════
  * （用户实锤：报告生成后太长看着难受——顶部拦截分布饼图常驻 + 五段明细

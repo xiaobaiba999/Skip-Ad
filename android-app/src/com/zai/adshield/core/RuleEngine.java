@@ -211,6 +211,12 @@ public final class RuleEngine {
     static final java.util.HashSet<String> TEXT_EXACT_SET =
             new java.util.HashSet<String>(java.util.Arrays.asList(TEXT_EXACT));
 
+    /** v8.1.0：全局跳过精确表成员查询（public 查询方法——保持字段封装，
+     *  供 AdScanReviveTest 分层红线断言：「关闭」裸词绝不进本表）。 */
+    public static boolean textExactContains(String s) {
+        return s != null && TEXT_EXACT_SET.contains(s);
+    }
+
     /* ── 第2层：倒计时形态（严格正则，营销话术数学上无法混入） ──
        P1：跳过5 / 跳过 5 / 跳过广告3 / 跳过广告 5s / 跳過廣告 5秒
        P2：3s后可跳过 / 5 秒后可跳过广告 / 3秒后可跳过廣告

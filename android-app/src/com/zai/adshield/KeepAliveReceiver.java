@@ -61,11 +61,14 @@ public class KeepAliveReceiver extends BroadcastReceiver {
         boolean replaced = Intent.ACTION_MY_PACKAGE_REPLACED.equals(act);
         boolean selfCheck = ACTION_SELF_CHECK.equals(act);
         if (!boot && !replaced && !selfCheck) return;
-        if (!ctx.getSharedPreferences("adshield", Context.MODE_PRIVATE)
-                .getBoolean("keepOn", false)) {
-            return; // 用户已手动关闭保活提醒
-        }
 
+        /* ═══ v8.1.0 keepOn 连坐修复（真机反馈「日志不能自动上传」根因之一）═══
+         * 旧版 keepOn（保活提醒开关）门在 selfCheck 之前——用户一旦关闭
+         * 「保活提醒」（通知打扰），心跳续期/订阅静默更新/自动日志上传三个
+         * 【静默系统功能】被连坐静默死亡（心跳链断 → 之后连 SELF_CHECK 都
+         * 不再触发，用户无从知晓）。语义切分：「保活提醒」= 通知打扰部分
+         * （SmartRevive 踢链 + 两态通知），keepOn 只管这部分；心跳续期/
+         * 订阅更新/自动上传是零打扰系统功能，移到门之前永不被连坐。 */
         if (selfCheck) {
             // v3.8.0：先续期心跳（无论服务死活，心跳链永不中断），再自检
             // v3.13.0：nightDeferrable=true——息屏时改 30~45 分钟窗口式非精确
@@ -81,10 +84,16 @@ public class KeepAliveReceiver extends BroadcastReceiver {
             subThread.setDaemon(true);
             subThread.start();
             // v4.2.0：心跳顺带检查自动日志提交（v6.1.0：8h 一日 3 次；未到期/服务未运行/息屏秒回零开销）
+            // v8.1.0：24h/3 本地前置闸 + 服务端滑窗权威（LogUploadDispatcher.autoCheckEligible）
             try {
                 AdSkipService.maybeAutoUploadLog(ctx);
             } catch (Throwable ignored) {
             }
+        }
+
+        if (!ctx.getSharedPreferences("adshield", Context.MODE_PRIVATE)
+                .getBoolean("keepOn", false)) {
+            return; // 用户已手动关闭保活提醒（仅通知/踢链部分——系统功能已在上方执行）
         }
 
         /* ═══ v5.2.0 统一智能判定 ═══

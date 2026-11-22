@@ -888,13 +888,33 @@ public class MainActivity extends Activity {
         }
 
         /** v8.0.0：手动「立即提交」（用户主动操作——同一服务端 24h/3 限额与
-         *  batchId 幂等，绝不绕过；单后台守护线程执行，绝不阻塞页面）。 */
+         *  batchId 幂等，绝不绕过；单后台守护线程执行，绝不阻塞页面）。
+         *  v8.1.0：升级为一键上传带回调版（cb=JS 回调函数名）——后台线程
+         *  阻塞执行 submitNowBlocking（强制封批 + 结果 Summary），完成后经
+         *  window[cb] 回调 UI；成功显示 Issue 编号，失败显示原因。手动路径
+         *  不受自动 24h/3 额度限制（服务端 RATE_LIMITED 幂等兜底）。 */
         @JavascriptInterface
-        public void logUploadSubmitNow() {
-            try {
-                com.zai.adshield.core.LogUploadDispatcher.get(a).requestUploadNow();
-            } catch (Throwable ignored) {
-            }
+        public void logUploadSubmitNow(final String cb) {
+            new Thread(() -> {
+                String r;
+                try {
+                    r = com.zai.adshield.core.LogUploadDispatcher.get(a)
+                            .submitNowBlocking().toJson();
+                } catch (final Throwable t) {
+                    r = "{\"busy\":false,\"acked\":0,\"lastError\":\"internal\"}";
+                }
+                final String rr = r;
+                a.runOnUiThread(() -> {
+                    try {
+                        if (a.webView != null) {
+                            a.webView.evaluateJavascript(
+                                    "window[" + JSON.stringifyCb(cb) + "] && window["
+                                            + JSON.stringifyCb(cb) + "](" + rr + ")", null);
+                        }
+                    } catch (Throwable ignored) {
+                    }
+                });
+            }, "log-upload-now").start();
         }
 
         /** v8.0.0：清理本地待上传日志（用户主动操作——ACK 前批次一并清理；

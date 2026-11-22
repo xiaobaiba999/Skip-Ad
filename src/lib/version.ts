@@ -1,6 +1,6 @@
 /** 版本与 GitHub 仓库信息（Web 端与发布节奏共用） */
-export const APP_VERSION = "8.0.3";
-export const VERSION_CODE = 80300; // major*10000 + minor*1000 + patch*100，随版本单调递增
+export const APP_VERSION = "8.1.0";
+export const VERSION_CODE = 81000; // major*10000 + minor*1000 + patch*100，随版本单调递增
 export const GITHUB_REPO = "xiaobaiba999/Skip-Ad";
 export const GITHUB_API = `https://api.github.com/repos/${GITHUB_REPO}`;
 export const GITHUB_HOME = `https://github.com/${GITHUB_REPO}`;
@@ -19,16 +19,15 @@ export interface VersionEntry {
  *  旧版本内容归档在 GitHub Releases 与 git 历史） */
 export const VERSION_HISTORY: VersionEntry[] = [
   {
-    version: "8.0.3",
-    code: 80300,
-    date: "2026-11-28",
-    tagline: "更新链路修复：GitHub API 限流（403/429）即时报明确错误不再浪费重试 + 下载完成文案如实描述（SHA-256 安装时校验）+ 关于页版本记录同步 v8.0.1→v8.0.3",
+    version: "8.1.0",
+    code: 81000,
+    date: "2026-11-29",
+    tagline: "真机反馈修复轮：开屏跳不过六项根因修复（学习开关误门控/CLEAN失明/早退杀链/nudge断流/晚档预算）+ 一键上传日志（真上传取代导出）+ 自动上传 keepOn 连坐修复与 24h/3 本地前置闸",
     notes: [
-      "更新检查链路审计（用户指令：先完整追踪再最小修复）：入口=设置页手动「检查更新」按钮（v7.0.0 已移除自动横幅）；请求=GitHub Releases API（/releases/latest 主通道 + /releases?per_page=8 回退，均匿名、noRedirect、7s/12s 超时）；Draft Release 两层正确过滤（GitHub 匿名 API 不返回草稿 + 回退通道显式跳过 draft/prerelease）；tag_name 解析→JS cmpVer 三段式数字比较（vs AndroidApp.versionName）；APK 下载取首个 .apk 资产 browser_download_url + 双镜像；安装前 SHA-256/字节数双校验 + Android 8+ 安装未知应用授权引导",
-      "限流修复（Net.rateLimited 纯函数 + 两通道接线）：旧版 403/429 先浪费一次 800ms 重试（限流窗口小时级，重试必败再烧同一配额）再报「GitHub 返回 403」——用户无从知道是限流还是何时能重试；新版即时报「GitHub API 限流（匿名 60 次/小时/IP），请约 1 小时后再试」（ReleaseNotesTest 更新链路段 7 断言钉死判定边界：403/429=限流，404/2xx/3xx/5xx/0=非限流）",
-      "文案诚实性修复：下载完成态旧文案「下载完成（已验 SHA-256）」不实——SHA-256 实际在点击安装时才校验（Downloader.install→verifyDownloadedFile），改为「下载完成，点击安装（安装前自动校验 SHA-256）」如实描述；appVer/appCode 浏览器预览回落值 8.0.0/80000→8.0.3/80300；关于页 CURRENT_RELEASE 从 v8.0.0 过期内容同步为 v8.0.1→v8.0.3 三轮实绩",
-      "「用户看不到新版本」根因结论（非代码缺陷）：更新接口只读 GitHub 正式 Releases——最新正式发布仍是 v7.9.6（2026-11-20）；v8.0.0 仅存 Draft（匿名 API 不可见）、v8.0.1/v8.0.2 从未建 Release 且代码未推送。用户看到 v7.9.6 是机制正确行为——不能绕过正式发布状态；修复路径=推送代码→建 v8.0.3 Draft→真机验证后 Publish",
-      "本轮零识别/安全门/状态机/契约改动：仅更新链路错误提示与页面文案；既有防线（draft 过滤/版本比较/下载源白名单/SHA-256 安装闸/未知应用授权引导）全部保持",
+      "广告链路六项根因修复（真机反馈「很多 App 开屏跳不过」全链路审计定案）：①「习惯学习」开关误门控整个开屏扫描（关闭=全灭且文案无警示）——解除门控，开关只管学习写入；②CLEAN 档案失明（跨重启72h只剩5词探针）——新增关闭/×/✕关闭线索探测（命中即档案复活转全量路径，探针层绝不直接出手）+ 复查期 72h→24h；③零候选退避早杀链——第一方入口窗无订阅覆盖不再提前杀链（梯子跑满12s，CLEAN档案仍兑底功耗）；④ nudge 补扫 4s 断流——4~12s 观察窗内 600ms 宽节流放行（晚出键内容事件救回）；⑤晚档扫描预算 360→600（深树晚出键可达）；⑥名实一致化：learning 开关真正管 learnFromManualClick",
+      "一键上传日志（真机实锤「导出≠上传」根治）：「我的」页主按钮改为真上传（点击→强制封批→上传 Worker→回调结果——成功显示 Issue 编号，失败显示原因，服务端限流如实告知）；导出降为次按钮保留（离线场景）；设置页「立即提交」统一同一反馈链路；手动路径不受 20 条阈值限制（轻用户点按钮必有反馈）也不受 24h/3 自动额度限制（服务端 RATE_LIMITED 幂等兑底）",
+      "自动上传修复与强化：KeepAliveReceiver keepOn（保活提醒开关）连坐修复——心跳续期/订阅静默更新/自动日志上传三个零打扰系统功能移到开关门之前，关「保活提醒」不再杀自动上传；新增 24h/3 本地前置闸（ackedCount24h>=3 不再发起自动上传——服务端滑窗仍为权威，双保险省电省流量）；失败退避 30s→480s×5+第6次终态 FAIL 保持（绝不无限重试）",
+      "测试：38 套件（+2：AdScanReviveTest 扫描复活回归 28 断言 / LogUploadNowTest 一键上传与自动窗口回归 27 断言）；既有 36 套件零回退；S1-S4 分层红线钉死（关闭裸词绝不进跳过词表/手动自动额度分离/空批永不封）",
     ],
   },
 ];

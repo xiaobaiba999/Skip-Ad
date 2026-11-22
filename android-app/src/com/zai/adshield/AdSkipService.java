@@ -2375,9 +2375,20 @@ public class AdSkipService extends AccessibilityService {
             ctx.splashLive = ctx.elapsedMs <= WINDOW_MS;
             ctx.guard = AdDecisionCore.isGuardPkg(pkg);
             Hit h = nativeTextProbe(root, ctx);
-            if (h != null) {
+            /* ═══ v8.1.0 CLEAN 失明修复（真机反馈「很多 App 跳不过」根因之二）═══
+             * CLEAN 档案窗（3 窗零候选·跨重启持久·复查期内）在无订阅覆盖时
+             * 只剩 5 词文本探针——「关闭」「×」类词典外关闭键整窗失明。
+             * 修复：新增「关闭线索」探测（关闭/×/✕ contains 查找 + isCloseText
+             * 等值 + 可见性）——命中即档案复活转全量路径。安全分层不变：
+             * 探针层【绝不直接出手】「关闭」——出手决策仍由全量 walkFused →
+             * decide L1.6 关闭键证据门（角标在场/顶部区/广告形态语境门）
+             * + ComplianceGuard 三重终闸逐候选把关。 */
+            boolean closeCue = h == null && nativeCloseCueProbe(root);
+            if (h != null || closeCue) {
                 profileReset(pkg, winClassOf(pkg));
-                appendLog("⚡ 探针哨兵命中（" + shortPkg(pkg) + "）：CLEAN 档案窗出现真「跳过」→ 档案复活，全量出手");
+                appendLog(h != null
+                        ? "⚡ 探针哨兵命中（" + shortPkg(pkg) + "）：CLEAN 档案窗出现真「跳过」→ 档案复活，全量出手"
+                        : "⚡ 关闭线索命中（" + shortPkg(pkg) + "）：CLEAN 档案窗出现「关闭/×」键 → 档案复活，全量路径判定");
                 tryScan(pkg, winStart, 0); // 复用全量路径（含规则/订阅/复验/执行）
             }
         } catch (Throwable ignored) {
@@ -2585,8 +2596,19 @@ public class AdSkipService extends AccessibilityService {
                 Long last = popupNudgeAt.get(pkg); // 弹窗窗期：240ms 节流补扫（v5.8.0：300→240）
                 if (last != null && now - last < 240) return;
                 popupNudgeAt.put(pkg, now);
+            } else if (elapsed <= WINDOW_MS) {
+                /* ═══ v8.1.0 晚出键救回（真机根因之四）═══
+                 * 旧版 4s 后弹窗窗期外内容事件【零补扫】——晚出跳过键
+                 * （H5/视频容器 3~12s 才渲染）出现时的内容事件全部落空，
+                 * 固定档又被零候选退避杀链 → 整窗失明。现 4~12s 观察窗内
+                 * 以 600ms 宽节流放行（比 80ms 高频档宽 7.5 倍挡内容风暴；
+                 * 最坏 ~13 次补扫/窗，与 v4.4.0 救回通道同档节流）。
+                 * 12s 观察窗外本就不扫（保持）。 */
+                Long last = nudgeAt.get(pkg);
+                if (last != null && now - last < 600) return;
+                nudgeAt.put(pkg, now);
             } else {
-                return;                            // 弹窗窗期外：内容变化零补扫
+                return;                            // 观察窗（12s）外：内容变化零补扫
             }
         }
         final int g = gen.intValue();
@@ -2669,6 +2691,34 @@ public class AdSkipService extends AccessibilityService {
     }
 
     /* ───────── 扫描与决策执行（逻辑全部在 AdDecisionCore） ───────── */
+
+    /** v8.1.0 CLEAN 档案窗「关闭线索」探测：关闭/×/✕ 三词 contains 查找 +
+     *  isCloseText 等值门 + 可见性检查。只做【复活信号】绝不出手（出手由
+     *  全量路径 decide L1.6 关闭键证据门 + ComplianceGuard 终闸把关）。
+     *  contains 命中的噪声（如「关闭应用？」长文本）由 isCloseText 等值
+     *  门滤除——只有标签【恰好】是「关闭」「×」「✕」等关闭词才算线索。 */
+    private boolean nativeCloseCueProbe(AccessibilityNodeInfo root) {
+        try {
+            for (int probe = 0; probe < 3; probe++) {
+                List<AccessibilityNodeInfo> found = root.findAccessibilityNodeInfosByText(
+                        probe == 0 ? "关闭" : (probe == 1 ? "×" : "✕"));
+                if (found == null || found.isEmpty()) continue;
+                for (int i = 0; i < found.size() && i < 10; i++) {
+                    AccessibilityNodeInfo n = found.get(i);
+                    if (n == null) continue;
+                    String text = cs(n.getText());
+                    if (text.length() == 0) text = cs(n.getContentDescription());
+                    if (text.length() == 0) continue;
+                    if (!AdDecisionCore.isCloseText(text)) continue; // 等值门：contains 噪声滤除
+                    NodeAdapter ad = new NodeAdapter(n);
+                    if (!ad.visible()) continue;
+                    return true; // 复活线索成立
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return false;
+    }
 
     /** v4.5.0 原生文本探针：findAccessibilityNodeInfosByText 系统原生子树搜索
      *  （大小写不敏感包含匹配，无节点预算）——DFS 预算耗尽漏掉深树按钮的
@@ -3260,8 +3310,13 @@ public class AdSkipService extends AccessibilityService {
         // 请求一律降级为弹窗路径——绝不拿灵岛/悬浮窗树走开屏决策阶梯）
         // v7.8.0：观察窗效自适应——videoLike → 20s（视频开屏按钮常在视频末
         // 5~15s 才露头，12s 硬封顶 = 字面意义的「不再扫」）
-        boolean splashLive = learningEnabled()
-                && elapsed <= com.zai.adshield.core.VideoSplashGuard.windowDeadlineMs(videoLike)
+        // v8.1.0【真机根因之一修复】：解除「习惯学习」开关对 splashLive 的
+        // 误门控——旧版 learningEnabled() 在此门控整个开屏扫描，用户关掉
+        // 「习惯学习」（设置页文案只说学习，用户无从知晓它管着全部跳过）
+        // = 所有 App 开屏零扫描零点击；而真正的学习 learnFromManualClick
+        // 反而不受该开关管（名实完全颠倒）。现在：开关只管学习写入路径
+        //（S:learnFromManualClick 入口门控），开屏扫描由 masterOn 全局开关管。
+        boolean splashLive = elapsed <= com.zai.adshield.core.VideoSplashGuard.windowDeadlineMs(videoLike)
                 && pkg.equals(lastFgPkg);
         boolean popupLive = popupShieldEnabled() && now < popupUntilGet(pkg) && popupCooldownOK(pkg, now);
         if (!splashLive && !popupLive) return;
@@ -3366,8 +3421,7 @@ public class AdSkipService extends AccessibilityService {
                     ctx.budgetNodes = Math.max(120, (int) (ctx.budgetNodes * perfFactor));
                 }
                 // v4.3.0 功耗分层 / v4.4.0 修正：早档【固定档 0~400ms】（广告窗
-                // 刚渲染树小）340 提速；中档 600（晚出键的深树覆盖）；晚档
-                // （固定档 ≥3.6s，真广告早该出手，深树几乎必是内容页）360。
+                // 刚渲染树小）340 提速；中晚档统一 600（晚出键的深树覆盖）。
                 // ⚠ atMs=-1（nudge 补扫/门控开闸针/快速复验针）必须保持 600：
                 // H5 开屏树深 500+，救回通道 340 预算够不到晚到按钮 =
                 // 「有时候触发不了」复发（v4.4.0 首版误伤，此为修正）。
@@ -3375,8 +3429,13 @@ public class AdSkipService extends AccessibilityService {
                 // 治理）：SDK/学习窗 600 全量 · 新场景/弹窗期/视频 400 ·
                 // 普通窗 350（探针前置已保文本键零 DFS，预算仅影响 vid 键
                 // DFS 深度——性能开销 ≤10% 红线的保障）
+                // v8.1.0 晚档预算 360→600（真机根因之五）：晚档（≥3.6s）正是
+                // 晚出跳过键（H5/视频容器深树 500+ 节点）出现的时刻，旧版晚档
+                // 预算反而比中档缩水（360 vs 600）——深树按钮在预算内不可达。
+                // 对齐中档 600：深树晚到键与中段同预算；性能开销上限仍在
+                // SmartScanPlanner 分级红线内（仅开屏窗内生效）。
                 ctx.budgetNodes = splashLive
-                        ? (atMs >= 0 && atMs <= 400 ? 340 : (atMs >= 3600 ? 360 : 600))
+                        ? (atMs >= 0 && atMs <= 400 ? 340 : 600)
                         : (atMs == -2 ? 280 : com.zai.adshield.core.SmartScanPlanner.budgetFor(ctx));
 
                 /* ═══ v3.9.0 主路径：内嵌规则引擎 0ms 出手 ═══
@@ -3561,12 +3620,20 @@ public class AdSkipService extends AccessibilityService {
                     long zSilence = -1;
                     Long zLastContent = contentAt.get(pkg);
                     if (zLastContent != null) zSilence = now - zLastContent.longValue();
-                    boolean exempt = AdDecisionCore.isAdActivityClass(zCls)
-                            || isDialogClass(zCls)
-                            || videoLike // v7.8.0：视频画像窗绝不退避（轮询针接管观察——静默事件源下退避 = 主动放弃视频开屏）
-                            || com.zai.adshield.core.VideoSplashGuard.videoArmHint(
-                                    now - winStart, zCount, zSilence)
-                            || (winClsLearned.get(pkg) != null && winClsLearned.get(pkg).booleanValue());
+                    /* v8.1.0：豁免判定提取为 AdDecisionCore.zeroCandExempt 纯函数
+                     * （JVM 可回归）+ 新增第六豁免——第一方入口窗（rootWindow）
+                     * 且无订阅覆盖：晚出跳过键（3~12s 渲染）被「3 次零候选+
+                     * 2.6s」杀链误杀的真机根因之三。豁免只放宽单窗杀链时机
+                     * （梯子跑满 12s 观察窗），跨窗功耗治理仍由 CLEAN 档案兜底。 */
+                    boolean exempt = AdDecisionCore.zeroCandExempt(
+                            AdDecisionCore.isAdActivityClass(zCls),
+                            isDialogClass(zCls),
+                            videoLike, // v7.8.0：视频画像窗绝不退避（轮询针接管观察——静默事件源下退避 = 主动放弃视频开屏）
+                            com.zai.adshield.core.VideoSplashGuard.videoArmHint(
+                                    now - winStart, zCount, zSilence),
+                            winClsLearned.get(pkg) != null && winClsLearned.get(pkg).booleanValue(),
+                            lastCtx != null && lastCtx.rootWindow,
+                            SubscriptionManager.coversPkg(pkg));
                     if (!exempt && AdDecisionCore.zeroCandBackoff(zCount, now - winStart, lastFind.nodeCount)) {
                         chainKilledAt.put(pkg, winStart);
                         zeroCandScans.remove(zKey);
@@ -5130,6 +5197,10 @@ public class AdSkipService extends AccessibilityService {
     /* ───────── 智能学习：观察手动点击 + className 指纹 ───────── */
 
     private void learnFromManualClick(String pkg, AccessibilityEvent event, long now) {
+        // v8.1.0【名实一致】：「习惯学习」开关真正管学习写入路径（旧版该开关
+        // 误门控整个开屏扫描、学习反而不受管——详见 tryScan 注释）。
+        // 关闭后：不学新位置/新指纹；已学习规则继续生效（读路径不受影响）。
+        if (!learningEnabled()) return;
         if (now - winAt(pkg) > LEARN_WINDOW_MS) return;
         // v4.1.0：相机/拍摄窗里的手动操作绝不当「跳过键」学习
         //（issue#30：快门/翻转镜头/相册按钮被学成位置 → 下次进相机乱点）

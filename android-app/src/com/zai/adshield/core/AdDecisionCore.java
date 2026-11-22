@@ -1210,6 +1210,25 @@ public final class AdDecisionCore {
         return zeroCandScans >= ZERO_CAND_SCANS_KILL && elapsedMs >= ZERO_CAND_KILL_MS;
     }
 
+    /* ═══ v8.1.0 零候选退避豁免判定（真机反馈「很多 App 跳不过」根因之三）═══
+     * 服务侧原内联五豁免（SDK 广告窗类/Dialog/视频画像/arm-hint/学习指纹）
+     * 提取为纯函数（JVM 可回归）+ 新增第六豁免：
+     *  · 第一方入口窗（rootWindow）且无订阅覆盖——开屏广告与主界面同窗的
+     *    App，其跳过按钮常 3s+ 才渲染，「3 次零候选+2.6s」杀链在按钮出现
+     *    前就把本窗剩余固定档全灭（真机实锤：晚出键只能赌内容事件救回，
+     *    而 4s 后 nudge 断流 = 整窗失明）。
+     *  · 豁免只放宽【单窗内】杀链时机（梯子跑满 12s 观察窗）；跨窗功耗
+     *    治理仍由 CLEAN 档案兜底（连续 3 窗零候选 → 纯探针哨兵）——功耗
+     *    上限不变，观察覆盖显著提升（18 档全跑 vs 3 档杀链）。
+     *  · 有订阅覆盖的窗不豁免（订阅路径 {0,700} 低频档 + 规则直查已保障；
+     *    避免订阅覆盖面内功耗回退）。 */
+    public static boolean zeroCandExempt(boolean adCls, boolean dialogCls, boolean videoLike,
+                                         boolean armHint, boolean learnedCls,
+                                         boolean rootWindow, boolean subCovered) {
+        if (adCls || dialogCls || videoLike || armHint || learnedCls) return true;
+        return rootWindow && !subCovered;
+    }
+
     /** 跳过成功后静默期：广告刚关掉，首页内容还在落定（waimaiii 实锤：复验
      *  通过同一秒又对 79 节点首页整树扫描）——静默期内不记未命中日志。
      *  第二帧广告（DspActivity 链）是独立窗口事件，不受本静默期影响。 */
