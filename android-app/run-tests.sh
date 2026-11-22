@@ -41,6 +41,11 @@ find "$ROOT/src/com/zai/adshield/core" "$ROOT/tests" -name "*.java" > "$OUT/sour
 SUBMGR="$ROOT/src/com/zai/adshield/SubscriptionManager.java"
 NETJ="$ROOT/src/com/zai/adshield/Net.java"
 DLJ="$ROOT/src/com/zai/adshield/Downloader.java"
+# v7.9.8 更新检查静态清单架构：UpdateManifest（清单契约纯函数）+
+# UpdateRepository（缓存/单飞/冷却/退避/ETag/错误分类——纯函数面 JVM 可测，
+# Context 胶水方法不进测试路径）纳入编译面（android.jar 在 cp）。
+UMJ="$ROOT/src/com/zai/adshield/UpdateManifest.java"
+URJ="$ROOT/src/com/zai/adshield/UpdateRepository.java"
 AJ="${ANDROID_PLATFORM_JAR:-/home/z/android-tools/pf/android-34/android.jar}"
 if [ -f "$SUBMGR" ] && [ -f "$AJ" ]; then
   echo "$SUBMGR" >> "$OUT/sources.txt"
@@ -48,6 +53,8 @@ if [ -f "$SUBMGR" ] && [ -f "$AJ" ]; then
   # v8.2.0：Downloader 纯函数面（verifyDigest/hex/hostAllowed）纳入 JVM 测试
   # （编译需 android.jar 在 cp；运行期仅走纯静态路径——零 Android 运行时类加载）
   [ -f "$DLJ" ] && echo "$DLJ" >> "$OUT/sources.txt"
+  [ -f "$UMJ" ] && echo "$UMJ" >> "$OUT/sources.txt"
+  [ -f "$URJ" ] && echo "$URJ" >> "$OUT/sources.txt"
   CP_FLAG="-cp $AJ"
 else
   CP_FLAG=""
@@ -72,7 +79,7 @@ echo "    编译产出: $OUT/classes"
 echo "==> [2/3] 运行测试套件"
 TOTAL_PASS=0
 TOTAL_FAIL=0
-for SUITE in MiniProgramGuardTest DecisionGuardTest SubscriptionBuiltinTest RegressionCoreTest MultiDeviceMatrixTest NonMainstreamAppTest RestoreGuardTest PowerGovernorTest RuleGovernorTest ComplianceGuardTest TapPointMatrixTest HumanTapMatrixTest BrandFocus396Test ReentrySplashTest ReleaseNotesTest SubMirrorTest FeedAdGuardTest RuleOrderTest InterstitialGuardTest SplashCountdownTest AggressiveModeTest VideoSplashTest InterstitialRoutingTest AdTaskTest AppCatalogTest PageScenarioTest FalsePositiveScenarioTest AdTaskTimingTest DecisionEvidenceTest MinimalWindowBatchTest Bug001RegressionTest LogPrivacyFilterTest LogStoreTest LogUploaderTest AdScanReviveTest UpdateChannelTest DualDfsParityTest ScanBenchmark; do
+for SUITE in MiniProgramGuardTest DecisionGuardTest SubscriptionBuiltinTest RegressionCoreTest MultiDeviceMatrixTest NonMainstreamAppTest RestoreGuardTest PowerGovernorTest RuleGovernorTest ComplianceGuardTest TapPointMatrixTest HumanTapMatrixTest BrandFocus396Test ReentrySplashTest ReleaseNotesTest SubMirrorTest FeedAdGuardTest RuleOrderTest InterstitialGuardTest SplashCountdownTest AggressiveModeTest VideoSplashTest InterstitialRoutingTest AdTaskTest AppCatalogTest PageScenarioTest FalsePositiveScenarioTest AdTaskTimingTest DecisionEvidenceTest MinimalWindowBatchTest Bug001RegressionTest LogPrivacyFilterTest LogStoreTest LogUploaderTest AdScanReviveTest UpdateChannelTest UpdateManifestTest UpdateRepositoryTest UpdateAuditTest DualDfsParityTest ScanBenchmark; do
   echo ""
   echo "══ $SUITE ══"
   if java -cp "$OUT/classes" "com.zai.adshield.test.$SUITE" | tee "$OUT/$SUITE.log"; then

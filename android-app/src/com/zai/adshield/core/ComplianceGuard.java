@@ -302,7 +302,7 @@ public final class ComplianceGuard {
      */
     public static String privacyAudit() {
         return "权限使用审计（v5.5.0 · 共 7 项，全部最小化）\n"
-                + "  1. INTERNET          —— GitHub Releases 检查更新 / GKD 订阅拉取 / 日志上报（仅用户手动触发）\n"
+                + "  1. INTERNET          —— 检查更新（静态清单 raw.githubusercontent.com + GitHub Releases 下载）/ GKD 订阅拉取 / 日志上报（仅用户手动触发）\n"
                 + "  2. REQUEST_INSTALL_PACKAGES —— 检查更新后页内直下 APK 的安装确认（仅用户点「安装」时系统弹窗）\n"
                 + "  3. POST_NOTIFICATIONS —— 常驻守护通知 / 恢复提醒 / 日志上传结果（可在系统设置关闭）\n"
                 + "  4. FOREGROUND_SERVICE(专用) —— 无障碍跳过服务本体（Android 14+ 前台服务类型声明）\n"

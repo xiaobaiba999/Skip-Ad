@@ -1089,19 +1089,27 @@ public class MainActivity extends Activity {
             return o.toString();
         }
 
-        /** 查询 GitHub 最新 Release（v7.9.6plus：GitHub 单通道 + versionCode
-         *  主判——传当前 versionName 与 versionCode，isNewer 由
-         *  Net.isNewerRelease 权威判定：Release 正文 versionCode 元数据行
-         *  > 本地 versionCode 才算新版，元数据缺失回退 versionName 比较） */
+        /** 统一更新检查（v7.9.8 静态清单架构——所有更新入口的唯一通道）。
+         *  原 netGetLatestRelease（GitHub 匿名 REST API 直连）已移除：匿名
+         *  60 次/小时/IP 出口配额下所有用户同池互耗（进入更新页即「GitHub
+         *  API 限流」的用户实锤根因）。现由 UpdateRepository 完成：
+         *  静态清单（raw.githubusercontent.com main 分支，Fastly CDN，零
+         *  REST API 配额）+ 本地缓存 15min + 单飞并发合并 + 手动 30s 冷却/
+         *  自动单次 + 失败指数退避 + ETag 304 + 受控备用源 + 错误十类
+         *  （UpdateManifest）；isNewer 权威判定 = versionCode 主判
+         *  （Net.isNewerRelease——语义与 v7.9.6plus 起完全一致）。
+         * @param manual true = 用户主动「检查更新」（绕过新鲜缓存，受冷却/
+         *               单飞约束）；false = 启动自动检查（优先缓存，静默失败）
+         */
         @JavascriptInterface
-        public String netGetLatestRelease() {
-            return Net.latestRelease(versionNameOf(a), versionCodeOf(a));
+        public String updateCheck(boolean manual) {
+            return UpdateRepository.check(a, versionNameOf(a), versionCodeOf(a), manual);
         }
 
         /* ───── 应用内更新：页内下载 → 进度 → 安装（不跳浏览器） ───── */
 
-        /** v7.3.0 安全：digest/size 从 GitHub API（HTTPS）元数据透传给
-         *  Downloader——安装前 SHA-256 完整性校验的期望值。 */
+        /** v7.3.0 安全（v7.9.8 措辞更新）：digest/size 从静态清单（HTTPS）
+         *  元数据透传给 Downloader——安装前 SHA-256 完整性校验的期望值。 */
         @JavascriptInterface
         public String startUpdateDownload(String url, String fileName, String digest, long sizeBytes) {
             return Downloader.start(a, url, fileName, digest, sizeBytes);

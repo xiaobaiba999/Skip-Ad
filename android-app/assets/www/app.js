@@ -1,4 +1,4 @@
-/* 开屏卫士 v7.9.8 · 日志上传可靠性专项：冻结批次幂等（同 batchId 必同 payload——彻底终结「第一次失败、第二次被服务端拒」）+ 错误八类如实分类 + 手动/自动额度分账 + Bug 反馈提示 24h 节流 + 引擎日志导出功能下线 + SCAN_MISS 结构化诊断 · 广告跳过核心零改动 */
+/* 开屏卫士 v7.9.8 · 更新检查架构改造专项：检查更新彻底脱离 GitHub 匿名 REST API（静态清单 raw.githubusercontent.com + 本地缓存 15min + 单飞并发合并 + 手动 30s 冷却/失败指数退避 + ETag 304 + 受控备用源 + 错误十类如实提示）+ 日志上传可靠性专项（冻结批次幂等 + 错误八类 + 手动/自动额度分账 + Bug 反馈 24h 节流 + SCAN_MISS 结构化诊断）· 广告跳过核心零改动 */
 "use strict";
 
 /* ══════════ 环境 ══════════ */
@@ -35,22 +35,23 @@ function mascotImg(size, state, head) {
 
 $("#brand-logo").innerHTML = mascotImg(30, "on", true);
 
-/* ═══ v7.9.8 版本记录（日志上传可靠性专项 + 反馈提示优化）═══ */
+/* ═══ v7.9.8 版本记录（更新检查架构改造 + 日志上传可靠性专项）═══ */
 const CURRENT_RELEASE = {
   date: "2026-11-23",
-  title: "日志上传可靠性专项修复 + Bug 反馈提示 24h 节流 + 引擎日志导出下线 + 扫描未命中结构化诊断",
+  title: "更新检查彻底脱离 GitHub API 限流 + 日志上传可靠性专项修复",
   features: [
-    "日志上传根治「第一次失败、第二次被服务端拒」：上传批次冻结（同 batchId 必同 payload）+ 读超时 15s→45s + 失败按真实原因八类如实提示（网络连接失败/上传超时/服务端拒绝/频率限制/格式异常/服务暂不可用等——不再一律「稍后再试」）",
-    "手动与自动上传额度分账：手动成功不再占用自动 24 小时 3 次限额；服务端限流仍如实转达",
-    "Bug 反馈提示升级为 24 小时节流：确认后 24h 内不再弹、超过 24h 下次进入 App 重新提醒、未确认不消耗资格；「去上传日志」仍只导航不代传",
-    "引擎日志页移除「导出」按钮（日志采集/查看/一键上传全保留）；扫描未命中新增结构化诊断事件（无规则/规则未命中/视频容器静默等稳定失败码 + 设备码），一次上传即可定位「为什么没跳过」",
+    "检查更新架构改造：不再调用 GitHub API（匿名 60 次/小时/IP 共享配额——「查询失败：GitHub API 限流」根除），改读仓库静态更新清单（CDN 分发无配额）+ 15 分钟本地缓存 + 网络失败自动回退缓存数据",
+    "更新请求四道闸防风暴：并发检查只发一个真实请求（多入口共享结果）· 手动检查 30 秒冷却 · 后台自动检查每次启动至多联网一次 · 失败指数退避绝不无限重试",
+    "更新信息真实校验：清单包名/版本号/APK 地址发布通道/SHA256 全量核验，不匹配即拒绝；下载安装仍带 SHA256+大小双闸（安全强度不降）",
+    "日志上传根治「第一次失败、第二次被服务端拒」：上传批次冻结（同 batchId 必同 payload）+ 失败按真实原因八类如实提示；手动与自动上传额度分账（手动成功不占自动 24 小时 3 次限额）",
+    "Bug 反馈提示 24 小时节流 + 引擎日志导出下线 + 扫描未命中结构化诊断（一次上传即可定位「为什么没跳过」）",
   ],
-  summary: "v7.9.8：上传幂等与错误如实化修复轮——冻结批次终结两连失败，反馈提示 24h 节流，导出下线，未命中诊断补齐证据链。",
+  summary: "v7.9.8：更新检查静态清单架构轮——GitHub API 限流根除 + 上传幂等与错误如实化修复。",
 
 };
 
 /* v7.0.0 新版功能描述（规范：≤5 个标题、带序号；检查更新发现新版本时就地渲染）。
- * 优先用 Java 桥预解析的 headlines[]（Net.parseRelease → core.ReleaseNotes
+ * 优先用 Java 桥预解析的 headlines[]（UpdateManifest.parse → core.ReleaseNotes
  * 纯函数，格式四代兼容：1. 序号 / ① / #- / - *）；桥字段缺失时回落 JS 解析。 */
 function notesToHeadlines(d, maxN) {
   const cap = maxN || 5;
@@ -835,7 +836,8 @@ $("#changelog").innerHTML =
       '<div class="log-d">' + (i + 1) + ". " + esc(f) + '</div>').join("")
   + '</div>';
 
-const GH_API = "https://api.github.com/repos/xiaobaiba999/Skip-Ad";
+/* GH_API（api.github.com 基址）已于 v7.9.8 移除——更新检查零 GitHub REST API
+ * （静态清单见 UPDATE_MANIFEST_URL；根因：匿名 60 次/小时/IP 共享配额限流） */
 let ubTimer = null;
 let latestRelease = null;
 let dl = { channels: [], idx: 0, fileName: "", digest: "", size: 0, prefix: "page", lastBytes: -1, lastMoveAt: 0 };
@@ -852,14 +854,94 @@ function cmpVer(a, b) {
   return 0;
 }
 
-/* ═══ v7.9.6plus 更新检查（GitHub 单通道 + versionCode 主判）════
- * APK 内：AndroidApp.netGetLatestRelease() → Net.latestRelease(versionName,
- * versionCode) 原生 GitHub 匿名直连（latest 重试×2 → /releases 列表回退，
- * Draft/Pre-release 不作正式更新；限流即时报错）。isNewer 权威判定 =
- * Release 正文 versionCode 元数据行 > 本地 versionCode（Net.isNewerRelease
- * ——「7.9.6plus」等非纯数字 versionName 的分段比较不可靠，覆盖安装权威
- * 依据是 versionCode 单调递增）；元数据缺失回退 versionName 三段比较。
- * 浏览器预览：同语义直连（versionCodeFromNotes/isNewerByCode 为 Java 镜像）。 */
+/* ═══ v7.9.8 更新检查（静态清单架构——彻底脱离 GitHub 匿名 REST API）════
+ * 根因史：v7.9.7 及以前检查更新直连 api.github.com /releases/latest（匿名
+ * 60 次/小时/IP 出口配额）——国内共享出口下所有用户同池互耗，进入更新页
+ * 即「查询失败：GitHub API 限流（匿名 60 次/小时/IP），请约 1 小时后再试」。
+ * 新链路：
+ *  APK 内：AndroidApp.updateCheck(manual) → UpdateRepository（静态清单
+ *  raw.githubusercontent.com main 分支 + Fastly CDN 零 REST 配额 + 15min
+ *  本地缓存 + 单飞并发合并 + 手动 30s 冷却/自动单次 + 失败指数退避 +
+ *  ETag 304 + 受控备用源 + 错误十类）→ UpdateManifest（清单契约校验：
+ *  包名/版本/APK 地址发布通道/SHA256）。isNewer 权威判定 = versionCode
+ *  主判（Net.isNewerRelease——与 v7.9.6plus 起语义完全一致）。
+ *  浏览器预览：同语义静态清单直连（镜像映射——零 GitHub API）。 */
+
+/* 静态更新清单地址（与 Java UpdateRepository.MANIFEST_PRIMARY/FALLBACK 同源） */
+const UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/xiaobaiba999/Skip-Ad/main/update/latest.json";
+const UPDATE_MANIFEST_FALLBACK_URL = "https://xiaobaiba999.github.io/Skip-Ad/update/latest.json";
+
+/* 更新错误十类 → 人话（Java UpdateManifest 错误码的 UI 侧唯一文案出口；
+ * 不再把服务端限流/网络异常混为一谈——每类如实转达） */
+function updateErrText(code) {
+  const m = {
+    UPDATE_NETWORK_ERROR: "网络连接失败，请检查网络后重试",
+    UPDATE_DNS_ERROR: "网络域名解析失败，请检查网络或稍后重试",
+    UPDATE_TIMEOUT: "网络请求超时，请稍后重试",
+    UPDATE_TLS_ERROR: "安全连接失败，请稍后重试",
+    UPDATE_HTTP_ERROR: "更新服务返回异常，请稍后重试",
+    UPDATE_INVALID_MANIFEST: "更新信息格式异常，已忽略本次结果",
+    UPDATE_PACKAGE_MISMATCH: "更新信息与当前应用不匹配，已拒绝",
+    UPDATE_VERSION_INVALID: "更新信息版本号异常，已忽略",
+    UPDATE_NO_CACHE: "暂时无法检查更新，请稍后重试",
+    UPDATE_RATE_LIMITED: "请求过于频繁，请稍后重试",
+    UPDATE_SERVER_ERROR: "更新服务暂时不可用，请稍后重试",
+  };
+  return m[code] || "";
+}
+
+/* 缓存数据年龄 → 人话（「网络异常，展示缓存数据 · 3 分钟前」用） */
+function ageText(ms) {
+  const t = parseInt(ms, 10) || 0;
+  if (t <= 0) return "";
+  const min = Math.max(1, Math.round((Date.now() - t) / 60000));
+  if (min < 60) return min + " 分钟前";
+  const hr = Math.round(min / 60);
+  if (hr < 24) return hr + " 小时前";
+  return Math.round(hr / 24) + " 天前";
+}
+
+/* 浏览器预览：静态清单 JSON → 页面可用结构（APK 原生侧 UpdateManifest.parse
+ * 的 JS 镜像——字段兼容旧 GitHub Release 通道消费方） */
+function mapManifest(j) {
+  const remoteVc = parseInt(j.versionCode, 10) || 0;
+  const tag = String(j.releaseTag || "");
+  return {
+    ok: true, hasRelease: true, source: "manifest",
+    tag, name: j.releaseName || tag,
+    notes: String(j.releaseNotes || ""),
+    versionName: j.versionName || "", versionCode: remoteVc, remoteVersionCode: remoteVc,
+    apkUrl: j.apkUrl || "", apkFileName: j.apkFileName || "adshield.apk",
+    apkMB: j.apkSize ? Math.round(j.apkSize / 1048576 * 100) / 100 : 0,
+    apkSize: j.apkSize || 0,
+    apkDigest: j.apkSha256 ? "sha256:" + String(j.apkSha256).replace(/^sha256:/i, "").toLowerCase() : "",
+    apkMirrors: [],
+  };
+}
+
+async function fetchLatest(manual) {
+  if (HAS_BRIDGE) {
+    try { return JSON.parse(AndroidApp.updateCheck(!!manual)); }
+    catch (e) { return { ok: false, error: "检查失败", errorCode: "UPDATE_NO_CACHE" }; }
+  }
+  /* 浏览器预览：静态清单直连（与 APK 原生通道同源——零 GitHub API；
+   * 主源失败后备用静态地址至多一次，绝不多址轮询） */
+  for (let i = 0; i < 2; i++) {
+    const url = i === 0 ? UPDATE_MANIFEST_URL : UPDATE_MANIFEST_FALLBACK_URL;
+    try {
+      const r = await fetch(url, { headers: { Accept: "application/json" } });
+      if (!r.ok) continue; // 404（Pages 未启用）等 → 试备用源
+      const j = await r.json();
+      if (!j || typeof j !== "object") continue;
+      if (j.draft || j.prerelease) return { ok: true, hasRelease: false };
+      if (j.packageName && j.packageName !== "com.zai.adshield") {
+        return { ok: false, error: "更新信息与当前应用不匹配，已拒绝", errorCode: "UPDATE_PACKAGE_MISMATCH" };
+      }
+      return mapManifest(j);
+    } catch (e) { /* 网络异常 → 试备用源 */ }
+  }
+  return { ok: false, error: "网络连接失败，请检查网络后重试", errorCode: "UPDATE_NETWORK_ERROR" };
+}
 
 /* Release 正文 versionCode 元数据行解析（Java Net.versionCodeOfNotes 镜像）：
  * 匹配首个 versionCode: 开头的行，取前缀连续数字；无/非法 → 0（回退名比较） */
@@ -878,39 +960,11 @@ function versionCodeFromNotes(notes) {
 }
 
 /* 新版本判定（Java Net.isNewerRelease 镜像）：双方 versionCode 在场 →
- * versionCode 主判（≤ 不算——绝不提示降级）；缺失回退 versionName 三段比较 */
+ * versionCode 主判（≤ 不算——绝不提示降级）；缺失回退 versionName 三段比较。
+ * （fetchLatest 已移至上方静态清单版；本函数为浏览器预览 isNewer 兑底保留） */
 function isNewerByCode(remoteVc, remoteTag, localVc, localVer) {
   if (remoteVc > 0 && localVc > 0) return remoteVc > localVc;
   return cmpVer(remoteTag, localVer) > 0;
-}
-
-async function fetchLatest() {
-  if (HAS_BRIDGE) {
-    try { return JSON.parse(AndroidApp.netGetLatestRelease()); } catch (e) { return { ok: false, error: "解析失败", errorCode: "PARSE_ERROR" }; }
-  }
-  /* 浏览器预览：GitHub 直连（与 APK 原生单通道同源同语义） */
-  try {
-    const r = await fetch(GH_API + "/releases/latest", { headers: { Accept: "application/vnd.github+json" } });
-    if (r.status === 404) return { ok: true, hasRelease: false };
-    if (r.ok) {
-      const j = await r.json();
-      if (j.draft || j.prerelease) return { ok: true, hasRelease: false }; // Draft/Pre-release 不作正式更新
-      const apk = (j.assets || []).filter(a => a && a.name && a.name.endsWith(".apk"))[0];
-      const remoteVc = versionCodeFromNotes(j.body || "");
-      return {
-        ok: true, hasRelease: true, tag: j.tag_name, url: j.html_url,
-        notes: j.body || "", // 新版功能描述（浏览器预览路径）
-        remoteVersionCode: remoteVc,
-        apkUrl: apk ? apk.browser_download_url : "",
-        apkMirrors: [], // v7.9.6plus：ghproxy 类代理已移除——唯一官方源 GitHub Release
-        apkFileName: apk ? apk.name : "adshield.apk",
-        apkMB: apk ? Math.round(apk.size / 1048576 * 100) / 100 : 0,
-        apkDigest: apk ? (apk.digest || "") : "", // v7.3.0：GitHub API SHA-256（安装前校验）
-        apkSize: apk ? (apk.size || 0) : 0,
-      };
-    }
-    return { ok: false, error: "GitHub " + r.status };
-  } catch (e) { return { ok: false, error: "网络异常" }; }
 }
 
 /* ═══ v7.9.6plus 下载状态机（prefix = page|gate——「我的」页与全屏更新页同一状态机）════
@@ -927,9 +981,9 @@ async function fetchLatest() {
 function beginChannel() {
   const url = dl.channels[dl.idx];
   try {
-    /* v7.3.0 安全：digest/size（GitHub API HTTPS 元数据）随下载任务交给原生侧
-     * ——安装前 Downloader 会流式计算 SHA-256 比对；镜像通道投毒/共享盘换包
-     * 在安装前被拦下并自动删除。 */
+    /* v7.3.0 安全（v7.9.8 措辞更新）：digest/size（静态清单 HTTPS 元数据）
+     * 随下载任务交给原生侧——安装前 Downloader 会流式计算 SHA-256 比对；
+     * 代理投毒/共享盘换包在安装前被拦下并自动删除。 */
     const r = JSON.parse(AndroidApp.startUpdateDownload(url, dl.fileName, dl.digest, dl.size));
     if (r.ok) {
       const btn = $("#" + dl.prefix + "-dl-btn");
@@ -1066,16 +1120,29 @@ $("#btn-check-update").addEventListener("click", async () => {
   note.style.display = "none";
   if (notesBox) { notesBox.style.display = "none"; notesBox.innerHTML = ""; }
   btn.textContent = "检查中…";
-  const d = await fetchLatest();
+  /* v7.9.8：手动检查（manual=true）——绕过新鲜缓存强制刷新，但受 30s 冷却/
+   * 单飞合并约束（原生侧保证——绝不重复请求风暴）。 */
+  const d = await fetchLatest(true);
   btn.disabled = false;
   btn.textContent = "检查更新";
-  if (!d.ok) { note.className = "fb-result err"; note.style.display = ""; note.textContent = "查询失败：" + (d.error || "未知"); return; }
+  /* v7.9.8 错误如实转达：十类错误码 → 人话（不再一律「稍后再试」；GitHub
+   * API 限流类错误已随架构改造根除——静态清单无 REST 配额）。 */
+  if (!d.ok) {
+    note.className = "fb-result err";
+    note.style.display = "";
+    note.textContent = "查询失败：" + (updateErrText(d.errorCode) || d.error || "未知");
+    return;
+  }
   if (!d.hasRelease) { note.className = "fb-result"; note.style.display = ""; note.textContent = "尚未发布版本"; return; }
   latestRelease = d;
   const latest = String(d.tag || "").replace(/^v/, "");
+  /* v7.9.8 数据来源透明化：网络异常回退缓存 → 标注数据更新时间（用户知情） */
+  const cacheNote = d.staleCache
+    ? "（网络异常，以下为缓存数据 · 更新于 " + (ageText(d.cachedAt) || "未知时间") + "）"
+    : (d.fromCache ? "（数据更新于 " + (ageText(d.cachedAt) || "刚刚") + "）" : "");
   /* v7.9.6plus：优先用原生侧权威判定（Net.isNewerRelease——versionCode 主判，
-   * Release 正文 versionCode 元数据行 > 本地 versionCode；元数据缺失回退
-   * versionName 三段比较），浏览器路径回退 isNewerByCode（Java 镜像） */
+   * 清单 versionCode > 本地 versionCode；缺失回退 versionName 三段比较），
+   * 浏览器路径回退 isNewerByCode（Java 镜像） */
   const isNewer = typeof d.isNewer === "boolean" ? d.isNewer
     : isNewerByCode(d.remoteVersionCode || 0, String(d.tag || ""), parseInt(appCode(), 10) || 0, appVer());
   /* v7.0.0：检查更新当场显示新版本 ≤5 条带序号功能描述（就地渲染——
@@ -1090,7 +1157,11 @@ $("#btn-check-update").addEventListener("click", async () => {
     note.style.display = "";
     note.textContent = (isNewer
       ? "发现新版本 v" + latest + "（versionCode " + (d.remoteVersionCode || "?") + " · 功能描述如上，下载后覆盖安装即升级）"
-      : "已是最新版本 · " + CURRENT_RELEASE.title);
+      : "已是最新版本 · " + CURRENT_RELEASE.title) + cacheNote;
+  } else if (cacheNote) {
+    note.className = "fb-result";
+    note.style.display = "";
+    note.textContent = cacheNote.replace(/[（）]/g, "");
   }
 });
 
@@ -1104,17 +1175,18 @@ $("#page-dl-btn").addEventListener("click", () => {
 });
 
 /* ══════════ v7.9.6plus 启动时新版本检测 + 全屏更新页 ══════════
- * 用户每次进入 App：首屏渲染后异步获取 GitHub 最新正式 Release →
- * versionCode 主判（远端 > 本地）→ 优先显示全屏更新提示页；无新版本/
- * 网络异常/GitHub 暂不可用 → 静默正常进入 App（绝不因更新检查失败阻塞
- * 启动）。Draft/Pre-release 不作为正式更新（GitHub latest 接口天然排除 +
- * 列表回退显式过滤）。用户选「暂不更新」→ 继续使用当前版本，下次进入
- * App 仍会检测（无频控不脱敏——该版本装上前每次启动都提示）。 */
+ * 用户每次进入 App：首屏渲染后异步检查 → versionCode 主判（远端 > 本地）
+ * → 优先显示全屏更新提示页；无新版本/网络异常/清单暂不可用 → 静默正常
+ * 进入 App（绝不因更新检查失败阻塞启动）。v7.9.8 起改读静态清单
+ * （fetchLatest(false) 自动路径：优先 15min 新鲜缓存零联网；本进程至多
+ * 联网一次；失败指数退避；网络异常回退缓存——versionCode 单调性保证
+ * 缓存数据绝不提示降级）。用户选「暂不更新」→ 继续使用当前版本，下次
+ * 进入 App 仍会检测。Draft/Pre-release 清单标记不作正式更新。 */
 let gateRelease = null;
 
 async function checkUpdateOnLaunch() {
   try {
-    const d = await fetchLatest();
+    const d = await fetchLatest(false);
     if (!d || !d.ok || !d.hasRelease) return; // 检查失败静默——App 正常可用
     const isNewer = typeof d.isNewer === "boolean" ? d.isNewer
       : isNewerByCode(d.remoteVersionCode || 0, String(d.tag || ""), parseInt(appCode(), 10) || 0, appVer());

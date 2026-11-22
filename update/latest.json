@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "versionName": "7.9.7",
+  "versionCode": 79700,
+  "releaseTag": "v7.9.7",
+  "releaseName": "v7.9.7",
+  "releaseNotes": "versionCode: 79700\n\n# 开屏卫士 v7.9.7\n\n版本体系收口 + Bug 反馈一次性提示。从本版起 versionName = Git Tag = Release = APK versionName，versionCode 严格遵循 v7.1.0 起标准公式 major*10000+minor*1000+patch*100（7.9.7 → 79700），彻底告别 7.9.6plus→82300 的名码不对应。\n\n## 本次更新\n\n1. 版本体系收口：versionName 7.9.7 · versionCode 79700 · Tag/Release/APK 同名同码；versionCode 规则经 dist 全量 51 个历史 APK aapt 实测核验（v7.1.0 起 major*10000+minor*1000+patch*100），以后每一版都如此\n2. Bug 反馈提示：新版本首次进入一次性轻提示「发现 Bug 或使用不舒服？可到 我的→引擎日志→一键上传 反馈」（广告没跳过/跳过不准确/App 卡顿/误跳/其他异常）；「去上传日志」直达入口（仅导航，绝不代替你点击上传）或「知道了」关闭；只提醒、绝不自动上传、不采集任何新数据、同版本不弹第二次\n3. 更新检测保持 versionCode 主判：远端 versionCode 高于本地才提示（79700 = 79700 不自误报）；Draft/Pre-release 不作正式更新推送；网络异常静默进入 App\n4. 引擎与日志系统零改动：广告跳过核心/无障碍扫描/日志采集/手动上传/自动上传额度（24 小时最多成功 3 次·只记服务端确认·失败不耗额度）全部保持 v7.9.6plus 实测形态\n5. 旧版本升级：v7.9.6/7.9.5/7.9.0/7.8.0/7.6.1 检查更新即可发现本版并覆盖升级（79700 > 各旧版 versionCode，签名一致数据保留）\n\n## 下载\n\n- 官方 APK：adshield-v7.9.7.apk（本页资产 · GitHub Releases 官方源 · HTTPS）\n- 文件大小：886,326 字节\n- SHA-256：`2367a2fbb4d7b49c596e7f930383468b7fc310abbd185a2a462d2e9ddf4cd4c7`\n\n## 安装说明\n\n- 已安装 v7.9.6 及更早正式版本：直接安装本 APK 覆盖升级（versionCode 79700 > 79600 及以下全部，签名一致，数据保留）\n- 已安装 v7.9.6plus（versionCode 82300）：Android 判定 79700 为降级**无法覆盖安装**——可继续使用当前版本（无功能损失），或手动卸载后安装本版（卸载会清学习规则/战绩/日志），或等待未来 versionCode > 82300 的正式版本无缝升级\n- 新安装：直接安装即可（Android 8+ 首次安装需允许「安装未知应用」授权）\n\n## 版本信息\n\n- versionName：7.9.7\n- versionCode：79700（major*10000 + minor*1000 + patch*100）\n- 签名证书 SHA-256：05ada6e3f7a4fc6bf77449611c24f51e1ef4caa0a91a5cdd02c4d877738e6f79（与历史正式版本一致）\n- APK 零凭据（无 GitHub Token/私钥/Secret——写凭据全部只在服务端）",
+  "publishedAt": "2026-11-22T07:55:06Z",
+  "apkUrl": "https://github.com/xiaobaiba999/Skip-Ad/releases/download/v7.9.7/adshield-v7.9.7.apk",
+  "apkFileName": "adshield-v7.9.7.apk",
+  "apkSha256": "2367a2fbb4d7b49c596e7f930383468b7fc310abbd185a2a462d2e9ddf4cd4c7",
+  "apkSize": 886326,
+  "packageName": "com.zai.adshield",
+  "minSupportedVersionCode": 0,
+  "mandatoryUpdate": false,
+  "manifestUpdatedAt": "2026-11-22T07:55:06Z"
+}
