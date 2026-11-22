@@ -622,6 +622,22 @@ textarea { resize: none; }
 }
 @keyframes ug-fade { from { opacity: 0; } to { opacity: 1; } }
 
+/* v7.9.7 Bug 反馈提示（一次性）——与 #update-gate 同模式复用 ug-* 卡片体系，
+ * 层级 110 低于更新页 120（同时在场时更新优先） */
+#bug-tip {
+  position: fixed;
+  inset: 0;
+  z-index: 110;
+  background: rgba(4, 12, 8, .58);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: ug-fade .25s ease;
+}
+
 .ug-card {
   background: var(--card);
   border-radius: 22px;

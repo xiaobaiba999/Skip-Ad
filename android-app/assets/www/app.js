@@ -1,4 +1,4 @@
-/* 开屏卫士 v7.9.6plus · 以 v7.9.6 为稳定基线的精简重构版：日志上传（自动 24h 最多成功 3 次 + 随时手动）+ 启动时新版本检测（versionCode 主判 + 全屏更新页 + 多源下载 + SHA-256 校验）· APK 零凭据 */
+/* 开屏卫士 v7.9.7 · 版本体系收口：versionName 7.9.7 = versionCode 79700（v7.1.0 起标准公式 major*10000+minor*1000+patch*100，Tag/Release/APK 同名）+ Bug 反馈一次性提示 · 引擎与日志业务保持 v7.9.6plus 实测形态 */
 "use strict";
 
 /* ══════════ 环境 ══════════ */
@@ -23,8 +23,8 @@ const store = {
 };
 
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "7.9.6plus"; }
-function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "82300"; }
+function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "7.9.7"; }
+function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "79700"; }
 
 /* ══════════ 吉祥物（v4.1.0 全新形象：白机器人小侠 + 绿披风跳跃） ══════════
  * 与启动器图标同源；state: on（跳跃浮动）/ off（灰度待命） */
@@ -35,18 +35,17 @@ function mascotImg(size, state, head) {
 
 $("#brand-logo").innerHTML = mascotImg(30, "on", true);
 
-/* ═══ v7.9.6plus 版本记录（以 v7.9.6 为基线的精简重构 + 启动更新检测）═══ */
+/* ═══ v7.9.7 版本记录（版本体系收口 + Bug 反馈提示）═══ */
 const CURRENT_RELEASE = {
   date: "2026-11-23",
-  title: "以 v7.9.6 为稳定基线的精简重构版：启动时新版本检测 + 全屏更新页 + 日志上传业务保持",
+  title: "版本体系收口：versionName 7.9.7 = versionCode 79700（标准三段式同名同码）+ Bug 反馈一次性提示",
   features: [
-    "启动时优先检查更新：进入 App 自动获取 GitHub 最新正式 Release，远端 versionCode 高于本地（versionCode 主判——不再只比 versionName）时优先显示全屏更新提示页；无新版本/网络异常静默进入 App，绝不阻塞使用",
-    "全屏更新页：应用名/图标/当前版本/最新版本/更新内容/安装包大小一目了然；立即更新醒目按钮 + 暂不更新随时可继续使用当前版本，下次进入 App 仍会检测",
-    "下载状态全展示：正在连接/下载进度（百分比与已下载大小）/当前使用的下载源/下载中断自动重试（系统断点续传）/正在校验 APK/校验成功准备安装/失败可重新下载；下载完成前绝不把不完整文件交给安装器",
-    "安全校验不降级：无论哪个下载源，安装前统一核对文件大小 + SHA-256（与 Release 公布值比对）+ 包名/版本/签名兼容性（Android 安装流程校验）；任何一项不符拒绝安装并删除文件",
-    "日志上传业务保持：正常采集（重启保留）· 自动上传 24 小时最多成功 3 次（只记服务端确认·失败不耗额度·可关闭且不影响采集）· 随时手动上传 · 成功创建 GitHub Issue 并显示真实编号与链接",
+    "版本体系收口：彻底告别 7.9.6plus→82300 的名码不对应——从本版起 versionName = Git Tag = Release = APK versionName，versionCode 严格遵循 v7.1.0 起标准公式 major*10000+minor*1000+patch*100（7.9.7→79700），以后每一版都如此",
+    "Bug 反馈提示：新版本首次进入一次性轻提示「发现 Bug 或使用不舒服？可到 我的→引擎日志→一键上传 反馈」（广告没跳过/跳过不准确/App 卡顿/误跳/其他异常），可「去上传日志」直达入口或「知道了」关闭；只提醒绝不自动上传、不采集任何新数据、同版本不弹第二次",
+    "更新检测保持 versionCode 主判（远端 > 本地才提示，79700=79700 不自误报）+ 全屏更新页 + 下载前绑定 SHA-256/大小安装前校验全链保持",
+    "引擎与日志系统零改动：广告跳过核心/无障碍扫描/日志采集/手动上传/自动上传额度（24 小时最多成功 3 次·只记服务端确认·失败不耗额度）全部保持 v7.9.6plus 实测形态",
   ],
-  summary: "以 v7.9.6 为稳定基础：广告跳过引擎回归 + 日志正常采集 + 自动每天最多成功 3 次 + 随时手动上传 + 进入 App 优先看到新版本全屏更新提示。",
+  summary: "版本体系恢复正常：7.9.7 → 79700（Tag/Release/APK 同名同码）+ 进入 App 一次性提示「发现 Bug 或使用不舒服可到 我的→引擎日志→一键上传 反馈」（只提醒不自动上传）。",
 
 };
 
@@ -1189,6 +1188,78 @@ function hideUpdateGate() {
   if (gate) gate.remove();
 }
 
+/* ══════════ v7.9.7 Bug 反馈提示（一次性 · 纯本地 · 绝不自动上传）══════════
+ * 用户指令：进入 App 后明确知道「发现 Bug 或使用起来不舒服 → 我的 →
+ * 引擎日志 → 一键上传」这个反馈入口。设计约束（全部硬性）：
+ *  · 只提醒：两个按钮任何一个被点击都只记录 bugTipShown=当前版本号
+ *    （SharedPreferences kvSet 白名单键 / 浏览器预览 localStorage），
+ *    绝不触发任何上传、绝不采集任何新数据、绝不创建 Issue；
+ *  · 一次性：标记按版本号存储——同版本第二次进入不再弹；新版本首次
+ *    进入会再提醒一次（用户指令「新版本首次进入显示一次」）；
+ *  · 更新页优先：启动更新检查发现新版本显示全屏更新页时本轮不弹
+ *    （z-index 110 < 更新页 120），升级后首启再提示；
+ *  · 零性能影响：无 Accessibility 扫描挂钩、无 OCR、无截图、无 Worker、
+ *    无 Service、无网络请求（纯本地 UI 状态，检查失败也不影响）；
+ *  · 日志系统零改动：采集/手动上传/自动上传额度（24h 最多成功 3 次）
+ *    全部保持 v7.9.6plus 实测形态——「去上传日志」只做页面导航，
+ *    是否真的上传由用户在「我的」页自己决定。 */
+let bugTipShownThisSession = false;
+function bugTipDismissed() {
+  try { return store.get("bugTipShown", "") === appVer(); } catch (e) { return true; }
+}
+function showBugTip() {
+  if (bugTipShownThisSession) return;
+  bugTipShownThisSession = true;
+  let tip = $("#bug-tip");
+  if (tip) tip.remove();
+  tip = document.createElement("div");
+  tip.id = "bug-tip";
+  tip.innerHTML =
+    '<div class="ug-card" role="dialog" aria-modal="true" aria-label="反馈提示">'
+    + '<img class="ug-logo" src="mascot-head.png" width="56" height="56" alt="开屏卫士图标">'
+    + '<div class="ug-app-name">发现 Bug 或使用不舒服？</div>'
+    + '<div class="ug-badge">帮助改进开屏卫士</div>'
+    + '<div class="ug-notes">'
+    + '<div class="ug-note-item">• 广告没有跳过</div>'
+    + '<div class="ug-note-item">• 跳过不准确</div>'
+    + '<div class="ug-note-item">• App 卡顿</div>'
+    + '<div class="ug-note-item">• 误跳（不该跳的跳了）</div>'
+    + '<div class="ug-note-item">• 其他异常</div>'
+    + '</div>'
+    + '<div class="ug-size">可以进入「我的 → 引擎日志 → 一键上传」上传日志，'
+    + '帮助我们定位问题。仅在你主动点击时才会上传。</div>'
+    + '<button class="ug-btn-primary" id="bug-tip-go">去上传日志</button>'
+    + '<button class="ug-btn-ghost" id="bug-tip-ok">知道了</button>'
+    + '</div>';
+  document.body.appendChild(tip);
+  const dismiss = () => {
+    try { store.set("bugTipShown", appVer()); } catch (e) {}
+    const t = $("#bug-tip");
+    if (t) t.remove();
+  };
+  /* 「去上传日志」：只做导航——切到「我的」页并滚到引擎日志卡片，
+   * 绝不代替用户点击上传（最终决定权属于用户） */
+  $("#bug-tip-go").addEventListener("click", () => {
+    dismiss();
+    try {
+      const me = Array.from($$(".tabbtn")).find((b) => b.dataset && b.dataset.page === "me");
+      if (me) me.click();
+      const btn = $("#btn-upload-log");
+      const card = btn && btn.closest ? btn.closest(".card") : null;
+      if (card) setTimeout(() => { try { card.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (e) {} }, 80);
+    } catch (e) {}
+  });
+  /* 「知道了」：只记录标记，不上传任何东西 */
+  $("#bug-tip-ok").addEventListener("click", dismiss);
+}
+function maybeShowBugTip() {
+  try {
+    if (bugTipDismissed()) return;          // 本版本已提示过（含点过任一按钮）
+    if ($("#update-gate")) return;          // 更新页在场——升级优先，本轮不打扰
+    showBugTip();
+  } catch (e) { /* 提示失败静默——绝不影响正常使用 */ }
+}
+
 /* ══════════ 引擎画像（日志上传正文 · v4.2.0 更具体） ══════════ */
 function fmtTs(t) {
   try {
@@ -1745,7 +1816,13 @@ function toast(msg) {
   // v7.9.6plus：启动时新版本检测（用户指令——首屏渲染后异步检查，
   // versionCode 主判，发现新版本优先显示全屏更新页；检查失败静默
   // 进入 App，绝不阻塞启动。v7.0.0「启动零网络」决策由本指令取代）。
-  setTimeout(() => { void checkUpdateOnLaunch(); }, 800);
+  // v7.9.7：检查收尾后（无更新页在场时）评估 Bug 反馈一次性提示——
+  // 更新优先于提醒；提示为纯本地状态，网络检查失败也照常评估。
+  setTimeout(() => {
+    void checkUpdateOnLaunch().finally(() => {
+      try { maybeShowBugTip(); } catch (e) {}
+    });
+  }, 800);
   // 每 5s 刷新首页状态（首次进入最关心）
   setInterval(() => {
     if ($("#page-home").classList.contains("active")) {

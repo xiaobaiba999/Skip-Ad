@@ -413,11 +413,14 @@ public class MainActivity extends Activity {
             // v4.5.0 安全：value 长度上限（防 prefs 膨胀/DoS；正常页面状态远小于此）
             if (value != null && value.length() > 262144) return;
             /* v7.3.0 安全：key 白名单——JS 侧（app.js store.set）合法写入的键
-             * 只有 "state"（页面状态/战绩/开关）。其余键（subUrl、subCache、
-             * dl 系列与曾用的 autoLogAt 等）是服务/订阅/下载链路的持久化字段：一旦
-             * 前端出现注入（XSS），「kvSet 写 subCache 恶意规则」即可让服务
-             * 重启时静默加载被投毒的自动点击规则——白名单把这个通道焊死。 */
-            if (!"state".equals(key)) return;
+             * 只有 "state"（页面状态/战绩/开关）与 "bugTipShown"（v7.9.7 Bug
+             * 反馈一次性提示标记——纯 UI 显示位，值仅为当前版本号字符串，
+             * 非引擎/规则/订阅数据，写面无任何安全影响）。其余键（subUrl、
+             * subCache、dl 系列与曾用的 autoLogAt 等）是服务/订阅/下载链路
+             * 的持久化字段：一旦前端出现注入（XSS），「kvSet 写 subCache
+             * 恶意规则」即可让服务重启时静默加载被投毒的自动点击规则——
+             * 白名单把这个通道焊死。 */
+            if (!"state".equals(key) && !"bugTipShown".equals(key)) return;
             SharedPreferences.Editor e = a.getSharedPreferences("adshield", Context.MODE_PRIVATE).edit();
             if (value == null) e.remove(key);
             else e.putString(key, value);

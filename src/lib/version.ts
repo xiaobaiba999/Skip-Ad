@@ -1,6 +1,6 @@
 /** 版本与 GitHub 仓库信息（Web 端与发布节奏共用） */
-export const APP_VERSION = "7.9.6plus";
-export const VERSION_CODE = 82300; // major*10000 + minor*1000 + patch*100，随版本单调递增（>82200 v8.2.2——覆盖安装升级）
+export const APP_VERSION = "7.9.7";
+export const VERSION_CODE = 79700; // v7.1.0 起标准公式 major*10000 + minor*1000 + patch*100（7.9.6plus→82300 名码不对应已于 v7.9.7 收口：versionName = Tag = Release = APK）
 export const GITHUB_REPO = "xiaobaiba999/Skip-Ad";
 export const GITHUB_API = `https://api.github.com/repos/${GITHUB_REPO}`;
 export const GITHUB_HOME = `https://github.com/${GITHUB_REPO}`;
@@ -19,16 +19,15 @@ export interface VersionEntry {
  *  旧版本内容归档在 GitHub Releases 与 git 历史） */
 export const VERSION_HISTORY: VersionEntry[] = [
   {
-    version: "7.9.6plus",
-    code: 82300,
+    version: "7.9.7",
+    code: 79700,
     date: "2026-11-23",
-    tagline: "以 v7.9.6 为稳定基线的精简重构版：启动时新版本检测（versionCode 主判 + 全屏更新页）+ 日志上传业务保持",
+    tagline: "版本体系收口：versionName 7.9.7 = versionCode 79700（标准三段式同名同码）+ Bug 反馈一次性提示",
     notes: [
-      "启动时优先检查更新：进入 App 自动获取 GitHub 最新正式 Release，远端 versionCode 高于本地时优先显示全屏更新提示页（versionCode 主判——不再只比 versionName，Draft/Pre-release 不作正式更新推送，网络异常静默进入 App 绝不阻塞启动）",
-      "全屏更新页 + 下载状态全展示：应用名/图标/当前版本/最新版本/更新内容/安装包大小；正在连接/下载进度/当前使用的下载源/下载中断自动重试（系统断点续传）/正在切换备用源/正在校验 APK/校验成功准备安装/失败可重新下载——下载完成前绝不把不完整文件交给安装器",
-      "安全校验不降级：无论哪个下载源，安装前统一核对文件大小 + SHA-256（与 Release 公布值比对）；任何一项不符拒绝安装并删除文件。ghfast.top/gh-proxy.com 等 ghproxy 类第三方代理已移除——唯一官方源 GitHub Release（HTTPS），无经所有者确认的国内备用源前不伪造多源",
-      "日志上传业务保持（v8.2.2 简化模型）：正常采集（重启保留·关闭自动上传不影响采集）· 自动上传 24 小时最多成功 3 次（只记服务端确认·失败不耗额度）· 随时手动上传 · 成功创建 GitHub Issue 并显示真实编号与经核实的链接",
-      "v8.x 清理：删除更新检查双通道（Worker 中转——沙箱不可验证）/worker 源码目录/v8.x 架构文档/v8.2.2 构建产物；GitHub 无任何 v8.x Release（此前已删）。测试 39 套件 7047 断言全绿（含 versionCode 主判真值表）；真机 E2E NOT_RUN（沙箱无设备）",
+      "版本体系收口：彻底告别 7.9.6plus→82300 的名码不对应——从本版起 versionName = Git Tag = Release = APK versionName，versionCode 严格遵循 v7.1.0 起标准公式 major*10000+minor*1000+patch*100（7.9.7→79700），以后每一版都如此",
+      "Bug 反馈提示：新版本首次进入一次性轻提示「发现 Bug 或使用不舒服？可到 我的→引擎日志→一键上传 反馈」（广告没跳过/跳过不准确/App 卡顿/误跳/其他异常），可「去上传日志」直达入口或「知道了」关闭；只提醒绝不自动上传、不采集任何新数据、同版本不弹第二次",
+      "更新检测保持 versionCode 主判（远端 > 本地才提示，79700=79700 不自误报）+ 全屏更新页 + SHA-256/大小安装前校验全链保持",
+      "引擎与日志系统零改动：广告跳过核心/无障碍扫描/日志采集/手动上传/自动上传额度（24 小时最多成功 3 次·只记服务端确认·失败不耗额度）全部保持 v7.9.6plus 实测形态",
     ],
   },];
 

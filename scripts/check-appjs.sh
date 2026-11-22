@@ -81,6 +81,8 @@ const NEED = [
   "showUpdateGate",      // v7.9.6plus 全屏更新页
   "versionCodeFromNotes",// v7.9.6plus versionCode 元数据解析
   "isNewerByCode",       // v7.9.6plus versionCode 主判
+  "maybeShowBugTip",     // v7.9.7 Bug 反馈一次性提示（评估入口）
+  "showBugTip",          // v7.9.7 Bug 反馈提示卡渲染
 ];
 
 let runErr = null;
