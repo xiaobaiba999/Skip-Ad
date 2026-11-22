@@ -76,7 +76,7 @@ public final class CrashCapture {
              *  即将死亡，executor 刷盘大概率赶不上（诚实口径：此事件多数
              *  丢失；幸存路径靠 readAndClear 侧补点）。 */
             try {
-                com.zai.adshield.core.LogBatchStore.get(ctx).appendEvent(
+                com.zai.adshield.core.LogStore.get(ctx).appendEvent(
                         com.zai.adshield.core.LogEvents.crash(topFrameClass(e)));
             } catch (Throwable ignored) {
             }
@@ -127,7 +127,7 @@ public final class CrashCapture {
                     if (colon > 0) second = second.substring(0, colon);
                     second = second.trim();
                     if (second.length() > 0) {
-                        com.zai.adshield.core.LogBatchStore.get(ctx).appendEvent(
+                        com.zai.adshield.core.LogStore.get(ctx).appendEvent(
                                 com.zai.adshield.core.LogEvents.crash(second));
                     }
                 }

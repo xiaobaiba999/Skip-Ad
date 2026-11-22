@@ -303,27 +303,26 @@ public class AdSkipService extends AccessibilityService {
      * v7.9.7：客户端节拍值保留——最终限额以服务端 24h 滑窗（最多 3 次）为准 */
     public static final long AUTO_LOG_MS = 8 * 60 * 60 * 1000L;
 
-    /* ═══ v8.0.0 日志事件埋点（LogBatchStore.appendEvent 异步落盘——无障碍热路径零阻塞）═══
+    /* ═══ 日志事件埋点（LogStore.appendEvent 异步落盘——无障碍热路径零阻塞）═══
      * · logStore：onServiceConnected 懒初始化（服务未跑→tapEvent 空转，零行为）；
-     * · 采集门在 LogBatchStore.collectEnabled（授权 × 中转上线——未授权零磁盘写）；
+     * · v8.2.2：采集常开（不再绑定自动上传开关——v8.2.1「暂无可上传」根因修复）；
      * · appendEvent 内部单线程 executor——调用方（无障碍事件/点击/复验线程）
      *   只支付一次非阻塞 submit；任何异常在本方法内吞尽——绝不影响点击主链。 */
-    private static volatile com.zai.adshield.core.LogBatchStore logStore;
+    private static volatile com.zai.adshield.core.LogStore logStore;
 
     private static void tapEvent(org.json.JSONObject ev) {
         try {
             if (ev == null) return;
-            com.zai.adshield.core.LogBatchStore s = logStore;
+            com.zai.adshield.core.LogStore s = logStore;
             if (s != null) s.appendEvent(ev);
         } catch (Throwable ignored) {
         }
     }
 
-    /** v8.0.0：上传采集门双保险初始化（onServiceConnected——静态引用 + 采集门同步）。 */
+    /** 日志存储单例接线（onServiceConnected）。v8.2.2：无采集门——采集常开。 */
     private void initLogUploadTap() {
         try {
-            logStore = com.zai.adshield.core.LogBatchStore.get(this);
-            refreshUploadCollect(this);
+            logStore = com.zai.adshield.core.LogStore.get(this);
         } catch (Throwable ignored) {
         }
     }
@@ -706,37 +705,22 @@ public class AdSkipService extends AccessibilityService {
         return ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_STATE, null);
     }
 
-    /* ═══ v7.9.7 自动提交引擎日志（授权门 + 中转服务门，双双短路）═══
-     * · v4.2.0 引入 / v6.1.0 调 8h 的旧通道（KeepAliveReceiver 心跳顺带 →
-     *   Net.postIssue 直发 GitHub Issue）已随内置 PAT 移除整体下线；
-     * · 新通道（v8.0.0 LogUploadDispatcher 接管）：用户授权开启 +
-     *   Net.LOG_RELAY_URL 配置（中转服务上线）+ 服务端 24h 滑窗最多 3 次 +
-     *   batchId 幂等——两个门任一未过即零行为（结构性不自动上传，
-     *   绝不回退到直连 GitHub）；
-     * · KeepAliveReceiver 心跳调用点保持不变（零额外调度开销）；
-     * · 采集门同步：授权+上线才允许事件缓冲落盘（未授权设备零新增磁盘写）。 */
+    /* ═══ 自动上传（v8.2.2 简化：心跳顺带检查——开关 × 间隔 × 新日志 × 24h/3）═══
+     * · v7.8 时代（postIssue 直发）已随 PAT 移除下线；v8.2.2 回归同等简单的
+     *   心跳检查模型：KeepAliveReceiver 心跳 → LogUploader.requestAutoCheck；
+     * · 采集常开（v8.2.2 根因修复）——本开关只管自动上传，不影响采集与手动；
+     * · 24h 最多成功 3 次（只记服务端确认）；无新日志零网络请求直接跳过。 */
     public static void maybeAutoUploadLog(final Context ctx) {
         try {
-            if (!autoLogUploadEnabled(ctx)) return;        // 授权门：默认关（与无障碍授权分离）
-            if (Net.LOG_RELAY_URL.length() == 0) return;    // 中转门：服务未上线——保持关闭
-            refreshUploadCollect(ctx);
-            com.zai.adshield.core.LogUploadDispatcher.get(ctx.getApplicationContext())
+            if (!autoLogUploadEnabled(ctx)) return;        // 自动上传开关（默认关）
+            if (Net.LOG_RELAY_URL.length() == 0) return;    // 中转未配置——结构性关闭
+            com.zai.adshield.core.LogUploader.get(ctx.getApplicationContext())
                     .requestAutoCheck(AUTO_LOG_MS);
         } catch (Throwable ignored) {
         }
     }
 
-    /** v8.0.0：事件采集门刷新（授权 × 中转上线 → LogBatchStore.setCollectEnabled）。
-     *  心跳（maybeAutoUploadLog）与开关回调（setAutoLogUploadEnabled）两处同步。 */
-    static void refreshUploadCollect(Context ctx) {
-        try {
-            com.zai.adshield.core.LogBatchStore.setCollectEnabled(
-                    autoLogUploadEnabled(ctx) && Net.LOG_RELAY_URL.length() > 0);
-        } catch (Throwable ignored) {
-        }
-    }
-
-    /** v7.9.7：自动日志上传授权（默认 false——首次安装绝不默认同意）。 */
+    /** v7.9.7：自动日志上传授权（默认 false——首次安装绝不默认自动上传）。 */
     public static boolean autoLogUploadEnabled(Context ctx) {
         try {
             return ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -746,13 +730,11 @@ public class AdSkipService extends AccessibilityService {
         }
     }
 
-    /** v7.9.7：设置授权开关（UI 桥调用）。仅写授权位与采集门，不触发任何上传
-     *  行为——上传条件另见 maybeAutoUploadLog 双门与服务端限额。 */
+    /** 设置开关（UI 桥调用）。v8.2.2：只写开关位——采集常开、手动上传不受影响。 */
     public static void setAutoLogUploadEnabled(Context ctx, boolean enabled) {
         try {
             ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
                     .putBoolean(KEY_AUTO_LOG_UPLOAD, enabled).apply();
-            refreshUploadCollect(ctx); // v8.0.0：开关即时同步采集门（关→零磁盘写）
         } catch (Throwable ignored) {
         }
     }
@@ -903,7 +885,7 @@ public class AdSkipService extends AccessibilityService {
         // 每事件一次的 PowerManager.isInteractive binder IPC（issue#40 能耗画像
         // 实锤 4602 事件 = 4602 次 IPC；广播零开销，屏幕翻转秒级同步）
         registerScreenReceiver();
-        // v8.0.0：日志上传采集门初始化（logStore 单例 + 授权门同步——未授权零磁盘写）
+        // v8.2.2：日志存储单例接线（采集常开——不再有授权门）
         initLogUploadTap();
         // v3.5.0 保活：服务连上即记「用户要求保持开启」；仅用户在 App 内手动
         // 关闭保活提醒（Bridge.setKeepOn(false)）才置 false

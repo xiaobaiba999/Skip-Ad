@@ -38,15 +38,15 @@ $("#brand-logo").innerHTML = mascotImg(30, "on", true);
 /* ═══ v8.2.0 版本记录（更新检查双通道——限流根因修复）═══ */
 const CURRENT_RELEASE = {
   date: "2026-11-22",
-  title: "更新检查双通道：中转服务优先 + GitHub 直连回退——彻底解决「GitHub API 限流（匿名 60 次/小时/IP）看不到新版本」",
+  title: "日志上传简化重构：回归 v7.8 简单模型（一键上传无日志根因修复）· 8.x 全线召回替换版",
   features: [
-    "更新检查双通道（v8.2.0）：优先走自建中转服务（GET /api/update/latest——服务端边缘缓存 5~10 分钟 + GitHub App 认证上游，独立于匿名 60 次/小时/IP 配额池），中转失败自动回退 GitHub 直连——匿名配额耗尽时也能稳定发现正式新版本",
-    "错误五分类如实呈现（v8.2.0）：GITHUB_RATE_LIMITED / WORKER_UNAVAILABLE / NETWORK_ERROR / PARSE_ERROR / NO_NEW_VERSION 分明——中转故障绝不误报成 GitHub 限流；双通道皆败时各自归因同时展示（「更新通道均失败：中转…；GitHub…」）",
-    "下载安全闸零降低（保持 v6.3.0/v7.3.0 全部机制）：SHA-256 + 大小校验元数据经 HTTPS 获取，安装前流式逐字节比对，不符即删——镜像投毒/共享盘换包照旧全拦；发布通道 host 白名单照旧；本轮仅把校验判定提取为可测纯函数（行为逐字一致）",
-    "修复 v8.1.0 遗留：「版本记录」板块内容停留在 v8.0.3（本轮起随版本同步更新；浏览器预览回退版本号一并修正）",
-    "39 套件全绿（新增 UpdateChannelTest：双通道五分类真值表/中转载荷契约/版本比较/SHA-256 校验判定/发布通道白名单）+ Worker 更新接口 25 项测试（22 单元 + 3 live 真实上游）· versionCode 82000（> 81000 覆盖安装即升级）",
+    "根因定案：v8.2.1「一键上传提示暂无可上传的新日志」= 事件采集门被绑在自动上传开关上（默认关→零采集→手动必然空转）。v8.2.2 采集常开：应用运行与跳过广告的事件无条件记录、重启保留，自动上传关闭绝不影响采集与手动上传",
+    "架构精简：删除 v8.x 复杂层约 1260 行（六状态机批次文件/退避表 30s→480s×5/6 次耗尽终态/失败复活启发式/8 轮排空循环/守护线程）——替换为 LogStore + LogUploader 两个小类，失败重试=下次心跳或再点一次",
+    "六项业务：自动上传 24h 最多成功 3 次（只记服务端确认·无新日志零请求·失败不耗额度）；手动上传随时可用；成功=服务端明确确认（HTTP 2xx 且 body ok=true）才清日志；失败保留+同批次号重试（幂等绝不重复建 Issue）；服务端终态拒收隔离检视",
+    "Issue 链接真实性：成功后经 GitHub 匿名 API 核实公开仓 issues/{编号}——核实到才展示可点击的真实链接（非拼接）；核实不到只显示编号。空队列如实区分：未产生/已全部上传/采集异常/读取异常",
+    "8.x 全线召回：GitHub Releases 已删除 v8.0.0/v8.0.3/v8.1.0/v8.2.0；本版 82200 为召回替换版（覆盖安装即升级·签名一致·APK 零凭据）。测试 39 套件 7068 断言全绿；真机端到端待装机验证",
   ],
-  summary: "更新检查双通道（中转优先 + 直连回退 + 错误五分类）+ 下载校验链保持并提取可测；Worker 端更新接口代码随仓交付（worker/ 目录——部署后通道 0 生效，部署前自动回退直连，行为=v8.0.3 零回退）。",
+  summary: "日志正常采集 · 自动每天最多成功 3 次 · 随时手动上传 · 成功创建 GitHub Issue——除此之外零附加机制。",
 
 };
 
@@ -450,20 +450,20 @@ function refreshLogUploadNote() {
   const actions = $("#log-upload-actions");
   if (actions) actions.style.display = on ? "" : "none";
   if (!on) {
-    note.textContent = "默认关闭 · 每日最多 3 次脱敏诊断数据 · 可随时关闭";
+    note.textContent = "默认关闭 · 每 24 小时最多自动上传 3 次 · 日志采集与手动上传不受影响";
     return;
   }
   let st = null;
   try { st = JSON.parse(bridgeCall("logUploadStatus", null)); } catch (e) {}
   if (!st) {
-    note.textContent = "已授权 · 每 24 小时最多 3 次（服务端滑窗权威）";
+    note.textContent = "自动上传已开启 · 每 24 小时最多成功 3 次";
     return;
   }
   const agoMin = st.lastAckedAt > 0 ? Math.max(1, Math.round((Date.now() - st.lastAckedAt) / 60000)) : 0;
-  let s = "已授权 · 24h 已提交 " + (st.acked24h || 0) + "/3（服务端权威）"
-    + " · 待传 " + (st.pending || 0) + " 批";
-  if (agoMin > 0) s += " · 最近提交 " + (agoMin >= 1440 ? Math.round(agoMin / 1440) + " 天前" : agoMin + " 分钟前");
-  if (st.failed > 0 && st.lastError) s += " · 检视 " + st.failed + "（" + String(st.lastError).slice(0, 40) + "）";
+  let s = "自动上传已开启 · 24h 已成功 " + (st.acked24h || 0) + "/3"
+    + " · 待传 " + (st.pendingEvents || 0) + " 条";
+  if (agoMin > 0) s += " · 最近成功 " + (agoMin >= 1440 ? Math.round(agoMin / 1440) + " 天前" : agoMin + " 分钟前");
+  if ((st.rejected || 0) > 0) s += " · 拒收检视 " + st.rejected + " 批";
   note.textContent = s;
 }
 (function bindLogUploadToggle() {
@@ -479,7 +479,7 @@ function refreshLogUploadNote() {
     } catch (e) {
       store.set("logUploadConsent", el.checked);
     }
-    toast(el.checked ? "已授权自动提交（每日最多 3 次 · 服务端限额）" : "自动提交已关闭");
+    toast(el.checked ? "已开启自动上传（24h 最多 3 次；采集与手动上传不受影响）" : "自动上传已关闭（日志仍会采集，可随时手动上传）");
     setTimeout(refreshLogUploadNote, 200);
   });
   refreshLogUploadNote();
@@ -500,7 +500,7 @@ function refreshLogUploadNote() {
     if (HAS_BRIDGE && AndroidApp.logUploadClearPending) {
       let r = null;
       try { r = JSON.parse(AndroidApp.logUploadClearPending()); } catch (e) {}
-      toast(r && r.ok ? "已清理 " + (r.cleared || 0) + " 批本地待上传日志" : "清理失败");
+      toast(r && r.ok ? "已清理 " + (r.cleared || 0) + " 条本地待上传日志" : "清理失败");
       setTimeout(refreshLogUploadNote, 400);
     } else {
       toast("当前环境不支持自动上传");
@@ -1249,14 +1249,12 @@ async function doExportLog() {
   }
 }
 
-/* ══════ v8.1.0 一键上传主流程（真机实锤「导出≠上传」根治）══════
- * 用户点一次 → 封批（不足 20 条也封）→ 上传 Worker → 回调结果：
- * 成功显示 Issue 编号（v8.2.1：可点击直达 GitHub）；失败显示原因；
- * 服务端限流如实告知。手动上传不受自动 24h/3 额度限制（服务端
- * RATE_LIMITED 幂等兑底）。v8.2.1：服务端强化——开跑前复活耗尽型失败
- * 批次（同 batchId 重试）+ 有界排空循环（不再只传首批 3 批）。
- * 双入口：「我的」页主按钮 / 设置页「立即提交」——触发按钮各自 phase，
- * 结果统一渲染到「我的」页结果区 + toast + 设置页状态行刷新。 */
+/* ══════ 一键上传主流程（v8.2.2 简化版）══════
+ * 用户点一次 → LogUploader.submitNow（分块 ≤48 逐块上传 Worker）→ 回调：
+ * 成功显示 Issue 编号与【经 GitHub 匿名 API 核实的真实链接】；失败显示
+ * 原因并保留可重试；服务端限流如实告知。手动上传不受 24h/3 额度限制。
+ * 空队列四态如实区分（未产生/已传完/采集异常/读取异常）。
+ * 双入口：「我的」页主按钮 / 设置页「立即提交」——结果统一渲染。 */
 function doUploadLog(fromSettings) {
   const box = $("#upload-log-result");
   const btn = fromSettings ? $("#btn-log-upload-now") : $("#btn-upload-log");
@@ -1287,7 +1285,10 @@ function resetUploadButtons() {
   if (now) { now.innerHTML = "立即提交"; now.disabled = false; }
 }
 
-/* v8.1.0 一键上传结果回调（MainActivity evaluateJavascript 回调） */
+/* v8.2.2 一键上传结果回调（MainActivity evaluateJavascript 回调）——
+ * 成功显示 Issue 编号与【经验证的真实链接】（服务端返回 issueNumber 后经
+ * GitHub 匿名 API 核实 html_url 才可点击——绝不拼接未经确认的仓库地址）；
+ * 无日志时四态区分（未产生/已传完/采集失败/读取失败），失败保留可重试。 */
 window.__logUploadCb = function (res) {
   resetUploadButtons();
   const box = $("#upload-log-result");
@@ -1298,36 +1299,64 @@ window.__logUploadCb = function (res) {
     return;
   }
   if ((res.acked || 0) > 0) {
-    /* v8.2.1：Issue 编号可点击直达（openUrl 桥 → 系统浏览器；编号经
-     * parseInt 白名单化——零注入面） */
-    const nums = String(res.issueNumbers || "").split(",").map(s => parseInt(s, 10)).filter(n => n > 0);
-    const links = nums.map(n =>
-      '<a data-issue="' + n + '" href="javascript:void(0)" style="color:#047857;font-weight:700;text-decoration:underline">#' + n + "</a>"
-    ).join("、");
+    const nums = String(res.issueNumbers || "").split(",");
+    const urls = String(res.issueUrls || "").split(",");
+    let anyUrl = false;
+    const links = nums.map((n, i) => {
+      const num = parseInt(n, 10);
+      if (!(num > 0)) return null;
+      const u = (urls[i] || "").trim();
+      if (u) {
+        anyUrl = true;
+        return '<a data-issue-url="' + esc(u) + '" href="javascript:void(0)" style="color:#047857;font-weight:700;text-decoration:underline">#' + num + "</a>";
+      }
+      return "<b>#" + num + "</b>";
+    }).filter(Boolean).join("、");
     box.className = "fb-result ok";
-    box.innerHTML = "日志上传成功" + (links ? "（Issue " + links + "，点击可查看）" : "")
-      + ((res.revived || 0) > 0 ? "<br>已连同此前上传失败的 " + res.revived + " 个批次一并重试提交" : "")
-      + "<br>24 小时内已成功上传 " + (res.acked24h || 0) + "/3 批（自动限额，手动上传不受限）";
-    const anchors = box.querySelectorAll("a[data-issue]");
+    box.innerHTML = "日志上传成功" + (links ? "（Issue " + links + (anyUrl ? "，点击可查看）" : "——编号由服务端确认）") : "")
+      + "<br>24 小时内已成功上传 " + (res.acked24h || 0) + " 批（自动限额，手动上传不受限）";
+    const anchors = box.querySelectorAll("a[data-issue-url]");
     for (const a of anchors) {
-      a.addEventListener("click", () =>
-        openUrl("https://github.com/xiaobaiba999/Skip-Ad/issues/" + a.getAttribute("data-issue")));
+      a.addEventListener("click", () => openUrl(a.getAttribute("data-issue-url")));
     }
     toast("日志上传成功");
   } else if ((res.waited || 0) > 0) {
     toast("服务端限流，稍后自动重试");
-    showUploadFail(box, "服务端限流（24h 窗口）——稍后将自动重试，无需手动", doUploadLog);
-  } else if ((res.failed || 0) > 0) {
+    showUploadFail(box, "服务端限流（24h 窗口）——日志已保留，稍后自动/手动重试均可", doUploadLog);
+  } else if ((res.rejected || 0) > 0) {
+    toast("服务端拒收本批日志");
+    showUploadFail(box, "服务端拒收（" + (res.lastError || "未知原因") + "）——该批已隔离保留本地检视，不影响后续新日志上传", doUploadLog);
+  } else if (res.lastError) {
     toast("日志上传失败，请稍后重试");
-    showUploadFail(box, "上传失败：" + (res.lastError || "未知原因") + "——失败批次已保留，稍后重试时将一并提交", doUploadLog);
-  } else if ((res.retried || 0) > 0 || (res.pending || 0) > 0) {
+    showUploadFail(box, "上传失败：" + (res.lastError || "未知原因") + "——日志已保留，可随时再次上传", doUploadLog);
+  } else if (res.emptyReason === "never-collected") {
     box.className = "fb-result";
-    box.textContent = "上传进行中——已安排自动退避重试（最多 6 次，失败批次保留检视）";
-    toast("上传进行中，已安排自动重试");
-  } else if ((res.sealed || 0) === 0 && (res.pendingEvents || 0) === 0 && (res.pending || 0) === 0) {
+    box.textContent = "引擎尚未产生日志事件——应用运行与跳过广告时会自动记录，产生后即可上传";
+    toast("暂无已产生的日志");
+  } else if (res.emptyReason === "all-uploaded") {
+    box.className = "fb-result ok";
+    box.textContent = "已产生的日志均已全部上传——新日志产生后可再次上传";
+    toast("所有日志均已上传");
+  } else if (res.emptyReason === "append-failed") {
     box.className = "fb-result";
-    box.textContent = "暂无可上传的新日志（使用产生事件后再试；自动上传不受影响）";
-    toast("暂无可上传的新日志");
+    box.textContent = "日志采集写入异常（本地存储故障）——请重启应用后重试";
+    toast("日志采集异常");
+  } else if (res.emptyReason === "read-failed") {
+    box.className = "fb-result";
+    box.textContent = "本地日志文件暂时无法读取——请重启应用后重试";
+    toast("日志读取失败");
+  } else if (res.emptyReason === "rejected-only") {
+    box.className = "fb-result";
+    box.textContent = "已采集日志均被服务端拒收（已保留本地检视）——新日志产生后可再次上传";
+    toast("日志被服务端拒收");
+  } else if (res.emptyReason === "cleared") {
+    box.className = "fb-result";
+    box.textContent = "本地待上传日志已被清理——新日志产生后可再次上传";
+    toast("暂无可上传日志");
+  } else if (res.emptyReason === "relay-offline") {
+    box.className = "fb-result";
+    box.textContent = "上传服务未配置（本版本不可用）";
+    toast("上传服务未配置");
   } else {
     toast("日志上传失败，请稍后重试");
     showUploadFail(box, "上传未完成（" + (res.lastError || "未知原因") + "）——请稍后重试", doUploadLog);

@@ -463,7 +463,7 @@ public final class SubscriptionManager {
         /* v8.0.0 上传事件埋点：GKD 订阅拉取异常（errClass = 异常类名——八通道
          *  镜像链 + 快照兜底全失败；仅类名不带消息正文；采集门未授权零行为）。 */
         try {
-            com.zai.adshield.core.LogBatchStore.get(ctx).appendEvent(
+            com.zai.adshield.core.LogStore.get(ctx).appendEvent(
                     com.zai.adshield.core.LogEvents.gkdError(
                             lastEx == null ? "unknown" : lastEx.getClass().getName()));
         } catch (Throwable ignored) {

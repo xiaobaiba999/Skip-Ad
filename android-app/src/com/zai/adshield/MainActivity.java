@@ -878,31 +878,34 @@ public class MainActivity extends Activity {
             }
         }
 
-        /** v8.0.0：上传状态行真数据（待传批次数 / 24h 已提交（服务端权威，本地
-         *  仅展示参考）/ 失败检视数 / 最近失败原因）。 */
+        /** v8.0.0：上传状态行真数据。v8.2.2：LogStore.overview——待传事件数/
+         *  24h 成功数/拒收检视/累计采集/最近成功时间（服务端权威，本地仅展示）。 */
         @JavascriptInterface
         public String logUploadStatus() {
             try {
-                return com.zai.adshield.core.LogBatchStore.get(a)
+                return com.zai.adshield.core.LogStore.get(a)
                         .overview(System.currentTimeMillis()).toString();
             } catch (Throwable t) {
-                return "{\"pending\":0,\"failed\":0,\"acked24h\":0,\"lastAckedAt\":0,\"lastError\":\"\"}";
+                return "{\"pending\":0,\"pendingEvents\":0,\"acked24h\":0,\"lastAckedAt\":0,\"rejected\":0,\"lastError\":\"\"}";
             }
         }
 
-        /** v8.0.0：手动「立即提交」（用户主动操作——同一服务端 24h/3 限额与
+        /** 手动「一键上传」（用户主动操作——后台线程阻塞执行 LogUploader.submitNow，
+         *  完成后经 window[cb] 回调 UI）。v8.2.2：简化上传器——手动不受 24h/3
+         *  本地额度限制（服务端限额如实转达）；成功显示 Issue 编号与经验证的真实
+         *  链接，失败显示原因并保留可重试。（v8.0.0 原文：
          *  batchId 幂等，绝不绕过；单后台守护线程执行，绝不阻塞页面）。
          *  v8.1.0：升级为一键上传带回调版（cb=JS 回调函数名）——后台线程
          *  阻塞执行 submitNowBlocking（强制封批 + 结果 Summary），完成后经
          *  window[cb] 回调 UI；成功显示 Issue 编号，失败显示原因。手动路径
-         *  不受自动 24h/3 额度限制（服务端 RATE_LIMITED 幂等兜底）。 */
+         *  不受自动 24h/3 额度限制（服务端 RATE_LIMITED 幂等兜底）。） */
         @JavascriptInterface
         public void logUploadSubmitNow(final String cb) {
             new Thread(() -> {
                 String r;
                 try {
-                    r = com.zai.adshield.core.LogUploadDispatcher.get(a)
-                            .submitNowBlocking().toJson();
+                    r = com.zai.adshield.core.LogUploader.get(a)
+                            .submitNow().toJson();
                 } catch (final Throwable t) {
                     r = "{\"busy\":false,\"acked\":0,\"lastError\":\"internal\"}";
                 }
@@ -925,10 +928,11 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public String logUploadClearPending() {
             try {
-                int n = com.zai.adshield.core.LogBatchStore.get(a).clearPending();
+                int n = com.zai.adshield.core.LogStore.get(a).clearPending();
                 org.json.JSONObject o = new org.json.JSONObject();
                 o.put("ok", true);
                 o.put("cleared", n);
+                o.put("unit", "events");
                 return o.toString();
             } catch (Throwable t) {
                 return "{\"ok\":false,\"cleared\":0}";

@@ -52,13 +52,16 @@ public final class Net {
     }
 
     /* ───────── v7.9.7 预留 / v8.0.0 填入：自动日志上传中转服务地址 ─────────
-     * 架构（v8.0.0 已落地）：Android → HTTPS 中转服务（鉴权/24h 滑窗限流/
-     * batchId 幂等/二次隐私过滤）→ GitHub 私有仓库 Skip-Ad-Logs 的 Issues。
-     * 生产地址（skip-ad-log-relay v1.2.1 · Cloudflare Worker，已部署并经
-     * 用户真实浏览器 /healthz 验证：ipHmacConfigured=true · fail-closed）。
-     * 服务端凭据（GitHub App 私钥/IP_HMAC 密钥）全部只存 Cloudflare Worker
-     * Secret——APK 零凭据红线保持（v7.9.7 达成，本轮不破）；此地址为公开
-     * 服务端点（非 Secret）。空串 = 自动上传结构性关闭。 */
+     * 架构（v8.0.0 落地）：Android → HTTPS 中转服务（鉴权/24h 滑窗限流/
+     * batchId 幂等/二次隐私过滤）→ GitHub Issues。
+     * 生产地址（skip-ad-log-relay · Cloudflare Worker，已部署并经用户真实
+     * 浏览器 /healthz 验证）。服务端凭据（GitHub App 私钥/IP_HMAC 密钥）
+     * 全部只存 Cloudflare Worker Secret——APK 零凭据红线保持。
+     * 【v8.2.2 诚实口径】Worker 实际写入的目标仓库 UNKNOWN（Worker 源码仓
+     * 在 owner 账号不存在——2026-11-22 凭据实测 404；文档旧称「私有仓
+     * Skip-Ad-Logs」与账号实况矛盾）。客户端成功后经 GitHub 匿名 API 核实
+     * 公开仓 issues/{n}——核实到才展示可点击链接（LogUploader.verifyIssueUrl）。
+     * 此地址为公开服务端点（非 Secret）。空串 = 上传结构性关闭。 */
     public static final String LOG_RELAY_URL =
             "https://skip-ad-log-relay.2927609408.workers.dev/api/logs/receive";
 

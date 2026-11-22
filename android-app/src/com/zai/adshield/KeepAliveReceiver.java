@@ -83,8 +83,8 @@ public class KeepAliveReceiver extends BroadcastReceiver {
             }, "sub-update");
             subThread.setDaemon(true);
             subThread.start();
-            // v4.2.0：心跳顺带检查自动日志提交（v6.1.0：8h 一日 3 次；未到期/服务未运行/息屏秒回零开销）
-            // v8.1.0：24h/3 本地前置闸 + 服务端滑窗权威（LogUploadDispatcher.autoCheckEligible）
+            // v4.2.0：心跳顺带检查自动日志上传（v6.1.0：8h 一日 3 次；未到期/无新日志秒回零开销）
+            // v8.2.2：间隔 × 新日志 × 24h/3 成功配额三重闸（LogUploader.autoEligible——只记服务端确认）
             try {
                 AdSkipService.maybeAutoUploadLog(ctx);
             } catch (Throwable ignored) {
