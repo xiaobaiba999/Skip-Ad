@@ -1251,8 +1251,10 @@ async function doExportLog() {
 
 /* ══════ v8.1.0 一键上传主流程（真机实锤「导出≠上传」根治）══════
  * 用户点一次 → 封批（不足 20 条也封）→ 上传 Worker → 回调结果：
- * 成功显示 Issue 编号；失败显示原因；服务端限流如实告知。手动上传
- * 不受自动 24h/3 额度限制（服务端 RATE_LIMITED 幂等兑底）。
+ * 成功显示 Issue 编号（v8.2.1：可点击直达 GitHub）；失败显示原因；
+ * 服务端限流如实告知。手动上传不受自动 24h/3 额度限制（服务端
+ * RATE_LIMITED 幂等兑底）。v8.2.1：服务端强化——开跑前复活耗尽型失败
+ * 批次（同 batchId 重试）+ 有界排空循环（不再只传首批 3 批）。
  * 双入口：「我的」页主按钮 / 设置页「立即提交」——触发按钮各自 phase，
  * 结果统一渲染到「我的」页结果区 + toast + 设置页状态行刷新。 */
 function doUploadLog(fromSettings) {
@@ -1296,17 +1298,28 @@ window.__logUploadCb = function (res) {
     return;
   }
   if ((res.acked || 0) > 0) {
-    const issues = String(res.issueNumbers || "").split(",").filter(Boolean).map(n => "#" + n).join("、");
+    /* v8.2.1：Issue 编号可点击直达（openUrl 桥 → 系统浏览器；编号经
+     * parseInt 白名单化——零注入面） */
+    const nums = String(res.issueNumbers || "").split(",").map(s => parseInt(s, 10)).filter(n => n > 0);
+    const links = nums.map(n =>
+      '<a data-issue="' + n + '" href="javascript:void(0)" style="color:#047857;font-weight:700;text-decoration:underline">#' + n + "</a>"
+    ).join("、");
     box.className = "fb-result ok";
-    box.innerHTML = "日志上传成功" + (issues ? "（Issue " + esc(issues) + "）" : "")
+    box.innerHTML = "日志上传成功" + (links ? "（Issue " + links + "，点击可查看）" : "")
+      + ((res.revived || 0) > 0 ? "<br>已连同此前上传失败的 " + res.revived + " 个批次一并重试提交" : "")
       + "<br>24 小时内已成功上传 " + (res.acked24h || 0) + "/3 批（自动限额，手动上传不受限）";
+    const anchors = box.querySelectorAll("a[data-issue]");
+    for (const a of anchors) {
+      a.addEventListener("click", () =>
+        openUrl("https://github.com/xiaobaiba999/Skip-Ad/issues/" + a.getAttribute("data-issue")));
+    }
     toast("日志上传成功");
   } else if ((res.waited || 0) > 0) {
     toast("服务端限流，稍后自动重试");
     showUploadFail(box, "服务端限流（24h 窗口）——稍后将自动重试，无需手动", doUploadLog);
   } else if ((res.failed || 0) > 0) {
     toast("日志上传失败，请稍后重试");
-    showUploadFail(box, "上传失败：" + (res.lastError || "未知原因") + "——请稍后重试", doUploadLog);
+    showUploadFail(box, "上传失败：" + (res.lastError || "未知原因") + "——失败批次已保留，稍后重试时将一并提交", doUploadLog);
   } else if ((res.retried || 0) > 0 || (res.pending || 0) > 0) {
     box.className = "fb-result";
     box.textContent = "上传进行中——已安排自动退避重试（最多 6 次，失败批次保留检视）";

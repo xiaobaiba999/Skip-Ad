@@ -1,6 +1,6 @@
 /** 版本与 GitHub 仓库信息（Web 端与发布节奏共用） */
-export const APP_VERSION = "8.2.0";
-export const VERSION_CODE = 82000; // major*10000 + minor*1000 + patch*100，随版本单调递增
+export const APP_VERSION = "8.2.1";
+export const VERSION_CODE = 82100; // major*10000 + minor*1000 + patch*100，随版本单调递增
 export const GITHUB_REPO = "xiaobaiba999/Skip-Ad";
 export const GITHUB_API = `https://api.github.com/repos/${GITHUB_REPO}`;
 export const GITHUB_HOME = `https://github.com/${GITHUB_REPO}`;
@@ -19,16 +19,16 @@ export interface VersionEntry {
  *  旧版本内容归档在 GitHub Releases 与 git 历史） */
 export const VERSION_HISTORY: VersionEntry[] = [
   {
-    version: "8.2.0",
-    code: 82000,
+    version: "8.2.1",
+    code: 82100,
     date: "2026-11-22",
-    tagline: "更新检查双通道：中转服务优先 + GitHub 直连回退——彻底解决「GitHub API 限流（匿名 60 次/小时/IP）看不到正式新版本」",
+    tagline: "日志提交可靠性专项：手动一键上传可复活耗尽型失败批次 + 有界排空循环 + Issue 编号可点击直达 + TTL 清理实装",
     notes: [
-      "更新检查双通道（v8.2.0 真机限流根因修复）：新增通道 0「更新中转」GET /api/update/latest（与日志中转同源 Worker 的独立只读端点——服务端边缘缓存 5~10 分钟 + GitHub App 认证上游（独立配额池），凭据不足自动回退匿名+缓存，绝不要求扩权）；中转失败自动回退 GitHub 匿名直连（v8.0.3 语义逐字保持）——匿名配额耗尽时也能稳定发现正式新版本。Worker 端代码随仓交付（worker/ 目录，含 22 项单元 + 3 项 live 测试与一键部署指南；部署后通道 0 生效，部署前自动回退直连，行为=v8.0.3 零回退）",
-      "错误五分类如实呈现：GITHUB_RATE_LIMITED / WORKER_UNAVAILABLE / NETWORK_ERROR / PARSE_ERROR / NO_NEW_VERSION——中转故障绝不误报成 GitHub 限流；双通道皆败时各自归因同时展示（「更新通道均失败：中转…；GitHub…」）；中转失败而直连成功时成功载荷附 workerError 供 UI 提示",
-      "下载与安全闸零降低：APK 下载前 SHA-256 + 大小双重校验元数据经 HTTPS 获取、安装前流式逐字节比对不符即删、发布通道 host 白名单、签名兼容全部保持；本轮仅把校验判定提取为可测纯函数 verifyDigest（行为逐字一致）",
-      "修复 v8.1.0 遗留：「版本记录」板块内容停留在 v8.0.3（本轮起随版本同步更新；浏览器预览回退版本号一并修正）",
-      "测试：39 套件全绿（新增 UpdateChannelTest：双通道五分类真值表/中转载荷契约/版本比较/SHA-256 校验判定/发布通道白名单/镜像合成）+ Worker 更新接口 25 项测试（22 单元 AUTOMATED + 3 live REAL_API 模块级——真实 GitHub 上游取到 v8.1.0 官方 digest 并验证缓存生效）",
+      "手动提交强化（方向调整：聚焦 GitHub Issues 日志闭环——Cloudflare 更新代理部署已取消，日志中转 Worker 为既有部署零变更）：①开跑前自动复活「重试耗尽型」FAILED 批次（同 batchId 重试——服务端幂等兜底绝不二建 Issue；服务端终态拒收型绝不复活）；②有界排空循环（每轮 3 批·最多 8 轮·无进展即停——重度用户一键上传不再只传首批 3 批就停；仅首轮补 STATS 不造垃圾批）；③成功提示 Issue 编号可点击直达 GitHub（openUrl 桥）；④失败提示如实告知「失败批次已保留，重试时一并提交」",
+      "FAILED 终态细分（failKind：terminal 服务端明确拒收 / exhausted 网络耗尽）+ 14 天检视窗 TTL 清理实装 + acked-meta 3 天 TTL 裁剪实装（v8.0.0 注释宣称的保留策略此前未落实现）",
+      "attemptsMade 契约对齐修复：主路径传「含刚失败的这次」（旧代码少计 1 次实际第 7 次才终态）；异常路径耗尽判定 > 改 >= 与 decide 同口径——第 6 次即终态",
+      "安全与整洁：exportLog 补上 Java 侧二道脱敏（app.js 注释一直声称的双层脱敏首次真正落实现）；死代码清理（requestUploadNow/buildLogBody 190 行/newIssuePrefillUrl/enc/ISSUES_PAGE）；secret-scan 私钥模式精度修正（要求完整 PEM 铠甲——零漏报，消除 worker PEM 解析代码的格式名误报）",
+      "测试：全量 7151 断言 0 失败（新增 B11 手动复活 12 断言 / B12 TTL 清理 4 断言 / P9 终态拒收判定 12 断言 / S3p revived 契约）",
     ],
   },];
 

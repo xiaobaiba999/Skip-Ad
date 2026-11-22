@@ -11,11 +11,11 @@ import com.zai.adshield.core.LogUploadDispatcher;
  *     即封（一键上传绝不空转——旧版 <20 条静默空转是真机反馈的一部分）；
  *  S2 自动上传资格 autoCheckEligible：8h 节拍 + 本地 24h ACK <3 前置闸
  *     （服务端滑窗仍为权威——双保险）；3 次满额 → 自动路径禁行；
- *  S3 Summary 契约：toJson() 12 键完整（MainActivity evaluateJavascript
- *     回调 → app.js JSON.parse 渲染链路的数据契约）；
+ *  S3 Summary 契约：toJson() 13 键完整（MainActivity evaluateJavascript
+ *     回调 → app.js JSON.parse 渲染链路的数据契约；v8.2.1 新增 revived 键）；
  *  S4 手动/自动分离红线：shouldSeal(true) 在 1 条事件即封（手动不受
  *     自动阈值限制）；autoCheckEligible 不作用于手动路径（编译期保证——
- *     requestUploadNow/submitNowBlocking 不调用它，此处钉死语义供回归）。
+ *     submitNowBlocking 不调用它，此处钉死语义供回归）。
  */
 public class LogUploadNowTest {
 
@@ -62,10 +62,11 @@ public class LogUploadNowTest {
                 "S2g 异常大计数 → 拒（防御：宁可少传）");
     }
 
-    /* S3：Summary 数据契约——12 键完整 + 值类型正确（app.js 渲染依赖）。 */
+    /* S3：Summary 数据契约——13 键完整 + 值类型正确（app.js 渲染依赖）。 */
     private static void s3_summaryContract() {
         LogUploadDispatcher.Summary s = new LogUploadDispatcher.Summary();
         s.sealed = 1;
+        s.revived = 2;
         s.uploaded = 1;
         s.acked = 1;
         s.waited = 0;
@@ -79,6 +80,7 @@ public class LogUploadNowTest {
         s.lastError = "";
         String json = s.toJson();
         TestHost.check(json.contains("\"sealed\":1"), "S3a sealed 键");
+        TestHost.check(json.contains("\"revived\":2"), "S3a2 revived 键（v8.2.1 复活批数——app.js 提示行依赖）");
         TestHost.check(json.contains("\"uploaded\":1"), "S3b uploaded 键");
         TestHost.check(json.contains("\"acked\":1"), "S3c acked 键");
         TestHost.check(json.contains("\"waited\":0"), "S3d waited 键");
@@ -106,6 +108,13 @@ public class LogUploadNowTest {
             TestHost.check(b.toJson().contains("\"busy\":true"), "S3o busy Summary 序列化不抛异常");
         } catch (Throwable t) {
             TestHost.check(false, "S3o busy Summary 异常: " + t);
+        }
+        // v8.2.1：revived 默认 0（自动路径/无失败批时）不破坏旧渲染
+        try {
+            LogUploadDispatcher.Summary z = new LogUploadDispatcher.Summary();
+            TestHost.check(z.toJson().contains("\"revived\":0"), "S3p revived 默认 0（旧链路兼容）");
+        } catch (Throwable t) {
+            TestHost.check(false, "S3p 异常: " + t);
         }
     }
 

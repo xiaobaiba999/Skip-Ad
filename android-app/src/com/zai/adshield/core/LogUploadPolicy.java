@@ -23,7 +23,8 @@ import java.util.UUID;
  *  · TEMPORARY_ERROR / GITHUB_UNAVAILABLE / 网络异常 / 未知 code → RETRY：
  *    指数退避 30s→60s→120s→240s→480s（同一 batchId 重试——服务端幂等
  *    兜底「超时但 Issue 已建」场景：重试必然得到 ALREADY_ACCEPTED）；
- *  · 重试耗尽（第 6 次尝试仍瞬时失败）→ FAIL 终态（批次保留 14 天检视）。
+ *  · 重试耗尽（第 6 次尝试仍瞬时失败）→ FAIL 终态（批次保留 14 天检视；
+ *    v8.2.1 手动一键上传可复活重试——同 batchId，服务端幂等兑底）。
  */
 public final class LogUploadPolicy {
 
@@ -67,10 +68,7 @@ public final class LogUploadPolicy {
         }
         if (code == null) return attempts(attemptsMade);
         if ("RATE_LIMITED".equals(code)) return WAIT;
-        if ("PRIVACY_REJECTED".equals(code) || "INVALID_REQUEST".equals(code)
-                || "UNAUTHORIZED".equals(code) || "IDEMPOTENCY_CONFLICT".equals(code)
-                || "PAYLOAD_TOO_LARGE".equals(code)
-                || "MANUAL_RECONCILIATION_REQUIRED".equals(code)) {
+        if (isTerminalRejection(code)) {
             return FAIL;
         }
         // TEMPORARY_ERROR / GITHUB_UNAVAILABLE / 未知 code → 同 batchId 退避重试
@@ -79,6 +77,16 @@ public final class LogUploadPolicy {
 
     private static int attempts(int attemptsMade) {
         return attemptsMade >= MAX_ATTEMPTS ? FAIL : RETRY;
+    }
+
+    /** v8.2.1：终态拒收判定（FAIL 复活门用）——六个服务端明确拒收码属于
+     *  「重试必然再拒」型，手动复活无意义；网络/瞬时码耗尽属于「可重试」型。
+     *  与 decide() 的 FAIL 分支单一数据源（同表同步递增）。 */
+    public static boolean isTerminalRejection(String code) {
+        return "PRIVACY_REJECTED".equals(code) || "INVALID_REQUEST".equals(code)
+                || "UNAUTHORIZED".equals(code) || "IDEMPOTENCY_CONFLICT".equals(code)
+                || "PAYLOAD_TOO_LARGE".equals(code)
+                || "MANUAL_RECONCILIATION_REQUIRED".equals(code);
     }
 
     /** RETRY 延迟（attemptsMade = 已尝试次数，含刚失败这次）。 */

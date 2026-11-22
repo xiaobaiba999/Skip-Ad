@@ -21,11 +21,15 @@ FAIL=0
 echo "==> 密钥泄露扫描（secret-scan）"
 
 # ① 令牌形态扫描（仅被跟踪文件——工作区未入库文件不在扫描面）
+#    v8.2.1 精度修正：私钥模式要求完整 PEM 铠甲（-----BEGIN … KEY-----，
+#    含首尾破折号）——真实泄露的 PEM 必然带铠甲（零漏报）；而密钥处理
+#    代码中的格式名字符串（如 worker/src/update.ts 的 PEM 解析）不带铠甲，
+#    不再误报（v8.2.0 轮该误报被掩盖：worker/ 在全量测试跑时未跟踪）。
 if git ls-files -z | xargs -0 rg -l --no-messages \
   -e 'ghp_[A-Za-z0-9]{30,}' \
   -e 'github_pat_[A-Za-z0-9_]{60,}' \
   -e 'AKIA[0-9A-Z]{16}' \
-  -e 'BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY' \
+  -e '\-\-\-\-\-BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY' \
   -e 'x-access-token:[A-Za-z0-9_]{20,}' \
   > /tmp/secret-scan-hits.txt 2>/dev/null; then
   # rg -l 命中时退出码为 0 且列表非空

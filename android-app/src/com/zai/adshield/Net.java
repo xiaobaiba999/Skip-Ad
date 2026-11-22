@@ -8,7 +8,6 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 
 /**
@@ -46,7 +45,8 @@ public final class Net {
     public static final String REPO = "xiaobaiba999/Skip-Ad";
     public static final String API = "https://api.github.com/repos/" + REPO;
     public static final String RELEASES_PAGE = "https://github.com/" + REPO + "/releases";
-    public static final String ISSUES_PAGE = "https://github.com/" + REPO + "/issues";
+    /* ISSUES_PAGE 与 enc() 已于 v8.2.1 移除（newIssuePrefillUrl 死代码清理；
+     * maskSensitive 保留——exportLog 二道脱敏在用） */
 
     private Net() {
     }
@@ -217,12 +217,9 @@ public final class Net {
         return out;
     }
 
-    /** v7.9.7：问题反馈/手动日志的零令牌浏览器预填链接（本机拼好 title/body 查询串，
-     * 交给系统浏览器打开 GitHub 新建 Issue 预填页——用户在自己登录态里提交，
-     * 客户端零凭据零写操作）。 */
-    public static String newIssuePrefillUrl(String title, String body) {
-        return ISSUES_PAGE + "/new?title=" + enc(maskSensitive(title)) + "&body=" + enc(maskSensitive(body));
-    }
+    /* v7.9.7 问题反馈浏览器预填链接（newIssuePrefillUrl）已于 v8.2.1 移除——
+     * 反馈链路 v8.0.0 起统一走中转服务（LOG_RELAY_URL）+ Web 反馈通道，
+     * 客户端零 GitHub 凭据红线保持。 */
 
     /* ───────── 检查更新 → 双通道（v8.2.0：中转优先 → GitHub 匿名直连回退） ─────────
      * 真机根因（v8.0.3 实锤）：更新检查唯一通道是 GitHub 匿名 API（60 次/小时/IP，
@@ -614,14 +611,6 @@ public final class Net {
             return o.toString();
         } catch (Exception e) {
             return "{\"ok\":false,\"error\":\"unknown\"}";
-        }
-    }
-
-    private static String enc(String s) {
-        try {
-            return URLEncoder.encode(s == null ? "" : s, "UTF-8");
-        } catch (Exception e) {
-            return "";
         }
     }
 

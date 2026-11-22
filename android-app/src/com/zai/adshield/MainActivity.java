@@ -27,8 +27,7 @@ import org.json.JSONObject;
  * · WebView 装载离线页面 assets/www（首页 / 学习中心 / 关于）
  * · 启动即静默检查 GitHub Releases：发现新版 → 页面顶部弹出更新横幅，
  *   页内直接下载（系统 DownloadManager）→ 进度条 → 完成后拉起安装，全程不跳浏览器
- * · v7.9.7：问题反馈走浏览器预填链接（newIssuePrefillUrl）、引擎日志本地导出
- *   （exportLog 桥 + shareLogText 分享）——内置混淆令牌已随 PAT 移除下线，客户端零凭据
+ * · v7.9.7：问题反馈/引擎日志本地导出（exportLog 桥 + shareLogText 分享）——内置混淆令牌已随 PAT 移除下线，客户端零凭据；v8.0.0 起日志上传走中转服务（logUploadSubmitNow 桥），v8.2.1 手动一键上传可复活耗尽型失败批次
  * · v3.5.0 保活：通知权限引导（Android 13+）、jump_a11y 通知一键恢复直达、
  *   电池优化白名单与 keepOn 状态桥接（配合 KeepAliveReceiver）
  * · v3.6.0 自动拉活：清理后台后服务被杀但系统设置仍登记时，打开 App
@@ -810,6 +809,10 @@ public class MainActivity extends Activity {
                 long now = System.currentTimeMillis();
                 String t = title == null ? "" : (title.length() > 128 ? title.substring(0, 128) : title);
                 String b = body == null ? "" : (body.length() > 24000 ? body.substring(0, 24000) : body);
+                // v8.2.1：Java 侧二道脱敏（app.js 注释一直声称的双层——未落实现已
+                // 补齐；与 JS maskText 同规则：手机号/身份证/邮箱/IP）
+                t = com.zai.adshield.Net.maskSensitive(t);
+                b = com.zai.adshield.Net.maskSensitive(b);
                 String stamp = new java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.US).format(new java.util.Date(now));
                 java.io.File dir = a.getExternalFilesDir("logs");
                 if (dir == null) dir = a.getFilesDir();

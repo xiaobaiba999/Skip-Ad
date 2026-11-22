@@ -80,6 +80,10 @@ public final class LogBatchStoreTest {
         b9_retrySameId();
         TestHost.suite("存储 B10 · clearPending + overview 真数据");
         b10_clearOverview();
+        TestHost.suite("存储 B11 · v8.2.1 手动复活（耗尽型复活/终态绝不复活/同 batchId）");
+        b11_revive();
+        TestHost.suite("存储 B12 · v8.2.1 TTL 清理（FAILED 14 天 / acked-meta 3 天）");
+        b12_ttl();
         TestHost.done();
     }
 
@@ -302,6 +306,131 @@ public final class LogBatchStoreTest {
         } catch (Throwable t) {
             return null;
         }
+    }
+
+    /* B11：v8.2.1 手动复活——submitNowBlocking 开跑前调用 reviveExhaustedForManual。
+     * 红线：同 batchId（服务端幂等兜底）；terminal 绝不复活（重试必然再拒/
+     * 服务端红线）；retryCount 清零获得全新尝试窗；旧版本批次（无 failKind）
+     * 按 lastError 前缀启发式归类。 */
+    static void b11_revive() {
+        store.clearPending();
+        try {
+            // ① 新式 failKind=exhausted（网络耗尽）→ 应复活
+            append(store, LogEvents.adTask("com.r1", "com.r1.M", "SUCCESS", "VERIFIED_SUCCESS", 1, 1, 1));
+            store.flushForJvm();
+            String e1 = store.sealBatch("8.2.1", 82100);
+            for (int i = 0; i < 6; i++) store.markState(e1, LogBatchStore.STATE_UPLOADING, 0, null);
+            store.markFailed(e1, "network: connect timeout", LogBatchStore.FAILKIND_EXHAUSTED);
+            TestHost.checkEq("FAILED", readBatch(e1).optString("state"), "B11a 耗尽型 FAILED 在场（failKind 落盘）");
+            TestHost.checkEq("exhausted", readBatch(e1).optString("failKind"), "B11a2 failKind=exhausted 落盘");
+
+            // ② 新式 failKind=terminal（服务端明确拒收）→ 绝不复活
+            append(store, LogEvents.adTask("com.r2", "com.r2.M", "SUCCESS", "VERIFIED_SUCCESS", 1, 1, 1));
+            store.flushForJvm();
+            String t1 = store.sealBatch("8.2.1", 82100);
+            store.markFailed(t1, "PRIVACY_REJECTED: danger", LogBatchStore.FAILKIND_TERMINAL);
+
+            // ③ 旧版本批次（无 failKind）lastError="network: x" → 启发式复活
+            append(store, LogEvents.adTask("com.r3", "com.r3.M", "SUCCESS", "VERIFIED_SUCCESS", 1, 1, 1));
+            store.flushForJvm();
+            String l1 = store.sealBatch("8.2.1", 82100);
+            store.markState(l1, LogBatchStore.STATE_FAILED, 0, "network: x");
+
+            // ④ 旧版本批次 lastError="UNAUTHORIZED: nope" → 启发式绝不复活
+            append(store, LogEvents.adTask("com.r4", "com.r4.M", "SUCCESS", "VERIFIED_SUCCESS", 1, 1, 1));
+            store.flushForJvm();
+            String l2 = store.sealBatch("8.2.1", 82100);
+            store.markState(l2, LogBatchStore.STATE_FAILED, 0, "UNAUTHORIZED: nope");
+
+            // ⑤ PENDING 批次不受复活影响
+            append(store, LogEvents.adTask("com.r5", "com.r5.M", "SUCCESS", "VERIFIED_SUCCESS", 1, 1, 1));
+            store.flushForJvm();
+            String p1 = store.sealBatch("8.2.1", 82100);
+
+            long now = System.currentTimeMillis();
+            int revived = store.reviveExhaustedForManual(now);
+            TestHost.check(revived == 2, "B11b 恰好复活 2 批（耗尽型+旧式网络型；终态/旧式终态/PENDING 不动）");
+            JSONObject r1 = readBatch(e1);
+            TestHost.checkEq("PENDING", r1.optString("state"), "B11c 耗尽型复活为 PENDING");
+            TestHost.check(r1.optInt("retryCount") == 0, "B11d retryCount 清零（全新 6 次尝试窗）");
+            TestHost.check(r1.optLong("nextRetryAt") == now, "B11e nextRetryAt=now 立即到期");
+            TestHost.check(r1.optString("lastError").startsWith("revived(manual): "), "B11f lastError 保留复活痕迹");
+            TestHost.check(r1.optJSONArray("events").length() == 1, "B11g 事件内容原封不动（同批次原样重传）");
+            TestHost.check(e1.equals(r1.optString("batchId")), "B11g2 batchId 不变（服务端幂等兜底）");
+            TestHost.checkEq("FAILED", readBatch(t1).optString("state"), "B11h terminal 绝不复活");
+            TestHost.checkEq("FAILED", readBatch(l2).optString("state"), "B11i 旧式终态前缀绝不复活");
+            TestHost.checkEq("PENDING", readBatch(p1).optString("state"), "B11j PENDING 不受影响");
+            List<JSONObject> due = store.dueBatches(now, 10);
+            boolean hasE1 = false;
+            for (JSONObject d : due) if (e1.equals(d.optString("batchId"))) hasE1 = true;
+            TestHost.check(hasE1, "B11k 复活批进入到期队列（本轮即可提交）");
+            TestHost.check(store.reviveExhaustedForManual(now) == 0, "B11l 二次复活零批（幂等）");
+        } catch (Throwable t) {
+            TestHost.check(false, "B11 异常: " + t);
+        }
+        store.clearPending();
+    }
+
+    /* B12：v8.2.1 TTL 清理——FAILED 14 天检视窗（failedAt 基准；dueBatches
+     * 扫描时删除）+ acked-meta 相对最新 ACK 时间超 3 天裁剪（50 环形保持）。 */
+    static void b12_ttl() {
+        store.clearPending();
+        try {
+            long now = System.currentTimeMillis();
+            long day = 24L * 3600 * 1000;
+            // ① FAILED_TTL：15 天前失败 → 清理；新鲜失败 → 保留
+            append(store, LogEvents.adTask("com.t1", "com.t1.M", "SUCCESS", "VERIFIED_SUCCESS", 1, 1, 1));
+            store.flushForJvm();
+            String f1 = store.sealBatch("8.2.1", 82100);
+            store.markFailed(f1, "network: x", LogBatchStore.FAILKIND_EXHAUSTED);
+            JSONObject rec = readBatch(f1);
+            rec.put("failedAt", now - 15 * day); // 手改计时基准（绕过墙钟）
+            writeBatch(f1, rec);
+            append(store, LogEvents.adTask("com.t2", "com.t2.M", "SUCCESS", "VERIFIED_SUCCESS", 1, 1, 1));
+            store.flushForJvm();
+            String f2 = store.sealBatch("8.2.1", 82100);
+            store.markFailed(f2, "network: y", LogBatchStore.FAILKIND_EXHAUSTED);
+            store.dueBatches(now, 10); // 触发扫描清理
+            TestHost.check(readBatch(f1) == null, "B12a 14 天到期 FAILED 清理");
+            TestHost.check(readBatch(f2) != null, "B12b 新鲜 FAILED 保留（检视窗内）");
+
+            // ② ACKED_META_TTL：相对最新 ACK 超 3 天裁剪
+            JSONArray old = new JSONArray();
+            JSONObject m1 = new JSONObject();
+            m1.put("batchId", LogUploadPolicy.newBatchId());
+            m1.put("issueNumber", 1);
+            m1.put("receivedAt", now - 5 * day); // 超 3 天 → 裁
+            JSONObject m2 = new JSONObject();
+            m2.put("batchId", LogUploadPolicy.newBatchId());
+            m2.put("issueNumber", 2);
+            m2.put("receivedAt", now - 20 * 3600 * 1000); // 20h 前：TTL 窗口内 → 留；24h 计数窗口内 → 计入
+            old.put(m1);
+            old.put(m2);
+            writeText(new File(env.filesDir(), "log-upload/acked-meta.json"), old.toString());
+            append(store, LogEvents.adTask("com.t3", "com.t3.M", "SUCCESS", "VERIFIED_SUCCESS", 1, 1, 1));
+            store.flushForJvm();
+            String a1 = store.sealBatch("8.2.1", 82100);
+            store.markAcked(a1, 99, now);
+            JSONArray meta = new JSONArray(readText(new File(env.filesDir(), "log-upload/acked-meta.json")));
+            TestHost.check(meta.length() == 2, "B12c acked-meta 裁剪后 2 条（5 天旧已裁；1 天新+本次保留）");
+            TestHost.check(store.ackedCount24h(now + 1000) == 2, "B12d 24h 计数只数窗口内（1 天前 + 本次）");
+        } catch (Throwable t) {
+            TestHost.check(false, "B12 异常: " + t);
+        }
+        store.clearPending();
+    }
+
+    static void writeText(File f, String s) throws Exception {
+        java.io.FileOutputStream out = new java.io.FileOutputStream(f);
+        try {
+            out.write(s.getBytes("UTF-8"));
+        } finally {
+            out.close();
+        }
+    }
+
+    static void writeBatch(String batchId, JSONObject rec) throws Exception {
+        writeText(new File(env.filesDir(), "log-upload/batch-" + batchId + ".json"), rec.toString());
     }
 
     static String readAnyBatchId(int idx) {

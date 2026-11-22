@@ -23,6 +23,9 @@ import java.util.concurrent.Executors;
  * ─────────────────────────────────────────────
  * 状态机： PENDING → UPLOADING → ACKED / FAILED（瞬时故障按退避回 PENDING；
  *          限流等待也回 PENDING 但不耗重试计数；明确拒收 → FAILED 终态保留检视）。
+ *          v8.2.1：FAILED 细分 failKind（terminal 服务端明确拒收 / exhausted
+ *          重试耗尽）——手动一键上传可复活 exhausted 型（同 batchId 重试，
+ *          服务端幂等兑底）；terminal 型绝不复活（重试必然再拒/服务端红线）。
  *
  * 存储形态（StoreEnv 环境 seam——Android 生产实现 + JVM 测试实现同源状态机）：
  *  · installInstanceId：首启随机 UUID v4（SharedPreferences；清数据/卸载自然
@@ -31,7 +34,9 @@ import java.util.concurrent.Executors;
  *    非关键事件——关键安全事件绝不因容量静默丢失计数语义，超限裁剪计数保留）；
  *  · 批次文件：files/log-upload/batch-{batchId}.json（ACK 前绝不删除——
  *    「未经确认不删本地日志」红线；ACK 后压缩为 acked-meta 记录）；
- *  · 保留策略：ACKED 批次保留 3 天元数据（50 条环形）；FAILED 终态保留 14 天；
+ *  · 保留策略：ACKED 批次保留 3 天元数据（50 条环形；v8.2.1 实装相对最新
+ *    ACK 时间的 TTL 裁剪）；FAILED 终态保留 14 天（v8.2.1 实装 failedAt
+ *    时问清理——到期在 dueBatches 扫描时删除）；
  *  · 容量上限：待传批次 ≤ 20（超限删最旧非 UPLOADING 态）。
  *
  * 线程纪律：appendEvent 走单线程 executor（调用方=无障碍事件线程零阻塞）；
@@ -47,6 +52,11 @@ public final class LogBatchStore {
     public static final String STATE_UPLOADING = "UPLOADING";
     public static final String STATE_ACKED = "ACKED";
     public static final String STATE_FAILED = "FAILED";
+
+    /** v8.2.1 FAILED 细分（复活门用）：terminal = 服务端明确拒收/客户端防御
+     *  拒绝（重试必然再拒，绝不复活）；exhausted = 网络退避耗尽（手动可复活）。 */
+    public static final String FAILKIND_TERMINAL = "terminal";
+    public static final String FAILKIND_EXHAUSTED = "exhausted";
 
     private static final String PREFS = "logupload";
     private static final String KEY_INSTALL_ID = "installInstanceId";
@@ -275,6 +285,11 @@ public final class LogBatchStore {
                 if (f.getName().startsWith("batch-") && f.getName().endsWith(".json")) batches.add(f);
             }
             // UPLOADING 中断恢复（进程死亡/重启）：视为 PENDING 重排（ACK 前不删红线不破）
+            // v8.2.1：FAILED_TTL 到期清理（14 天检视窗实装——与类头保留策略
+            // 一致）。计时基准用【墙钟】而非入参 now：now 只表达「到期查询」
+            // 语义（测试惯用 Long.MAX_VALUE 表示全部到期——TTL 家政不得被
+            // 查询参数驱动误删）。
+            long wallNow = System.currentTimeMillis();
             for (File f : batches) {
                 try {
                     JSONObject rec = readJson(f);
@@ -283,6 +298,13 @@ public final class LogBatchStore {
                         rec.put("state", STATE_PENDING);
                         rec.put("lastError", "recovered: interrupted UPLOADING");
                         writeJson(f, rec);
+                    } else if (STATE_FAILED.equals(st)) {
+                        long failedAt = rec.optLong("failedAt", 0L);
+                        long basis = failedAt > 0 ? failedAt : f.lastModified();
+                        if (wallNow - basis > FAILED_TTL) {
+                            //noinspection ResultOfMethodCallIgnored
+                            f.delete(); // 14 天检视窗到期（旧版本无 failedAt → 文件 mtime 兑底）
+                        }
                     }
                 } catch (Throwable ignored) {
                 }
@@ -317,7 +339,82 @@ public final class LogBatchStore {
         }
     }
 
-    /** ACK：服务端确认后才调用（issueNumber/receivedAt 入 acked-meta；批次文件删除）。 */
+    /** v8.2.1：终态失败写入（markState 的 FAIL 专用封装）——额外落 failKind
+     *  （复活门数据源）与 failedAt（14 天检视窗计时基准）。 */
+    public synchronized void markFailed(String batchId, String lastError, String failKind) {
+        File f = file("batch-" + batchId + ".json");
+        try {
+            JSONObject rec = readJson(f);
+            rec.put("state", STATE_FAILED);
+            rec.put("nextRetryAt", 0L);
+            rec.put("lastError", lastError);
+            rec.put("failKind", failKind);
+            rec.put("failedAt", System.currentTimeMillis());
+            writeJson(f, rec);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** v8.2.1 手动复活（仅 submitNowBlocking 一键上传路径调用——用户明确意图）：
+     *  把「重试耗尽型」FAILED 批次重置为 PENDING（retryCount 清零获得全新
+     *  6 次尝试窗、nextRetryAt=now 立即到期、同 batchId——服务端幂等兑底
+     *  「超时但 Issue 已建」场景必然得到 ALREADY_ACCEPTED，绝不二建）。
+     *  终态拒收型（terminal：六个服务端明确拒收码 + 客户端防御拒绝 +
+     *  隐私整批拒绝）【绝不复活】——重试必然再拒/服务端红线。
+     *  旧版本批次（无 failKind 字段）按 lastError 前缀启发式归类（终态族
+     *  前缀清单 deny-list，其余非空视为耗尽型）。返回复活批次数。 */
+    public synchronized int reviveExhaustedForManual(long now) {
+        int revived = 0;
+        try {
+            File[] files = dir().listFiles();
+            if (files == null) return 0;
+            for (File f : files) {
+                if (!f.getName().startsWith("batch-") || !f.getName().endsWith(".json")) continue;
+                try {
+                    JSONObject rec = readJson(f);
+                    if (!STATE_FAILED.equals(rec.optString("state", ""))) continue;
+                    if (!isRevivableFailure(rec)) continue;
+                    rec.put("state", STATE_PENDING);
+                    rec.put("retryCount", 0);
+                    rec.put("nextRetryAt", now);
+                    String prev = rec.optString("lastError", "");
+                    rec.put("lastError", "revived(manual): " + (prev.length() > 80 ? prev.substring(0, 80) : prev));
+                    rec.put("revivedAt", now);
+                    writeJson(f, rec);
+                    revived++;
+                } catch (Throwable ignored) {
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return revived;
+    }
+
+    /** 复活判定：显式 failKind 优先；旧版本批次按 lastError 前缀启发式
+     *  （deny-list：终态拒收族/客户端防御/隐私整批拒绝前缀绝不复活）。 */
+    private static boolean isRevivableFailure(JSONObject rec) {
+        String kind = rec.optString("failKind", "");
+        if (FAILKIND_EXHAUSTED.equals(kind)) return true;
+        if (FAILKIND_TERMINAL.equals(kind)) return false;
+        String e = rec.optString("lastError", "");
+        if (e.length() == 0) return false; // 无法归因 → 保守不复活
+        String[] never = {FAIL_LEGACY_PREFIX_0, FAIL_LEGACY_PREFIX_1, FAIL_LEGACY_PREFIX_2,
+                FAIL_LEGACY_PREFIX_3, FAIL_LEGACY_PREFIX_4, FAIL_LEGACY_PREFIX_5,
+                "client-defense", "PRIVACY_REJECTED(client)"};
+        for (String p : never) if (e.startsWith(p)) return false;
+        return true; // network / retry-exhausted / TEMPORARY_ERROR / GITHUB_UNAVAILABLE / 未知码耗尽
+    }
+
+    private static final String FAIL_LEGACY_PREFIX_0 = "PRIVACY_REJECTED";
+    private static final String FAIL_LEGACY_PREFIX_1 = "INVALID_REQUEST";
+    private static final String FAIL_LEGACY_PREFIX_2 = "UNAUTHORIZED";
+    private static final String FAIL_LEGACY_PREFIX_3 = "IDEMPOTENCY_CONFLICT";
+    private static final String FAIL_LEGACY_PREFIX_4 = "PAYLOAD_TOO_LARGE";
+    private static final String FAIL_LEGACY_PREFIX_5 = "MANUAL_RECONCILIATION_REQUIRED";
+
+    /** ACK：服务端确认后才调用（issueNumber/receivedAt 入 acked-meta；批次文件删除）。
+     *  v8.2.1：实装 ACKED_META_TTL——相对最新 ACK 时间超 3 天的元数据裁剪
+     *  （ackedCount24h 只需 24h 窗口，3 天余量充分；50 条环形封顶保持）。 */
     public synchronized void markAcked(String batchId, int issueNumber, long receivedAt) {
         try {
             JSONArray meta = readJsonArray(file(ACKED_META));
@@ -326,6 +423,15 @@ public final class LogBatchStore {
             m.put("issueNumber", issueNumber);
             m.put("receivedAt", receivedAt);
             meta.put(m);
+            long newest = receivedAt;
+            for (int i = 0; i < meta.length(); i++) {
+                JSONObject o = meta.optJSONObject(i);
+                if (o != null) newest = Math.max(newest, o.optLong("receivedAt", 0L));
+            }
+            for (int i = meta.length() - 1; i >= 0; i--) {
+                JSONObject o = meta.optJSONObject(i);
+                if (o != null && newest - o.optLong("receivedAt", 0L) > ACKED_META_TTL) meta.remove(i);
+            }
             while (meta.length() > 50) meta.remove(0);
             writeJsonArray(file(ACKED_META), meta);
             //noinspection ResultOfMethodCallIgnored
@@ -473,6 +579,8 @@ public final class LogBatchStore {
         rec.put("nextRetryAt", 0L);
         rec.put("state", STATE_FAILED);
         rec.put("lastError", "PRIVACY_REJECTED(client): " + dangerKey);
+        rec.put("failKind", FAILKIND_TERMINAL); // 隐私整批拒绝：危险内容绝不重传
+        rec.put("failedAt", System.currentTimeMillis());
         rec.put("events", new JSONArray());
         return rec;
     }

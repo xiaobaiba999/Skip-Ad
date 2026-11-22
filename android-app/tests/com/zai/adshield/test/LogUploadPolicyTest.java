@@ -38,6 +38,8 @@ public final class LogUploadPolicyTest {
         p7_body();
         TestHost.suite("裁决 P8 · batchId 幂等语义（UUID 唯一/校验/重试不换号）");
         p8_batchId();
+        TestHost.suite("裁决 P9 · v8.2.1 终态拒收判定（复活门单一数据源）");
+        p9_terminalRejection();
         TestHost.done();
     }
 
@@ -160,5 +162,22 @@ public final class LogUploadPolicyTest {
                 "P8g null/空拒绝");
         TestHost.check(!LogUploadPolicy.isValidUuid("0a0b0c0d-0e0f-4a0b-8c0d-0e0f0a0b0c0d".toUpperCase()),
                 "P8h 大写拒绝（服务端小写规约——客户端源头保证）");
+    }
+
+    /* P9：v8.2.1 终态拒收判定（isTerminalRejection——Dispatcher 复活门的
+     * failKind 单一数据源；与 decide() FAIL 分支同表）。 */
+    static void p9_terminalRejection() {
+        TestHost.check(LogUploadPolicy.isTerminalRejection("PRIVACY_REJECTED"), "P9a PRIVACY_REJECTED 终态");
+        TestHost.check(LogUploadPolicy.isTerminalRejection("INVALID_REQUEST"), "P9b INVALID_REQUEST 终态");
+        TestHost.check(LogUploadPolicy.isTerminalRejection("UNAUTHORIZED"), "P9c UNAUTHORIZED 终态");
+        TestHost.check(LogUploadPolicy.isTerminalRejection("IDEMPOTENCY_CONFLICT"), "P9d IDEMPOTENCY_CONFLICT 终态");
+        TestHost.check(LogUploadPolicy.isTerminalRejection("PAYLOAD_TOO_LARGE"), "P9e PAYLOAD_TOO_LARGE 终态");
+        TestHost.check(LogUploadPolicy.isTerminalRejection("MANUAL_RECONCILIATION_REQUIRED"), "P9f MANUAL_RECONCILIATION_REQUIRED 终态（服务端红线）");
+        TestHost.check(!LogUploadPolicy.isTerminalRejection("TEMPORARY_ERROR"), "P9g TEMPORARY_ERROR 非终态（耗尽型可复活）");
+        TestHost.check(!LogUploadPolicy.isTerminalRejection("GITHUB_UNAVAILABLE"), "P9h GITHUB_UNAVAILABLE 非终态");
+        TestHost.check(!LogUploadPolicy.isTerminalRejection(null), "P9i null（网络异常）非终态");
+        TestHost.check(!LogUploadPolicy.isTerminalRejection("RATE_LIMITED"), "P9j RATE_LIMITED 非终态（WAIT 族——限流不是失败）");
+        TestHost.check(!LogUploadPolicy.isTerminalRejection(""), "P9k 空串非终态（防御）");
+        TestHost.check(!LogUploadPolicy.isTerminalRejection("ACCEPTED"), "P9l 确认族码非终态（防御——不该走到 FAIL 分支）");
     }
 }
