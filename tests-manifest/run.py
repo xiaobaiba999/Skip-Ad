@@ -209,6 +209,12 @@ def main():
     # 修复闸：下载步骤必须含资产轮询等待（无 .apk 时轮询 API 刷新 rel.json）。
     A("S6h 资产上传竞态等待（事件快照空 assets → 轮询 API 等待资产到位）",
       "轮询 API 等待" in yml and "releases/tags/" in yml and "seq 1 20" in yml)
+    # run 45016268114 实锤：git pull --rebase 要求 index 干净——「git add 后未
+    # commit 即 rebase」exit 128。提交步骤必须先 commit 再 pull --rebase。
+    commit_pos = yml.find("git commit -m")
+    rebase_pos = yml.find("git pull --rebase")
+    A("S6i 提交步骤顺序正确（先 commit 后 pull --rebase，index 不净时 rebase 会 128）",
+      0 < commit_pos < rebase_pos)
 
     print()
     print("══════════════════════════")

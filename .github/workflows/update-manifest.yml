@@ -161,8 +161,11 @@ jobs:
             echo "清单内容与 main 现状一致——无需提交（幂等重跑）"
             exit 0
           fi
-          git pull --rebase origin main
+          # 顺序闸（run 45016268114 实锤）：git pull --rebase 要求 index 干净——
+          # 「git add 后未 commit 即 rebase」会 exit 128（cannot pull with rebase:
+          # Your index contains uncommitted changes）。必须先 commit 再 rebase。
           git commit -m "chore(update-manifest): ${{ steps.rel.outputs.tag }} → latest.json" -m "由 release 工作流自动生成：真实 Release + 真实 APK 资产全量校验（包名 / versionName=tag / versionCode=tag 公式 / SHA256 实算=资产 digest / 大小实测=资产 size）。客户端从此只读静态清单，不再消耗 GitHub 匿名 REST API 60 次/小时配额。"
+          git pull --rebase origin main
           git push
           echo "COMMITTED=true" >> "$GITHUB_ENV"
           echo "已提交 ${{ steps.rel.outputs.tag }} 清单到 main"
