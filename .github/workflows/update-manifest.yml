@@ -178,12 +178,15 @@ jobs:
         run: |
           set -euo pipefail
           PAGES=$(gh api "repos/${GITHUB_REPOSITORY}/pages" 2>/dev/null || true)
-          if [ -z "$PAGES" ]; then
+          # 判定闸（run 45016437502 实锤）：Pages 未启用时 gh api 返回 404 但
+          # body 非空（{"message":"Not Found"}）——不能只看非空，必须确认响应
+          # 含 source.type（真实 Pages 配置字段）。无此字段 = 未启用。
+          SRC_TYPE=$(echo "$PAGES" | jq -r '.source.type // empty' 2>/dev/null || true)
+          if [ -z "$SRC_TYPE" ]; then
             echo "enabled=false" >> "$GITHUB_OUTPUT"
             echo "ℹ GitHub Pages 未启用——备用地址 https://${GITHUB_REPOSITORY_OWNER}.github.io/... 暂不可用（不阻塞主清单 raw 源）。"
             echo "  如需启用备用地址（可选）：Settings → Pages → Build and deployment → Source 选「GitHub Actions」，此后本工作流自动部署。"
           else
-            SRC_TYPE=$(echo "$PAGES" | jq -r '.source.type // ""')
             echo "enabled=true" >> "$GITHUB_OUTPUT"
             echo "source_type=$SRC_TYPE" >> "$GITHUB_OUTPUT"
             echo "ℹ GitHub Pages 已启用（source=$SRC_TYPE）"

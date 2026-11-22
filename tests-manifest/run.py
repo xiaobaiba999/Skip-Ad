@@ -217,6 +217,11 @@ def main():
     _rebase_m = _re.search(r"^[ \t]*git pull --rebase", yml, _re.M)
     A("S6i 提交步骤顺序正确（先 commit 后 pull --rebase，index 不净时 rebase 会 128）",
       bool(_commit_m and _rebase_m and _commit_m.start() < _rebase_m.start()))
+    # run 45016437502 实锤：Pages 未启用时 gh api 返回 404 且 body 非空
+    # （{"message":"Not Found"}）——「非空即启用」误判 → configure-pages 失败。
+    # 判定必须基于 source.type 字段在场（真实 Pages 配置）。
+    A("S6j Pages 状态判定基于 source.type 字段（404 body 非空不再误判为启用）",
+      ".source.type // empty" in yml and 'if [ -z "$SRC_TYPE" ]' in yml)
 
     print()
     print("══════════════════════════")
