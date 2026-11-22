@@ -267,7 +267,8 @@ jobs:
               echo "⚠ jsDelivr 备用源未确认：$HOST（versionCode=${VC:-无}·purge 后缓存回源最长几分钟）——国内用户备用源最长 12h 后自然回源"
             fi
           done
-          echo "JSDELIVR_OK=$JSDELIVR_OK/$JSDELIVR_TOTAL" >> "$GITHUB_ENV"
+          echo "JSDELIVR_OK=$JSDELIVR_OK" >> "$GITHUB_ENV"
+          echo "JSDELIVR_TOTAL=$JSDELIVR_TOTAL" >> "$GITHUB_ENV"
           if [ "$RAW_OK" != "1" ]; then
             echo "⚠ 6 分钟内 raw 主源未确认——清单已提交 main，jsDelivr 备用 $JSDELIVR_OK/$JSDELIVR_TOTAL 生效；请稍后手动核验 $RAW_URL"
           fi
@@ -292,5 +293,5 @@ jobs:
           else
             echo "备用地址     : Pages 未启用（客户端备用链已改用 jsDelivr 四接入点——v7.9.9）"
           fi
-          echo "jsDelivr 链  : 生效 $JSDELIVR_OK/4（purge 失败标记=${PURGE_FAIL:-未设置}）"
+          echo "jsDelivr 链  : 生效 ${JSDELIVR_OK:-0}/${JSDELIVR_TOTAL:-4}（purge 失败标记=${PURGE_FAIL:-未设置}）"
           echo "══════════════════════════════════════════"
