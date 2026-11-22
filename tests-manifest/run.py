@@ -223,6 +223,31 @@ def main():
     # 判定必须基于 source.type 字段在场（真实 Pages 配置）。
     A("S6j Pages 状态判定基于 source.type 字段（404 body 非空不再误判为启用）",
       ".source.type // empty" in yml and 'if [ -z "$SRC_TYPE" ]' in yml)
+    # v7.9.9 网络专项：客户端备用链改 jsDelivr 四接入点——@main 分支缓存
+    # 12h，发布后必须 purge（否则国内用户最长 12h 看不到热修复版本）。
+    A("S6k jsDelivr 缓存 purge 步骤（四接入点热修复即时生效）",
+      "purge.jsdelivr.net" in yml and "Purge jsDelivr" in yml)
+    A("S6k2 purge 失败不阻塞主链路（raw 主源已提交——软失败语义）",
+      "不阻塞" in yml and "PURGE_FAIL" in yml)
+    # 线上核验必须覆盖 jsDelivr 备用链（软核验——如实报告不伪造）
+    A("S6l 线上核验覆盖 jsDelivr 备用链（软核验如实报告）",
+      "jsDelivr 备用链" in yml and "JSDELIVR_OK" in yml)
+    # 网络链路 E2E 验证工作流在场（清单五源 + Worker /healthz + 真实上传
+    # + batchId 幂等 + Issue 核验清理——真实 HTTP 请求记录状态码/耗时）
+    nv_path = os.path.join(ROOT, ".github/workflows/net-verify.yml")
+    A("S6m network-link-verify 工作流在场（Worker E2E + 清单五源核验）",
+      os.path.isfile(nv_path))
+    if os.path.isfile(nv_path):
+        nv = open(nv_path, encoding="utf-8").read()
+        A("S6m2 net-verify 含 /healthz 健康检查", "/healthz" in nv)
+        A("S6m3 net-verify 含真实 POST /api/logs/receive（九键契约）",
+          "/api/logs/receive" in nv and "X-Skip-Ad-Client" in nv and "privacyFilterVersion" in nv)
+        A("S6m4 net-verify 含同 batchId 幂等重试验证（不二建）",
+          "payload-retry.json" in nv and "绝不二建" in nv)
+        A("S6m5 net-verify 含测试 Issue 清理（关闭+备注——公开仓整洁）",
+          "gh issue close" in nv and "issues: write" in nv)
+        A("S6m6 net-verify 零 PAT 红线（仅 GITHUB_TOKEN）",
+          "secrets.GITHUB_TOKEN" in nv and "github_pat" not in nv)
 
     print()
     print("══════════════════════════")

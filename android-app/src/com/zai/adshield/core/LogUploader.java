@@ -146,13 +146,19 @@ public final class LogUploader {
         String verifyIssueUrl(int issueNumber);
     }
 
-    /** 生产实现（HttpURLConnection——与 Net 同族）。 */
-    static final class RealHttp implements Http {
-        private static final int CONNECT_TIMEOUT = 15_000;
+    /** 生产实现（HttpURLConnection——与 Net 同族；public：阶段化分类纯函数
+     *  供 JVM 回归直测）。 */
+    public static final class RealHttp implements Http {
+        /* v7.9.9 连接超时 15s→10s：上传服务端点（Cloudflare workers.dev）
+         * 在国内网络被 DNS 污染/TCP 阻断时表现为连接阶段悬挂——15s 让用户
+         * 白等；健康路径下 Android→CF 边缘 TCP+TLS 通常 <2s，10s 已极为宽裕。 */
+        private static final int CONNECT_TIMEOUT = 10_000;
         /* v7.9.8：15s→45s——Worker 同步建 GitHub Issue（含重试）可超 15s；
          * 旧值把「服务端实际成功但响应未及」变成客户端「失败」，重试
          * 又因旧版 payload 漂移命中 IDEMPOTENCY_CONFLICT（真机两连失败
-         * 的完整链条——冻结批次 + 长超时双修复）。 */
+         * 的完整链条——冻结批次 + 长超时双修复）。v7.9.9 保持 45s：
+         * Worker→GitHub 建 Issue 真实尾延迟可超 20s，盲目调短会重演
+         * 修复前的误判链（用户指令：按实际耗时设超时，不盲目增减）。 */
         private static final int READ_TIMEOUT = 45_000;
         /** 公开仓 Issue API（匿名 60 次/小时——上传频次远低于此）。 */
         private static final String ISSUE_API = "https://api.github.com/repos/xiaobaiba999/Skip-Ad/issues/";
@@ -180,14 +186,8 @@ public final class LogUploader {
                 int code = c.getResponseCode();
                 InputStream in = code >= 400 ? c.getErrorStream() : c.getInputStream();
                 return new Resp(code, parseJson(readAll(in)));
-            } catch (java.net.SocketTimeoutException te) {
-                return Resp.netError("timeout"); // 连接/读取超时——可重试，UI 呈「上传超时」
-            } catch (java.net.ConnectException ce) {
-                return Resp.netError("connect"); // 连接拒绝/不可达
-            } catch (java.net.UnknownHostException uhe) {
-                return Resp.netError("connect"); // DNS 解析失败（域名被污染/无网）
             } catch (Throwable t) {
-                return Resp.netError("io");   // 其余 IO/协议异常——保留重试
+                return Resp.netError(netKindOf(t)); // v7.9.9 阶段化分类（见 netKindOf）
             } finally {
                 if (c != null) c.disconnect();
             }
@@ -222,6 +222,39 @@ public final class LogUploader {
             } catch (Throwable ignored) {
             }
             return null;
+        }
+
+        /* ═══ v7.9.9 网络异常阶段化分类（纯函数·JVM 可回归）═══
+         * 用户指令：必须区分连接超时与读取超时——两者对用户的含义完全不同：
+         * · connect-timeout：TCP/TLS 连接阶段超时——请求几乎必然未送达
+         *   服务端（网络不可达/DNS 污染后连接悬挂），换网络重试才有意义；
+         * · read-timeout：请求已发出、等待响应阶段超时——服务端可能已
+         *   收到甚至已建 Issue（Worker→GitHub 同步建 Issue 可超 20s），
+         *   重试必须携带原 batchId（冻结批次保证）——服务端幂等必复用
+         *   原 Issue，绝不二建。
+         * 判定依据：HttpURLConnection 的 SocketTimeoutException 消息含
+         * 「connect」（连接阶段）/「Read timed out」（读取阶段）；消息
+         * 缺失/未知 → 按读取超时保守处理（宁可提示「结果无法确认」
+         * 也绝不误导用户「服务端未收到」）。 */
+        public static boolean isConnectTimeout(java.net.SocketTimeoutException te) {
+            String m = te.getMessage();
+            return m != null && m.toLowerCase(java.util.Locale.ROOT).contains("connect");
+        }
+
+        /** 网络层异常 → 阶段化 kind（connect / connect-timeout / read-timeout /
+         *  tls / io——classifyError 的稳定输入）。 */
+        public static String netKindOf(Throwable t) {
+            if (t instanceof java.net.SocketTimeoutException) {
+                return isConnectTimeout((java.net.SocketTimeoutException) t)
+                        ? "connect-timeout" : "read-timeout";
+            }
+            if (t instanceof java.net.ConnectException || t instanceof java.net.UnknownHostException) {
+                return "connect"; // 连接拒绝/不可达/DNS 解析失败（域名污染/无网）
+            }
+            if (t instanceof javax.net.ssl.SSLException) {
+                return "tls"; // TLS 握手失败——网络传输被干扰的典型形态
+            }
+            return "io"; // 其余 IO/协议异常——保留重试
         }
 
         private static String readAll(InputStream in) {
@@ -379,8 +412,11 @@ public final class LogUploader {
      * 依据真实 HTTP 状态码 / 服务端错误码 / 网络层异常类型三路判定，
      * 绝不猜測。UI 按用户八类表映射人话提示。 */
 
-    public static final String ERR_NET_CONNECT = "NET_CONNECT_FAIL";   // 网络连接失败
-    public static final String ERR_NET_TIMEOUT = "NET_TIMEOUT";         // 请求超时
+    public static final String ERR_NET_CONNECT = "NET_CONNECT_FAIL";   // 网络连接失败（拒绝/不可达/DNS）
+    public static final String ERR_NET_CONNECT_TIMEOUT = "NET_CONNECT_TIMEOUT"; // 连接阶段超时（请求几乎必然未送达）
+    public static final String ERR_NET_READ_TIMEOUT = "NET_READ_TIMEOUT";   // 读取阶段超时（请求可能已送达——幂等重试语义）
+    public static final String ERR_NET_TLS = "NET_TLS";               // TLS 握手失败（网络传输被干扰）
+    public static final String ERR_NET_TIMEOUT = "NET_TIMEOUT";         // 超时（旧版兼容分类——v7.9.9 起细分三态）
     public static final String ERR_NET_IO = "NET_IO";                   // 网络传输异常
     public static final String ERR_RATE_LIMITED = "RATE_LIMITED";       // 频率限制（429/服务端码）
     public static final String ERR_RELAY_5XX = "RELAY_SERVER_ERROR";    // 中转/GitHub 上游异常
@@ -388,12 +424,18 @@ public final class LogUploader {
     public static final String ERR_PROTOCOL = "PROTOCOL_UNEXPECTED_BODY"; // 2xx 但无 ok=true
     public static final String ERR_UNKNOWN = "UNKNOWN";                 // 未知
 
-    /** 错误分类：网络层（errKind）→ 服务端 JSON 码 → HTTP 状态码三路优先级。 */
+    /** 错误分类：网络层（errKind·v7.9.9 阶段化五态）→ 服务端 JSON 码 →
+     *  HTTP 状态码三路优先级。连接超时与读取超时分家（用户指令）：前者
+     *  请求几乎必然未送达（换网络）；后者请求可能已送达甚至已处理
+     *  （幂等重试必复用原 Issue——冻结批次保证）。 */
     public static String classifyError(Resp res) {
         if (res == null) return ERR_NET_IO;
         if (res.errKind != null) {
             if ("connect".equals(res.errKind)) return ERR_NET_CONNECT;
-            if ("timeout".equals(res.errKind)) return ERR_NET_TIMEOUT;
+            if ("connect-timeout".equals(res.errKind)) return ERR_NET_CONNECT_TIMEOUT;
+            if ("read-timeout".equals(res.errKind)) return ERR_NET_READ_TIMEOUT;
+            if ("tls".equals(res.errKind)) return ERR_NET_TLS;
+            if ("timeout".equals(res.errKind)) return ERR_NET_TIMEOUT; // 旧替身兼容
             return ERR_NET_IO;
         }
         String code = res.code;

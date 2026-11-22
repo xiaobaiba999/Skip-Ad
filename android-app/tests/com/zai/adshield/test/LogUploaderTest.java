@@ -166,6 +166,8 @@ public class LogUploaderTest {
         t16_autoInRunQuotaCap();
         t17_idempotencyConflictEvidence();
         t18_corruptedQuotaFiles();
+        t19_timeoutPhaseClassification();
+        t20_readTimeoutFrozenRetry();
 
         TestHost.done();
     }
@@ -467,6 +469,107 @@ public class LogUploaderTest {
         } catch (Throwable ignored) {
         }
         return j;
+    }
+
+    /* T19（v7.9.9）：超时阶段化分类——连接超时与读取超时分家（用户指令硬性
+     * 要求）：连接阶段超时（消息含 connect）= 请求几乎必然未送达；读取
+     * 阶段超时 = 请求可能已送达甚至已处理（幂等重试语义）。 */
+    private static void t19_timeoutPhaseClassification() {
+        // SocketTimeoutException 消息形态判定（HttpURLConnection 真实消息形态）
+        TestHost.check(LogUploader.RealHttp.isConnectTimeout(
+                        new java.net.SocketTimeoutException("connect timed out")),
+                "T19a connect timed out → 连接阶段");
+        TestHost.check(LogUploader.RealHttp.isConnectTimeout(
+                        new java.net.SocketTimeoutException("failed to connect to /10.0.0.1:443 (connect timed out)")),
+                "T19b failed to connect（含 connect）→ 连接阶段");
+        TestHost.check(!LogUploader.RealHttp.isConnectTimeout(
+                        new java.net.SocketTimeoutException("Read timed out")),
+                "T19c Read timed out → 读取阶段");
+        TestHost.check(!LogUploader.RealHttp.isConnectTimeout(
+                        new java.net.SocketTimeoutException((String) null)),
+                "T19d 消息缺失 → 保守按读取阶段（绝不误导「未送达」）");
+        // netKindOf 五态分类
+        TestHost.checkEq("connect-timeout", LogUploader.RealHttp.netKindOf(
+                        new java.net.SocketTimeoutException("connect timed out")),
+                "T19e netKindOf：连接超时 → connect-timeout");
+        TestHost.checkEq("read-timeout", LogUploader.RealHttp.netKindOf(
+                        new java.net.SocketTimeoutException("Read timed out")),
+                "T19f netKindOf：读取超时 → read-timeout");
+        TestHost.checkEq("connect", LogUploader.RealHttp.netKindOf(
+                        new java.net.ConnectException("Connection refused")),
+                "T19g netKindOf：连接拒绝 → connect");
+        TestHost.checkEq("connect", LogUploader.RealHttp.netKindOf(
+                        new java.net.UnknownHostException("workers.dev")),
+                "T19h netKindOf：DNS 污染/解析失败 → connect");
+        boolean tlsKind = false;
+        try {
+            tlsKind = "tls".equals(LogUploader.RealHttp.netKindOf(
+                    new javax.net.ssl.SSLException("handshake failure")));
+        } catch (Throwable t) {
+            tlsKind = true; // 无 TLS 栈环境跳过（不硬失败——UpdateRepositoryTest S5c 同族口径）
+        }
+        TestHost.check(tlsKind, "T19i netKindOf：SSLException → tls（网络干扰独立分类）");
+        TestHost.checkEq("io", LogUploader.RealHttp.netKindOf(
+                        new java.io.IOException("broken pipe")),
+                "T19j netKindOf：其余 IO → io");
+        // classifyError 新分类码映射（UI 人话文案的稳定输入）
+        TestHost.checkEq(LogUploader.ERR_NET_CONNECT_TIMEOUT,
+                LogUploader.classifyError(LogUploader.Resp.netError("connect-timeout")),
+                "T19k classify：connect-timeout → NET_CONNECT_TIMEOUT");
+        TestHost.checkEq(LogUploader.ERR_NET_READ_TIMEOUT,
+                LogUploader.classifyError(LogUploader.Resp.netError("read-timeout")),
+                "T19l classify：read-timeout → NET_READ_TIMEOUT");
+        TestHost.checkEq(LogUploader.ERR_NET_TLS,
+                LogUploader.classifyError(LogUploader.Resp.netError("tls")),
+                "T19m classify：tls → NET_TLS");
+        TestHost.checkEq(LogUploader.ERR_NET_TIMEOUT,
+                LogUploader.classifyError(LogUploader.Resp.netError("timeout")),
+                "T19n classify：旧替身 timeout 兼容 → NET_TIMEOUT");
+        // 三态文案语义互异（绝不混为一谈）：连接超时可换网络/读取超时幂等重试/TLS 干扰
+        TestHost.check(!LogUploader.ERR_NET_CONNECT_TIMEOUT.equals(LogUploader.ERR_NET_READ_TIMEOUT)
+                        && !LogUploader.ERR_NET_READ_TIMEOUT.equals(LogUploader.ERR_NET_TLS)
+                        && !LogUploader.ERR_NET_CONNECT_TIMEOUT.equals(LogUploader.ERR_NET_CONNECT),
+                "T19o 四态码互异（连接失败/连接超时/读取超时/TLS）");
+    }
+
+    /* T20（v7.9.9）：读取超时场景的冻结批次幂等回归——用户硬性要求的完整链：
+     * ①客户端发送批次 ②Worker 成功建 Issue ③响应途中超时 ④客户端显示
+     * 读取超时 ⑤用户重试 ⑥同 batchId 字节级复用 ⑦服务端幂等复用原编号
+     * ⑧不二建 Issue。绝不在超时后直接标记成功、绝不清空本地日志。 */
+    private static void t20_readTimeoutFrozenRetry() {
+        try {
+            env = new MemEnv();
+            LogStore s = storeWith(5);
+            FakeHttp http = new FakeHttp();
+            http.responses.add(LogUploader.Resp.netError("read-timeout")); // 第一次：读取超时
+            http.responses.add(FakeHttp.alreadyAccepted(42));             // 第二次：幂等复用 #42
+            http.urls.put(42, "https://github.com/xiaobaiba999/Skip-Ad/issues/42");
+            LogUploader u = uploader(s, http);
+            // 第一次：读取超时——绝不算成功（acked=0），批次保留
+            LogUploader.Summary s1 = u.runUpload(true);
+            TestHost.checkEq(0, s1.acked, "T20a 读取超时不算成功（绝不伪造）");
+            TestHost.checkEq(1, s1.uploaded, "T20a2 已发送恰一批");
+            TestHost.checkEq(LogUploader.ERR_NET_READ_TIMEOUT, s1.errKind,
+                    "T20b 错误分类 = NET_READ_TIMEOUT（结果无法确认语义）");
+            TestHost.check(s1.pendingEvents >= 5,
+                    "T20c 超时后本地日志全部保留（绝不清空）");
+            JSONObject firstPost = http.posts.get(0);
+            // 第二次：用户重试——同 batchId 字节级复用（服务端幂等命中）
+            LogUploader.Summary s2 = uploader(s, http).runUpload(true);
+            TestHost.checkEq(1, s2.acked, "T20d 重试成功（ALREADY_ACCEPTED 复用原 Issue）");
+            JSONObject retryPost = http.posts.get(1);
+            TestHost.checkEq(firstPost.optString("batchId"), retryPost.optString("batchId"),
+                    "T20e 两次 POST 同 batchId（冻结批次复用——不二建）");
+            TestHost.checkEq(firstPost.optJSONArray("events").toString(),
+                    retryPost.optJSONArray("events").toString(),
+                    "T20f 两次 POST events 字节级一致（幂等前提）");
+            TestHost.checkEq(firstPost.optString("createdAt"), retryPost.optString("createdAt"),
+                    "T20f2 createdAt 一致（冻结不漂移）");
+            TestHost.check(s2.issueNumbers.contains("42"),
+                    "T20g 复用原 Issue #42（非新建编号）");
+        } catch (Throwable t) {
+            TestHost.check(false, "T20 异常: " + t);
+        }
     }
 
     /* T13：限流 retryAfter 透传（服务端秒 → retryAfterMs 毫秒，钳制 ≤24h）。 */

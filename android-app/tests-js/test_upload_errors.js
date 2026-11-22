@@ -58,6 +58,25 @@ const c2 = T.uploadErrText({ errKind: "NET_TIMEOUT", lastError: "network" });
 A("② NET_TIMEOUT → 「上传超时，请稍后重试」", c2.startsWith("上传超时，请稍后重试"));
 A("② 超时文案说明幂等保护（重试不重复建 Issue）", c2.includes("复用原 Issue"));
 
+// ②b-d（v7.9.9 超时阶段分家——用户指令硬性要求）
+// 连接阶段超时：请求几乎必然未送达（workers.dev 国内阻断的真实形态）——提示换网络
+const c2a = T.uploadErrText({ errKind: "NET_CONNECT_TIMEOUT", lastError: "connect timed out" });
+A("②b NET_CONNECT_TIMEOUT → 「连接上传服务超时」", c2a.startsWith("连接上传服务超时"));
+A("②b 连接超时提示换网络（可操作建议）", c2a.includes("切换"));
+A("②b 连接超时保留日志去向声明", c2a.includes("日志已保留"));
+// 读取阶段超时：请求可能已送达甚至已建 Issue——幂等重试语义如实告知
+const c2b = T.uploadErrText({ errKind: "NET_READ_TIMEOUT", lastError: "Read timed out" });
+A("②c NET_READ_TIMEOUT → 「上传超时，结果暂时无法确认」", c2b.startsWith("上传超时，结果暂时无法确认"));
+A("②c 读取超时说明原批次幂等重试（不二建 Issue）",
+  c2b.includes("原批次") && c2b.includes("不会重复创建 Issue"));
+// TLS 干扰独立分类
+const c2c = T.uploadErrText({ errKind: "NET_TLS", lastError: "handshake failure" });
+A("②d NET_TLS → 「安全连接失败（网络传输可能被干扰）」", c2c.startsWith("安全连接失败"));
+A("②d TLS 干扰提示切换网络", c2c.includes("切换网络"));
+// 四态文案互不相同（绝不混为一谈）
+A("②e 连接失败/连接超时/读取超时/TLS 四态文案互异",
+  new Set([c1, c2a, c2b, c2c]).size === 4);
+
 // ③ 频率限制（429/服务端 RATE_LIMITED）
 const c3 = T.uploadErrText({ errKind: "RATE_LIMITED", lastError: "rate-limited" });
 A("③ RATE_LIMITED → 「上传次数已达到限制」", c3.startsWith("上传次数已达到限制"));

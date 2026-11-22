@@ -38,15 +38,24 @@ import javax.net.ssl.SSLException;
  *  4. ETag/Last-Modified 条件请求：服务器 304 → 直接用本地缓存（省流量与
  *     解析；304 空响应不当 JSON 解析失败）；ETag 只回发给同一 URL（不同域
  *     etag 空间不同）。
- *  5. 受控备用源：主源失败后备用静态地址（GitHub Pages）至多尝试一次——
- *     绝不多地址轮询；无缓存且双源失败 → 如实错误分类。
+ *  5. 受控备用链（v7.9.9 网络专项——真实故障驱动重构）：主源失败后依序
+ *     尝试 jsDelivr 四接入点（cdn/fastly/gcore/testingcf——订阅通道
+ *     SubMirrors 同族实战链，国内可达性最佳实践）；整链受时间预算约束
+ *     （CHAIN_BUDGET_MS——预算耗尽即停，绝不无限等待）；每源至多一次，
+ *     绝无重试风暴；无缓存且全链失败 → 如实错误分类（首个失败源错误码
+ *     优先——主源 canonical）。任一源返回 200 但清单非法/包名不匹配
+ *     （疑似劫持/错源）→ 如实记录并继续下一源（不清真伪绝不静默采信，
+ *     也绝不因单源被劫持放弃整链）。
  *
  * 错误十类（UpdateManifest 常量）：网络连接/域名解析/超时/TLS/HTTP 状态/
  * 清单非法/包名不匹配/版本无效/无缓存/限流/服务端异常——UI 如实转达。
  *
  * 线程：同步阻塞（JSBridge 线程调用；单飞等待者阻塞在 GATE 上——JS 侧
- * 本就 await Promise）。超时上界：7s 连接 + 12s 读取 × 2 源 ≈ 38s。
- * 约束：无 lambda/匿名类/内部类（d8 8.2 兼容；FlightGate 为静态嵌套类）。
+ * 本就 await Promise）。超时上界：7s 连接 + 12s 读取，整链时间预算 40s
+ * 封顶（v7.9.8 双源 38s 实测可容忍——五源链靠预算闸不膨胀）。
+ * 约束：无 lambda/匿名类/内部类（d8 8.2 兼容；FlightGate/HttpOutcome/
+ * CacheInfo/WalkResult/Fetcher 为静态嵌套类/接口——LogUploader.Http 同族
+ * 生产在用模式）。
  */
 public final class UpdateRepository {
 
@@ -57,10 +66,28 @@ public final class UpdateRepository {
     public static final String MANIFEST_PRIMARY =
             "https://raw.githubusercontent.com/xiaobaiba999/Skip-Ad/main/update/latest.json";
 
-    /* 受控备用静态地址（GitHub Pages——仓库未启用 Pages 时 404，仅主源
-     * 失败后尝试一次；启用方式见 update-manifest.yml）。 */
-    public static final String MANIFEST_FALLBACK =
-            "https://xiaobaiba999.github.io/Skip-Ad/update/latest.json";
+    /* ═══ v7.9.9 受控备用链（小米 15 Pro 真机实锤驱动）═══
+     * 故障事实（2026-11 小米 15 Pro · Android 17 · 国内网络）：主源
+     * raw.githubusercontent.com 国内 DNS 污染/TCP 阻断不可达；原备用源
+     * xiaobaiba999.github.io 仓库 Pages 未启用（恒 404）且 github.io 域
+     * 国内同样被阻断——双源全灭，首次检查（无缓存）必报「网络连接错误」。
+     * 修复：备用链改用 jsDelivr 四接入点（与订阅通道 SubMirrors 八通道
+     * 链同族——v6.1.0/v7.0.0 两轮「Connection reset」真机实战验证的国内
+     * 可达性最佳实践）；清单 ~2KB（jsDelivr 20MB 上限内）；@main 分支
+     * 12h 缓存由发布工作流主动 purge（update-manifest.yml）——热修复
+     * 版本推送不受缓存延迟阻塞。每源至多一次 + 整链时间预算封顶，
+     * 绝无轮询风暴。 */
+    public static final String[] MANIFEST_SOURCES = {
+            MANIFEST_PRIMARY,
+            "https://cdn.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/update/latest.json",
+            "https://fastly.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/update/latest.json",
+            "https://gcore.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/update/latest.json",
+            "https://testingcf.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/update/latest.json",
+    };
+
+    /* 整链时间预算（毫秒）——首源必试，预算耗尽即停止尝试剩余源。
+     * v7.9.8 双源最坏 38s 实测可容忍；五源链靠本预算闸保持同量级上界。 */
+    public static final long CHAIN_BUDGET_MS = 40 * 1000L;
 
     /* ═══ 策略常量（防风暴参数——全部可调于测试）═══ */
     public static final long FRESH_TTL_MS = 15 * 60 * 1000L;        // 新鲜缓存有效期
@@ -70,6 +97,22 @@ public final class UpdateRepository {
     static final int CONNECT_MS = 7000;
     static final int READ_MS = 12000;
     static final int MAX_MANIFEST_BYTES = 1024 * 1024;              // 清单上限 1MB（实际 ~2KB）
+
+    /* ═══ 源获取器缝（生产 = RealFetcher→fetchOne；测试直接向 walkSources
+     *  传替身——JVM 全链路可测）═══
+     * 嵌套接口 + 具名静态嵌套类（LogUploader.Http/RealHttp 同族生产在用
+     * 模式——d8 8.2 兼容；匿名类/lambda 仍禁用）。 */
+    public interface Fetcher {
+        HttpOutcome fetch(String url, CacheInfo conditional);
+    }
+
+    static final class RealFetcher implements Fetcher {
+        public HttpOutcome fetch(String url, CacheInfo conditional) {
+            return fetchOne(url, conditional);
+        }
+    }
+
+    private static final Fetcher REAL_FETCHER = new RealFetcher();
     private static final String CACHE_FILE = "update_manifest_cache.json";
     private static final String CACHE_TMP = "update_manifest_cache.json.tmp";
 
@@ -166,61 +209,133 @@ public final class UpdateRepository {
 
     /* ═══════════ 网络管线（仅领飞者执行）═══════════ */
 
-    private static String doNetwork(Context ctx, String expectedPackage, String currentVersion,
-                                    int currentVersionCode, CacheInfo cache, String cacheRaw) {
-        // 主源：条件请求（ETag/Last-Modified 只回发同源缓存）
-        HttpOutcome primary = fetchOne(MANIFEST_PRIMARY,
-                cache != null && MANIFEST_PRIMARY.equals(cache.url) ? cache : null);
-        String result = handleOutcome(ctx, primary, currentVersion, currentVersionCode, null);
-        if (result != null) return result;
+    /** 链走查结果（kind 互斥：SUCCESS / NOT_MODIFIED / ALL_FAILED）。 */
+    public static final class WalkResult {
+        public static final int SUCCESS = 1;        // 200 有效清单（含 hasRelease:false）
+        public static final int NOT_MODIFIED = 2;   // 304——同源缓存续新鲜
+        public static final int ALL_FAILED = 3;     // 全链失败（预算内尝试的源全败）
 
-        // 备用静态地址（受控单次——主源任何失败后至多尝试一次，绝不多址轮询）
-        HttpOutcome fallback = fetchOne(MANIFEST_FALLBACK, null);
-        result = handleOutcome(ctx, fallback, currentVersion, currentVersionCode, primary);
-        if (result != null) return result;
+        public final int kind;
+        public final String payload;      // SUCCESS：解析后载荷（原样返回）
+        public final String body;         // SUCCESS：清单原文（写缓存用）
+        public final String etag;         // SUCCESS：缓存三键
+        public final String lastModified;
+        public final String url;
+        public final String errorCode;    // ALL_FAILED：首个失败源错误码（主源 canonical）
 
-        // 双源失败：主源错误优先（canonical）；有缓存 → 缓存兜底（如实标注陈旧）
-        String errorCode = primary != null && primary.errorCode != null
-                ? primary.errorCode : (fallback != null && fallback.errorCode != null
-                ? fallback.errorCode : UpdateManifest.ERR_NETWORK);
-        if (cache != null && cacheRaw != null) {
-            return serveCache(cacheRaw, cache, currentVersion, currentVersionCode, true, errorCode);
+        private WalkResult(int kind, String payload, String body, String etag,
+                           String lastModified, String url, String errorCode) {
+            this.kind = kind;
+            this.payload = payload;
+            this.body = body;
+            this.etag = etag;
+            this.lastModified = lastModified;
+            this.url = url;
+            this.errorCode = errorCode;
         }
-        return UpdateManifest.fail(errorCode, netErrorText(errorCode));
+
+        static WalkResult success(String payload, String body, String etag,
+                                  String lastModified, String url) {
+            return new WalkResult(SUCCESS, payload, body, etag, lastModified, url, null);
+        }
+
+        static WalkResult notModified() {
+            return new WalkResult(NOT_MODIFIED, null, null, null, null, null, null);
+        }
+
+        static WalkResult allFailed(String errorCode) {
+            return new WalkResult(ALL_FAILED, null, null, null, null, null, errorCode);
+        }
     }
 
     /**
-     * 单源结果归并：成功（200 有效清单）→ 写缓存返回；304 → 缓存续新鲜返回；
-     * 其余失败 → null（调用方决定降级路径）。
+     * 源链走查（纯逻辑 + Fetcher 缝——JVM 全链路可测）。
+     * 语义：依序尝试 MANIFEST_SOURCES；任一源 200 有效清单（含 hasRelease:
+     * false——「无正式版」也是有效答案）→ SUCCESS 立即返回；同源条件 304 →
+     * NOT_MODIFIED；源失败（网络/HTTP/清单非法/包名不匹配——后两者疑似
+     * 劫持或错源，绝不采信也绝不放弃整链）→ 记录首个错误码继续下一源；
+     * 预算耗尽或全链尽 → ALL_FAILED（首源错误码 canonical）。
+     *
+     * @param deadline 走查截止时刻（System.currentTimeMillis() 口径）；
+     *                 首源必试（i>0 才检查预算）——保证最恶劣网络下也有
+     *                 一次真实请求与如实错误。
      */
-    private static String handleOutcome(Context ctx, HttpOutcome o, String currentVersion,
-                                        int currentVersionCode, HttpOutcome failedOther) {
-        if (o == null) return null;
-        if (o.notModified) {
-            CacheInfo c = parseCacheInfo(readCache(ctx));
-            if (c != null) {
-                c.cachedAt = System.currentTimeMillis(); // 内容未变——续新鲜
-                writeCache(ctx, buildCacheJson(c));
-                return serveCache(buildCacheJson(c), c, currentVersion, currentVersionCode, false, null);
+    public static WalkResult walkSources(Fetcher f, CacheInfo cache, long deadline,
+                                         String expectedPackage, String currentVersion,
+                                         int currentVersionCode) {
+        String firstError = null;
+        for (int i = 0; i < MANIFEST_SOURCES.length; i++) {
+            String src = MANIFEST_SOURCES[i];
+            if (i > 0 && System.currentTimeMillis() >= deadline) {
+                break; // 链预算耗尽——剩余源不再尝试（防长阻塞）
             }
-            return null; // 304 但缓存丢失（竞态）→ 按失败处理走降级
-        }
-        if (o.body != null) {
-            String parsed = UpdateManifest.parse(o.body, ctx.getPackageName(), currentVersion, currentVersionCode);
-            try {
-                JSONObject p = new JSONObject(parsed);
-                if (p.optBoolean("ok", false)) {
-                    writeCache(ctx, buildCacheJson(new CacheInfo(o.body, o.etag, o.lastModified,
-                            System.currentTimeMillis(), o.url)));
-                    return parsed; // ok:true —— fromCache:false（联网新得）
+            CacheInfo cond = cache != null && src.equals(cache.url) ? cache : null;
+            HttpOutcome o = f.fetch(src, cond);
+            if (o == null) { // 缝实现异常防御——按网络失败计
+                if (firstError == null) firstError = UpdateManifest.ERR_NETWORK;
+                continue;
+            }
+            if (o.notModified) {
+                if (cond == null) { // 无条件头却 304（异常服务/竞态缓存丢失）→ 按失败继续链
+                    if (firstError == null) firstError = UpdateManifest.ERR_NETWORK;
+                    continue;
                 }
-                // 清单非法：拒绝使用（不写缓存）——如实报错（不静默换源伪装成功）
-                return parsed;
-            } catch (Exception e) {
-                return UpdateManifest.fail(UpdateManifest.ERR_INVALID, "更新清单解析异常");
+                return WalkResult.notModified();
+            }
+            if (o.body != null) {
+                String parsed = UpdateManifest.parse(o.body, expectedPackage,
+                        currentVersion, currentVersionCode);
+                JSONObject p = parseQuietly(parsed);
+                if (p != null && p.optBoolean("ok", false)) {
+                    return WalkResult.success(parsed, o.body, o.etag, o.lastModified, o.url);
+                }
+                // 清单非法/包名不匹配/版本无效：该源不可信（疑似劫持/错源）
+                // ——记录错误继续下一源（主源 canonical 语义保持）
+                if (firstError == null) {
+                    firstError = p != null
+                            ? p.optString("errorCode", UpdateManifest.ERR_INVALID)
+                            : UpdateManifest.ERR_INVALID;
+                }
+                continue;
+            }
+            // 网络/HTTP 失败（errorCode 在场）→ 继续下一源
+            if (firstError == null) {
+                firstError = o.errorCode != null ? o.errorCode : UpdateManifest.ERR_NETWORK;
             }
         }
-        return null; // 网络/HTTP 失败 → 降级路径
+        return WalkResult.allFailed(firstError != null ? firstError : UpdateManifest.ERR_NETWORK);
+    }
+
+    private static String doNetwork(Context ctx, String expectedPackage, String currentVersion,
+                                    int currentVersionCode, CacheInfo cache, String cacheRaw) {
+        long deadline = System.currentTimeMillis() + CHAIN_BUDGET_MS;
+        WalkResult w = walkSources(REAL_FETCHER, cache, deadline, expectedPackage,
+                currentVersion, currentVersionCode);
+        if (w.kind == WalkResult.SUCCESS) {
+            writeCache(ctx, buildCacheJson(new CacheInfo(w.body, w.etag, w.lastModified,
+                    System.currentTimeMillis(), w.url)));
+            return w.payload; // ok:true —— fromCache:false（联网新得）
+        }
+        if (w.kind == WalkResult.NOT_MODIFIED && cache != null) {
+            cache.cachedAt = System.currentTimeMillis(); // 内容未变——续新鲜
+            writeCache(ctx, buildCacheJson(cache));
+            return serveCache(buildCacheJson(cache), cache, currentVersion, currentVersionCode, false, null);
+        }
+        // 全链失败：有缓存 → 缓存兜底（如实标注陈旧 + 网络错误）；无缓存 → 如实错误
+        if (cache != null && cacheRaw != null) {
+            return serveCache(cacheRaw, cache, currentVersion, currentVersionCode, true, w.errorCode);
+        }
+        return UpdateManifest.fail(w.errorCode, netErrorText(w.errorCode));
+    }
+
+    /** 静默 JSON 解析（损坏输入 → null——不抛异常的健壮性辅助）。 */
+    private static JSONObject parseQuietly(String raw) {
+        if (raw == null || raw.length() == 0) return null;
+        try {
+            return new JSONObject(raw);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /* ═══════════ HTTP（条件请求 + 异常分类）═══════════ */

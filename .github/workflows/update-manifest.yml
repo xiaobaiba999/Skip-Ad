@@ -206,30 +206,71 @@ jobs:
         if: steps.pages.outputs.enabled == 'true'
         uses: actions/deploy-pages@v4
 
-      - name: 线上核验（raw 主源真实可达性——不伪造部署成功）
+      - name: Purge jsDelivr 备用链缓存（四接入点共享后端——热修复即时生效）
+        # v7.9.9 网络专项：客户端备用链改用 jsDelivr 四接入点（国内可达）；
+        # @main 分支引用 jsDelivr 缓存 12h——不 purge 则国内用户最长 12h
+        # 看不到新版本。purge.jsdelivr.net 免认证公开端点（限频），一次
+        # purge 对四接入点（cdn/fastly/gcore/testingcf）整体生效；失败不
+        # 阻塞主链路（raw 主源已提交——线上核验步骤会如实报告各源状态）。
+        if: steps.rel.outputs.prerelease != 'true' && steps.gen.outputs.skipped != 'true' && env.COMMITTED == 'true'
+        run: |
+          set -uo pipefail
+          PURGE_URL="https://purge.jsdelivr.net/gh/${GITHUB_REPOSITORY}@main/update/latest.json"
+          OUT=$(curl -fsSL --max-time 60 "$PURGE_URL" 2>&1 || true)
+          if echo "$OUT" | grep -q '"status"'; then
+            echo "✓ jsDelivr 缓存已 purge（cdn/fastly/gcore/testingcf 四接入点共享生效）"
+            echo "$OUT" | head -c 400; echo ""
+            echo "PURGE_FAIL=0" >> "$GITHUB_ENV"
+          else
+            echo "⚠ purge 未确认（$OUT）——不阻塞：jsDelivr 最长 12h 后自然过期，raw 主源不受影响"
+            echo "PURGE_FAIL=1" >> "$GITHUB_ENV"
+          fi
+
+      - name: 线上核验（raw 主源 + jsDelivr 备用链真实可达性——不伪造部署成功）
         if: steps.rel.outputs.prerelease != 'true' && steps.gen.outputs.skipped != 'true'
         run: |
           set -uo pipefail
-          RAW_URL="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/update/latest.json"
           EXPECT_VC=$(jq -r '.versionCode' /tmp/latest.json)
           EXPECT_SHA=$(jq -r '.apkSha256' /tmp/latest.json)
-          echo "核验 $RAW_URL（期望 versionCode=$EXPECT_VC）"
+          # raw 主源：硬重试探测（CDN 边缘缓存最长 5 分钟）
+          RAW_URL="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/update/latest.json"
+          echo "核验 raw 主源（期望 versionCode=$EXPECT_VC）"
+          RAW_OK=0
           for i in 1 2 3 4 5 6; do
             BODY=$(curl -fsSL --max-time 30 "$RAW_URL" || true)
             if [ -n "$BODY" ]; then
               VC=$(echo "$BODY" | jq -r '.versionCode // empty' || true)
               SHA=$(echo "$BODY" | jq -r '.apkSha256 // empty' || true)
               if [ "$VC" = "$EXPECT_VC" ] && [ "$SHA" = "$EXPECT_SHA" ]; then
-                echo "✓ 线上清单已生效：versionCode=$VC · SHA256=${SHA:0:16}…（第 $i 次探测）"
-                exit 0
+                echo "✓ raw 主源已生效：versionCode=$VC · SHA256=${SHA:0:16}…（第 $i 次探测）"
+                RAW_OK=1
+                break
               fi
-              echo "  第 $i 次：线上 versionCode=$VC 与期望不一致（raw CDN 边缘缓存最长 5 分钟）——继续等待…"
+              echo "  第 $i 次：raw 线上 versionCode=$VC 与期望不一致（CDN 边缘缓存最长 5 分钟）——继续等待…"
             else
               echo "  第 $i 次：raw 源暂不可达（网络抖动/缓存延迟）——继续等待…"
             fi
             sleep 60
           done
-          echo "⚠ 6 分钟内线上核验未确认（CDN 缓存或网络延迟）——清单已提交到 main，请稍后手动核验 $RAW_URL"
+          # jsDelivr 备用链：软核验（如实报告，不阻塞——raw 主源已生效）
+          JSDELIVR_OK=0
+          JSDELIVR_TOTAL=0
+          for HOST in cdn.jsdelivr.net fastly.jsdelivr.net gcore.jsdelivr.net testingcf.jsdelivr.net; do
+            JSDELIVR_TOTAL=$((JSDELIVR_TOTAL+1))
+            URL="https://${HOST}/gh/${GITHUB_REPOSITORY}@main/update/latest.json"
+            BODY=$(curl -fsSL --max-time 30 "$URL" || true)
+            VC=$(echo "$BODY" | jq -r '.versionCode // empty' 2>/dev/null || true)
+            if [ "$VC" = "$EXPECT_VC" ]; then
+              echo "✓ jsDelivr 备用源已生效：$HOST（versionCode=$VC）"
+              JSDELIVR_OK=$((JSDELIVR_OK+1))
+            else
+              echo "⚠ jsDelivr 备用源未确认：$HOST（versionCode=${VC:-无}·purge 后缓存回源最长几分钟）——国内用户备用源最长 12h 后自然回源"
+            fi
+          done
+          echo "JSDELIVR_OK=$JSDELIVR_OK/$JSDELIVR_TOTAL" >> "$GITHUB_ENV"
+          if [ "$RAW_OK" != "1" ]; then
+            echo "⚠ 6 分钟内 raw 主源未确认——清单已提交 main，jsDelivr 备用 $JSDELIVR_OK/$JSDELIVR_TOTAL 生效；请稍后手动核验 $RAW_URL"
+          fi
           exit 0
 
       - name: 结果汇总
@@ -249,6 +290,7 @@ jobs:
           if [ "${{ steps.pages.outputs.enabled }}" = "true" ]; then
             echo "备用地址     : Pages 已启用（部署见上方日志）"
           else
-            echo "备用地址     : Pages 未启用（可选配置，不阻塞主源）"
+            echo "备用地址     : Pages 未启用（客户端备用链已改用 jsDelivr 四接入点——v7.9.9）"
           fi
+          echo "jsDelivr 链  : 生效 $JSDELIVR_OK/4（purge 失败标记=${PURGE_FAIL:-未设置}）"
           echo "══════════════════════════════════════════"

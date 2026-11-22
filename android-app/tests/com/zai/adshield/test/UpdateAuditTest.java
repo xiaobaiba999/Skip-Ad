@@ -139,19 +139,26 @@ public final class UpdateAuditTest {
                 "A2d MainActivity 零 api.github.com");
     }
 
-    /* ═══ S3 UpdateRepository 双源 ═══ */
+    /* ═══ S3 UpdateRepository 源链（v7.9.9：raw 主源 + jsDelivr 四接入点）═══ */
     private static void s3_updateRepository(File root) {
         String code = stripComments(read(new File(root, "src/com/zai/adshield/UpdateRepository.java")));
         TestHost.check(!code.contains("api.github.com"),
                 "A3a UpdateRepository 零 api.github.com（架构红线）");
         TestHost.check(code.contains("https://raw.githubusercontent.com/xiaobaiba999/Skip-Ad/main/update/latest.json"),
                 "A3b 主源 = raw.githubusercontent.com main 分支静态清单");
-        TestHost.check(code.contains("https://xiaobaiba999.github.io/Skip-Ad/update/latest.json"),
-                "A3c 备用源 = GitHub Pages 静态地址（受控单次）");
-        // 备用源唯一性：静态地址常量恰 2 个（不许多址轮询）
-        int urlCount = countOccurrences(code, "https://raw.githubusercontent.com/xiaobaiba999/Skip-Ad")
-                + countOccurrences(code, "https://xiaobaiba999.github.io");
-        TestHost.check(urlCount == 2, "A3d 清单静态地址恰 2 个（主源 + 单备用——无轮询风暴面）");
+        // v7.9.9：github.io 备用源已移除（Pages 未启用恒 404 + 国内阻断——
+        // 小米 15 Pro 真机双源全灭根因）；备用链改 jsDelivr 四接入点
+        TestHost.check(!code.contains("xiaobaiba999.github.io"),
+                "A3c github.io 死源已移除（Pages 未启用 + 国内不可达）");
+        boolean jsdelivrAll = code.contains("https://cdn.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/update/latest.json")
+                && code.contains("https://fastly.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/update/latest.json")
+                && code.contains("https://gcore.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/update/latest.json")
+                && code.contains("https://testingcf.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/update/latest.json");
+        TestHost.check(jsdelivrAll,
+                "A3d 备用链 = jsDelivr 四接入点（cdn/fastly/gcore/testingcf——SubMirrors 同族）");
+        // 链预算闸在场（五源链不膨胀的时间面证据）
+        TestHost.check(code.contains("CHAIN_BUDGET_MS"),
+                "A3e 整链时间预算闸在场（长阻塞防线）");
     }
 
     /* ═══ S4 app.js ═══ */

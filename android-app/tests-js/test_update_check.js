@@ -1,9 +1,10 @@
-// ═══ v7.9.8 更新检查静态清单架构 · 真实 app.js 全量加载测试 ═══
+// ═══ v7.9.9 更新检查源链架构 · 真实 app.js 全量加载测试 ═══
 // 验证用户指令的 JS 侧面：
 //  ① 更新错误十类人话映射（updateErrText——不混为一谈）；
-//  ② 静态清单地址（raw 主源 + Pages 备用源）且零 api.github.com；
-//  ③ 浏览器预览路径 fetchLatest：清单成功/主源失败备用源/双源失败/
-//     draft/prerelease/包名不匹配/坏 JSON；
+//  ② 静态清单源链（raw 主源 + jsDelivr 四接入点）且零 api.github.com
+//     零 github.io（Pages 未启用死源已移除）；
+//  ③ 浏览器预览路径 fetchLatest：清单成功/逐类失败降级/全链失败/
+//     draft/prerelease/包名不匹配（劫持面）/坏 JSON；
 //  ④ mapManifest 字段映射（apkDigest 归一 sha256: 前缀/apkMB 派生）；
 //  ⑤ ageText 缓存数据年龄人话；
 //  ⑥ 桥接线（源断言）：fetchLatest 走 AndroidApp.updateCheck(!!manual)、
@@ -43,7 +44,7 @@ const TAIL = `
   mapManifest: (typeof mapManifest === "function" ? mapManifest : null),
   fetchLatest: (typeof fetchLatest === "function" ? fetchLatest : null),
   MANIFEST_URL: (typeof UPDATE_MANIFEST_URL !== "undefined" ? UPDATE_MANIFEST_URL : null),
-  MANIFEST_FALLBACK: (typeof UPDATE_MANIFEST_FALLBACK_URL !== "undefined" ? UPDATE_MANIFEST_FALLBACK_URL : null),
+  MANIFEST_SOURCES: (typeof UPDATE_MANIFEST_SOURCES !== "undefined" ? UPDATE_MANIFEST_SOURCES : null),
 };`;
 (0, eval)(src + TAIL);
 const T = globalThis.__T__;
@@ -82,11 +83,18 @@ A("十类文案互不相同（不混为一谈）", new Set(Object.keys(TABLE).ma
 A("「GitHub API 限流」文案已根除（不在任何错误文案中）",
   !Object.keys(TABLE).some(c => T.updateErrText(c).includes("GitHub API 限流")));
 
-console.log("═══ ② 静态清单地址 + 零 GitHub REST API ═══");
+console.log("═══ ② 静态清单源链 + 零 GitHub REST API ═══");
 A("主源 = raw.githubusercontent.com main 分支 latest.json",
   T.MANIFEST_URL === "https://raw.githubusercontent.com/xiaobaiba999/Skip-Ad/main/update/latest.json");
-A("备用源 = GitHub Pages latest.json",
-  T.MANIFEST_FALLBACK === "https://xiaobaiba999.github.io/Skip-Ad/update/latest.json");
+A("源链恰 5 源（raw + jsDelivr 四接入点）", Array.isArray(T.MANIFEST_SOURCES) && T.MANIFEST_SOURCES.length === 5);
+A("源链首位 = 主源", T.MANIFEST_SOURCES[0] === T.MANIFEST_URL);
+A("jsDelivr 四接入点全部在场（cdn/fastly/gcore/testingcf）",
+  ["cdn", "fastly", "gcore", "testingcf"].every(h =>
+    T.MANIFEST_SOURCES.includes(`https://${h}.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/update/latest.json`)));
+A("github.io 死源已移除（Pages 未启用 + 国内不可达）",
+  !T.MANIFEST_SOURCES.some(u => u.includes("github.io")));
+A("全源 https + latest.json 路径",
+  T.MANIFEST_SOURCES.every(u => u.startsWith("https://") && u.endsWith("update/latest.json")));
 A("app.js 无 api.github.com 字符串字面量（可执行面）",
   !/"https:\/\/api\.github\.com/.test(src) && !src.includes("GH_API ="));
 A("app.js 无 netGetLatestRelease 调用", !src.includes("netGetLatestRelease()"));
@@ -110,8 +118,10 @@ function withFetch(handler, fn) {
   return Promise.resolve().then(fn).finally(() => { globalThis.fetch = orig; });
 }
 
-// ③a 主源成功
+// ③a 主源成功（成功即短路——后续源零请求）
+let aHits = [];
 await withFetch(async (url) => {
+  aHits.push(url);
   A("③a 请求的是静态清单主源（非 GitHub API）", url === T.MANIFEST_URL);
   return { ok: true, status: 200, json: async () => REAL_MANIFEST };
 }, async () => {
@@ -119,61 +129,101 @@ await withFetch(async (url) => {
   A("③a 主源成功 → ok + hasRelease", d.ok === true && d.hasRelease === true);
   A("③a tag/versionCode 映射", d.tag === "v7.9.7" && d.remoteVersionCode === 79700);
   A("③a apkDigest 归一 sha256:hex", d.apkDigest === "sha256:" + REAL_MANIFEST.apkSha256);
+  A("③a 成功即短路（恰 1 请求）", aHits.length === 1);
 });
 
-// ③b 主源网络失败 → 备用源成功
+// ③b 主源网络失败 → jsDelivr 备用源成功（链降级核心场景）
 await withFetch(async (url) => {
   if (url === T.MANIFEST_URL) throw new Error("connection reset");
-  A("③b 主源失败后试备用源（受控单次）", url === T.MANIFEST_FALLBACK);
+  A("③b 主源失败后试备用源", url === T.MANIFEST_SOURCES[1]);
   return { ok: true, status: 200, json: async () => REAL_MANIFEST };
 }, async () => {
   const d = await T.fetchLatest(true);
   A("③b 备用源成功 → ok（降级链生效）", d.ok === true && d.tag === "v7.9.7");
 });
 
-// ③c 双源失败 → 如实网络错误
+// ③b2 主源 404（如 CDN 异常）→ 第三源成功
+await withFetch(async (url) => {
+  if (url === T.MANIFEST_SOURCES[2]) {
+    return { ok: true, status: 200, json: async () => REAL_MANIFEST };
+  }
+  return { ok: false, status: 404, json: async () => ({}) };
+}, async () => {
+  const d = await T.fetchLatest(true);
+  A("③b2 主源/次源 404 → 第三源成功（HTTP 错误也降级）", d.ok === true && d.hasRelease === true);
+});
+
+// ③b3 主源被劫持返回包名不匹配 → 备用源有效 → 采信备用源
+await withFetch(async (url) => {
+  if (url === T.MANIFEST_URL) {
+    return { ok: true, status: 200, json: async () => ({ ...REAL_MANIFEST, packageName: "com.evil.x" }) };
+  }
+  return { ok: true, status: 200, json: async () => REAL_MANIFEST };
+}, async () => {
+  const d = await T.fetchLatest(true);
+  A("③b3 主源包名不匹配（劫持面）→ 备用源有效采信", d.ok === true && d.tag === "v7.9.7");
+});
+
+// ③b4 主源返回非法 JSON → 备用源成功
+await withFetch(async (url) => {
+  if (url === T.MANIFEST_URL) {
+    return { ok: true, status: 200, json: async () => { throw new SyntaxError("bad json"); } };
+  }
+  return { ok: true, status: 200, json: async () => REAL_MANIFEST };
+}, async () => {
+  const d = await T.fetchLatest(true);
+  A("③b4 主源坏 JSON（劫持/损坏面）→ 备用源成功", d.ok === true && d.hasRelease === true);
+});
+
+// ③c 全链失败 → 如实网络错误
 await withFetch(async () => { throw new Error("no network"); }, async () => {
   const d = await T.fetchLatest(true);
-  A("③c 双源失败 → UPDATE_NETWORK_ERROR（不伪装成功）",
+  A("③c 全链失败 → UPDATE_NETWORK_ERROR（不伪装成功）",
     d.ok === false && d.errorCode === "UPDATE_NETWORK_ERROR");
 });
 
-// ③d 主源 404（如未推送清单）+ 备用源 404 → 网络错误类
+// ③d 全链 404 → 失败（首错 UPDATE_HTTP_ERROR 如实报告）
 await withFetch(async () => ({ ok: false, status: 404, json: async () => ({}) }), async () => {
   const d = await T.fetchLatest(true);
-  A("③d 双源 404 → 失败（非崩溃非伪装）", d.ok === false);
+  A("③d 全链 404 → 失败（非崩溃非伪装）", d.ok === false);
 });
 
-// ③e draft/prerelease → 不作正式更新
-await withFetch(async () => ({ ok: true, status: 200, json: async () => ({ ...REAL_MANIFEST, prerelease: true }) }),
+// ③e draft/prerelease → 不作正式更新（有效答案即停链）
+let eHits = 0;
+await withFetch(async () => {
+    eHits++;
+    return { ok: true, status: 200, json: async () => ({ ...REAL_MANIFEST, prerelease: true }) };
+  },
   async () => {
     const d = await T.fetchLatest(true);
     A("③e prerelease → hasRelease=false（不作正式更新）", d.ok === true && d.hasRelease === false);
+    A("③e 有效答案即停链（恰 1 请求）", eHits === 1);
   });
 
-// ③f 包名不匹配 → 拒绝
+// ③f 全链包名不匹配 → 拒绝（首错 UPDATE_PACKAGE_MISMATCH）
 await withFetch(async () => ({ ok: true, status: 200, json: async () => ({ ...REAL_MANIFEST, packageName: "com.evil.x" }) }),
   async () => {
     const d = await T.fetchLatest(true);
-    A("③f 包名不匹配 → UPDATE_PACKAGE_MISMATCH（拒绝）",
+    A("③f 全链包名不匹配 → UPDATE_PACKAGE_MISMATCH（拒绝）",
       d.ok === false && d.errorCode === "UPDATE_PACKAGE_MISMATCH");
   });
 
-// ③g 坏 JSON（json 解析抛异常）→ 试备用源 → 双源坏 → 网络错误
+// ③g 坏 JSON（json 解析抛异常）→ 逐源尝试全链 → 首错 INVALID 如实报告
 let jsonCalls = 0;
 await withFetch(async () => {
   jsonCalls++;
   return { ok: true, status: 200, json: async () => { throw new SyntaxError("bad json"); } };
 }, async () => {
   const d = await T.fetchLatest(true);
-  A("③g 坏 JSON → 双源后失败（不崩溃）", d.ok === false && jsonCalls === 2);
+  A("③g 全链坏 JSON → 失败 + 首错 UPDATE_INVALID_MANIFEST", d.ok === false && d.errorCode === "UPDATE_INVALID_MANIFEST");
+  A("③g 五源各试一次（不重试不放弃）", jsonCalls === 5);
 });
 
-// ③h 最多两个 URL（主源 + 备用各一次——无轮询风暴）
+// ③h 最多五个 URL（每源至多一次——无轮询风暴）
 let hits = [];
 await withFetch(async (url) => { hits.push(url); throw new Error("down"); }, async () => {
   await T.fetchLatest(true);
-  A("③h 一次检查至多 2 个请求（主源+备用源各一）", hits.length === 2);
+  A("③h 一次检查至多 5 个请求（五源各一次）", hits.length === 5);
 });
 
 console.log("═══ ④ mapManifest 字段映射 ═══");

@@ -867,9 +867,19 @@ function cmpVer(a, b) {
  *  主判（Net.isNewerRelease——与 v7.9.6plus 起语义完全一致）。
  *  浏览器预览：同语义静态清单直连（镜像映射——零 GitHub API）。 */
 
-/* 静态更新清单地址（与 Java UpdateRepository.MANIFEST_PRIMARY/FALLBACK 同源） */
+/* 静态更新清单源链（与 Java UpdateRepository.MANIFEST_SOURCES 同源——
+ * v7.9.9 网络专项：raw 主源 + jsDelivr 四接入点备用链。github.io 备用源
+ * 已移除：仓库 Pages 未启用（恒 404）且 github.io 域国内被阻断——
+ * 小米 15 Pro 真机双源全灭根因之一。jsDelivr 四接入点为订阅通道
+ * SubMirrors 同族实战链（国内可达性最佳实践）。 */
 const UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/xiaobaiba999/Skip-Ad/main/update/latest.json";
-const UPDATE_MANIFEST_FALLBACK_URL = "https://xiaobaiba999.github.io/Skip-Ad/update/latest.json";
+const UPDATE_MANIFEST_SOURCES = [
+  UPDATE_MANIFEST_URL,
+  "https://cdn.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/update/latest.json",
+  "https://fastly.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/update/latest.json",
+  "https://gcore.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/update/latest.json",
+  "https://testingcf.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/update/latest.json",
+];
 
 /* 更新错误十类 → 人话（Java UpdateManifest 错误码的 UI 侧唯一文案出口；
  * 不再把服务端限流/网络异常混为一谈——每类如实转达） */
@@ -924,23 +934,36 @@ async function fetchLatest(manual) {
     try { return JSON.parse(AndroidApp.updateCheck(!!manual)); }
     catch (e) { return { ok: false, error: "检查失败", errorCode: "UPDATE_NO_CACHE" }; }
   }
-  /* 浏览器预览：静态清单直连（与 APK 原生通道同源——零 GitHub API；
-   * 主源失败后备用静态地址至多一次，绝不多址轮询） */
-  for (let i = 0; i < 2; i++) {
-    const url = i === 0 ? UPDATE_MANIFEST_URL : UPDATE_MANIFEST_FALLBACK_URL;
+  /* 浏览器预览：静态清单源链直连（与 APK 原生通道同源——零 GitHub API；
+   * 每源至多一次，任一源成功即返回；包名不匹配/清单非法也换下一源
+   * （疑似劫持/错源——不采信也不放弃）；全链失败 → 首个错误码如实报告） */
+  let firstErr = null;
+  for (let i = 0; i < UPDATE_MANIFEST_SOURCES.length; i++) {
+    const url = UPDATE_MANIFEST_SOURCES[i];
     try {
       const r = await fetch(url, { headers: { Accept: "application/json" } });
-      if (!r.ok) continue; // 404（Pages 未启用）等 → 试备用源
-      const j = await r.json();
-      if (!j || typeof j !== "object") continue;
+      if (!r.ok) { // 404/5xx 等 → 试下一源
+        if (!firstErr) firstErr = { errorCode: "UPDATE_HTTP_ERROR" };
+        continue;
+      }
+      let j = null;
+      try { j = await r.json(); } catch (e) { j = null; }
+      if (!j || typeof j !== "object") { // 坏 JSON → 试下一源
+        if (!firstErr) firstErr = { errorCode: "UPDATE_INVALID_MANIFEST" };
+        continue;
+      }
       if (j.draft || j.prerelease) return { ok: true, hasRelease: false };
       if (j.packageName && j.packageName !== "com.zai.adshield") {
-        return { ok: false, error: "更新信息与当前应用不匹配，已拒绝", errorCode: "UPDATE_PACKAGE_MISMATCH" };
+        if (!firstErr) firstErr = { errorCode: "UPDATE_PACKAGE_MISMATCH" };
+        continue;
       }
       return mapManifest(j);
-    } catch (e) { /* 网络异常 → 试备用源 */ }
+    } catch (e) { /* 网络异常 → 试下一源 */
+      if (!firstErr) firstErr = { errorCode: "UPDATE_NETWORK_ERROR" };
+    }
   }
-  return { ok: false, error: "网络连接失败，请检查网络后重试", errorCode: "UPDATE_NETWORK_ERROR" };
+  const errCode = (firstErr && firstErr.errorCode) || "UPDATE_NETWORK_ERROR";
+  return { ok: false, error: updateErrText(errCode) || "网络连接失败，请检查网络后重试", errorCode: errCode };
 }
 
 /* Release 正文 versionCode 元数据行解析（Java Net.versionCodeOfNotes 镜像）：
@@ -1389,11 +1412,17 @@ function setUploadPhase(btn, phase) {
 /* v7.9.8 错误分类码 → 人话提示（用户八类表；基于 LogUploader.classifyError
  * 的真实 HTTP 状态码/服务端码/网络异常类型——绝不猜测原因）。
  * v7.9.8b：裸 401（AUTH_FAILED·认证失败）与裸 403（FORBIDDEN·权限不足）
- * 分家提示——服务端 JSON 码 UNAUTHORIZED 仍按契约透出原码。 */
+ * 分家提示——服务端 JSON 码 UNAUTHORIZED 仍按契约透出原码。
+ * v7.9.9：超时阶段分家——连接超时（NET_CONNECT_TIMEOUT·请求几乎必然
+ * 未送达，可换网络）与读取超时（NET_READ_TIMEOUT·请求可能已送达甚至
+ * 已处理——幂等重试语义如实告知）；TLS 干扰独立分类（NET_TLS）。 */
 function uploadErrText(res) {
   const k = String((res && res.errKind) || "");
   const raw = String((res && res.lastError) || "");
   if (k === "NET_CONNECT_FAIL") return "网络连接失败，请检查网络后重试——日志已保留（不会丢失）";
+  if (k === "NET_CONNECT_TIMEOUT") return "连接上传服务超时——当前网络可能无法访问上传服务，可尝试切换 Wi-Fi/移动网络后重试；日志已保留（不会丢失）";
+  if (k === "NET_READ_TIMEOUT") return "上传超时，结果暂时无法确认——若服务端已收到，重试将使用原批次，不会重复创建 Issue";
+  if (k === "NET_TLS") return "安全连接失败（网络传输可能被干扰）——可尝试切换网络后重试；日志已保留（不会丢失）";
   if (k === "NET_TIMEOUT") return "上传超时，请稍后重试——若服务端已收到，重试会自动复用原 Issue，不会重复提交";
   if (k === "RATE_LIMITED") return "上传次数已达到限制，请稍后重试";
   if (k === "INVALID_REQUEST" || k === "HTTP_400") return "上传数据格式异常（" + (raw || "400") + "）——该情况请反馈给开发者";

@@ -26,7 +26,7 @@ import org.json.JSONObject;
 public final class UpdateRepositoryTest {
 
     public static void main(String[] args) throws Exception {
-        TestHost.suite("UpdateRepositoryTest · 缓存/冷却/退避/单飞并发（v7.9.8）");
+        TestHost.suite("UpdateRepositoryTest · 缓存/冷却/退避/单飞并发/源链（v7.9.9）");
         s1_freshTtl();
         s2_manualCooldown();
         s3_backoff();
@@ -34,6 +34,7 @@ public final class UpdateRepositoryTest {
         s5_classifyNetError();
         s6_cacheInfoRobustness();
         s7_okPayload();
+        s8_walkSourcesChain();
         TestHost.done();
     }
 
@@ -191,7 +192,7 @@ public final class UpdateRepositoryTest {
                 "S5i DNS 错误文案含真实原因");
     }
 
-    /* ═══ S6 缓存条目健壮性（损坏恢复面——文件 IO 之外的纯判定）═══ */
+    /* ═══ S6 缓存条目健壮性（损坏恢复面）+ 源链常量（v7.9.9）═══ */
     private static void s6_cacheInfoRobustness() {
         try {
             // 正常构造
@@ -202,11 +203,30 @@ public final class UpdateRepositoryTest {
             TestHost.check(UpdateRepository.MANIFEST_PRIMARY.contains("raw.githubusercontent.com")
                             && UpdateRepository.MANIFEST_PRIMARY.contains("update/latest.json"),
                     "S6b 主源 = raw.githubusercontent.com main 分支静态清单");
-            TestHost.check(UpdateRepository.MANIFEST_FALLBACK.contains("xiaobaiba999.github.io"),
-                    "S6c 备用源 = GitHub Pages（受控单次）");
-            TestHost.check(!UpdateRepository.MANIFEST_PRIMARY.contains("api.github.com")
-                            && !UpdateRepository.MANIFEST_FALLBACK.contains("api.github.com"),
-                    "S6d 双源零 api.github.com（架构红线）");
+            // v7.9.9 源链：raw 主源 + jsDelivr 四接入点（github.io 已移除）
+            TestHost.check(UpdateRepository.MANIFEST_SOURCES.length == 5,
+                    "S6c 源链恰 5 源（raw 主源 + jsDelivr 四接入点）");
+            TestHost.check(UpdateRepository.MANIFEST_SOURCES[0].equals(UpdateRepository.MANIFEST_PRIMARY),
+                    "S6d 源链首位 = 主源（顺序锁定）");
+            boolean jsdelivrOk = true;
+            String[] hosts = {"cdn.jsdelivr.net", "fastly.jsdelivr.net", "gcore.jsdelivr.net", "testingcf.jsdelivr.net"};
+            for (int i = 1; i < UpdateRepository.MANIFEST_SOURCES.length; i++) {
+                String s = UpdateRepository.MANIFEST_SOURCES[i];
+                boolean hit = false;
+                for (String h : hosts) {
+                    if (s.startsWith("https://" + h + "/gh/xiaobaiba999/Skip-Ad@main/update/latest.json")) hit = true;
+                }
+                if (!hit) jsdelivrOk = false;
+            }
+            TestHost.check(jsdelivrOk, "S6e 备用源 1-4 = jsDelivr 四接入点同路径（SubMirrors 同族）");
+            boolean noApiNoPages = true;
+            for (String s : UpdateRepository.MANIFEST_SOURCES) {
+                if (s.contains("api.github.com") || s.contains("github.io")) noApiNoPages = false;
+                if (!s.startsWith("https://")) noApiNoPages = false;
+            }
+            TestHost.check(noApiNoPages, "S6f 全源零 api.github.com 零 github.io（Pages 未启用死源已移除）且全 https");
+            TestHost.check(UpdateRepository.CHAIN_BUDGET_MS == 40 * 1000L,
+                    "S6g 整链预算常量 = 40s（策略锁定——五源链不膨胀）");
         } catch (Exception e) {
             TestHost.check(false, "S6 异常: " + e);
         }
@@ -229,5 +249,169 @@ public final class UpdateRepositoryTest {
         TestHost.check(!UpdateRepository.hasNetError("{\"ok\":true,\"fromCache\":true,\"staleCache\":false}"),
                 "S7h 304 续新鲜缓存无 netError → 清退避（服务器真实响应）");
         TestHost.check(!UpdateRepository.hasNetError("损坏"), "S7i 非 JSON → 不崩");
+    }
+
+    /* ═══ S8 源链走查 walkSources（v7.9.9 核心新增——Fetcher 缝全链路）═══ */
+
+    /** 测试用有效清单（UpdateManifest 契约全字段——versionCode 79900）。 */
+    private static final String GOOD_MANIFEST = "{\"schemaVersion\":1,\"versionName\":\"7.9.9\","
+            + "\"versionCode\":79900,\"releaseTag\":\"v7.9.9\",\"releaseName\":\"Skip-Ad v7.9.9\","
+            + "\"releaseNotes\":\"versionCode: 79900\\n1. 修复\","
+            + "\"publishedAt\":\"2026-11-23T00:00:00Z\","
+            + "\"apkUrl\":\"https://github.com/xiaobaiba999/Skip-Ad/releases/download/v7.9.9/adshield-v7.9.9.apk\","
+            + "\"apkFileName\":\"adshield-v7.9.9.apk\","
+            + "\"apkSha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\","
+            + "\"apkSize\":890422,\"packageName\":\"com.zai.adshield\"}";
+
+    /** 记录型 Fetcher 替身：按源脚本化响应（body / "304" / 错误码 / null）。
+     *  记录请求顺序与条件头下发次数——链路行为全可断言。 */
+    private static final class ScriptFetcher implements UpdateRepository.Fetcher {
+        final java.util.List<String> requested = new java.util.ArrayList<String>();
+        final java.util.Map<String, String> script = new java.util.HashMap<String, String>();
+        int conditionalSent = 0;
+
+        public UpdateRepository.HttpOutcome fetch(String url, UpdateRepository.CacheInfo conditional) {
+            requested.add(url);
+            if (conditional != null) conditionalSent++;
+            String r = script.get(url);
+            if (r == null) {
+                return new UpdateRepository.HttpOutcome(false, null, null, null, url,
+                        UpdateManifest.ERR_NETWORK);
+            }
+            if ("304".equals(r)) {
+                return new UpdateRepository.HttpOutcome(true, null, null, null, url, null);
+            }
+            if (r.startsWith("ERR:")) {
+                return new UpdateRepository.HttpOutcome(false, null, null, null, url, r.substring(4));
+            }
+            if ("NULL".equals(r)) {
+                return null; // 缝实现异常防御面
+            }
+            return new UpdateRepository.HttpOutcome(false, r, "\"e1\"",
+                    "Tue, 1 Jan 2026 00:00:00 GMT", url, null);
+        }
+    }
+
+    private static void s8_walkSourcesChain() {
+        long farDeadline = System.currentTimeMillis() + UpdateRepository.CHAIN_BUDGET_MS;
+        String[] src = UpdateRepository.MANIFEST_SOURCES;
+
+        // S8a 主源 HTTP 200 有效清单 → SUCCESS 立即返回（后续源零请求）
+        ScriptFetcher f1 = new ScriptFetcher();
+        f1.script.put(src[0], GOOD_MANIFEST);
+        UpdateRepository.WalkResult w1 = UpdateRepository.walkSources(f1, null, farDeadline,
+                "com.zai.adshield", "7.9.8", 79800);
+        TestHost.check(w1.kind == UpdateRepository.WalkResult.SUCCESS
+                        && w1.payload.contains("7.9.9") && w1.body.equals(GOOD_MANIFEST)
+                        && w1.url.equals(src[0]) && "\"e1\"".equals(w1.etag),
+                "S8a 主源 200 有效 → SUCCESS（载荷/原文/缓存三键捕获）");
+        TestHost.check(f1.requested.size() == 1, "S8a 成功即短路（零多余请求）");
+
+        // S8b 主源连接失败 → 备用源成功（链降级核心场景）
+        ScriptFetcher f2 = new ScriptFetcher();
+        f2.script.put(src[1], GOOD_MANIFEST);
+        UpdateRepository.WalkResult w2 = UpdateRepository.walkSources(f2, null, farDeadline,
+                "com.zai.adshield", "7.9.8", 79800);
+        TestHost.check(w2.kind == UpdateRepository.WalkResult.SUCCESS && w2.url.equals(src[1]),
+                "S8b 主源连接失败 → jsDelivr 备用源成功");
+        TestHost.check(f2.requested.size() == 2, "S8b 恰两次请求（主源+备用各一次）");
+
+        // S8c-d 主源超时/HTTP 500/DNS 失败 → 备用源成功（每类失败均降级）
+        String[][] fails = {
+                {"S8c", "ERR:" + UpdateManifest.ERR_TIMEOUT, "主源超时"},
+                {"S8d", "ERR:" + UpdateManifest.ERR_SERVER, "主源 HTTP 500"},
+                {"S8e", "ERR:" + UpdateManifest.ERR_DNS, "主源 DNS 失败"},
+        };
+        for (String[] fc : fails) {
+            ScriptFetcher f = new ScriptFetcher();
+            f.script.put(src[0], fc[1]);
+            f.script.put(src[2], GOOD_MANIFEST);
+            UpdateRepository.WalkResult w = UpdateRepository.walkSources(f, null, farDeadline,
+                    "com.zai.adshield", "7.9.8", 79800);
+            TestHost.check(w.kind == UpdateRepository.WalkResult.SUCCESS && w.url.equals(src[2]),
+                    fc[0] + " " + fc[2] + " → 跳过失败源第三源成功");
+        }
+
+        // S8f 主源返回非法 JSON（劫持/损坏面）→ 继续备用源成功
+        ScriptFetcher f3 = new ScriptFetcher();
+        f3.script.put(src[0], "<html>被劫持页面</html>");
+        f3.script.put(src[1], GOOD_MANIFEST);
+        UpdateRepository.WalkResult w3 = UpdateRepository.walkSources(f3, null, farDeadline,
+                "com.zai.adshield", "7.9.8", 79800);
+        TestHost.check(w3.kind == UpdateRepository.WalkResult.SUCCESS,
+                "S8f 主源非法 JSON → 不采信也不放弃 → 备用源成功");
+
+        // S8g 主源包名不匹配（错源/劫持面）→ 继续备用源成功
+        ScriptFetcher f4 = new ScriptFetcher();
+        f4.script.put(src[0], GOOD_MANIFEST.replace("com.zai.adshield", "com.evil.x"));
+        f4.script.put(src[1], GOOD_MANIFEST);
+        UpdateRepository.WalkResult w4 = UpdateRepository.walkSources(f4, null, farDeadline,
+                "com.zai.adshield", "7.9.8", 79800);
+        TestHost.check(w4.kind == UpdateRepository.WalkResult.SUCCESS,
+                "S8g 主源包名不匹配 → 备用源有效 → 采信备用源（抗劫持降级）");
+
+        // S8h 全链失败 → ALL_FAILED + 首源错误码 canonical + 每源恰一次
+        ScriptFetcher f5 = new ScriptFetcher();
+        f5.script.put(src[0], "ERR:" + UpdateManifest.ERR_DNS);
+        f5.script.put(src[1], "ERR:" + UpdateManifest.ERR_TIMEOUT);
+        f5.script.put(src[2], "ERR:" + UpdateManifest.ERR_SERVER);
+        f5.script.put(src[3], "ERR:" + UpdateManifest.ERR_HTTP);
+        f5.script.put(src[4], "ERR:" + UpdateManifest.ERR_NETWORK);
+        UpdateRepository.WalkResult w5 = UpdateRepository.walkSources(f5, null, farDeadline,
+                "com.zai.adshield", "7.9.8", 79800);
+        TestHost.check(w5.kind == UpdateRepository.WalkResult.ALL_FAILED
+                        && UpdateManifest.ERR_DNS.equals(w5.errorCode),
+                "S8h 全链失败 → 首源错误码 canonical（DNS 如实报告）");
+        TestHost.check(f5.requested.size() == 5, "S8h 五源各恰一次（无重试风暴）");
+
+        // S8i 304（同源条件头）→ NOT_MODIFIED；条件头只发给缓存同源
+        UpdateRepository.CacheInfo cached = new UpdateRepository.CacheInfo(GOOD_MANIFEST,
+                "\"e1\"", "Tue, 1 Jan 2026 00:00:00 GMT", 1234567890L, src[1]);
+        ScriptFetcher f6 = new ScriptFetcher();
+        f6.script.put(src[0], "ERR:" + UpdateManifest.ERR_NETWORK);
+        f6.script.put(src[1], "304");
+        UpdateRepository.WalkResult w6 = UpdateRepository.walkSources(f6, cached, farDeadline,
+                "com.zai.adshield", "7.9.8", 79800);
+        TestHost.check(w6.kind == UpdateRepository.WalkResult.NOT_MODIFIED,
+                "S8i 同源条件 304 → NOT_MODIFIED（缓存续新鲜）");
+        TestHost.check(f6.conditionalSent == 1 && f6.requested.contains(src[1]),
+                "S8i 条件头只回发同源（跨源不混用 ETag）");
+
+        // S8j 无条件头却 304（异常服务防御面）→ 按失败继续链
+        ScriptFetcher f7 = new ScriptFetcher();
+        f7.script.put(src[0], "304"); // 无缓存 → 无条件头
+        f7.script.put(src[1], GOOD_MANIFEST);
+        UpdateRepository.WalkResult w7 = UpdateRepository.walkSources(f7, null, farDeadline,
+                "com.zai.adshield", "7.9.8", 79800);
+        TestHost.check(w7.kind == UpdateRepository.WalkResult.SUCCESS && w7.url.equals(src[1]),
+                "S8j 异常 304（无条件头）→ 防御性继续链 → 备用源成功");
+
+        // S8k 链预算耗尽 → 首源必试、其余不再尝试（长阻塞闸）
+        ScriptFetcher f8 = new ScriptFetcher();
+        f8.script.put(src[0], "ERR:" + UpdateManifest.ERR_TIMEOUT);
+        f8.script.put(src[4], GOOD_MANIFEST);
+        UpdateRepository.WalkResult w8 = UpdateRepository.walkSources(f8, null,
+                System.currentTimeMillis() - 1, "com.zai.adshield", "7.9.8", 79800);
+        TestHost.check(w8.kind == UpdateRepository.WalkResult.ALL_FAILED && f8.requested.size() == 1,
+                "S8k 预算耗尽 → 首源必试后即停（恰 1 请求）");
+
+        // S8l hasRelease:false（无正式版清单）→ 有效答案即停链
+        ScriptFetcher f9 = new ScriptFetcher();
+        f9.script.put(src[0], "{\"prerelease\":true}");
+        UpdateRepository.WalkResult w9 = UpdateRepository.walkSources(f9, null, farDeadline,
+                "com.zai.adshield", "7.9.8", 79800);
+        TestHost.check(w9.kind == UpdateRepository.WalkResult.SUCCESS
+                        && w9.payload.contains("\"hasRelease\":false"),
+                "S8l 无正式版清单 → 有效答案即停（hasRelease:false）");
+        TestHost.check(f9.requested.size() == 1, "S8l 停链零多余请求");
+
+        // S8m Fetcher 返回 null（缝异常防御）→ 按网络失败继续链
+        ScriptFetcher f10 = new ScriptFetcher();
+        f10.script.put(src[0], "NULL");
+        f10.script.put(src[1], GOOD_MANIFEST);
+        UpdateRepository.WalkResult w10 = UpdateRepository.walkSources(f10, null, farDeadline,
+                "com.zai.adshield", "7.9.8", 79800);
+        TestHost.check(w10.kind == UpdateRepository.WalkResult.SUCCESS,
+                "S8m Fetcher 异常返回 null → 防御性继续链成功");
     }
 }
