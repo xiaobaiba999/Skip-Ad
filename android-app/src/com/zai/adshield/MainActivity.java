@@ -1118,10 +1118,11 @@ public class MainActivity extends Activity {
             return o.toString();
         }
 
-        /** 查询 GitHub 最新 Release（公共仓库匿名可读） */
+        /** 查询 GitHub 最新 Release（v8.2.0 双通道：更新中转优先 → GitHub 匿名
+         *  直连回退；传当前 versionName 产 isNewer 与错误五分类归因） */
         @JavascriptInterface
         public String netGetLatestRelease() {
-            return Net.latestRelease();
+            return Net.latestRelease(versionNameOf(a));
         }
 
         /* ───── 应用内更新：页内下载 → 进度 → 安装（不跳浏览器） ───── */

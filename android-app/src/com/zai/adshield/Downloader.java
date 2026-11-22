@@ -253,7 +253,7 @@ public final class Downloader {
      * 允许：github.com · *.github.com · githubusercontent.com 及子域 ·
      * ghfast.top · gh-proxy.com（v3.3.0 镜像通道）。
      * 拒绝一切构造绕过：userinfo 混淆、子串注入、尾点 FQDN。 */
-    static boolean hostAllowed(String u) {
+    public static boolean hostAllowed(String u) {
         try {
             java.net.URL url = new java.net.URL(u);
             String scheme = url.getProtocol();
@@ -275,7 +275,9 @@ public final class Downloader {
      * 下载文件完整性校验：返回 null = 通过；非 null = 失败原因。
      * expectSha 为 "sha256:hex"（GitHub API 官方格式）或空；expectSize 为
      * 期望字节数（0 = 未知）。流式读取（8KB 缓冲）同时计数字节——
-     * SHA-256 与字节数双比对（digest 缺失时字节数比对兜底）。 */
+     * SHA-256 与字节数双比对（digest 缺失时字节数比对兜底）。
+     * v8.2.0：比对判定提取为纯函数 verifyDigest（JVM 可测——逻辑与 v6.3.0
+     * 逐字一致，安全闸零变化；本方法只负责读流与摘要计算）。 */
     static String verifyDownloadedFile(Context ctx, Uri uri, String expectSha, long expectSize) {
         InputStream in = null;
         try {
@@ -290,30 +292,44 @@ public final class Downloader {
                 if (md != null) md.update(buf, 0, n);
                 total += n;
             }
-            if (expectSize > 0 && total != expectSize) {
-                return "大小不符（实际 " + total + " ≠ 发布 " + expectSize + " 字节）";
-            }
-            if (md != null) {
-                byte[] d = md.digest();
-                StringBuilder sb = new StringBuilder(d.length * 2);
-                for (int i = 0; i < d.length; i++) {
-                    String hx = Integer.toHexString(d[i] & 0xFF);
-                    if (hx.length() < 2) sb.append('0');
-                    sb.append(hx);
-                }
-                String actual = "sha256:" + sb.toString();
-                if (!actual.equalsIgnoreCase(expectSha)) {
-                    return "SHA-256 不符";
-                }
-            } else if (expectSize <= 0) {
-                return "缺少校验元数据"; // digest 与 size 双缺：拒绝（正常 Release 必有 digest）
-            }
-            return null; // 校验通过
+            return verifyDigest(total, md != null ? hex(md.digest()) : "", expectSha, expectSize);
         } catch (Exception e) {
             return "读取失败：" + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
         } finally {
             if (in != null) try { in.close(); } catch (Exception ignored) { }
         }
+    }
+
+    /** v8.2.0：完整性比对判定（纯函数，JVM 可测）——检查次序与文案与 v6.3.0
+     *  原实现逐字一致：① size 不符优先（即使有 digest）；② digest 在场 →
+     *  SHA-256 全量比对（大小写不敏感）；③ digest 缺失 → 字节数比对兑底；
+     *  ④ 双缺拒绝（正常 Release 必有 digest）。安全闸零降低（提取重构非改行为）。 */
+    public static String verifyDigest(long totalBytes, String actualShaHex, String expectSha, long expectSize) {
+        if (expectSize > 0 && totalBytes != expectSize) {
+            return "大小不符（实际 " + totalBytes + " ≠ 发布 " + expectSize + " 字节）";
+        }
+        if (expectSha != null && expectSha.startsWith("sha256:")) {
+            if (actualShaHex == null || actualShaHex.length() == 0) return "无法计算文件摘要";
+            if (!("sha256:" + actualShaHex).equalsIgnoreCase(expectSha)) {
+                return "SHA-256 不符";
+            }
+            return null;
+        }
+        if (expectSize <= 0) {
+            return "缺少校验元数据"; // digest 与 size 双缺：拒绝（正常 Release 必有 digest）
+        }
+        return null; // digest 缺失但 size 在场：字节数比对兑底通过（弱校验兑底语义保持）
+    }
+
+    /** v8.2.0：字节数组 → 小写十六进制（v6.3.0 内联逻辑提取——补零语义不变）。 */
+    public static String hex(byte[] d) {
+        StringBuilder sb = new StringBuilder(d.length * 2);
+        for (int i = 0; i < d.length; i++) {
+            String hx = Integer.toHexString(d[i] & 0xFF);
+            if (hx.length() < 2) sb.append('0');
+            sb.append(hx);
+        }
+        return sb.toString();
     }
 
     /* ───────── 工具 ───────── */

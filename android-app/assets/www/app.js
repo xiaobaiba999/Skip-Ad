@@ -23,8 +23,8 @@ const store = {
 };
 
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "8.0.3"; }
-function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "80300"; }
+function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "8.2.0"; }
+function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "82000"; }
 
 /* ══════════ 吉祥物（v4.1.0 全新形象：白机器人小侠 + 绿披风跳跃） ══════════
  * 与启动器图标同源；state: on（跳跃浮动）/ off（灰度待命） */
@@ -35,18 +35,19 @@ function mascotImg(size, state, head) {
 
 $("#brand-logo").innerHTML = mascotImg(30, "on", true);
 
-/* ═══ v8.0.3 版本记录（更新链路修复 + 引擎双 DFS 单遍化）═══ */
+/* ═══ v8.2.0 版本记录（更新检查双通道——限流根因修复）═══ */
 const CURRENT_RELEASE = {
-  date: "2026-11-28",
-  title: "更新链路修复：GitHub API 限流即时报错（不再浪费重试）+ 引擎双 DFS 单遍化（零命中扫描开销减半）",
+  date: "2026-11-22",
+  title: "更新检查双通道：中转服务优先 + GitHub 直连回退——彻底解决「GitHub API 限流（匿名 60 次/小时/IP）看不到新版本」",
   features: [
-    "检查更新链路修复（v8.0.3）：GitHub API 限流（403/429）旧版浪费两次重试后只报「GitHub 返回 403」——现在即时报「限流（匿名 60 次/小时/IP），约 1 小时后再试」，不烧配额；下载完成文案校正（SHA-256 安装前自动校验，如实描述）",
-    "引擎双 DFS 单遍化（v8.0.2）：零命中扫描不再对同一棵控件树走两趟独立遍历——节点访问/属性读取/内存分配全面减半（JVM 基准计数实证：child 调用 798→399、属性读 5642→3601）；决策输出与旧版逐字段一致（21 场景对照测试钉死）",
-    "窗口切换 0ms 双重扫描消除（v8.0.1）：内联首扫与定时梯子 0ms 档对同一棵树的全量双扫是纯冗余——每次切窗省一整遍树扫描；安全门/决策梯/任务门零变化",
-    "全链路审计轮（v8.0.1）：事件→扫描→决策→点击→复验→终态全调用图审计——安全面逐项核对零问题（状态机/代际护栏/重复点击断源/ACK 前不删日志/未授权零磁盘写全部在岗实锤）",
-    "36 套件 6975+ 项断言全绿（新增双 DFS 对照测试 92 项 + JVM 基准 63 项 + 更新链路 7 项）· versionCode 80300（> 79600 覆盖安装即升级）",
+    "更新检查双通道（v8.2.0）：优先走自建中转服务（GET /api/update/latest——服务端边缘缓存 5~10 分钟 + GitHub App 认证上游，独立于匿名 60 次/小时/IP 配额池），中转失败自动回退 GitHub 直连——匿名配额耗尽时也能稳定发现正式新版本",
+    "错误五分类如实呈现（v8.2.0）：GITHUB_RATE_LIMITED / WORKER_UNAVAILABLE / NETWORK_ERROR / PARSE_ERROR / NO_NEW_VERSION 分明——中转故障绝不误报成 GitHub 限流；双通道皆败时各自归因同时展示（「更新通道均失败：中转…；GitHub…」）",
+    "下载安全闸零降低（保持 v6.3.0/v7.3.0 全部机制）：SHA-256 + 大小校验元数据经 HTTPS 获取，安装前流式逐字节比对，不符即删——镜像投毒/共享盘换包照旧全拦；发布通道 host 白名单照旧；本轮仅把校验判定提取为可测纯函数（行为逐字一致）",
+    "修复 v8.1.0 遗留：「版本记录」板块内容停留在 v8.0.3（本轮起随版本同步更新；浏览器预览回退版本号一并修正）",
+    "39 套件全绿（新增 UpdateChannelTest：双通道五分类真值表/中转载荷契约/版本比较/SHA-256 校验判定/发布通道白名单）+ Worker 更新接口 25 项测试（22 单元 + 3 live 真实上游）· versionCode 82000（> 81000 覆盖安装即升级）",
   ],
-  summary: "v8.0.1→v8.0.3 三轮：全链路审计（安全面零问题）+ 扫描链路两处性能优化（切窗双扫消除 + 双 DFS 单遍化）+ 更新检查链路修复（限流即时报错）；零识别/安全门/状态机/契约改动。",
+  summary: "更新检查双通道（中转优先 + 直连回退 + 错误五分类）+ 下载校验链保持并提取可测；Worker 端更新接口代码随仓交付（worker/ 目录——部署后通道 0 生效，部署前自动回退直连，行为=v8.0.3 零回退）。",
+
 };
 
 /* v7.0.0 新版功能描述（规范：≤5 个标题、带序号；检查更新发现新版本时就地渲染）。
@@ -849,10 +850,42 @@ function cmpVer(a, b) {
   return 0;
 }
 
+/* ═══ v8.2.0 更新检查双通道（真机限流根因修复）════
+ * APK 内：AndroidApp.netGetLatestRelease() → Net.latestRelease(当前版本) 原生
+ * 双通道（中转 GET /api/update/latest 优先——服务端边缘缓存 5~10 分钟 + GitHub
+ * App 认证上游（独立配额池）；失败自动回退 GitHub 匿名直连（v8.0.3 语义保持），
+ * 双通道失败各自归因（errorCode 五分类：GITHUB_RATE_LIMITED / WORKER_UNAVAILABLE
+ * / NETWORK_ERROR / PARSE_ERROR / NO_NEW_VERSION）——绝不把中转故障误报成
+ * GitHub 限流）。浏览器预览：同序双通道（中转 CORS 已开）。 */
+const UPDATE_RELAY_URL = "https://skip-ad-log-relay.2927609408.workers.dev/api/update/latest";
+
+/* v8.2.0：中转载荷规范化（浏览器路径）——字段与 APK 原生 normalizeWorkerUpdatePayload 对齐 */
+function normWorkerPayload(j) {
+  return {
+    ok: true, hasRelease: true, tag: j.tag || "", url: j.url || "",
+    notes: j.notes || "", apkUrl: j.apkUrl || "",
+    apkMirrors: j.apkUrl ? ["https://ghfast.top/" + j.apkUrl, "https://gh-proxy.com/" + j.apkUrl] : [],
+    apkFileName: j.apkFileName || "adshield.apk", apkMB: j.apkMB || 0,
+    apkDigest: j.apkDigest || "", apkSize: j.apkSize || 0,
+    source: "worker", cached: !!j.cached, fetchedAt: j.fetchedAt || 0,
+  };
+}
+
 async function fetchLatest() {
   if (HAS_BRIDGE) {
-    try { return JSON.parse(AndroidApp.netGetLatestRelease()); } catch (e) { return { ok: false, error: "解析失败" }; }
+    try { return JSON.parse(AndroidApp.netGetLatestRelease()); } catch (e) { return { ok: false, error: "解析失败", errorCode: "PARSE_ERROR" }; }
   }
+  /* 通道 0：更新中转（浏览器路径）——任何失败静默回退 GitHub 直连 */
+  try {
+    const r = await fetch(UPDATE_RELAY_URL, { headers: { Accept: "application/json" } });
+    if (r.ok) {
+      const j = await r.json();
+      if (j && j.ok === true && typeof j.hasRelease !== "undefined") {
+        if (!j.hasRelease) return { ok: true, hasRelease: false, source: "worker" };
+        return normWorkerPayload(j);
+      }
+    }
+  } catch (e) { /* 回退直连 */ }
   try {
     const r = await fetch(GH_API + "/releases/latest", { headers: { Accept: "application/vnd.github+json" } });
     if (r.status === 404) return { ok: true, hasRelease: false };
@@ -963,7 +996,8 @@ $("#btn-check-update").addEventListener("click", async () => {
   if (!d.hasRelease) { note.className = "fb-result"; note.style.display = ""; note.textContent = "尚未发布版本"; return; }
   latestRelease = d;
   const latest = String(d.tag || "").replace(/^v/, "");
-  const isNewer = cmpVer(latest, appVer()) > 0;
+  /* v8.2.0：优先用原生侧权威判定（Net.cmpVersion——数值段比较），浏览器路径回退 cmpVer */
+  const isNewer = typeof d.isNewer === "boolean" ? d.isNewer : cmpVer(latest, appVer()) > 0;
   /* v7.0.0：检查更新当场显示新版本 ≤5 条带序号功能描述（就地渲染——
    * 就在点按钮的地方；不只弹版本号） */
   if (isNewer) renderReleaseNotes(d);
@@ -974,9 +1008,10 @@ $("#btn-check-update").addEventListener("click", async () => {
     dlBtn.style.display = "";
     note.className = "fb-result";
     note.style.display = "";
-    note.textContent = isNewer
+    note.textContent = (isNewer
       ? "发现新版本 v" + latest + "（功能描述如上，下载后覆盖安装即升级）"
-      : "已是最新版本 · " + CURRENT_RELEASE.title;
+      : "已是最新版本 · " + CURRENT_RELEASE.title)
+      + (d.workerError ? "（中转服务不可用，已直连 GitHub）" : "");
   }
 });
 
