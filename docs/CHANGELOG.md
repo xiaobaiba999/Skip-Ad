@@ -3,6 +3,18 @@
 > 首页只保留当前版本要点；全部历史版本详情在本页归档。
 > 发布物（APK/报告/文档）见 [Releases](https://github.com/xiaobaiba999/Skip-Ad/releases) 与 `docs/test-reports/`。
 
+## v7.9.8b（2026-11-23）—— 全面核验轮：重启丢冻结状态实锤修复 + 自动 24h/3 批粒度闸 + 401/403 分家 + 矩阵十三字段 + JS 测试入库
+
+- **本轮定位（用户指令：v7.9.8 全面核验、修复与工程闭环——重点核验批次冻结/持久化/幂等/额度/错误分类/隐私/矩阵/性能/安全全链路，未发布前继续完善 7.9.8/79800）**。基于 976da28（v7.9.8 未推送 commit）之上修复三个真实问题，零广告识别链改动。
+- **修复①（真实生产 Bug·T14 重启恢复测试实锤暴露）——migrateLegacy 误删冻结清单**：v8.2.2 引入的遗留清理规则 `startsWith("batch-")` 会连带删除 v7.9.8 的冻结清单 `batch-manifest.json`（遗留状态机文件实名 `batch-{uuid}.json`——git 考古 cc159ff 实证）——**进程每次重启（设备重启/ROM 杀/应用更新）冻结状态即丢失**：首 POST 已被服务端接受（Issue 已建）后重启，重试换新 batchId = 服务端视作新批次**重复建 Issue**，幂等契约跨进程断裂。修复：清单排除 `batch-manifest.json`（一行守卫），遗留 `batch-{uuid}.json`/`acked-meta.json` 清理语义不变。S8 回归钉死（冻结清单跨实例存活 + 遗留文件仍被清理）。
+- **修复②（用户指令：自动上传成功 3 次后第 4 次必须被阻止）——自动路径批粒度 24h/3 闸**：`autoEligible` 只在 run 起点检查一次，积压场景（多日未传后一次性排空）单次 runUpload 可连续成功 >3 批突破「24h 最多 3 次成功」上限。修复：每批成功入账后复核自动账本（`autoOkCount24h ≥ 3` 即停），剩余事件留待窗口滑动后下一次心跳续传；手动路径永不受此闸（T16 对照组钉死：200 条自动只传 3 批、手动 5 批全传、窗口滑动后自动续传排空）。
+- **修复③（用户指令：401 提示认证问题、403 提示权限问题）——裸 401/403 分家**：旧 classifyError 把无 JSON body 的 HTTP 401/403 混同为 `UNAUTHORIZED`。分家为 `AUTH_FAILED`（认证失败）/`FORBIDDEN`（权限不足），app.js 各配人话文案（均声明日志已保留）；服务端 JSON 码 `UNAUTHORIZED` 仍按契约原样透出（拒收隔离语义不变）；runUpload 终态判定用 res.code 而非分类码——裸 401/403 仍按瞬时错误保留冻结批次重试（行为零变化，仅提示保真）。
+- **核验结论（不改代码·如实记录）**：①批次持久化本就落盘（sealBatch POST 前写 manifest）——T14 新测试证明跨进程字节级恢复；②IDEMPOTENCY_CONFLICT 证据保留语义核验：rejectHead 隔离进 rejected.json（code+error+events 全在·50 条环形上限）——T17 钉死证据完整性；③额度文件损坏防御：readJsonArray 损坏读空不崩溃、recordOk 重写自愈——T18 钉死；④错误分类矩阵 T12 扩至 19 断言（含 2xx 空 body/DNS 污染→NET_CONNECT_FAIL/超时≠HTTP_400 逐路验证）；⑤Worker 可达性：沙箱实测 workers.dev 仍 DNS 污染（解析 Facebook IPv6 `face:b00c`/157.240.7.8，TCP 30s 超时）——真实服务端上传 NOT_RUN 维持，不冒充。
+- **任务九：矩阵十三字段版（`scripts/gen-splash-matrix.py` 重写）**：`compatibility/splash_matrix_v798.json` 每行新增 `adScenes`（信息流/插屏/视频广告目录标注）+ `ruleRefs`（GKD 快照版本实测提取：ganlin=72/linarm=637/xnx=79 + 引擎规则版本）+ `failureCode`（失败归类码，17 词表 A–J 十类+SCAN_MISS 四码联动）+ `lastTestedAt`/`testDevice`（真机回填前一律空串——绝不虚构）+ BLOCKED 状态入词汇表；meta 新增 failureCodeVocabulary/fieldProvenance（数据来源逐字段声明）。233 款重生成，状态零变化（NOT_TESTED 163 · NOT_APPLICABLE 70 · PASS 0/FAIL 0——无真机证据绝不虚标）。
+- **工程闭环：JS 行为测试入库**（此前散落沙箱未跟踪）：`android-app/tests-js/`（test_bugtip24h.js 46 断言 + test_upload_errors.js 22 断言 + legacy/app-v7.9.6.js 旧版 cmpVer 夹具 + run.sh 跑器）——CI/后续轮次可复现，不再依赖沙箱临时文件。
+- **测试（39 套件 JVM 7149 断言全绿 = 7107 既有 + 42 新增；JS 68 断言全绿 = 63 既有 + 5 新增）**：LogUploaderTest 92→128（**T14 进程被杀重启恢复**：冻结批次跨实例字节级复用+ALREADY_ACCEPTED 消费；T15 批次 B 独立性；T16 自动批粒度闸；T17 冲突证据保留；T18 额度损坏防御；T12 401/403 分家）；LogStoreTest 39→45（S8 migrateLegacy 不误伤）；LogPrivacyFilterTest 58 保持（SCAN_MISS 白名单契约）。三闸门全绿：check-appjs + check-version-sync（7.9.8/79800 不变）+ secret-scan（零令牌/零凭据/keystore 面收敛）。**诚实口径：真机 E2E NOT_RUN；中转服务真实上传 NOT_RUN（workers.dev 沙箱 DNS 污染实测）；性能真机指标 NOT_RUN（ScanBenchmark JVM 基准在套件内在场）。**
+- **版本纪律**：versionName 7.9.8 / versionCode 79800 保持（v7.9.8 未发布未推送——用户指令「未正式发布可继续完善」）；本轮不创建 Tag/Release；APK 重建 adshield-v7.9.8.apk（79800 > 79700 覆盖升级路径不变；82300 历史用户仍按 v7.9.7 节口径）。
+
 ## v7.9.8（2026-11-23）—— 日志上传可靠性专项：冻结批次终结两连失败 + 错误八类如实分类 + 反馈提示 24h 节流 + 导出下线 + 未命中结构化诊断
 
 - **本轮定位（用户真机实锤：v7.9.7 上点击「一键上传」第一次提示「失败，请稍后再试」、第二次提示「日志被服务端拒绝」——必须根治）**。全链路只读审计（客户端 LogUploader/LogStore/RealHttp + 服务端中转 + Git 历史考古 v8.0.0 冻结实现）后**真实根因定案（代码级实证，非推测）**：

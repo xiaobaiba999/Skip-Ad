@@ -24,7 +24,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * 根因链的一环，本版回归 v7.8 的直白模型：点按钮就传、心跳就查、失败保留）。
  * ─────────────────────────────────────────────
  * 六项业务（用户 v8.2.2 指令——除此之外零附加机制）：
- *  ① 自动上传 24h 最多成功 3 次（ok-times 只记服务端确认）；
+ *  ① 自动上传 24h 最多成功 3 次（ok-times 只记服务端确认；v7.9.8b 起
+ *     批粒度闸——run 起点与每批成功后双复核，积压排空也不越 3 批/窗）；
  *  ② 自动上传必须有新日志（pending==0 直接跳过，零网络请求）；
  *  ③ 手动上传随时可用（不查本地额度；服务端 RATE_LIMITED 如实转达）；
  *  ④ 成功 = HTTP 2xx 且 body ok=true（服务端明确确认才消费事件）；
@@ -405,7 +406,14 @@ public final class LogUploader {
         if (res.http2xx && !res.bodyOk) return ERR_PROTOCOL; // 2xx 但 body 无 ok=true
         if (res.httpCode == 429) return ERR_RATE_LIMITED;
         if (res.httpCode == 400) return "INVALID_REQUEST";
-        if (res.httpCode == 401 || res.httpCode == 403) return "UNAUTHORIZED";
+        /* v7.9.8b 认证与权限分家（用户指令：401 提示认证问题、403 提示权限
+         * 问题——不再混同为 UNAUTHORIZED）。仅作用于「裸状态码」（服务端
+         * 未给出 JSON body 的网关层拦截）；服务端 JSON 码 UNAUTHORIZED
+         * 仍按其契约原样透出（isTerminalRejection 拒收隔离语义不变）。
+         * 裸 401/403 无服务端解释——按瞬时错误保留冻结批次重试（runUpload
+         * 终态判定用 res.code 而非本分类码，行为不变，仅提示文案分家）。 */
+        if (res.httpCode == 401) return "AUTH_FAILED";
+        if (res.httpCode == 403) return "FORBIDDEN";
         if (res.httpCode >= 500) return ERR_RELAY_5XX;
         if (res.httpCode > 0) return "HTTP_" + res.httpCode;
         return ERR_UNKNOWN;
@@ -532,6 +540,15 @@ public final class LogUploader {
                     store.consumeHead(Math.max(0, fb.realCount));
                     store.recordOk(System.currentTimeMillis(), manual);
                     s.acked++;
+                    /* v7.9.8b 自动路径批粒度 24h/3 闸（用户指令：自动上传成功 3 次
+                     * 后第 4 次必须被阻止）：autoEligible 只在 run 起点 check 一次，
+                     * 积压场景（多日未传后一次性排空）单次运行可连续成功 >3 批——
+                     * 突破「24h 最多 3 次成功」上限。本闸在每批成功入账后复核自动
+                     * 账本，满 3 即停：剩余事件留待窗口滑动后下一次心跳续传。
+                     * 手动路径（manual=true）永不受此闸限制。 */
+                    if (!manual && store.autoOkCount24h(System.currentTimeMillis()) >= 3) {
+                        break;
+                    }
                     if (issue > 0) {
                         s.issueNumbers = s.issueNumbers.length() == 0
                                 ? String.valueOf(issue) : s.issueNumbers + "," + issue;

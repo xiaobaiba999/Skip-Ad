@@ -23,7 +23,10 @@ import java.nio.charset.StandardCharsets;
  *     额度分账（auto-ok-times 独立账本——手动不占自动闸）；
  *  S5 消费/拒收语义：consumeHead 删头、rejectHead 隔离检视；
  *  S6 清理与损坏检测：clearPending 全清；pending 文件损坏 → readCorrupt；
- *  S7 概览契约：overview 键形（app.js 状态行 + 四态区分数据源）。
+ *  S7 概览契约：overview 键形（app.js 状态行 + 四态区分数据源）；
+ *  S8 遗留清理不误伤（v7.9.8b）：新实例 migrateLegacy 保留冻结清单
+ *     batch-manifest.json（重启不丢冻结状态），仍删除遗留 batch-{uuid}.json
+ *     与 acked-meta.json（T14 重启恢复失败暴露的真实 Bug 回归钉死）。
  */
 public class LogStoreTest {
 
@@ -47,6 +50,7 @@ public class LogStoreTest {
         s5_consumeReject();
         s6_clearAndCorrupt();
         s7_overviewContract();
+        s8_migrateLegacyKeepsManifest();
 
         TestHost.done();
     }
@@ -217,5 +221,43 @@ public class LogStoreTest {
         TestHost.checkEq(1, ov.optInt("acked24h"), "S7c acked24h 键");
         TestHost.check(ov.has("lastAckedAt") && ov.has("rejected") && ov.has("totalCollected")
                 && ov.has("appendFailAt") && ov.has("readCorrupt"), "S7d 四态区分键齐备");
+    }
+
+    /* S8：migrateLegacy 不误伤冻结清单（v7.9.8b——T14 暴露的真实 Bug）。
+     * 旧规则 startsWith("batch-") 每次新实例（进程重启）都删 batch-manifest.json
+     * → 冻结状态丢失 → 重试换新 batchId → 服务端已收原批次时重复建 Issue。 */
+    private static void s8_migrateLegacyKeepsManifest() {
+        MemEnv env = new MemEnv();
+        LogStore s = LogStore.forEnv(env);
+        JSONArray chunk = new JSONArray();
+        for (int i = 0; i < 10; i++) chunk.put(ev("CLICK"));
+        LogStore.FrozenBatch fb = s.sealBatch(chunk, "2026-11-23T05:00:00Z");
+        TestHost.check(fb != null, "S8a 前置：封批成功");
+        // 制造遗留文件（v8.0.0~v8.2.1 升级现场）：batch-{uuid}.json + acked-meta.json
+        try {
+            File d = new File(env.dir, "log-upload");
+            FileOutputStream f1 = new FileOutputStream(new File(d, "batch-01234567-89ab-4def-9012-123456789abc.json"));
+            f1.write("[]".getBytes(StandardCharsets.UTF_8));
+            f1.close();
+            FileOutputStream f2 = new FileOutputStream(new File(d, "acked-meta.json"));
+            f2.write("[]".getBytes(StandardCharsets.UTF_8));
+            f2.close();
+        } catch (Throwable ignored) {
+        }
+        // 进程重启：新实例 → migrateLegacy 运行
+        LogStore s2 = LogStore.forEnv(env);
+        LogStore.FrozenBatch recovered = s2.headFrozenOrNull();
+        TestHost.check(recovered != null && fb.batchId.equals(recovered.batchId),
+                "S8b 重启后冻结清单存活（batchId 延续——不再被遗留清理误删）");
+        TestHost.checkEq(fb.events.toString(), recovered.events.toString(),
+                "S8c 冻结事件字节级存活");
+        File d = new File(env.dir, "log-upload");
+        TestHost.check(!new File(d, "batch-01234567-89ab-4def-9012-123456789abc.json").exists(),
+                "S8d 遗留 batch-{uuid}.json 仍被清理");
+        TestHost.check(!new File(d, "acked-meta.json").exists(),
+                "S8e 遗留 acked-meta.json 仍被清理");
+        // manifest 临时文件（writeJsonArray 的 .tmp 残留）不影响恢复
+        TestHost.check(new File(d, "batch-manifest.json").exists(),
+                "S8f manifest 文件在盘");
     }
 }

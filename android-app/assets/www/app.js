@@ -1315,7 +1315,9 @@ function setUploadPhase(btn, phase) {
 }
 
 /* v7.9.8 错误分类码 → 人话提示（用户八类表；基于 LogUploader.classifyError
- * 的真实 HTTP 状态码/服务端码/网络异常类型——绝不猜测原因） */
+ * 的真实 HTTP 状态码/服务端码/网络异常类型——绝不猜测原因）。
+ * v7.9.8b：裸 401（AUTH_FAILED·认证失败）与裸 403（FORBIDDEN·权限不足）
+ * 分家提示——服务端 JSON 码 UNAUTHORIZED 仍按契约透出原码。 */
 function uploadErrText(res) {
   const k = String((res && res.errKind) || "");
   const raw = String((res && res.lastError) || "");
@@ -1323,6 +1325,8 @@ function uploadErrText(res) {
   if (k === "NET_TIMEOUT") return "上传超时，请稍后重试——若服务端已收到，重试会自动复用原 Issue，不会重复提交";
   if (k === "RATE_LIMITED") return "上传次数已达到限制，请稍后重试";
   if (k === "INVALID_REQUEST" || k === "HTTP_400") return "上传数据格式异常（" + (raw || "400") + "）——该情况请反馈给开发者";
+  if (k === "AUTH_FAILED") return "认证失败：服务端未接受本次上传（401），请稍后重试——日志已保留";
+  if (k === "FORBIDDEN") return "权限不足：服务端拒绝了本次上传（403），请稍后重试——日志已保留";
   if (k === "UNAUTHORIZED") return "服务端拒绝了本次上传（UNAUTHORIZED），请查看诊断信息";
   if (k === "PRIVACY_REJECTED" || k === "IDEMPOTENCY_CONFLICT" || k === "PAYLOAD_TOO_LARGE"
       || k === "MANUAL_RECONCILIATION_REQUIRED") {

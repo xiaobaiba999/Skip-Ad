@@ -142,16 +142,21 @@ public final class LogStore {
         migrateLegacy();
     }
 
-    /* ── 旧版遗留清理（v8.0.0~v8.2.1 升级路径）：batch-*.json 状态机文件与
-     * acked-meta.json 由本版废弃——删除防孤儿堆积；pending-events.json
-     * 格式不变直接继承（升级用户未上传事件无损保留）。 */
+    /* ── 旧版遗留清理（v8.0.0~v8.2.1 升级路径）：batch-{uuid}.json 状态机
+     * 文件与 acked-meta.json 由本版废弃——删除防孤儿堆积；pending-events.json
+     * 格式不变直接继承（升级用户未上传事件无损保留）。
+     * v7.9.8b 修复（T14 回归钉死）：旧规则 startsWith("batch-") 会连带删除
+     * 本版冻结清单 batch-manifest.json——进程每次重启丢冻结状态，若首 POST
+     * 已被服务端接受（Issue 已建），重启后重试换新 batchId = 重复建 Issue，
+     * 幂等契约断裂。遗留文件实名 batch-{uuid}.json，清单排除即可。 */
     private void migrateLegacy() {
         try {
             File[] files = dir().listFiles();
             if (files == null) return;
             for (File f : files) {
                 String n = f.getName();
-                if (n.startsWith("batch-") || n.equals("acked-meta.json")) {
+                if ((n.startsWith("batch-") && !n.equals(MANIFEST_FILE))
+                        || n.equals("acked-meta.json")) {
                     //noinspection ResultOfMethodCallIgnored
                     f.delete();
                 }

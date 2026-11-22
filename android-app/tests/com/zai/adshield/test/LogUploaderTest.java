@@ -27,8 +27,20 @@ import java.util.List;
  *      追加新事件后重试 → 冻结 payload 字节级不变 → ALREADY_ACCEPTED
  *      复用原编号成功消费——绝不 IDEMPOTENCY_CONFLICT；
  *  T12 错误分类矩阵（classifyError 八类——真实 HTTP 状态码/服务端码/
- *      网络异常类型三路，UI 八类人话映射的唯一依据）；
- *  T13 限流 retryAfter 透传（RATE_LIMITED → retryAfterMs 毫秒口径）。
+ *      网络异常类型三路，UI 八类人话映射的唯一依据；v7.9.8b 裸 401/403
+ *      分家为 AUTH_FAILED/FORBIDDEN——认证与权限分开提示）；
+ *  T13 限流 retryAfter 透传（RATE_LIMITED → retryAfterMs 毫秒口径）；
+ *  T14 【进程被杀重启恢复】上传中进程死亡 → 新 LogStore 实例（同目录
+ *      = 重启）→ 冻结批次从磁盘 manifest 恢复 → 字节级同 payload 重试 →
+ *      ALREADY_ACCEPTED 消费（用户 J 场景——幂等实现完整性的关键证据）；
+ *  T15 【批次 B 独立性】批次 A 成功消费后新日志形成批次 B——不同 batchId、
+ *      绝不混入 A 事件（用户 H/I 场景）；
+ *  T16 【自动 24h/3 批粒度闸】积压排空也不越 3 批/窗：200 条自动排空只
+ *      成功 3 批即停，窗口滑动后续传（v7.9.8b 修复的回归钉死）；
+ *  T17 【IDEMPOTENCY_CONFLICT 证据保留】终态冲突 → 批次隔离进 rejected.json
+ *      （code+error+events 全在）——不丢证据、不计成功、不再盲重试；
+ *  T18 【额度文件损坏防御】ok-times/auto-ok-times 损坏不崩溃、计数归零、
+ *      recordOk 重写自愈（用户「损坏的额度文件不会导致应用崩溃」）。
  */
 public class LogUploaderTest {
 
@@ -149,6 +161,11 @@ public class LogUploaderTest {
         t11_userTwoFailureScenario();
         t12_classifyErrorMatrix();
         t13_retryAfterPassthrough();
+        t14_restartRecoveryFrozen();
+        t15_batchBIndependence();
+        t16_autoInRunQuotaCap();
+        t17_idempotencyConflictEvidence();
+        t18_corruptedQuotaFiles();
 
         TestHost.done();
     }
@@ -411,10 +428,12 @@ public class LogUploaderTest {
                 "T12e HTTP 429 → RATE_LIMITED");
         TestHost.checkEq("INVALID_REQUEST", LogUploader.classifyError(new LogUploader.Resp(400, null)),
                 "T12f HTTP 400 → INVALID_REQUEST");
-        TestHost.checkEq("UNAUTHORIZED", LogUploader.classifyError(new LogUploader.Resp(401, null)),
-                "T12g HTTP 401 → UNAUTHORIZED");
-        TestHost.checkEq("UNAUTHORIZED", LogUploader.classifyError(new LogUploader.Resp(403, null)),
-                "T12h HTTP 403 → UNAUTHORIZED");
+        TestHost.checkEq("UNAUTHORIZED", LogUploader.classifyError(new LogUploader.Resp(401, json("UNAUTHORIZED"))),
+                "T12g 服务端 JSON 码 UNAUTHORIZED（401 带 body）→ 契约码原样透出");
+        TestHost.checkEq("AUTH_FAILED", LogUploader.classifyError(new LogUploader.Resp(401, null)),
+                "T12h 裸 HTTP 401（无 JSON body）→ AUTH_FAILED（认证失败——v7.9.8b 分家）");
+        TestHost.checkEq("FORBIDDEN", LogUploader.classifyError(new LogUploader.Resp(403, null)),
+                "T12h2 裸 HTTP 403（无 JSON body）→ FORBIDDEN（权限不足——v7.9.8b 分家）");
         TestHost.checkEq(LogUploader.ERR_RELAY_5XX, LogUploader.classifyError(new LogUploader.Resp(500, null)),
                 "T12i HTTP 500 → RELAY_SERVER_ERROR");
         TestHost.checkEq(LogUploader.ERR_RELAY_5XX, LogUploader.classifyError(new LogUploader.Resp(502, null)),
@@ -473,5 +492,169 @@ public class LogUploaderTest {
         LogStore s2 = storeWith(5);
         LogUploader.Summary r2 = uploader(s2, big).runUpload(true);
         TestHost.checkEq(24L * 3600 * 1000, r2.retryAfterMs, "T13c retryAfter 巨值钳制 ≤24h");
+    }
+
+    /* T14：【进程被杀重启恢复】封批落盘（manifest 持久化）→ 上传中进程死亡 →
+     * 新 LogStore 实例（同 env 目录 = 重启后重建）→ 冻结批次恢复 → 字节级
+     * 同 payload 重试 → ALREADY_ACCEPTED 幂等消费。若批次只在内存中，此
+     * 场景必丢冻结状态（幂等断裂）——本测试钉死磁盘持久化语义。 */
+    private static void t14_restartRecoveryFrozen() {
+        env = new MemEnv();
+        LogStore s1 = storeWith(30);
+        FakeHttp http1 = new FakeHttp();
+        http1.responses.add(LogUploader.Resp.netError("timeout")); // 超时=进程可能被杀
+        LogUploader.Summary r1 = uploader(s1, http1).runUpload(true);
+        TestHost.checkEq(0, r1.acked, "T14a 第一次超时零确认");
+        JSONObject body1 = http1.posts.get(0);
+        // 进程死亡：丢弃实例（内存状态全失）——仅磁盘文件存活
+        s1 = null;
+        // 重启：同 env（同目录）新实例——冻结批次必须从 batch-manifest.json 恢复
+        LogStore s2 = LogStore.forEnv(env);
+        TestHost.checkEq(30, s2.pendingEventCount(), "T14b 重启后 pending 无损");
+        FakeHttp http2 = new FakeHttp();
+        http2.responses.add(FakeHttp.alreadyAccepted(207)); // 服务端：早已接收
+        LogUploader.Summary r2 = uploader(s2, http2).runUpload(true);
+        TestHost.checkEq(1, r2.acked, "T14c 重启后冻结批次恢复并幂等成功");
+        JSONObject body2 = http2.posts.get(0);
+        TestHost.checkEq(body1.optString("batchId"), body2.optString("batchId"),
+                "T14d 重启前后同 batchId（磁盘恢复非重封）");
+        TestHost.checkEq(body1.optString("createdAt"), body2.optString("createdAt"),
+                "T14e 重启前后同 createdAt");
+        TestHost.checkEq(body1.optJSONArray("events").toString(),
+                body2.optJSONArray("events").toString(),
+                "T14f 重启前后字节级同 events（幂等契约跨进程存活）");
+        TestHost.checkEq(0, s2.pendingEventCount(), "T14g 消费完成");
+    }
+
+    /* T15：【批次 B 独立性】批次 A 成功消费后新增日志 → 批次 B 新 batchId、
+     * 事件只含新增（绝不混入 A 残留）——「批次 B 不会与批次 A 混合」。 */
+    private static void t15_batchBIndependence() {
+        env = new MemEnv();
+        LogStore s = storeWith(20);
+        FakeHttp http1 = new FakeHttp();
+        LogUploader.Summary r1 = uploader(s, http1).runUpload(true);
+        TestHost.checkEq(1, r1.acked, "T15a 批次 A 成功");
+        String batchA = http1.posts.get(0).optString("batchId");
+        // 批次 A 消费后新增日志
+        for (int i = 0; i < 7; i++) s.appendEvent(ev());
+        s.awaitIoForJvm();
+        FakeHttp http2 = new FakeHttp();
+        LogUploader.Summary r2 = uploader(s, http2).runUpload(true);
+        TestHost.checkEq(1, r2.acked, "T15b 批次 B 成功");
+        JSONObject bodyB = http2.posts.get(0);
+        TestHost.check(!bodyB.optString("batchId").equals(batchA), "T15c 批次 B 新 batchId");
+        org.json.JSONArray evB = bodyB.optJSONArray("events");
+        int realB = 0;
+        for (int i = 0; evB != null && i < evB.length(); i++) {
+            if (!"STATS".equals(evB.optJSONObject(i).optString("type", ""))) realB++;
+        }
+        TestHost.checkEq(7, realB, "T15d 批次 B 真实事件只含新增 7 条（另有 STATS 快照注入）");
+        TestHost.checkEq(0, s.pendingEventCount(), "T15e 全部消费");
+    }
+
+    /* T16：【自动 24h/3 批粒度闸】200 条积压（5 批）自动排空——第 3 批成功
+     * 后即停（autoEligible 只挡 run 起点，v7.9.8b 前单次运行可越 3 批）；
+     * 窗口滑动（旧时间戳出窗）后下一次自动运行续传剩余。 */
+    private static void t16_autoInRunQuotaCap() {
+        env = new MemEnv();
+        LogStore s = storeWith(200);
+        FakeHttp http = new FakeHttp();
+        LogUploader.Summary r = uploader(s, http).runUpload(false); // 自动路径
+        TestHost.checkEq(3, r.acked, "T16a 200 条 5 批——自动路径只成功 3 批即停（24h/3）");
+        TestHost.checkEq(3, http.posts.size(), "T16b 第 4/5 批未发（批粒度闸）");
+        TestHost.checkEq(3, s.autoOkCount24h(System.currentTimeMillis()), "T16c 自动账本=3");
+        int remaining = s.pendingEventCount();
+        TestHost.check(remaining > 0, "T16d 剩余事件保留待窗口滑动（=" + remaining + "）");
+        // 窗口滑动：手动把自动账本时间戳回写为 25h 前（模拟时间流逝出窗）
+        try {
+            org.json.JSONArray old = new org.json.JSONArray();
+            long t25h = System.currentTimeMillis() - 25L * 3600 * 1000;
+            old.put(t25h); old.put(t25h); old.put(t25h);
+            java.io.File f = new java.io.File(new java.io.File(env.dir, "log-upload"), "auto-ok-times.json");
+            java.io.FileOutputStream fo = new java.io.FileOutputStream(f);
+            fo.write(old.toString().getBytes("UTF-8"));
+            fo.close();
+        } catch (Throwable ignored) {
+        }
+        TestHost.checkEq(0, s.autoOkCount24h(System.currentTimeMillis()), "T16e 窗口滑动后额度恢复");
+        FakeHttp http2 = new FakeHttp();
+        LogUploader.Summary r2 = uploader(s, http2).runUpload(false);
+        TestHost.checkEq(2, r2.acked, "T16f 续传剩余 2 批（含首块 STATS）");
+        TestHost.checkEq(0, s.pendingEventCount(), "T16g 排空完成");
+        // 对照：手动路径无批粒度闸（随时全量可用）
+        env = new MemEnv();
+        LogStore s3 = storeWith(200);
+        FakeHttp http3 = new FakeHttp();
+        LogUploader.Summary r3 = uploader(s3, http3).runUpload(true); // 手动
+        TestHost.checkEq(5, r3.acked, "T16h 手动路径不受 24h/3 闸（5 批全传）");
+    }
+
+    /* T17：【IDEMPOTENCY_CONFLICT 证据保留】终态冲突 → rejectHead 隔离：
+     * 事件移入 rejected.json（code+error+events 全在——证据不丢）、pending
+     * 移出（不再盲重试——重试必然再拒）、不计成功额度。 */
+    private static void t17_idempotencyConflictEvidence() {
+        env = new MemEnv();
+        LogStore s = storeWith(12);
+        FakeHttp http = new FakeHttp();
+        http.responses.add(FakeHttp.terminal("IDEMPOTENCY_CONFLICT"));
+        LogUploader.Summary r = uploader(s, http).runUpload(true);
+        TestHost.checkEq(0, r.acked, "T17a 冲突不算成功");
+        TestHost.checkEq(1, r.rejected, "T17b 冲突块如实隔离计数");
+        TestHost.checkEq("IDEMPOTENCY_CONFLICT", r.errKind, "T17c 冲突码透出（不吞码）");
+        TestHost.checkEq(0, s.pendingEventCount(), "T17d 冲突块移出 pending（不再盲重试）");
+        TestHost.checkEq(1, s.rejectedCount(), "T17e 检视记录在场");
+        TestHost.checkEq(0, s.okCount24h(System.currentTimeMillis()), "T17f 冲突不耗成功额度");
+        // 证据完整性：rejected.json 保留 code + error + 事件体
+        try {
+            java.io.File f = new java.io.File(new java.io.File(env.dir, "log-upload"), "rejected.json");
+            java.io.FileInputStream in = new java.io.FileInputStream(f);
+            java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream();
+            byte[] buf = new byte[4096];
+            int n;
+            while ((n = in.read(buf)) > 0) bo.write(buf, 0, n);
+            in.close();
+            org.json.JSONArray rej = new org.json.JSONArray(new String(bo.toByteArray(), "UTF-8"));
+            org.json.JSONObject rec = rej.optJSONObject(0);
+            TestHost.check(rec != null && "IDEMPOTENCY_CONFLICT".equals(rec.optString("code")),
+                    "T17g 证据保留：code 在场");
+            TestHost.check(rec != null && "test".equals(rec.optString("error")),
+                    "T17h 证据保留：error 文本在场");
+            TestHost.check(rec != null && rec.optJSONArray("events") != null
+                    && rec.optJSONArray("events").length() == 12,
+                    "T17i 证据保留：12 条事件体完整隔离（可检视可追溯）");
+        } catch (Throwable t) {
+            TestHost.check(false, "T17g 证据读取异常: " + t);
+        }
+        // 后续运行不再重试冲突块（pending 已空——零 POST）
+        FakeHttp http2 = new FakeHttp();
+        LogUploader.Summary r2 = uploader(s, http2).runUpload(true);
+        TestHost.checkEq(0, http2.posts.size(), "T17j 冲突块不再盲重试（零 POST）");
+    }
+
+    /* T18：【额度文件损坏防御】ok-times.json / auto-ok-times.json 写入垃圾
+     * → 计数归零（不崩溃）、上传不受阻、recordOk 重写自愈。 */
+    private static void t18_corruptedQuotaFiles() {
+        env = new MemEnv();
+        LogStore s = storeWith(5);
+        try {
+            java.io.File d = new java.io.File(env.dir, "log-upload");
+            java.io.FileOutputStream o1 = new java.io.FileOutputStream(new java.io.File(d, "ok-times.json"));
+            o1.write("{corrupt!!!".getBytes("UTF-8"));
+            o1.close();
+            java.io.FileOutputStream o2 = new java.io.FileOutputStream(new java.io.File(d, "auto-ok-times.json"));
+            o2.write("not-json-at-all".getBytes("UTF-8"));
+            o2.close();
+        } catch (Throwable ignored) {
+        }
+        TestHost.checkEq(0, s.okCount24h(System.currentTimeMillis()), "T18a 损坏 ok-times 读作零（不崩溃）");
+        TestHost.checkEq(0, s.autoOkCount24h(System.currentTimeMillis()), "T18b 损坏 auto-ok-times 读作零");
+        FakeHttp http = new FakeHttp();
+        LogUploader.Summary r = uploader(s, http).runUpload(true);
+        TestHost.checkEq(1, r.acked, "T18c 损坏额度文件不阻断上传");
+        s.recordOk(System.currentTimeMillis(), false);
+        TestHost.checkEq(1, s.autoOkCount24h(System.currentTimeMillis()),
+                "T18d recordOk 重写自愈（损坏内容被覆盖）");
+        TestHost.checkEq(2, s.okCount24h(System.currentTimeMillis()),
+                "T18e 全部账本同样自愈（手动 1 + 自动 1）");
     }
 }
