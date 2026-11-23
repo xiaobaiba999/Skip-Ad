@@ -79,8 +79,8 @@ const NEED = [
   "renderReport",        // 使用报告
   "checkUpdateOnLaunch", // v7.9.6plus 启动时新版本检测
   "showUpdateGate",      // v7.9.6plus 全屏更新页
-  "versionCodeFromNotes",// v7.9.6plus versionCode 元数据解析
-  "isNewerByCode",       // v7.9.6plus versionCode 主判
+  "bridgeUpdateCheck",   // v7.10.0 异步更新检查（单飞/过期序号/90s 兜底）
+  "isNewerByCode",       // v7.10.0 统一版本规则（versionCode 单一判定）
   "maybeShowBugTip",     // Bug 反馈提示评估入口（v7.9.8 升 24h 节流）
   "showBugTip",          // Bug 反馈提示卡渲染
   "bugTipThrottled",     // v7.9.8 24h 节流判定（时间戳主闸）

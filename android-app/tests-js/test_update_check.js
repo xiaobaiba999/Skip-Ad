@@ -98,7 +98,13 @@ A("全源 https + latest.json 路径",
 A("app.js 无 api.github.com 字符串字面量（可执行面）",
   !/"https:\/\/api\.github\.com/.test(src) && !src.includes("GH_API ="));
 A("app.js 无 netGetLatestRelease 调用", !src.includes("netGetLatestRelease()"));
-A("app.js 桥调用 = AndroidApp.updateCheck", src.includes("AndroidApp.updateCheck(!!manual)"));
+/* v7.10.0 异步化：JS 主线程零同步网络等待——桥调用必须是 updateCheckAsync */
+A("app.js 桥调用 = AndroidApp.updateCheckAsync(manual, cb)", src.includes("AndroidApp.updateCheckAsync(!!manual, cbName)"));
+A("app.js 无同步桥调用 AndroidApp.updateCheck(（旧同步桥已移除）",
+  !/AndroidApp\.updateCheck\(/.test(src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^[ \t]*\/\/.*$/gm, "")));
+A("app.js 90s 回调兜底在场（手动检查绝不永久卡住）", src.includes("UPD_ASYNC_TIMEOUT_MS"));
+A("app.js JS 单飞在场（并发共享同一在飞检查）", src.includes("updInFlight"));
+A("app.js 过期序号防护在场（旧回调丢弃）", src.includes("updSeq"));
 
 console.log("═══ ③ 浏览器预览路径 fetchLatest（fetch 桩）═══");
 const REAL_MANIFEST = {

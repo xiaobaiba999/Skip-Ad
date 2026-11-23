@@ -207,103 +207,34 @@ public final class Net {
      * 限流」的用户实锤根因）。替代：
      *   · 更新元数据 → UpdateRepository（静态清单 raw.githubusercontent.com，
      *     Fastly CDN，零 REST API 配额）+ UpdateManifest（清单契约/校验）；
-     *   · 版本判定纯函数（isNewerRelease/versionCodeOfNotes/cmpVersion/segNum）
-     *     原地保留于本类（清单与 Release 正文共用同一权威语义）；
+     *   · 版本判定纯函数 → isNewerRelease（v7.10.0 统一规则：仅
+     *     remoteVersionCode > currentVersionCode；versionCodeOfNotes/
+     *     cmpVersion/segNum 旧回退链已随 v7.10.0 统一规则专项删除）；
      *   · 限流判定 → UpdateManifest.isRateLimitCode（403/429）。
      * 真机根因史（v8.0.3 实锤）：匿名 60 次/小时/IP，国内共享出口易耗尽。 */
 
-    /* ═══ v7.9.6plus versionCode 主判（纯函数，JVM 可测）═══ */
+    /* ═══ v7.10.0 统一版本规则（纯函数，JVM 可测）═══ */
 
     /**
-     * 新版本判定（v7.9.6plus：versionCode 主判——用户指令）。
-     * ① 双方 versionCode 在场（>0）→ remoteVersionCode > currentVersionCode
-     *    才算新版（≤ 不算——绝不提示降级安装）；
-     * ② 元数据缺失（旧 Release 正文无 versionCode 行 / 取不到本地
-     *    versionCode）→ 回退 versionName 三段比较 cmpVersion(tag, current)
-     *    > 0（v7.x 语义兼容）。
-     * 背景：「7.9.6plus」等非纯数字 versionName 的分段解析不可靠
-     * （"7.9.6plus"→[7,9,6]，与 "8.2.2"→[8,2,2] 比较必判旧版）；Android
-     * 覆盖安装的权威依据是 versionCode 单调递增——正式发布模板必含
-     * versionCode 元数据行（本判定①兜住一切非纯数字命名）。
+     * 新版本判定（v7.10.0 统一规则——全项目唯一权威语义）：
+     * remoteVersionCode > currentVersionCode 才算新版；任一侧缺失/非法
+     * （≤0）→ 不提示（绝不因元数据缺失回退 versionName 字符串比较——
+     * 旧回退链对 "7.9.6plus" 等非三段命名的误判史见 docs/CHANGELOG.md
+     * v7.9.6plus/v7.9.8 节）。versionName 自 v7.10.0 起仅作展示，
+     * 绝不参与更新判断（JS 侧 isNewerByCode / 清单侧 UpdateManifest.parse
+     * / 生成器侧 update_manifest.py 三面同语义）。
      */
-    public static boolean isNewerRelease(int remoteVersionCode, String remoteTag,
-                                         int currentVersionCode, String currentVersion) {
-        if (remoteVersionCode > 0 && currentVersionCode > 0) {
-            return remoteVersionCode > currentVersionCode;
-        }
-        return cmpVersion(remoteTag, currentVersion) > 0;
+    public static boolean isNewerRelease(int remoteVersionCode, int currentVersionCode) {
+        return remoteVersionCode > 0 && currentVersionCode > 0 && remoteVersionCode > currentVersionCode;
     }
 
-    /**
-     * v7.9.6plus：Release 正文 versionCode 元数据行解析（纯函数，JVM 可测）。
-     * 正式发布模板在正文开头含机器可读行「versionCode: 82300」。
-     * 匹配首个以 versionCode: 开头的行；只取行内前缀连续数字（容忍行尾
-     * 说明文字）；无匹配/非数字/超 int → 0（调用方回退 versionName 比较）。
-     */
-    public static int versionCodeOfNotes(String notes) {
-        if (notes == null) return 0;
-        String[] lines = notes.split("\n");
-        for (int i = 0; i < lines.length; i++) {
-            String t = lines[i].trim();
-            if (t.startsWith("versionCode:")) {
-                String rest = t.substring("versionCode:".length()).trim();
-                StringBuilder sb = new StringBuilder();
-                for (int j = 0; j < rest.length(); j++) {
-                    char ch = rest.charAt(j);
-                    if (ch >= '0' && ch <= '9') sb.append(ch); else break;
-                }
-                if (sb.length() > 0) {
-                    try {
-                        long v = Long.parseLong(sb.toString());
-                        if (v > 0 && v <= Integer.MAX_VALUE) return (int) v;
-                    } catch (Exception ignored) {
-                    }
-                }
-                return 0;
-            }
-        }
-        return 0;
-    }
-
-    /** 版本名三段数值比较（纯函数，JVM 可测）——app.js cmpVer 的 Java 镜像：
-     *  三段数值比较（非字典序："8.10.0" > "8.9.0"）、v 前缀容忍、缺段补 0。 */
-    public static int cmpVersion(String a, String b) {
-        int[] pa = versionSegs(a);
-        int[] pb = versionSegs(b);
-        for (int i = 0; i < 3; i++) {
-            int d = pa[i] - pb[i];
-            if (d != 0) return d;
-        }
-        return 0;
-    }
-
-    private static int[] versionSegs(String v) {
-        int[] out = {0, 0, 0};
-        if (v == null) return out;
-        String s = v.trim();
-        if (s.startsWith("v") || s.startsWith("V")) s = s.substring(1);
-        String[] parts = s.split("\\.");
-        for (int i = 0; i < 3 && i < parts.length; i++) {
-            out[i] = segNum(parts[i].trim());
-        }
-        return out;
-    }
-
-    /** v7.9.6plus：段内前缀数字解析（"6plus"→6——"7.9.6plus"≈7.9.6 同族；
-     *  纯字母段→0。防 plus 后缀把第三段吞成 0 导致 cmpVersion 误判
-     *  「7.9.6 > 7.9.6plus」（浏览器实测抓到——远端 v7.9.6 无元数据行时
-     *  被误判为新版弹出更新页）。JS cmpVer 同源同修。 */
-    public static int segNum(String seg) {
-        if (seg == null || seg.length() == 0) return 0;
-        int end = 0;
-        while (end < seg.length() && Character.isDigit(seg.charAt(end))) end++;
-        if (end == 0) return 0;
-        try {
-            return Integer.parseInt(seg.substring(0, end));
-        } catch (Exception e) {
-            return 0;
-        }
-    }
+    /* ═══ v7.10.0：已删除的 versionName 回退链（统一规则专项）═══
+     * versionCodeOfNotes（Release 正文 versionCode 元数据行解析）/
+     * cmpVersion（versionName 三段数值比较）/ versionSegs / segNum
+     * （plus 后缀段解析——"6plus"→6 的 82300/plus 旧兼容核心）四函数
+     * 连同全部调用方一并移除：清单 versionCode 缺失即不判新，绝不从
+     * Release 正文回退定码、绝不回退 versionName 名比较。死灰复燃防线
+     * 见 UpdateChannelTest S2 反射断言（四符号均不得回场）。 */
 
     /* 【v7.9.8 已移除】rateLimited（403/429 限流判定）→ 迁移
      * UpdateManifest.isRateLimitCode（语义不变——宿主随静态清单架构换新）。

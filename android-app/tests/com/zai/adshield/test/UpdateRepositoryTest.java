@@ -300,7 +300,7 @@ public final class UpdateRepositoryTest {
         ScriptFetcher f1 = new ScriptFetcher();
         f1.script.put(src[0], GOOD_MANIFEST);
         UpdateRepository.WalkResult w1 = UpdateRepository.walkSources(f1, null, farDeadline,
-                "com.zai.adshield", "7.9.8", 79800);
+                "com.zai.adshield", 79800);
         TestHost.check(w1.kind == UpdateRepository.WalkResult.SUCCESS
                         && w1.payload.contains("7.9.9") && w1.body.equals(GOOD_MANIFEST)
                         && w1.url.equals(src[0]) && "\"e1\"".equals(w1.etag),
@@ -311,7 +311,7 @@ public final class UpdateRepositoryTest {
         ScriptFetcher f2 = new ScriptFetcher();
         f2.script.put(src[1], GOOD_MANIFEST);
         UpdateRepository.WalkResult w2 = UpdateRepository.walkSources(f2, null, farDeadline,
-                "com.zai.adshield", "7.9.8", 79800);
+                "com.zai.adshield", 79800);
         TestHost.check(w2.kind == UpdateRepository.WalkResult.SUCCESS && w2.url.equals(src[1]),
                 "S8b 主源连接失败 → jsDelivr 备用源成功");
         TestHost.check(f2.requested.size() == 2, "S8b 恰两次请求（主源+备用各一次）");
@@ -327,7 +327,7 @@ public final class UpdateRepositoryTest {
             f.script.put(src[0], fc[1]);
             f.script.put(src[2], GOOD_MANIFEST);
             UpdateRepository.WalkResult w = UpdateRepository.walkSources(f, null, farDeadline,
-                    "com.zai.adshield", "7.9.8", 79800);
+                    "com.zai.adshield", 79800);
             TestHost.check(w.kind == UpdateRepository.WalkResult.SUCCESS && w.url.equals(src[2]),
                     fc[0] + " " + fc[2] + " → 跳过失败源第三源成功");
         }
@@ -337,7 +337,7 @@ public final class UpdateRepositoryTest {
         f3.script.put(src[0], "<html>被劫持页面</html>");
         f3.script.put(src[1], GOOD_MANIFEST);
         UpdateRepository.WalkResult w3 = UpdateRepository.walkSources(f3, null, farDeadline,
-                "com.zai.adshield", "7.9.8", 79800);
+                "com.zai.adshield", 79800);
         TestHost.check(w3.kind == UpdateRepository.WalkResult.SUCCESS,
                 "S8f 主源非法 JSON → 不采信也不放弃 → 备用源成功");
 
@@ -346,7 +346,7 @@ public final class UpdateRepositoryTest {
         f4.script.put(src[0], GOOD_MANIFEST.replace("com.zai.adshield", "com.evil.x"));
         f4.script.put(src[1], GOOD_MANIFEST);
         UpdateRepository.WalkResult w4 = UpdateRepository.walkSources(f4, null, farDeadline,
-                "com.zai.adshield", "7.9.8", 79800);
+                "com.zai.adshield", 79800);
         TestHost.check(w4.kind == UpdateRepository.WalkResult.SUCCESS,
                 "S8g 主源包名不匹配 → 备用源有效 → 采信备用源（抗劫持降级）");
 
@@ -358,7 +358,7 @@ public final class UpdateRepositoryTest {
         f5.script.put(src[3], "ERR:" + UpdateManifest.ERR_HTTP);
         f5.script.put(src[4], "ERR:" + UpdateManifest.ERR_NETWORK);
         UpdateRepository.WalkResult w5 = UpdateRepository.walkSources(f5, null, farDeadline,
-                "com.zai.adshield", "7.9.8", 79800);
+                "com.zai.adshield", 79800);
         TestHost.check(w5.kind == UpdateRepository.WalkResult.ALL_FAILED
                         && UpdateManifest.ERR_DNS.equals(w5.errorCode),
                 "S8h 全链失败 → 首源错误码 canonical（DNS 如实报告）");
@@ -371,7 +371,7 @@ public final class UpdateRepositoryTest {
         f6.script.put(src[0], "ERR:" + UpdateManifest.ERR_NETWORK);
         f6.script.put(src[1], "304");
         UpdateRepository.WalkResult w6 = UpdateRepository.walkSources(f6, cached, farDeadline,
-                "com.zai.adshield", "7.9.8", 79800);
+                "com.zai.adshield", 79800);
         TestHost.check(w6.kind == UpdateRepository.WalkResult.NOT_MODIFIED,
                 "S8i 同源条件 304 → NOT_MODIFIED（缓存续新鲜）");
         TestHost.check(f6.conditionalSent == 1 && f6.requested.contains(src[1]),
@@ -382,7 +382,7 @@ public final class UpdateRepositoryTest {
         f7.script.put(src[0], "304"); // 无缓存 → 无条件头
         f7.script.put(src[1], GOOD_MANIFEST);
         UpdateRepository.WalkResult w7 = UpdateRepository.walkSources(f7, null, farDeadline,
-                "com.zai.adshield", "7.9.8", 79800);
+                "com.zai.adshield", 79800);
         TestHost.check(w7.kind == UpdateRepository.WalkResult.SUCCESS && w7.url.equals(src[1]),
                 "S8j 异常 304（无条件头）→ 防御性继续链 → 备用源成功");
 
@@ -391,7 +391,7 @@ public final class UpdateRepositoryTest {
         f8.script.put(src[0], "ERR:" + UpdateManifest.ERR_TIMEOUT);
         f8.script.put(src[4], GOOD_MANIFEST);
         UpdateRepository.WalkResult w8 = UpdateRepository.walkSources(f8, null,
-                System.currentTimeMillis() - 1, "com.zai.adshield", "7.9.8", 79800);
+                System.currentTimeMillis() - 1, "com.zai.adshield", 79800);
         TestHost.check(w8.kind == UpdateRepository.WalkResult.ALL_FAILED && f8.requested.size() == 1,
                 "S8k 预算耗尽 → 首源必试后即停（恰 1 请求）");
 
@@ -399,7 +399,7 @@ public final class UpdateRepositoryTest {
         ScriptFetcher f9 = new ScriptFetcher();
         f9.script.put(src[0], "{\"prerelease\":true}");
         UpdateRepository.WalkResult w9 = UpdateRepository.walkSources(f9, null, farDeadline,
-                "com.zai.adshield", "7.9.8", 79800);
+                "com.zai.adshield", 79800);
         TestHost.check(w9.kind == UpdateRepository.WalkResult.SUCCESS
                         && w9.payload.contains("\"hasRelease\":false"),
                 "S8l 无正式版清单 → 有效答案即停（hasRelease:false）");
@@ -410,7 +410,7 @@ public final class UpdateRepositoryTest {
         f10.script.put(src[0], "NULL");
         f10.script.put(src[1], GOOD_MANIFEST);
         UpdateRepository.WalkResult w10 = UpdateRepository.walkSources(f10, null, farDeadline,
-                "com.zai.adshield", "7.9.8", 79800);
+                "com.zai.adshield", 79800);
         TestHost.check(w10.kind == UpdateRepository.WalkResult.SUCCESS,
                 "S8m Fetcher 异常返回 null → 防御性继续链成功");
     }

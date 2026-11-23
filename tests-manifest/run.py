@@ -150,6 +150,19 @@ def main():
     rc, out = run_gen(p, REAL_APK)
     A("S3f 正文 versionCode 不一致 → 拒绝", rc == 2 and "正文 versionCode" in out)
 
+    # v7.10.0 统一规则：非三段 tag（历史 plus 系）一律硬失败——绝不从正文
+    # versionCode 元数据行回退定码（客户端侧同名回退链已删，两面同步）
+    p = bad_release(lambda r: r.update(tag_name="v7.9.6plus"))
+    rc, out = run_gen(p, REAL_APK)
+    A("S3i 非三段 tag（plus 系）→ 硬失败拒绝（v7.10.0 统一规则）",
+      rc == 2 and "非三段 tag" in out)
+    p = bad_release(lambda r: r.update(tag_name="v7.9.6.1"))
+    rc, out = run_gen(p, REAL_APK)
+    A("S3i2 四段式 tag → 同样硬失败（三段式 vX.Y.Z 红线）", rc == 2 and "非三段 tag" in out)
+    p = bad_release(lambda r: r.update(tag_name="v8"))
+    rc, out = run_gen(p, REAL_APK)
+    A("S3i3 单段 tag → 同样硬失败（非三段形态一律拒绝）", rc == 2 and "非三段 tag" in out)
+
     p = bad_release(lambda r: r["assets"][0].update(digest="sha256:" + "0" * 64))
     rc, out = run_gen(p, REAL_APK)
     A("S3g SHA256 实算≠资产 digest → 拒绝", rc == 2 and "SHA256" in out)

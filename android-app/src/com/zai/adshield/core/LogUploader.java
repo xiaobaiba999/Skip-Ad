@@ -23,11 +23,14 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * + LogUploadPolicy 裁决表/退避表——真机实锤复杂链路是「一键上传无日志」
  * 根因链的一环，本版回归 v7.8 的直白模型：点按钮就传、心跳就查、失败保留）。
  * ─────────────────────────────────────────────
- * 六项业务（用户 v8.2.2 指令——除此之外零附加机制）：
- *  ① 自动上传 24h 最多成功 3 次（ok-times 只记服务端确认；v7.9.8b 起
- *     批粒度闸——run 起点与每批成功后双复核，积压排空也不越 3 批/窗）；
+ * 六项业务（用户 v8.2.2 指令——除此之外零附加机制；v7.10.0 次数限制
+ * 彻底移除修订：①③ 的人工额度闸全部删除）：
+ *  ① 自动上传无次数上限（v7.10.0：仅受心跳间隔 8h 与「有新日志才传」
+ *     约束——24h/3 成功额度闸与批粒度复核闸已删；ok-times 账本仅作
+ *     历史留存，不再被任何闸门读取）；
  *  ② 自动上传必须有新日志（pending==0 直接跳过，零网络请求）；
- *  ③ 手动上传随时可用（不查本地额度；服务端 RATE_LIMITED 如实转达）；
+ *  ③ 手动上传随时可用（v7.10.0：零次数/额度/冷却门槛——短时连传多批
+ *     全部放行；服务端 per-minute 瞬时防爆层 RATE_LIMITED 如实转达）；
  *  ④ 成功 = HTTP 2xx 且 body ok=true（服务端明确确认才消费事件）；
  *  ⑤ 失败保留全部未确认事件（同 batchId 重试——服务端幂等防重复 Issue）；
  *  ⑥ 自动上传开关只管自动（采集常开、手动不受影响）。
@@ -46,9 +49,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *  · 错误分类（classifyError 纯函数·JVM 可回归）：网络层区分连接失败/
  *    超时/IO，HTTP 层区分 429/400/401/403/5xx，服务端码原样透出——
  *    UI 按八类人话呈现，不再一律「稍后再试」；
- *  · 额度分账：手动成功只记全部账本（ok-times），自动成功另记
- *    auto-ok-times——手动不再挤占自动 24h/3 闸（服务端共享限额仍由
- *    RATE_LIMITED 如实转达）。
+ *  · 额度分账（v7.10.0 起仅历史账本）：手动成功记 ok-times、自动成功
+ *    另记 auto-ok-times——两账本留存但不再被任何闸门读取（原 24h/3
+ *    自动闸已随「上传次数限制彻底移除」专项删除；服务端瞬时限流仍由
+ *    RATE_LIMITED 如实转达——客户端不越权也不人为设限）。
  *
  * 服务端契约（skip-ad-log-relay 源码不可读——按已部署客户端契约原样保持）：
  * 请求体九键 schemaVersion 1 / 每批 ≤48 事件 / batchId UUID v4 稳定复用 /
@@ -375,14 +379,14 @@ public final class LogUploader {
         public int waited;        // 服务端限流块数
         public String issueNumbers = "";  // 逗号分隔（与 acked 对应顺序）
         public String issueUrls = "";     // 逗号分隔（未验证到真实 URL 的位置为空串）
-        public int acked24h;      // 24h 内成功块数（含本次——全部账本）
         public int pending;       // 剩余待传块数（估算）
         public int pendingEvents; // 剩余事件数
         public long totalCollected;
         public String emptyReason = "";   // acked==0 且无块可传时的四态区分
         public String lastError = "";     // 原始错误（服务端码/HTTP 状态）
         public String errKind = "";       // v7.9.8 稳定分类码（UI 八类人话映射依据）
-        public long retryAfterMs = 0;      // v7.9.8 RATE_LIMITED retryAfter（服务端口径）
+        /* v7.10.0：acked24h/retryAfterMs 已随上传次数限制移除删除——
+         * Summary 不再回传 24h 成功额度与限流等待毫秒（UI 额度文案已清）。 */
 
         public String toJson() {
             JSONObject o = new JSONObject();
@@ -394,14 +398,12 @@ public final class LogUploader {
                 o.put("waited", waited);
                 o.put("issueNumbers", issueNumbers);
                 o.put("issueUrls", issueUrls);
-                o.put("acked24h", acked24h);
                 o.put("pending", pending);
                 o.put("pendingEvents", pendingEvents);
                 o.put("totalCollected", totalCollected);
                 o.put("emptyReason", emptyReason);
                 o.put("lastError", lastError);
                 o.put("errKind", errKind);
-                o.put("retryAfterMs", retryAfterMs);
             } catch (Throwable ignored) {
             }
             return o.toString();
@@ -463,14 +465,15 @@ public final class LogUploader {
 
     /* ═══ 自动上传（心跳检查点——KeepAliveReceiver 顺带调用）═══ */
 
-    /** 自动上传资格（纯函数·JVM 可回归）：距上次自动尝试 ≥ minInterval 且
-     *  存在待传事件且 24h 自动成功数 <3（v7.9.8：只看自动账本——手动成功
-     *  不再挤占自动闸）。失败不耗额度（auto-ok-times 只记成功）。 */
+    /** 自动上传资格（纯函数·JVM 可回归；v7.10.0 次数限制彻底移除版）：
+     *  距上次自动尝试 ≥ minInterval 且存在待传事件——仅此两闸（心跳间隔
+     *  8h + 「有新日志才传」）。24h/3 成功额度闸已随「上传次数限制彻底
+     *  移除」专项删除：用户想传多少次就传多少次（服务端 per-minute 瞬时
+     *  防爆层 RATE_LIMITED 如实转达，本地绝不人为设限）。 */
     public static boolean autoEligible(long lastAutoAttemptAt, long now, long minIntervalMs,
-                                       int pendingEvents, int autoOkCount24h) {
+                                       int pendingEvents) {
         if (now - lastAutoAttemptAt < minIntervalMs) return false;
-        if (pendingEvents <= 0) return false;  // 没有新日志——零网络请求直接跳过
-        return autoOkCount24h < 3;
+        return pendingEvents > 0;  // 没有新日志——零网络请求直接跳过
     }
 
     /** 自动检查点（后台线程一次性上传——无守护线程无退避表）。 */
@@ -479,8 +482,7 @@ public final class LogUploader {
             if (com.zai.adshield.Net.LOG_RELAY_URL.length() == 0) return;
             long now = System.currentTimeMillis();
             long last = prefLong("lastAutoAttemptAt", 0L);
-            if (!autoEligible(last, now, minIntervalMs,
-                    store.pendingEventCount(), store.autoOkCount24h(now))) return;
+            if (!autoEligible(last, now, minIntervalMs, store.pendingEventCount())) return;
             env.prefPut("lastAutoAttemptAt", String.valueOf(now));
             if (!running.compareAndSet(false, true)) return;
             Thread t = new Thread(() -> {
@@ -582,15 +584,9 @@ public final class LogUploader {
                     store.consumeHead(Math.max(0, fb.realCount));
                     store.recordOk(System.currentTimeMillis(), manual);
                     s.acked++;
-                    /* v7.9.8b 自动路径批粒度 24h/3 闸（用户指令：自动上传成功 3 次
-                     * 后第 4 次必须被阻止）：autoEligible 只在 run 起点 check 一次，
-                     * 积压场景（多日未传后一次性排空）单次运行可连续成功 >3 批——
-                     * 突破「24h 最多 3 次成功」上限。本闸在每批成功入账后复核自动
-                     * 账本，满 3 即停：剩余事件留待窗口滑动后下一次心跳续传。
-                     * 手动路径（manual=true）永不受此闸限制。 */
-                    if (!manual && store.autoOkCount24h(System.currentTimeMillis()) >= 3) {
-                        break;
-                    }
+                    /* v7.10.0：批粒度 24h/3 自动闸已随「上传次数限制彻底移除」
+                     * 专项删除——积压场景单次运行可连续排空全部批次（每批
+                     * 独立 batchId 幂等保护保持，绝不二建 Issue）。 */
                     if (issue > 0) {
                         s.issueNumbers = s.issueNumbers.length() == 0
                                 ? String.valueOf(issue) : s.issueNumbers + "," + issue;
@@ -607,11 +603,10 @@ public final class LogUploader {
                     s.waited++;
                     s.lastError = "rate-limited";
                     s.errKind = ERR_RATE_LIMITED;
-                    if (res != null && res.json != null) {
-                        long ra = res.json.optLong("retryAfter", 0L);
-                        if (ra > 0) s.retryAfterMs = Math.min(ra * 1000L, 24L * 3600 * 1000);
-                    }
-                    break; // 保留冻结批次——服务端窗口，稍后自动/手动再试
+                    /* v7.10.0：服务端 per-minute 瞬时防爆层如实分类转达——
+                     * 不再解析 retryAfter 呈现「等待 N 分钟」（次数限制文案
+                     * 已清；日志保留可立即重试）。 */
+                    break; // 保留冻结批次——服务端瞬时限流，稍后自动/手动再试
                 }
                 if (code != null && isTerminalRejection(code)) {
                     String err = res != null && res.json != null
@@ -645,7 +640,6 @@ public final class LogUploader {
             JSONObject ov = store.overview(now);
             s.pending = ov.optInt("pending", 0);
             s.pendingEvents = ov.optInt("pendingEvents", 0);
-            s.acked24h = ov.optInt("acked24h", 0);
             s.totalCollected = ov.optLong("totalCollected", 0L);
             if (s.acked == 0 && s.uploaded == 0 && s.waited == 0 && s.lastError.length() == 0) {
                 s.emptyReason = emptyReasonOf(System.currentTimeMillis(), ov);

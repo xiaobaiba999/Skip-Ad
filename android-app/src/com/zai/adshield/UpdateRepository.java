@@ -131,14 +131,14 @@ public final class UpdateRepository {
      * 统一更新检查（所有入口——手动按钮/启动自动检查——的唯一通道）。
      *
      * @param ctx                应用 Context（缓存目录/包名）
-     * @param currentVersion     当前 versionName
-     * @param currentVersionCode 当前 versionCode（versionCode 主判）
+     * @param currentVersionCode 当前 versionCode（v7.10.0 统一规则——仅
+     *                           versionCode 单一判定，本方法不再接收 versionName）
      * @param manual             true = 用户主动检查（可绕过新鲜缓存，受 30s 冷却）；
      *                           false = 后台自动检查（优先新鲜缓存；进程内至多联网一次）
      * @return 成功载荷（UpdateManifest.parse 字段 + fromCache/staleCache/cachedAt/netError）
      *         / {ok:false, error, errorCode}（无可用数据时）
      */
-    public static String check(Context ctx, String currentVersion, int currentVersionCode, boolean manual) {
+    public static String check(Context ctx, int currentVersionCode, boolean manual) {
         final String expectedPackage = ctx.getPackageName();
         final long now = System.currentTimeMillis();
         final String cacheRaw = readCache(ctx);
@@ -148,13 +148,13 @@ public final class UpdateRepository {
         synchronized (STATE_LOCK) {
             boolean fresh = cache != null && isFresh(cache.cachedAt, now);
             if (!manual && fresh) {
-                return serveCache(cacheRaw, cache, currentVersion, currentVersionCode, false, null);
+                return serveCache(cacheRaw, cache, currentVersionCode, false, null);
             }
             if (!manual) {
                 // 自动检查：本进程已联网过 / 退避窗内 → 缓存兜底（不联网）
                 if (autoNetDone || now < backoffUntil(lastNetAttemptAt, consecutiveFails)) {
                     if (cache != null) {
-                        return serveCache(cacheRaw, cache, currentVersion, currentVersionCode, true, null);
+                        return serveCache(cacheRaw, cache, currentVersionCode, true, null);
                     }
                     return silentNoData("自动检查冷却/退避中且无缓存");
                 }
@@ -162,7 +162,7 @@ public final class UpdateRepository {
                 // 手动冷却期：不联网——复用最近结果或缓存（可点击、不重复请求）
                 if (lastNetResult != null) return lastNetResult;
                 if (cache != null) {
-                    return serveCache(cacheRaw, cache, currentVersion, currentVersionCode, true, null);
+                    return serveCache(cacheRaw, cache, currentVersionCode, true, null);
                 }
                 return UpdateManifest.fail(UpdateManifest.ERR_NO_CACHE, "刚检查过，请稍候再试");
             }
@@ -176,7 +176,7 @@ public final class UpdateRepository {
             // 领飞者：真实联网（任何异常都收敛为失败载荷——绝不悬挂单飞门）
             String result;
             try {
-                result = doNetwork(ctx, expectedPackage, currentVersion, currentVersionCode, cache, cacheRaw);
+                result = doNetwork(ctx, expectedPackage, currentVersionCode, cache, cacheRaw);
             } catch (Throwable t) {
                 result = UpdateManifest.fail(classifyNetError(t), "检查更新失败（" + safeMsg(t) + "）");
             }
@@ -202,7 +202,7 @@ public final class UpdateRepository {
             if (lastNetResult != null) return lastNetResult;
         }
         if (cache != null) {
-            return serveCache(cacheRaw, cache, currentVersion, currentVersionCode, true, null);
+            return serveCache(cacheRaw, cache, currentVersionCode, true, null);
         }
         return UpdateManifest.fail(UpdateManifest.ERR_NO_CACHE, "暂时无法检查更新，请稍后重试");
     }
@@ -261,8 +261,7 @@ public final class UpdateRepository {
      *                 一次真实请求与如实错误。
      */
     public static WalkResult walkSources(Fetcher f, CacheInfo cache, long deadline,
-                                         String expectedPackage, String currentVersion,
-                                         int currentVersionCode) {
+                                         String expectedPackage, int currentVersionCode) {
         String firstError = null;
         for (int i = 0; i < MANIFEST_SOURCES.length; i++) {
             String src = MANIFEST_SOURCES[i];
@@ -284,7 +283,7 @@ public final class UpdateRepository {
             }
             if (o.body != null) {
                 String parsed = UpdateManifest.parse(o.body, expectedPackage,
-                        currentVersion, currentVersionCode);
+                        currentVersionCode);
                 JSONObject p = parseQuietly(parsed);
                 if (p != null && p.optBoolean("ok", false)) {
                     return WalkResult.success(parsed, o.body, o.etag, o.lastModified, o.url);
@@ -306,11 +305,11 @@ public final class UpdateRepository {
         return WalkResult.allFailed(firstError != null ? firstError : UpdateManifest.ERR_NETWORK);
     }
 
-    private static String doNetwork(Context ctx, String expectedPackage, String currentVersion,
+    private static String doNetwork(Context ctx, String expectedPackage,
                                     int currentVersionCode, CacheInfo cache, String cacheRaw) {
         long deadline = System.currentTimeMillis() + CHAIN_BUDGET_MS;
         WalkResult w = walkSources(REAL_FETCHER, cache, deadline, expectedPackage,
-                currentVersion, currentVersionCode);
+                currentVersionCode);
         if (w.kind == WalkResult.SUCCESS) {
             writeCache(ctx, buildCacheJson(new CacheInfo(w.body, w.etag, w.lastModified,
                     System.currentTimeMillis(), w.url)));
@@ -319,11 +318,11 @@ public final class UpdateRepository {
         if (w.kind == WalkResult.NOT_MODIFIED && cache != null) {
             cache.cachedAt = System.currentTimeMillis(); // 内容未变——续新鲜
             writeCache(ctx, buildCacheJson(cache));
-            return serveCache(buildCacheJson(cache), cache, currentVersion, currentVersionCode, false, null);
+            return serveCache(buildCacheJson(cache), cache, currentVersionCode, false, null);
         }
         // 全链失败：有缓存 → 缓存兜底（如实标注陈旧 + 网络错误）；无缓存 → 如实错误
         if (cache != null && cacheRaw != null) {
-            return serveCache(cacheRaw, cache, currentVersion, currentVersionCode, true, w.errorCode);
+            return serveCache(cacheRaw, cache, currentVersionCode, true, w.errorCode);
         }
         return UpdateManifest.fail(w.errorCode, netErrorText(w.errorCode));
     }
@@ -544,9 +543,9 @@ public final class UpdateRepository {
     }
 
     /** 缓存数据 → 页面可用载荷（重新对当前版本做 isNewer 判定 + 缓存标注）。 */
-    private static String serveCache(String cacheRaw, CacheInfo cache, String currentVersion,
+    private static String serveCache(String cacheRaw, CacheInfo cache,
                                      int currentVersionCode, boolean stale, String netError) {
-        String parsed = UpdateManifest.parse(cache.json, null, currentVersion, currentVersionCode);
+        String parsed = UpdateManifest.parse(cache.json, null, currentVersionCode);
         try {
             JSONObject p = new JSONObject(parsed);
             if (!p.optBoolean("ok", false)) {
@@ -585,6 +584,12 @@ public final class UpdateRepository {
      * 代次（await(gen) 返回该代结果；null = 该代已消失——调用方走缓存）。
      */
     public static final class FlightGate {
+        /* v7.10.0：搭飞等待上限（FlightGate 有上限）——领飞者受链预算/连接
+         * 超时约束必然结束，但极端竞态（线程丢失/进程级阻塞）下搭飞者绝不
+         * 无限等待；超上限返回 null → 调用方走缓存兜底路径。上限取链预算
+         * （40s）+ 5s 余量——正常链路永不触及。 */
+        static final long MAX_WAIT_MS = CHAIN_BUDGET_MS + 5 * 1000L;
+
         private boolean inFlight = false;
         private long startedGen = 0;    // 当前在飞代次（1 起）
         private long completedGen = 0;  // 已完成代次
@@ -604,9 +609,20 @@ public final class UpdateRepository {
             notifyAll();
         }
 
+        /** 无界等待（旧语义——测试兼容入口）；生产一律走有界版。 */
         public synchronized String await(long gen) {
+            return await(gen, Long.MAX_VALUE);
+        }
+
+        /** 有界等待（v7.10.0）：至多等 maxWaitMs；超时/中断 → null（调用方兜底）。 */
+        public synchronized String await(long gen, long maxWaitMs) {
+            long deadline = System.currentTimeMillis() + Math.max(0L, maxWaitMs);
             try {
-                while (inFlight && startedGen == gen) wait();
+                while (inFlight && startedGen == gen) {
+                    long left = deadline - System.currentTimeMillis();
+                    if (left <= 0) return null; // 等待上限——绝不无限挂起
+                    wait(Math.min(left, 1000L));
+                }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 return null;

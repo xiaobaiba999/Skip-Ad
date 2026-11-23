@@ -6,7 +6,9 @@ import com.zai.adshield.core.LogUploader;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.nio.charset.StandardCharsets;
 
@@ -142,30 +144,53 @@ public class LogStoreTest {
         TestHost.checkEq(migrated.events.toString(), again.events.toString(), "S3m 补冻后字节级稳定");
     }
 
-    /* S4：24h 成功配额（只记成功；滚动窗；手动/自动分账）。 */
+    /* S4：成功时间账本（v7.10.0 次数限制移除后仅历史留存——写入/滚动窗
+     * 修剪/手动自动分账三语义继续钉死；计数读取方 okCount24h/
+     * autoOkCount24h 已删，断言改为直接读账本文件）。 */
     private static void s4_okTimesWindow() {
         MemEnv env = new MemEnv();
         LogStore s = LogStore.forEnv(env);
         long day = 24L * 3600 * 1000;
         long now = 1795000000000L;
-        s.recordOk(now - day - 1000); // 25h 前——已过期（手动默认）
-        s.recordOk(now - day + 1000); // 23.9h 前——有效
-        s.recordOk(now - 3600_000);   // 1h 前——有效
-        TestHost.checkEq(2, s.okCount24h(now), "S4a 滚动窗口只数 24h 内（过期淘汰）");
-        s.recordOk(now);
-        TestHost.checkEq(3, s.okCount24h(now), "S4b 第 3 次成功在窗内");
+        s.recordOk(now - day - 1000); // 25h 前
+        s.recordOk(now - day + 1000); // 23.9h 前
+        s.recordOk(now - 3600_000);   // 1h 前
+        // 修剪相对「本次写入时间戳」：三次写入各自的更旧条目均在其 24h 内 → 3 条全留
+        TestHost.checkEq(3, ledgerCount(env, "ok-times.json"),
+                "S4a 账本写入保持（滚动窗修剪相对写入时刻——早期条目仍在窗内）");
+        s.recordOk(now); // 相对 now 修剪：25h 前的条目出窗淘汰
+        TestHost.checkEq(3, ledgerCount(env, "ok-times.json"),
+                "S4b 相对最新写入修剪（25h 前旧条目出窗淘汰——23.9h/1h/now 保留）");
         TestHost.checkEq(now, s.lastOkAt(), "S4c 最近成功时间戳");
-        /* v7.9.8 额度分账：手动成功不占自动闸；自动成功双账本都记 */
+        /* 手动/自动分账（账本层面保持）：手动只写 ok-times；自动写两本 */
         MemEnv env2 = new MemEnv();
         LogStore s2 = LogStore.forEnv(env2);
         s2.recordOk(now, true);   // 手动成功 × 3
         s2.recordOk(now + 1000, true);
         s2.recordOk(now + 2000, true);
-        TestHost.checkEq(3, s2.okCount24h(now + 3000), "S4d 手动成功入全部账本");
-        TestHost.checkEq(0, s2.autoOkCount24h(now + 3000), "S4e 手动成功不占自动闸（分账）");
+        TestHost.checkEq(3, ledgerCount(env2, "ok-times.json"), "S4d 手动成功入全部账本");
+        TestHost.checkEq(0, ledgerCount(env2, "auto-ok-times.json"), "S4e 手动成功不写自动账本（分账保持）");
         s2.recordOk(now + 4000, false);  // 自动成功
-        TestHost.checkEq(1, s2.autoOkCount24h(now + 5000), "S4f 自动成功入自动账本");
-        TestHost.checkEq(4, s2.okCount24h(now + 5000), "S4g 自动成功也入全部账本（展示口径）");
+        TestHost.checkEq(1, ledgerCount(env2, "auto-ok-times.json"), "S4f 自动成功入自动账本");
+        TestHost.checkEq(4, ledgerCount(env2, "ok-times.json"), "S4g 自动成功也入全部账本");
+    }
+
+    /** 直接读账本文件计条数（v7.10.0：计数函数已删——写入语义仍需钉死；
+     *  文件不存在 → 0；损坏 → -1）。 */
+    private static int ledgerCount(MemEnv env, String name) {
+        try {
+            File f = new File(new File(env.dir, "log-upload"), name);
+            if (!f.isFile()) return 0;
+            FileInputStream in = new FileInputStream(f);
+            ByteArrayOutputStream bo = new ByteArrayOutputStream();
+            byte[] buf = new byte[4096];
+            int n;
+            while ((n = in.read(buf)) > 0) bo.write(buf, 0, n);
+            in.close();
+            return new JSONArray(new String(bo.toByteArray(), StandardCharsets.UTF_8)).length();
+        } catch (Throwable t) {
+            return -1;
+        }
     }
 
     /* S5：消费/拒收语义。 */
@@ -181,7 +206,7 @@ public class LogStoreTest {
         TestHost.checkEq(0, s.pendingEventCount(), "S5a 拒收块事件移出 pending");
         TestHost.checkEq(1, s.rejectedCount(), "S5b 拒收检视计数");
         TestHost.check(s.headFrozenOrNull() == null, "S5c 拒收块不再重试（隔离检视）");
-        TestHost.checkEq(0, s.okCount24h(System.currentTimeMillis()), "S5d 拒收不计成功配额");
+        TestHost.checkEq(0, ledgerCount(env, "ok-times.json"), "S5d 拒收零成功记账（ok-times 未写）");
     }
 
     /* S6：清理与损坏检测。 */
@@ -218,7 +243,7 @@ public class LogStoreTest {
         JSONObject ov = s.overview(System.currentTimeMillis());
         TestHost.checkEq(50, ov.optInt("pendingEvents"), "S7a pendingEvents 键");
         TestHost.checkEq(2, ov.optInt("pending"), "S7b pending 块估算（50 条 → 2 块）");
-        TestHost.checkEq(1, ov.optInt("acked24h"), "S7c acked24h 键");
+        TestHost.check(!ov.has("acked24h"), "S7c v7.10.0：acked24h 键已随「上传次数限制移除」删除");
         TestHost.check(ov.has("lastAckedAt") && ov.has("rejected") && ov.has("totalCollected")
                 && ov.has("appendFailAt") && ov.has("readCorrupt"), "S7d 四态区分键齐备");
     }

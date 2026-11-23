@@ -4,7 +4,7 @@ import { useCallback, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
-import { compareVersion, APP_VERSION, VERSION_CODE, GITHUB_HOME, VERSION_HISTORY } from "@/lib/version";
+import { versionCodeOfTag, APP_VERSION, VERSION_CODE, GITHUB_HOME, VERSION_HISTORY } from "@/lib/version";
 import {
   Zap, Github, ExternalLink, Smartphone, ShieldCheck, Tag, RefreshCw, Download,
   CheckCircle2, Loader2, HardDriveDownload, RotateCcw,
@@ -66,7 +66,10 @@ export function AboutPanel() {
   }, []);
 
   const latest = rel?.tag?.replace(/^v/, "") ?? "";
-  const hasNewer = rel?.ok && !!latest && compareVersion(latest, APP_VERSION) > 0;
+  /* v7.10.0 统一版本规则：Web 面板更新判定只比 versionCode（tag 三段公式
+   * 派生——与清单/生成器同语义）；versionName 字符串比较已删，非三段
+   * tag → 0 → 不判新（无效不更新）。 */
+  const hasNewer = rel?.ok && versionCodeOfTag(latest) > VERSION_CODE;
   const apkSizeText = rel?.apk
     ? rel.apk.size >= 1048576
       ? `${fmtMB(rel.apk.size)} MB`

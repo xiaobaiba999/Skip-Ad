@@ -23,9 +23,11 @@ import org.json.JSONObject;
  *    - packageName 必须与当前应用一致（缺 → INVALID；不同 → PACKAGE_MISMATCH）
  *    - apkUrl（若非空）必须 HTTPS 且在官方发布通道域内（Downloader.hostAllowed）
  *    - apkSha256（若非空）必须是合法 64 位十六进制（形态污染 → INVALID）
- *  · 版本判定（versionCode 主判——与 Net.isNewerRelease 同一权威语义）：
- *    - versionCode 缺失/非法 → 回退 Release 正文「versionCode:」元数据行
- *      （versionCodeOfNotes）→ 再缺失回退 versionName 三段比较（旧清单兼容）
+ *  · 版本判定（v7.10.0 统一规则——与 Net.isNewerRelease 同一权威语义）：
+ *    - isNewer = remoteVersionCode > currentVersionCode；versionCode
+ *      缺失/非法（≤0）→ 不判新（绝不回退 Release 正文「versionCode:」
+ *      元数据行或 versionName 名比较——旧回退链已随统一规则专项删除）；
+ *    - versionName 仅作展示（tag 派生兜底语义保持）
  *  · 输出与旧 Net.parseRelease 字段兼容（tag/name/notes/headlines/apkUrl/
  *    apkFileName/apkMB/apkSize/apkDigest/apkMirrors/remoteVersionCode/isNewer）
  *    ——更新页/下载状态机/全屏更新页零改动消费。
@@ -61,12 +63,12 @@ public final class UpdateManifest {
      *
      * @param raw                清单原始 JSON 文本
      * @param expectedPackage    当前应用包名（ctx.getPackageName()——包名闸）
-     * @param currentVersion     当前 versionName（null/空 = 不做 isNewer 判定）
-     * @param currentVersionCode 当前 versionCode（>0 启用 versionCode 主判）
+     * @param currentVersionCode 当前 versionCode（≤0 = 不做 isNewer 判定——
+     *                            v7.10.0 统一规则：仅 versionCode 单一判定，
+     *                            本方法不再接收 versionName）
      * @return 成功载荷（ok:true，字段见类注释）/ {ok:false, error, errorCode}
      */
-    public static String parse(String raw, String expectedPackage,
-                               String currentVersion, int currentVersionCode) {
+    public static String parse(String raw, String expectedPackage, int currentVersionCode) {
         try {
             if (raw == null || raw.trim().length() == 0) {
                 return fail(ERR_INVALID, "更新清单为空");
@@ -95,9 +97,13 @@ public final class UpdateManifest {
                     && !pkg.equals(expectedPackage)) {
                 return fail(ERR_PACKAGE, "更新清单包名不匹配（" + pkg + "），已拒绝");
             }
-            // 版本字段（versionCode 主判；缺失回退正文元数据行——旧清单兼容）
-            int vc = d.optInt("versionCode", 0);
-            if (vc <= 0) vc = Net.versionCodeOfNotes(d.optString("releaseNotes", ""));
+            // 版本字段（v7.10.0 统一规则：versionCode 缺失/非法 → 0 → 不判新；
+            // 绝不回退 Release 正文元数据行/名比较——回退链已删）。
+            // 解析用 optLong + int 域校验：org.json optInt 对超 int 数值（如
+            // 99999999999）会静默截断回绕成正值（1215752191）→ 误判新版——
+            // 必须按「无效 versionCode → 不判新」处理（负数/非数字/超 int 同理）。
+            long vcRaw = d.optLong("versionCode", 0L);
+            int vc = (vcRaw > 0L && vcRaw <= Integer.MAX_VALUE) ? (int) vcRaw : 0;
             String versionName = d.optString("versionName", "");
             String tag = d.optString("releaseTag", "");
             String name = d.optString("releaseName", "");
@@ -142,9 +148,8 @@ public final class UpdateManifest {
             out.put("url", tag.length() > 0
                     ? "https://github.com/" + Net.REPO + "/releases/tag/" + tag : "");
             int remoteVcFinal = vc;
-            if (currentVersion != null && currentVersion.length() > 0) {
-                out.put("isNewer", Net.isNewerRelease(remoteVcFinal, tagOrName(tag, versionName),
-                        currentVersionCode, currentVersion));
+            if (currentVersionCode > 0) {
+                out.put("isNewer", Net.isNewerRelease(remoteVcFinal, currentVersionCode));
             }
             String apkFileName = d.optString("apkFileName", "");
             out.put("apkUrl", apkUrl);
@@ -163,11 +168,6 @@ public final class UpdateManifest {
         } catch (Exception e) {
             return fail(ERR_INVALID, "更新清单解析异常");
         }
-    }
-
-    /** isNewer 的远程标签输入：优先 releaseTag，缺失用 versionName。 */
-    private static String tagOrName(String tag, String versionName) {
-        return tag.length() > 0 ? tag : versionName;
     }
 
     /** SHA256 归一化：「sha256:HEX」/「HEX」（大小写不敏感）→ 小写 hex；

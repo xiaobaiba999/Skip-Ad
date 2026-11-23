@@ -1,4 +1,4 @@
-/* 开屏卫士 v7.9.9 · 网络链路热修复专项（小米 15 Pro 真机反馈驱动）：检查更新源链重构（raw 主源 + jsDelivr 四接入点国内可达备用链 + 整链 40s 预算 + 劫持面降级）+ 日志上传超时阶段化（连接超时/读取超时/TLS 干扰分家——幂等重试语义如实告知）· 冻结批次/batchId 幂等/额度分账零改动 · 广告跳过核心零改动 */
+/* 开屏卫士 v7.10.0 · 上传次数限制彻底移除 + 更新检查异步化 + 开屏提醒解耦 + 统一版本规则专项：日志上传不再有人为次数上限/24h 额度/冷却等待（同 batchId 幂等保护保持，绝不二建 Issue）；更新检查改走 updateCheckAsync 异步桥（JS 主线程零网络等待，单飞/过期序号/90s 兑底三重防线）；开屏提醒不再依赖网络检查收尾（独立 3s 定时评估）；全项目统一版本判定 remoteVersionCode > currentVersionCode（versionName 仅展示，82300/plus 旧兼容链彻底清理） */
 "use strict";
 
 /* ══════════ 环境 ══════════ */
@@ -23,8 +23,8 @@ const store = {
 };
 
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "7.9.9"; }
-function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "79900"; }
+function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "7.10.0"; }
+function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "80000"; }
 
 /* ══════════ 吉祥物（v4.1.0 全新形象：白机器人小侠 + 绿披风跳跃） ══════════
  * 与启动器图标同源；state: on（跳跃浮动）/ off（灰度待命） */
@@ -35,18 +35,18 @@ function mascotImg(size, state, head) {
 
 $("#brand-logo").innerHTML = mascotImg(30, "on", true);
 
-/* ═══ v7.9.9 版本记录（网络链路热修复专项——真机反馈驱动）═══ */
+/* ═══ v7.10.0 版本记录（上传次数限制移除 + 更新检查异步化专项）═══ */
 const CURRENT_RELEASE = {
-  date: "2026-11-24",
-  title: "检查更新国内可达修复 + 日志上传超时阶段化修复",
+  date: "2026-11-25",
+  title: "日志上传无次数限制 + 更新检查异步化 + 开屏提醒解耦",
   features: [
-    "检查更新源链重构（小米 15 Pro 真机「网络连接错误」根治）：raw 主源国内被阻断时自动切换 jsDelivr 四接入点备用链（订阅通道同族实战链）；GitHub Pages 死源（未启用恒 404）移除；整链 40 秒预算封顶，每源至多一次请求",
-    "更新清单防劫持降级：任一源返回篡改/错误内容（非法 JSON/包名不匹配）不采信也不放弃，自动换下一源验证；网络异常时仍优先展示缓存数据并标注数据时间",
-    "日志上传超时阶段化（「上传超时」根治第一步）：连接超时（请求未送达——提示切换网络）与读取超时（服务端可能已收到——如实提示「结果暂时无法确认，重试使用原批次不会重复建 Issue」）分家；TLS 网络干扰独立分类",
-    "上传连接超时 15s→10s（阻断网络快速失败不再白等）；读取超时保持 45s（服务端建 Issue 尾延迟实测可超 20s）；冻结批次/batchId 幂等/自动限额 24h/3 全部零改动",
-    "发布链路：清单发布后自动 purge jsDelivr 缓存（热修复即时可达国内）+ 网络链路端到端验证工作流（清单五源 + 中转服务健康 + 真实上传 + 同 batchId 幂等不二建 + Issue 核验清理）",
+    "日志上传次数限制彻底移除：自动上传不再有 24h/3 成功额度（仅受心跳间隔 8h 与「有新日志才传」约束）；手动上传零次数/额度/冷却门槛，随时可传、短时连传多批全部放行（同 batchId 幂等保护保持，绝不二建 Issue）",
+    "更新检查异步化：新增 updateCheckAsync 异步桥——JS 主线程不再同步等待网络（旧同步桥整体移除，弱网下页面冻结最长 40s 的根因根治）；JS 单飞 + 过期序号丢弃 + 90 秒回调兑底三重防线，手动检查绝不永久卡「检查中…」",
+    "开屏提醒与更新检查彻底解耦：反馈提醒独立 3 秒定时评估（不再链在网络检查收尾后）——网络再慢最多 3s 也能看到提醒；24h 节流/5min 防重建/更新优先语义保持",
+    "统一版本判定规则：全项目统一 remoteVersionCode > currentVersionCode——versionName 仅展示，绝不作为更新判断依据；Release 正文 versionCode 元数据行回退与 82300/plus 旧兼容链彻底清理（清单侧/JS 侧/生成器侧三面同步）",
+    "更新清单五源链/ETag/缓存回退/超时/退避/SHA-256 校验全部零改动保持；广告跳过核心零改动",
   ],
-  summary: "v7.9.9：网络链路热修复轮——更新检查国内可达 + 上传超时如实分类。",
+  summary: "v7.10.0：上传次数限制移除 + 更新检查异步化 + 统一版本规则。",
 
 };
 
@@ -435,7 +435,7 @@ bindToggle("toggle-learning", "learning", "习惯学习已开启", "习惯学习
  * 与无障碍授权严格分离；授权≠上传——上传仍受服务端 24h 滑窗（最多 3 次）
  * 与 batchId 幂等约束（中转服务 skip-ad-log-relay 已上线）。
  * v8.0.0：状态行真数据（待传批次/24h 已提交（服务端权威，本地仅展示参考）/
- * 失败检视/最近失败原因）+「立即提交」（同一服务端限额，绝不绕过）
+ * 失败检视/最近失败原因）+「立即提交」（v7.10.0：本地与服务端均无次数限制——幂等保护保持）
  * +「清理待上传」（只删本地文件，不影响服务端已建 Issue）。 */
 function bridgeCall(fn, fallback) {
   try {
@@ -449,18 +449,20 @@ function refreshLogUploadNote() {
   const on = !!bridgeCall("logUploadConsent", false);
   const actions = $("#log-upload-actions");
   if (actions) actions.style.display = on ? "" : "none";
+  /* v7.10.0：上传次数限制彻底移除——状态行不再展示 24h 次数额度；自动上传
+   * 仅受心跳间隔（8h 检查一次）与「有新日志才传」约束，无任何次数上限。 */
   if (!on) {
-    note.textContent = "默认关闭 · 每 24 小时最多自动上传 3 次 · 日志采集与手动上传不受影响";
+    note.textContent = "默认关闭 · 日志采集与手动上传不受影响（自动上传无次数限制）";
     return;
   }
   let st = null;
   try { st = JSON.parse(bridgeCall("logUploadStatus", null)); } catch (e) {}
   if (!st) {
-    note.textContent = "自动上传已开启 · 每 24 小时最多成功 3 次";
+    note.textContent = "自动上传已开启 · 每 8 小时检查一次 · 无次数限制";
     return;
   }
   const agoMin = st.lastAckedAt > 0 ? Math.max(1, Math.round((Date.now() - st.lastAckedAt) / 60000)) : 0;
-  let s = "自动上传已开启 · 24h 已成功 " + (st.acked24h || 0) + "/3"
+  let s = "自动上传已开启 · 每 8 小时检查一次 · 无次数限制"
     + " · 待传 " + (st.pendingEvents || 0) + " 条";
   if (agoMin > 0) s += " · 最近成功 " + (agoMin >= 1440 ? Math.round(agoMin / 1440) + " 天前" : agoMin + " 分钟前");
   if ((st.rejected || 0) > 0) s += " · 拒收检视 " + st.rejected + " 批";
@@ -479,7 +481,7 @@ function refreshLogUploadNote() {
     } catch (e) {
       store.set("logUploadConsent", el.checked);
     }
-    toast(el.checked ? "已开启自动上传（24h 最多 3 次；采集与手动上传不受影响）" : "自动上传已关闭（日志仍会采集，可随时手动上传）");
+    toast(el.checked ? "已开启自动上传（每 8 小时检查一次，无次数限制；采集与手动上传不受影响）" : "自动上传已关闭（日志仍会采集，可随时手动上传）");
     setTimeout(refreshLogUploadNote, 200);
   });
   refreshLogUploadNote();
@@ -842,29 +844,25 @@ let ubTimer = null;
 let latestRelease = null;
 let dl = { channels: [], idx: 0, fileName: "", digest: "", size: 0, prefix: "page", lastBytes: -1, lastMoveAt: 0 };
 
-/* v7.9.6plus：段内前缀数字解析（"6plus"→6——"7.9.6plus"≈7.9.6 同族；
- * Java Net.segNum 同源同修——防 plus 后缀把第三段吞成 0 误判新版） */
-function cmpVer(a, b) {
-  const seg = (s) => { const m = /^[0-9]+/.exec(String(s || "")); return m ? parseInt(m[0], 10) : 0; };
-  const pa = String(a).replace(/^v/, "").split("."), pb = String(b).replace(/^v/, "").split(".");
-  for (let i = 0; i < 3; i++) {
-    const x = seg(pa[i]), y = seg(pb[i]);
-    if (x !== y) return x - y;
-  }
-  return 0;
-}
+/* ═══ v7.10.0：cmpVer/versionCodeFromNotes 已删（统一版本规则专项）═══
+ * versionName 三段比较函数 cmpVer 与 Release 正文 versionCode 元数据行解析
+ * versionCodeFromNotes 连同全部回退链一并移除——全项目统一
+ * remoteVersionCode > currentVersionCode；versionName 仅展示。死灰复燃
+ * 防线见 test_update_compat.js 源码断言（function cmpVer 不得回场）。 */
 
 /* ═══ v7.9.8 更新检查（静态清单架构——彻底脱离 GitHub 匿名 REST API）════
  * 根因史：v7.9.7 及以前检查更新直连 api.github.com /releases/latest（匿名
  * 60 次/小时/IP 出口配额）——国内共享出口下所有用户同池互耗，进入更新页
  * 即「查询失败：GitHub API 限流（匿名 60 次/小时/IP），请约 1 小时后再试」。
  * 新链路：
- *  APK 内：AndroidApp.updateCheck(manual) → UpdateRepository（静态清单
- *  raw.githubusercontent.com main 分支 + Fastly CDN 零 REST 配额 + 15min
- *  本地缓存 + 单飞并发合并 + 手动 30s 冷却/自动单次 + 失败指数退避 +
- *  ETag 304 + 受控备用源 + 错误十类）→ UpdateManifest（清单契约校验：
- *  包名/版本/APK 地址发布通道/SHA256）。isNewer 权威判定 = versionCode
- *  主判（Net.isNewerRelease——与 v7.9.6plus 起语义完全一致）。
+ *  APK 内：AndroidApp.updateCheckAsync(manual, cb)（v7.10.0 异步化——JS
+ *  主线程零网络等待；旧同步桥 updateCheck 已移除）→ UpdateRepository
+ *  （静态清单 raw.githubusercontent.com main 分支 + Fastly CDN 零 REST
+ *  配额 + 15min 本地缓存 + 单飞并发合并 + 手动 30s 冷却/自动单次 +
+ *  失败指数退避 + ETag 304 + 受控备用源 + 错误十类）→ UpdateManifest
+ *  （清单契约校验：包名/版本/APK 地址发布通道/SHA256）。isNewer 权威判定
+ *  = versionCode 主判（Net.isNewerRelease——v7.10.0 统一规则：
+ *  remoteVersionCode > currentVersionCode，versionName 仅展示）。
  *  浏览器预览：同语义静态清单直连（镜像映射——零 GitHub API）。 */
 
 /* 静态更新清单源链（与 Java UpdateRepository.MANIFEST_SOURCES 同源——
@@ -929,10 +927,61 @@ function mapManifest(j) {
   };
 }
 
+/* ═══ v7.10.0 异步更新检查（用户指令：禁止在 JavaScript 主线程同步等待网络）═══
+ * 原生桥 updateCheckAsync(manual, cb) 后台线程执行 UpdateRepository.check，
+ * 结果经 window[cb](json) 回调（旧同步桥 updateCheck 已移除——JS 调用会
+ * 阻塞 JS 线程直至网络返回，五源链预算 40s——弱网下页面冻结 40s 的实锤
+ * 根因）。三重防线：
+ * ① JS 单飞（updInFlight）：同一时刻至多一个在飞检查，并发调用共享同一
+ *   Promise（与原生侧 FlightGate 同族语义——绝不请求风暴）；
+ * ② 过期序号（updSeq）：每次发起序号 +1，旧序号的回调一律丢弃——快速
+ *   连续触发时只有最后一次的结果生效（阻止过期回调覆盖新状态）；
+ * ③ 90s 兑底：桥回调永不抵达（线程丢失/进程竞态）时按超时失败收尾——
+ *   按钮与状态必然恢复，手动检查绝不永久卡「检查中…」。 */
+let updInFlight = null;
+let updSeq = 0;
+const UPD_ASYNC_TIMEOUT_MS = 90 * 1000;
+function bridgeUpdateCheck(manual) {
+  const seq = ++updSeq;
+  const cbName = "__updCb" + seq;
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (v) => {
+      if (settled) return;
+      if (seq !== updSeq) {   // 过期回调丢弃（已有更新一次的检查在飞）
+        try { delete window[cbName]; } catch (e) {}
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      try { delete window[cbName]; } catch (e) {}
+      resolve(v);
+    };
+    const timer = setTimeout(() => {   // ③ 90s 兑底：回调永不抵达也必然收尾
+      if (settled) return;
+      settled = true;
+      try { delete window[cbName]; } catch (e) {}
+      resolve({ ok: false, error: "检查超时", errorCode: "UPDATE_TIMEOUT" });
+    }, UPD_ASYNC_TIMEOUT_MS);
+    try {
+      window[cbName] = (json) => {
+        let v = json;
+        if (typeof v === "string") { try { v = JSON.parse(v); } catch (e) { v = { ok: false, error: "检查失败", errorCode: "UPDATE_NO_CACHE" }; } }
+        done(v && typeof v === "object" ? v : { ok: false, error: "检查失败", errorCode: "UPDATE_NO_CACHE" });
+      };
+      AndroidApp.updateCheckAsync(!!manual, cbName);
+    } catch (e) {
+      done({ ok: false, error: "检查失败", errorCode: "UPDATE_NO_CACHE" });
+    }
+  });
+}
+
 async function fetchLatest(manual) {
   if (HAS_BRIDGE) {
-    try { return JSON.parse(AndroidApp.updateCheck(!!manual)); }
-    catch (e) { return { ok: false, error: "检查失败", errorCode: "UPDATE_NO_CACHE" }; }
+    /* ① JS 单飞：在飞期间并发调用共享同一 Promise（首个 manual 语义生效） */
+    if (updInFlight) return updInFlight;
+    updInFlight = bridgeUpdateCheck(manual).finally(() => { updInFlight = null; });
+    return updInFlight;
   }
   /* 浏览器预览：静态清单源链直连（与 APK 原生通道同源——零 GitHub API；
    * 每源至多一次，任一源成功即返回；包名不匹配/清单非法也换下一源
@@ -966,28 +1015,16 @@ async function fetchLatest(manual) {
   return { ok: false, error: updateErrText(errCode) || "网络连接失败，请检查网络后重试", errorCode: errCode };
 }
 
-/* Release 正文 versionCode 元数据行解析（Java Net.versionCodeOfNotes 镜像）：
- * 匹配首个 versionCode: 开头的行，取前缀连续数字；无/非法 → 0（回退名比较） */
-function versionCodeFromNotes(notes) {
-  if (!notes) return 0;
-  const lines = String(notes).split("\n");
-  for (let i = 0; i < lines.length; i++) {
-    const t = lines[i].trim();
-    if (t.startsWith("versionCode:")) {
-      const m = t.slice("versionCode:".length).trim().match(/^[0-9]+/);
-      const v = m ? parseInt(m[0], 10) : 0;
-      return (v > 0 && v <= 2147483647) ? v : 0;
-    }
-  }
-  return 0;
-}
+/* ═══ v7.10.0：versionCodeFromNotes 已删（统一版本规则专项）═══
+ * Release 正文 versionCode 元数据行解析（Java Net.versionCodeOfNotes 镜像）
+ * 随回退链一并移除——清单 versionCode 缺失即不判新，绝不从正文回退定码。 */
 
-/* 新版本判定（Java Net.isNewerRelease 镜像）：双方 versionCode 在场 →
- * versionCode 主判（≤ 不算——绝不提示降级）；缺失回退 versionName 三段比较。
+/* 新版本判定（Java Net.isNewerRelease 镜像——v7.10.0 统一规则）：
+ * remoteVersionCode > currentVersionCode 才算新版；任一侧缺失/非法（≤0）
+ * → 不提示（versionName 仅展示，绝不作为更新判断依据）。
  * （fetchLatest 已移至上方静态清单版；本函数为浏览器预览 isNewer 兑底保留） */
-function isNewerByCode(remoteVc, remoteTag, localVc, localVer) {
-  if (remoteVc > 0 && localVc > 0) return remoteVc > localVc;
-  return cmpVer(remoteTag, localVer) > 0;
+function isNewerByCode(remoteVc, localVc) {
+  return remoteVc > 0 && localVc > 0 && remoteVc > localVc;
 }
 
 /* ═══ v7.9.6plus 下载状态机（prefix = page|gate——「我的」页与全屏更新页同一状态机）════
@@ -1163,11 +1200,11 @@ $("#btn-check-update").addEventListener("click", async () => {
   const cacheNote = d.staleCache
     ? "（网络异常，以下为缓存数据 · 更新于 " + (ageText(d.cachedAt) || "未知时间") + "）"
     : (d.fromCache ? "（数据更新于 " + (ageText(d.cachedAt) || "刚刚") + "）" : "");
-  /* v7.9.6plus：优先用原生侧权威判定（Net.isNewerRelease——versionCode 主判，
-   * 清单 versionCode > 本地 versionCode；缺失回退 versionName 三段比较），
-   * 浏览器路径回退 isNewerByCode（Java 镜像） */
+  /* v7.10.0 统一版本规则：优先用原生侧权威判定（Net.isNewerRelease——
+   * remoteVersionCode > currentVersionCode；versionName 仅展示），
+   * 浏览器路径回退 isNewerByCode（Java 镜像——同为 versionCode 单一判定） */
   const isNewer = typeof d.isNewer === "boolean" ? d.isNewer
-    : isNewerByCode(d.remoteVersionCode || 0, String(d.tag || ""), parseInt(appCode(), 10) || 0, appVer());
+    : isNewerByCode(d.remoteVersionCode || 0, parseInt(appCode(), 10) || 0);
   /* v7.0.0：检查更新当场显示新版本 ≤5 条带序号功能描述（就地渲染——
    * 就在点按钮的地方；不只弹版本号） */
   if (isNewer) renderReleaseNotes(d);
@@ -1212,7 +1249,7 @@ async function checkUpdateOnLaunch() {
     const d = await fetchLatest(false);
     if (!d || !d.ok || !d.hasRelease) return; // 检查失败静默——App 正常可用
     const isNewer = typeof d.isNewer === "boolean" ? d.isNewer
-      : isNewerByCode(d.remoteVersionCode || 0, String(d.tag || ""), parseInt(appCode(), 10) || 0, appVer());
+      : isNewerByCode(d.remoteVersionCode || 0, parseInt(appCode(), 10) || 0);
     if (isNewer) showUpdateGate(d);
   } catch (e) { /* 启动检查绝不阻塞 App */ }
 }
@@ -1221,6 +1258,10 @@ async function checkUpdateOnLaunch() {
  * 关闭即回到原状；移动端优先适配无横向溢出） */
 function showUpdateGate(d) {
   gateRelease = d;
+  /* v7.10.0 更新优先于提醒：全屏更新页即将在场——先收起已展示的反馈
+   * 提示卡（两卡叠弹打扰面；用户确认过的 24h 节流时间戳不受影响） */
+  const tip = $("#bug-tip");
+  if (tip) tip.remove();
   let gate = $("#update-gate");
   if (gate) gate.remove();
   gate = document.createElement("div");
@@ -1424,7 +1465,7 @@ function uploadErrText(res) {
   if (k === "NET_READ_TIMEOUT") return "上传超时，结果暂时无法确认——若服务端已收到，重试将使用原批次，不会重复创建 Issue";
   if (k === "NET_TLS") return "安全连接失败（网络传输可能被干扰）——可尝试切换网络后重试；日志已保留（不会丢失）";
   if (k === "NET_TIMEOUT") return "上传超时，请稍后重试——若服务端已收到，重试会自动复用原 Issue，不会重复提交";
-  if (k === "RATE_LIMITED") return "上传次数已达到限制，请稍后重试";
+  if (k === "RATE_LIMITED") return "服务端繁忙，请稍后重试——日志已保留（不会丢失），可立即再次上传";
   if (k === "INVALID_REQUEST" || k === "HTTP_400") return "上传数据格式异常（" + (raw || "400") + "）——该情况请反馈给开发者";
   if (k === "AUTH_FAILED") return "认证失败：服务端未接受本次上传（401），请稍后重试——日志已保留";
   if (k === "FORBIDDEN") return "权限不足：服务端拒绝了本次上传（403），请稍后重试——日志已保留";
@@ -1452,7 +1493,9 @@ function showUploadFail(box, text, retryFn) {
 /* ══════ 一键上传主流程（v8.2.2 简化版 · v7.9.8 冻结幂等）══════
  * 用户点一次 → LogUploader.submitNow（分块 ≤48 逐块上传 Worker）→ 回调：
  * 成功显示 Issue 编号与【经 GitHub 匿名 API 核实的真实链接】；失败显示
- * 原因并保留可重试；服务端限流如实告知。手动上传不受 24h/3 额度限制。
+ * 原因并保留可重试。v7.10.0：上传次数限制彻底移除——手动上传零次数/
+ * 额度/冷却门槛，随时可传、短时间连传多批全部放行（同 batchId 幂等保持）；
+ * 服务端瞬时限流如实告知（无等待分钟数呈现）。
  * 空队列四态如实区分（未产生/已传完/采集异常/读取异常）。
  * 双入口：「我的」页主按钮 / 设置页「立即提交」——结果统一渲染。 */
 function doUploadLog(fromSettings) {
@@ -1488,7 +1531,8 @@ function resetUploadButtons() {
  * 成功显示 Issue 编号与【经验证的真实链接】（服务端返回 issueNumber 后经
  * GitHub 匿名 API 核实 html_url 才可点击——绝不拼接未经确认的仓库地址）；
  * 无日志时四态如实区分；v7.9.8 失败按 errKind 八类人话呈现（分类依据
- * 真实 HTTP 状态码/服务端码/网络异常类型——绝不统一「稍后再试」）。 */
+ * 真实 HTTP 状态码/服务端码/网络异常类型——绝不统一「稍后再试」）；
+ * v7.10.0：次数限制彻底移除——不再展示 24h 成功批数额度行与等待分钟数。 */
 window.__logUploadCb = function (res) {
   resetUploadButtons();
   const box = $("#upload-log-result");
@@ -1513,19 +1557,18 @@ window.__logUploadCb = function (res) {
       return "<b>#" + num + "</b>";
     }).filter(Boolean).join("、");
     box.className = "fb-result ok";
-    box.innerHTML = "日志上传成功" + (links ? "（Issue " + links + (anyUrl ? "，点击可查看）" : "——编号由服务端确认）") : "")
-      + "<br>24 小时内已成功上传 " + (res.acked24h || 0) + " 批（自动限额，手动上传不受限）";
+    box.innerHTML = "日志上传成功" + (links ? "（Issue " + links + (anyUrl ? "，点击可查看）" : "——编号由服务端确认）") : "");
     const anchors = box.querySelectorAll("a[data-issue-url]");
     for (const a of anchors) {
       a.addEventListener("click", () => openUrl(a.getAttribute("data-issue-url")));
     }
     toast("日志上传成功");
   } else if ((res.waited || 0) > 0) {
-    const mins = res.retryAfterMs ? Math.ceil(Number(res.retryAfterMs) / 60000) : 0;
-    toast("上传次数已达到限制");
-    showUploadFail(box, "上传次数已达到限制，请稍后重试"
-      + (mins > 0 ? "（约 " + mins + " 分钟后可再试）" : "")
-      + "——日志已保留，稍后自动/手动重试均可", doUploadLog);
+    /* v7.10.0：上传次数限制已移除——本分支仅服务服务端瞬时限流
+     * （per-minute 防滥用层）；不再呈现「等待 N 分钟」类人为时长，
+     * 日志保留、可立即重试。 */
+    toast("服务端繁忙，请稍后重试");
+    showUploadFail(box, "服务端繁忙，请稍后重试——日志已保留（不会丢失），可立即再次上传", doUploadLog);
   } else if ((res.rejected || 0) > 0) {
     toast("服务端拒收本批日志");
     showUploadFail(box, "服务端拒绝了本次上传（" + (res.lastError || "未知原因")
@@ -1788,13 +1831,20 @@ function toast(msg) {
   // v7.9.6plus：启动时新版本检测（用户指令——首屏渲染后异步检查，
   // versionCode 主判，发现新版本优先显示全屏更新页；检查失败静默
   // 进入 App，绝不阻塞启动。v7.0.0「启动零网络」决策由本指令取代）。
-  // v7.9.7：检查收尾后（无更新页在场时）评估 Bug 反馈一次性提示——
-  // 更新优先于提醒；提示为纯本地状态，网络检查失败也照常评估。
+  // v7.10.0 异步化：fetchLatest 走 updateCheckAsync 桥——JS 主线程零网络
+  // 等待；结果到达后新版展示全屏更新页（旧版照常进入）。
   setTimeout(() => {
-    void checkUpdateOnLaunch().finally(() => {
-      try { maybeShowBugTip(); } catch (e) {}
-    });
+    void checkUpdateOnLaunch();
   }, 800);
+  // v7.10.0 开屏提醒与更新检查彻底解耦（用户指令：提醒不依赖网络检查
+  // 完成）：v7.9.7 的「检查收尾后才评估提醒」在弱网下会随五源链预算
+  // （40s）推迟提醒——提醒是纯本地状态（24h 节流/5min 防重建），与网络
+  // 无关。现改为独立 3 秒定时评估：网络再慢最多 3s 也能看到提醒；更新
+  // 页已在场则跳过（升级优先），更新页稍后到场则先收起提醒卡（见
+  // showUpdateGate——24h 节流时间戳不受影响）。
+  setTimeout(() => {
+    try { maybeShowBugTip(); } catch (e) {}
+  }, 3000);
   // 每 5s 刷新首页状态（首次进入最关心）
   setInterval(() => {
     if ($("#page-home").classList.contains("active")) {

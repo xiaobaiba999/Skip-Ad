@@ -705,11 +705,13 @@ public class AdSkipService extends AccessibilityService {
         return ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_STATE, null);
     }
 
-    /* ═══ 自动上传（v8.2.2 简化：心跳顺带检查——开关 × 间隔 × 新日志 × 24h/3）═══
+    /* ═══ 自动上传（v8.2.2 简化：心跳顺带检查——开关 × 间隔 × 新日志）═══
      * · v7.8 时代（postIssue 直发）已随 PAT 移除下线；v8.2.2 回归同等简单的
      *   心跳检查模型：KeepAliveReceiver 心跳 → LogUploader.requestAutoCheck；
      * · 采集常开（v8.2.2 根因修复）——本开关只管自动上传，不影响采集与手动；
-     * · 24h 最多成功 3 次（只记服务端确认）；无新日志零网络请求直接跳过。 */
+     * · v7.10.0 上传次数限制彻底移除：自动上传仅受心跳间隔（AUTO_LOG_MS=8h）
+     *   与「有新日志才传」约束——无任何 24h/3 成功额度；无新日志零网络请求
+     *   直接跳过；服务端 per-minute 瞬时防爆层 RATE_LIMITED 如实转达。 */
     public static void maybeAutoUploadLog(final Context ctx) {
         try {
             if (!autoLogUploadEnabled(ctx)) return;        // 自动上传开关（默认关）

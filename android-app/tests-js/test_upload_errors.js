@@ -79,7 +79,7 @@ A("②e 连接失败/连接超时/读取超时/TLS 四态文案互异",
 
 // ③ 频率限制（429/服务端 RATE_LIMITED）
 const c3 = T.uploadErrText({ errKind: "RATE_LIMITED", lastError: "rate-limited" });
-A("③ RATE_LIMITED → 「上传次数已达到限制」", c3.startsWith("上传次数已达到限制"));
+A("③ RATE_LIMITED → 「服务端繁忙」（v7.10.0 次数限制文案已清）", c3.includes("服务端繁忙"));
 
 // ④ 服务端拒绝（六个终态码）
 for (const code of ["PRIVACY_REJECTED", "UNAUTHORIZED", "IDEMPOTENCY_CONFLICT",

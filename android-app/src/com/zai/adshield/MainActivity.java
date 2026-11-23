@@ -843,14 +843,15 @@ public class MainActivity extends Activity {
         }
 
         /** v8.0.0：上传状态行真数据。v8.2.2：LogStore.overview——待传事件数/
-         *  24h 成功数/拒收检视/累计采集/最近成功时间（服务端权威，本地仅展示）。 */
+         *  拒收检视/累计采集/最近成功时间（服务端权威，本地仅展示）。
+         *  v7.10.0：24h 成功数（acked24h）键已随「上传次数限制彻底移除」删除。 */
         @JavascriptInterface
         public String logUploadStatus() {
             try {
                 return com.zai.adshield.core.LogStore.get(a)
                         .overview(System.currentTimeMillis()).toString();
             } catch (Throwable t) {
-                return "{\"pending\":0,\"pendingEvents\":0,\"acked24h\":0,\"lastAckedAt\":0,\"rejected\":0,\"lastError\":\"\"}";
+                return "{\"pending\":0,\"pendingEvents\":0,\"lastAckedAt\":0,\"rejected\":0,\"lastError\":\"\"}";
             }
         }
 
@@ -861,8 +862,9 @@ public class MainActivity extends Activity {
          *  batchId 幂等，绝不绕过；单后台守护线程执行，绝不阻塞页面）。
          *  v8.1.0：升级为一键上传带回调版（cb=JS 回调函数名）——后台线程
          *  阻塞执行 submitNowBlocking（强制封批 + 结果 Summary），完成后经
-         *  window[cb] 回调 UI；成功显示 Issue 编号，失败显示原因。手动路径
-         *  不受自动 24h/3 额度限制（服务端 RATE_LIMITED 幂等兜底）。） */
+         *  window[cb] 回调 UI；成功显示 Issue 编号，失败显示原因。v7.10.0：
+         *  本地已无任何次数/额度/冷却限制（上传次数限制彻底移除——同
+         *  batchId 幂等保持，服务端 per-minute 瞬时防爆层如实转达）。） */
         @JavascriptInterface
         public void logUploadSubmitNow(final String cb) {
             new Thread(() -> {
@@ -1089,7 +1091,7 @@ public class MainActivity extends Activity {
             return o.toString();
         }
 
-        /** 统一更新检查（v7.9.8 静态清单架构——所有更新入口的唯一通道）。
+        /* 统一更新检查（v7.9.8 静态清单架构——所有更新入口的唯一通道）。
          *  原 netGetLatestRelease（GitHub 匿名 REST API 直连）已移除：匿名
          *  60 次/小时/IP 出口配额下所有用户同池互耗（进入更新页即「GitHub
          *  API 限流」的用户实锤根因）。现由 UpdateRepository 完成：
@@ -1097,13 +1099,44 @@ public class MainActivity extends Activity {
          *  REST API 配额）+ 本地缓存 15min + 单飞并发合并 + 手动 30s 冷却/
          *  自动单次 + 失败指数退避 + ETag 304 + 受控备用源 + 错误十类
          *  （UpdateManifest）；isNewer 权威判定 = versionCode 主判
-         *  （Net.isNewerRelease——语义与 v7.9.6plus 起完全一致）。
+         *  （Net.isNewerRelease——v7.10.0 统一规则：remoteVersionCode >
+         *  currentVersionCode；versionName 仅展示，绝不参与更新判断）。
+         *
+         *  v7.10.0 异步化（用户指令：禁止在 JavaScript 主线程同步等待网络）：
+         *  旧同步桥 updateCheck(manual) 整体移除——JS 调用同步桥会阻塞 JS
+         *  线程直至网络返回（五源链预算 40s，弱网下页面冻结 40s 的实锤
+         *  根因）。替代：updateCheckAsync(manual, cb) 后台线程执行
+         *  UpdateRepository.check，结果经 window[cb](json) 回调
+         *  （runOnUiThread——与 logUploadSubmitNow/tryAutoReviveDeep 同族
+         *  模式）；JS 侧配套三重防线：单飞共享 + 过期序号丢弃 + 90 秒回调
+         *  兜底（见 app.js bridgeUpdateCheck——手动检查绝不永久卡住）。
+         *  缓存/ETag/冷却/退避/单飞语义全部零改动保持。
          * @param manual true = 用户主动「检查更新」（绕过新鲜缓存，受冷却/
          *               单飞约束）；false = 启动自动检查（优先缓存，静默失败）
+         * @param cb     JS 回调函数名（结果 JSON 经 window[cb](json) 回传）
          */
         @JavascriptInterface
-        public String updateCheck(boolean manual) {
-            return UpdateRepository.check(a, versionNameOf(a), versionCodeOf(a), manual);
+        public void updateCheckAsync(final boolean manual, final String cb) {
+            new Thread(() -> {
+                String r;
+                try {
+                    r = UpdateRepository.check(a, versionCodeOf(a), manual);
+                } catch (final Throwable t) {
+                    r = UpdateManifest.fail(UpdateRepository.classifyNetError(t),
+                            "检查更新失败（" + t.getClass().getSimpleName() + "）");
+                }
+                final String rr = r;
+                a.runOnUiThread(() -> {
+                    try {
+                        if (a.webView != null) {
+                            a.webView.evaluateJavascript(
+                                    "window[" + JSON.stringifyCb(cb) + "] && window["
+                                            + JSON.stringifyCb(cb) + "](" + rr + ")", null);
+                        }
+                    } catch (Throwable ignored) {
+                    }
+                });
+            }, "update-check-async").start();
         }
 
         /* ───── 应用内更新：页内下载 → 进度 → 安装（不跳浏览器） ───── */

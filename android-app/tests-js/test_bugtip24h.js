@@ -1,7 +1,8 @@
 // ═══ v7.9.8 Bug 反馈提示（24h 节流）· 真实 app.js 全量加载 + 迷你 DOM 交互测试 ═══
 // 方式：与 scripts/check-appjs.sh 同源的全量 app.js stub 加载（顶层执行真实代码），
 //      加载后换入可交互迷你 DOM，驱动 maybeShowBugTip/点击流/导航流/24h 时间旅行。
-//      同时验证版本判定真值表（79800 主判）与旧版 cmpVer 兼容（提取自已分发 APK）。
+//      同时验证版本判定真值表（v7.10.0 统一规则——versionCode 单一判定）与
+//      cmpVer/versionCodeFromNotes 死灰复燃防线（统一规则专项）。
 const fs = require("fs");
 const APPJS = "/home/z/skip-ad-repo/android-app/assets/www/app.js";
 const src = fs.readFileSync(APPJS, "utf8");
@@ -46,7 +47,7 @@ Date.now = () => (nowMock === null ? REAL_NOW : nowMock);
 const TAIL = `
 ;globalThis.__T__ = {
   maybeShowBugTip, showBugTip, bugTipThrottled, bugTipRecentlyShown,
-  store, appVer, appCode, isNewerByCode, versionCodeFromNotes, cmpVer,
+  store, appVer, appCode, isNewerByCode,
   HAS_BRIDGE,
   resetBugTipSession: () => { bugTipShownThisSession = false; },
 };`;
@@ -128,8 +129,8 @@ function freshSession() {
 
 console.log("═══ S0 加载与版本兜底 ═══");
 A("app.js 全量顶层加载成功（stub 环境）", true);
-A('appVer() 浏览器兜底 = "7.9.9"', T.appVer() === "7.9.9");
-A('appCode() 浏览器兜底 = "79900"', T.appCode() === "79900");
+A('appVer() 浏览器兜底 = "7.10.0"', T.appVer() === "7.10.0");
+A('appCode() 浏览器兜底 = "80000"', T.appCode() === "80000");
 A("HAS_BRIDGE=false（浏览器路径·localStorage）", T.HAS_BRIDGE === false);
 
 console.log("═══ S1 首次进入：显示 ═══");
@@ -222,29 +223,30 @@ A("更新页在场 → 提示本轮不弹", miniDom.tip === null);
 A("且未消耗资格（确认时间戳未写）", lsMap.get("adshield_bug_feedback_confirmed_at") === undefined);
 globalThis.document.querySelector = qsBackup;
 
-console.log("═══ S6 版本判定真值表（versionCode 主判——远端 v7.9.8/79800）═══");
-A('versionCodeFromNotes("versionCode: 79800\\n…") = 79800', T.versionCodeFromNotes("versionCode: 79800\n正文") === 79800);
-A("isNewerByCode(79800, 7.9.8 → 本地 79700/7.9.7) = true（v7.9.7 检测到）",
-  T.isNewerByCode(79800, "7.9.8", 79700, "7.9.7") === true);
-A("isNewerByCode(79800 → 本地 79800/7.9.8) = false（不自误报）",
-  T.isNewerByCode(79800, "7.9.8", 79800, "7.9.8") === false);
-A("isNewerByCode(79800 → 本地 82300/7.9.6plus) = false（82300 用户不误报）",
-  T.isNewerByCode(79800, "7.9.8", 82300, "7.9.6plus") === false);
-A("元数据缺失回退名比较：isNewerByCode(0, 7.9.8 → 79700/7.9.7) = true",
-  T.isNewerByCode(0, "7.9.8", 79700, "7.9.7") === true);
+console.log("═══ S6 版本判定真值表（v7.10.0 统一规则——versionCode 单一判定）═══");
+A("isNewerByCode(79800 → 本地 79700) = true（v7.9.7 检测到 v7.9.8）",
+  T.isNewerByCode(79800, 79700) === true);
+A("isNewerByCode(79800 → 本地 79800) = false（不自误报）",
+  T.isNewerByCode(79800, 79800) === false);
+A("isNewerByCode(79800 → 本地 82300) = false（82300 用户不误报）",
+  T.isNewerByCode(79800, 82300) === false);
+A("isNewerByCode(0 → 本地 79700) = false（v7.10.0：远端无码不判新——名比较回退已删）",
+  T.isNewerByCode(0, 79700) === false);
+A("isNewerByCode(79800 → 本地 0) = false（v7.10.0：本地无码不判新——名比较回退已删）",
+  T.isNewerByCode(79800, 0) === false);
+A("isNewerByCode(79700 → 本地 79800) = false（绝不提示降级）",
+  T.isNewerByCode(79700, 79800) === false);
 
-console.log("═══ S7 旧版 cmpVer 兼容（提取自已分发 v7.9.6 APK 资产）═══");
-const legacy = fs.readFileSync(__dirname + "/legacy/app-v7.9.6.js", "utf8");
-const m = legacy.match(/function cmpVer[\s\S]*?\n}/);
-if (!m) { console.error("✗ 未提取到旧版 cmpVer"); process.exit(1); }
-(0, eval)(m[0]); // 定义真实旧版 cmpVer 到全局
-const cases = [["7.9.6", 2], ["7.9.5", 3], ["7.9.0", 8], ["7.8.0", 1], ["7.6.1", 3]];
-for (const [local, expect] of cases) {
-  const r = cmpVer("7.9.8", local);
-  A(`cmpVer("7.9.8", "${local}") = ${expect} > 0（检测到更新）`, r === expect && r > 0);
-}
-A('cmpVer("7.9.8", "7.9.7") = 1（v7.9.7 字段旧版也能检测到）', cmpVer("7.9.8", "7.9.7") === 1);
-A('cmpVer("7.9.8", "7.9.8") = 0（同版本不提示）', cmpVer("7.9.8", "7.9.8") === 0);
+console.log("═══ S7 cmpVer/versionCodeFromNotes 死灰复燃防线（统一规则专项）═══");
+A("app.js 源无 function cmpVer（versionName 比较函数已删）",
+  !/function cmpVer\s*\(/.test(src));
+A("app.js 源无 function versionCodeFromNotes（正文元数据行回退已删）",
+  !/function versionCodeFromNotes\s*\(/.test(src));
+const noComments = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^[ \t]*\/\/.*$/gm, "");
+A("app.js 可执行面无 cmpVer 调用点", !/cmpVer\s*\(/.test(noComments));
+A("app.js 可执行面无 versionCodeFromNotes 调用点", !/versionCodeFromNotes\s*\(/.test(noComments));
+A("旧版资产仍在库（legacy/app-v7.9.6.js——历史对照物，非运行时依赖）",
+  (() => { try { fs.readFileSync(__dirname + "/legacy/app-v7.9.6.js", "utf8"); return true; } catch (e) { return false; } })());
 
 console.log("\n════════════════════════");
 console.log(`  通过 ${pass} · 失败 ${fail}`);

@@ -407,12 +407,12 @@ public final class LogStore {
         return readJsonArray(file(REJECTED_FILE)).length();
     }
 
-    /* ── 24h 成功配额（只记成功——服务端确认才计数）──
-     * v7.9.8 额度分账（用户指令：手动与自动不互相占用额度）：
-     *  · ok-times.json —— 全部成功（展示用「24h 已成功 N 批」）；
-     *  · auto-ok-times.json —— 仅自动成功（自动 24h/3 闸只看这份）；
-     * 手动成功不占用自动配额；服务端侧共享限额由中转服务 RATE_LIMITED
-     * 如实转达（客户端不越权绕过）。 */
+    /* ── 成功时间账本（只记成功——服务端确认才记账）──
+     * v7.10.0 上传次数限制彻底移除：ok-times.json（全部成功）与
+     * auto-ok-times.json（仅自动成功）两账本继续留存作历史记录，但
+     * 已不再被任何闸门/展示读取（24h/3 自动闸、acked24h 展示、
+     * autoEligible 第三重闸均已删除）。服务端 per-minute 瞬时防爆层
+     * RATE_LIMITED 仍如实转达（客户端不越权绕过，也不人为设限）。 */
 
     /** 记录一次成功（全部账本；manual=true 时不记自动账本）。 */
     public synchronized void recordOk(long ts, boolean manual) {
@@ -442,24 +442,9 @@ public final class LogStore {
         recordOk(ts, true);
     }
 
-    /** 全部成功计数（24h 滚动窗——展示用）。 */
-    public synchronized int okCount24h(long now) {
-        return countInWindow(file(OK_TIMES_FILE), now);
-    }
-
-    /** 仅自动成功计数（24h 滚动窗——autoEligible 第三重闸）。 */
-    public synchronized int autoOkCount24h(long now) {
-        return countInWindow(file(AUTO_OK_TIMES_FILE), now);
-    }
-
-    private int countInWindow(File f, long now) {
-        int n = 0;
-        JSONArray t = readJsonArray(f);
-        for (int i = 0; i < t.length(); i++) {
-            if (now - t.optLong(i, 0L) < DAY_MS) n++;
-        }
-        return n;
-    }
+    /* v7.10.0：okCount24h/autoOkCount24h/countInWindow 已随「上传次数限制
+     * 彻底移除」专项删除——账本写入保留（recordOk），计数读取方已不存在。
+     * 死灰复燃防线见 LogStoreTest S4（反射断言不得回场）。 */
 
     public synchronized long lastOkAt() {
         JSONArray t = readJsonArray(file(OK_TIMES_FILE));
@@ -479,7 +464,6 @@ public final class LogStore {
             o.put("pending", (pendingEvents + EVENTS_PER_BATCH - 1) / EVENTS_PER_BATCH);
             o.put("pendingEvents", pendingEvents);
             o.put("readCorrupt", pendingCorrupt);
-            o.put("acked24h", okCount24h(now));
             o.put("lastAckedAt", lastOkAt());
             o.put("rejected", rejectedCount());
             o.put("totalCollected", totalCollected());

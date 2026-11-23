@@ -17,8 +17,9 @@ Release 发布（release.published）或手动触发（workflow_dispatch）时�
   3. APK 包名 == --expect-package（防错仓/换包）
   4. APK versionName == tag 去掉 v 前缀（三段式同名同码）
   5. APK versionCode == tag 三段公式 major*10000+minor*1000+patch*100
-     （v7.1.0 起项目公式；非三段 tag（历史 plus 系）→ 以 Release 正文
-      「versionCode: N」元数据行为准，且必须与 APK versionCode 一致）
+     （v7.1.0 起项目公式；v7.10.0 统一规则：非三段 tag（历史 plus 系）
+     一律硬失败拒绝生成——Release 正文 versionCode 元数据行不再作为
+     回退定码来源，仅作一致性校验）
   6. APK 实算 SHA256 == 资产 digest（GitHub API 官方值；资产无 digest
      时记录实算值并通过——大小校验仍硬性）
   7. APK 实测文件大小 == 资产 size
@@ -60,7 +61,9 @@ def version_code_of_tag(tag):
 
 
 def version_code_of_notes(body):
-    """Release 正文首个「versionCode: N」元数据行（与客户端 Net.versionCodeOfNotes 同语义）。"""
+    """Release 正文首个「versionCode: N」元数据行（v7.10.0 统一规则：仅作
+    与 APK versionCode 的一致性校验——绝不作为定码回退来源；客户端
+    Net.versionCodeOfNotes 已删）。"""
     for line in (body or "").split("\n"):
         t = line.strip()
         if t.startswith("versionCode:"):
@@ -141,11 +144,10 @@ def main(argv):
         if notes_vc and notes_vc != vc:
             fail(EXIT_INVALID, "Release 正文 versionCode %d != APK versionCode %d" % (notes_vc, vc))
     else:
-        # 非三段 tag（历史 plus 系）：正文元数据行与 APK 必须一致
-        if notes_vc <= 0:
-            fail(EXIT_INVALID, "非三段 tag %r 且正文无 versionCode: 元数据行——无法权威定码" % tag)
-        if notes_vc != vc:
-            fail(EXIT_INVALID, "正文 versionCode %d != APK versionCode %d" % (notes_vc, vc))
+        # v7.10.0 统一规则：非三段 tag（历史 plus 系）一律硬失败——绝不从
+        # Release 正文 versionCode 元数据行回退定码（客户端侧同名回退链已删）
+        fail(EXIT_INVALID, "非三段 tag %r——正式发布必须使用三段式 vX.Y.Z tag"
+             "（统一版本规则：versionName/正文元数据行不作定码来源）" % tag)
 
     # ── 6. SHA256 实算 == 资产 digest ──
     actual_sha = sha256_of(args.apk)

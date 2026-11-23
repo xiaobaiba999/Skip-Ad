@@ -19,7 +19,7 @@ import java.util.List;
  *      （同 batchId + 同 createdAt + 同 events——v7.9.8 冻结幂等核心）；
  *  T4  成功后不重复提交：消费后 pending 空 → 再点零 POST；
  *  T5  手动上传不占自动额度（额度分账——v7.9.8）；
- *  T6  自动一天最多成功 3 次：autoEligible 边界 + 自动账本窗口；
+ *  T6  自动上传资格（v7.10.0 无次数上限版）：仅间隔 + 新日志双闸边界；
  *  T7  无新日志不创建 Issue：pending=0 → autoEligible false + 零 POST；
  *  T9  服务端拒绝不错标成功：ok=false / 非 2xx / 终态码三路都不消费；
  *  T10 Issue 编号与链接一致：verify 命中 → 真实 URL；404 → 空串不造链接；
@@ -29,17 +29,17 @@ import java.util.List;
  *  T12 错误分类矩阵（classifyError 八类——真实 HTTP 状态码/服务端码/
  *      网络异常类型三路，UI 八类人话映射的唯一依据；v7.9.8b 裸 401/403
  *      分家为 AUTH_FAILED/FORBIDDEN——认证与权限分开提示）；
- *  T13 限流 retryAfter 透传（RATE_LIMITED → retryAfterMs 毫秒口径）；
+ *  T13 限流如实分类（RATE_LIMITED → waited/errKind；v7.10.0 retryAfterMs 已删）；
  *  T14 【进程被杀重启恢复】上传中进程死亡 → 新 LogStore 实例（同目录
  *      = 重启）→ 冻结批次从磁盘 manifest 恢复 → 字节级同 payload 重试 →
  *      ALREADY_ACCEPTED 消费（用户 J 场景——幂等实现完整性的关键证据）；
  *  T15 【批次 B 独立性】批次 A 成功消费后新日志形成批次 B——不同 batchId、
  *      绝不混入 A 事件（用户 H/I 场景）；
- *  T16 【自动 24h/3 批粒度闸】积压排空也不越 3 批/窗：200 条自动排空只
+ *  T16 【v7.10.0 无批粒度闸】积压单次排空：200 条 5 批自动路径全部成功
  *      成功 3 批即停，窗口滑动后续传（v7.9.8b 修复的回归钉死）；
  *  T17 【IDEMPOTENCY_CONFLICT 证据保留】终态冲突 → 批次隔离进 rejected.json
  *      （code+error+events 全在）——不丢证据、不计成功、不再盲重试；
- *  T18 【额度文件损坏防御】ok-times/auto-ok-times 损坏不崩溃、计数归零、
+ *  T18 【账本文件损坏防御】ok-times/auto-ok-times 损坏不崩溃、recordOk 自愈
  *      recordOk 重写自愈（用户「损坏的额度文件不会导致应用崩溃」）。
  */
 public class LogUploaderTest {
@@ -131,6 +131,40 @@ public class LogUploaderTest {
         return s;
     }
 
+    /** 账本文件行数（v7.10.0：计数函数已删——直接读文件钉写入语义；不存在 → 0）。 */
+    private static int ledgerRows(MemEnv e, String name) {
+        try {
+            java.io.File f = new java.io.File(new java.io.File(e.dir, "log-upload"), name);
+            if (!f.isFile()) return 0;
+            java.io.FileInputStream in = new java.io.FileInputStream(f);
+            java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream();
+            byte[] buf = new byte[4096];
+            int n;
+            while ((n = in.read(buf)) > 0) bo.write(buf, 0, n);
+            in.close();
+            return new org.json.JSONArray(new String(bo.toByteArray(), "UTF-8")).length();
+        } catch (Throwable t) {
+            return -1;
+        }
+    }
+
+    /** 账本文件原始内容（损坏面断言用）。 */
+    private static String ledgerRaw(MemEnv e, String name) {
+        try {
+            java.io.File f = new java.io.File(new java.io.File(e.dir, "log-upload"), name);
+            if (!f.isFile()) return "";
+            java.io.FileInputStream in = new java.io.FileInputStream(f);
+            java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream();
+            byte[] buf = new byte[4096];
+            int n;
+            while ((n = in.read(buf)) > 0) bo.write(buf, 0, n);
+            in.close();
+            return new String(bo.toByteArray(), "UTF-8");
+        } catch (Throwable t) {
+            return "";
+        }
+    }
+
     private static JSONObject ev() {
         JSONObject e = new JSONObject();
         try {
@@ -193,8 +227,8 @@ public class LogUploaderTest {
         TestHost.checkEq(48, first.optJSONArray("events").length(), "T1h 首块 48 事件（STATS+47）");
         TestHost.checkEq(48, http.posts.get(1).optJSONArray("events").length(), "T1i 第二块 48 事件");
         TestHost.checkEq(5 + 0, http.posts.get(2).optJSONArray("events").length(), "T1j 末块 5 事件");
-        TestHost.checkEq(3, s.okCount24h(System.currentTimeMillis()), "T1k 3 次成功入窗（全部账本）");
-        TestHost.checkEq(0, s.autoOkCount24h(System.currentTimeMillis()), "T1l 手动路径不记自动账本");
+        TestHost.check(ledgerRows(env, "ok-times.json") >= 1, "T1k 成功入账本（历史留存——v7.10.0 无读取方）");
+        TestHost.checkEq(0, ledgerRows(env, "auto-ok-times.json"), "T1l 手动路径不记自动账本（分账保持）");
     }
 
     /* T2：无新日志 → 零 POST + 四态 emptyReason。 */
@@ -262,51 +296,51 @@ public class LogUploaderTest {
         TestHost.check(idConsumed.length() > 0, "T4c 消费块编号留痕");
     }
 
-    /* T5：手动上传不查自动资格 + 不占自动额度（v7.9.8 额度分账）。 */
+    /* T5：手动上传不查自动资格（v7.10.0：自动资格已无额度闸——仅间隔+新日志；
+     *  分账语义保持：手动成功不写自动账本）。 */
     private static void t5_manualIndependentOfAuto() {
         long h8 = 8L * 3600 * 1000;
         long now = 1795000000000L;
-        // 自动：间隔不足 + 配额满 → 一律禁行
-        TestHost.check(!LogUploader.autoEligible(now - 1000, now, h8, 50, 0),
+        // 自动资格（v7.10.0 双闸版）：仅间隔 + 新日志
+        TestHost.check(!LogUploader.autoEligible(now - 1000, now, h8, 50),
                 "T5a 间隔不足自动禁行");
-        TestHost.check(!LogUploader.autoEligible(now - h8, now, h8, 50, 3),
-                "T5b 配额满自动禁行");
-        TestHost.check(!LogUploader.autoEligible(now - h8, now, h8, 50, 99),
-                "T5c 异常大计数防御");
-        // 手动：同一 store 自动账本已满仍可 runUpload(manual)（不查 autoEligible）
+        TestHost.check(LogUploader.autoEligible(now - h8, now, h8, 50),
+                "T5b v7.10.0 无次数上限：间隔足够即放行（历史成功不设限）");
+        // 手动：与自动资格互不相干（runUpload(manual) 不查 autoEligible）
         env = new MemEnv();
         LogStore s = storeWith(5);
-        for (int i = 0; i < 3; i++) s.recordOk(System.currentTimeMillis(), false); // 自动配额满
+        for (int i = 0; i < 3; i++) s.recordOk(System.currentTimeMillis(), false); // 自动成功 ×3（历史账本）
         FakeHttp http = new FakeHttp();
         LogUploader.Summary r = uploader(s, http).runUpload(true);
-        TestHost.checkEq(1, r.acked, "T5d 自动配额满 3/3 手动照传（本地不拦）");
+        TestHost.checkEq(1, r.acked, "T5d 手动照传（本地不设限）");
         TestHost.checkEq(0, s.pendingEventCount(), "T5e 手动上传成功消费");
-        TestHost.checkEq(3, s.autoOkCount24h(System.currentTimeMillis()),
-                "T5f 手动成功不追加自动账本（分账保持）");
-        TestHost.checkEq(4, s.okCount24h(System.currentTimeMillis()),
-                "T5g 全部账本含手动成功（展示口径）");
+        TestHost.checkEq(4, ledgerRows(env, "ok-times.json"),
+                "T5f 手动成功入全部账本（3 自动 + 1 手动）");
+        TestHost.checkEq(3, ledgerRows(env, "auto-ok-times.json"),
+                "T5g 手动成功不追加自动账本（分账保持）");
     }
 
-    /* T6：自动一天最多成功 3 次（autoEligible 三重闸全边界 + 自动账本窗口）。 */
+    /* T6：自动上传资格（v7.10.0 无次数上限版——仅间隔 + 新日志双闸全边界）。 */
     private static void t6_autoQuotaWindow() {
         long h8 = 8L * 3600 * 1000;
         long now = 1795000000000L;
-        TestHost.check(LogUploader.autoEligible(now - h8, now, h8, 1, 0), "T6a 8h 到 + 有新日志 + 0 成功 → 允许");
-        TestHost.check(LogUploader.autoEligible(now - h8 - 1, now, h8, 1, 2), "T6b 第 3 次机会（2 成功）");
-        TestHost.check(!LogUploader.autoEligible(now - h8, now, h8, 1, 3), "T6c 3 成功满 → 禁行");
-        TestHost.check(!LogUploader.autoEligible(now - h8 + 1, now, h8, 1, 0), "T6d 间隔不足 → 禁行");
-        TestHost.check(!LogUploader.autoEligible(now - h8, now, h8, 0, 0), "T6e 无新日志 → 禁行");
-        TestHost.check(LogUploader.autoEligible(0, now, h8, 1, 0), "T6f 首传允许（从未尝试）");
-        // 窗口滚动：25h 前的自动成功已过期 → 配额腾出
+        TestHost.check(LogUploader.autoEligible(now - h8, now, h8, 1), "T6a 8h 到 + 有新日志 → 允许");
+        TestHost.check(LogUploader.autoEligible(now - h8 - 1, now, h8, 1), "T6b 间隔过 8h 零界 → 允许");
+        TestHost.check(LogUploader.autoEligible(now - h8, now, h8, 100), "T6c v7.10.0：成功次数不再是输入——传多少次都放行");
+        TestHost.check(!LogUploader.autoEligible(now - h8 + 1, now, h8, 1), "T6d 间隔不足 → 禁行");
+        TestHost.check(!LogUploader.autoEligible(now - h8, now, h8, 0), "T6e 无新日志 → 禁行（零网络请求）");
+        TestHost.check(LogUploader.autoEligible(0, now, h8, 1), "T6f 首传允许（从未尝试）");
+        // 账本写入与滚动窗修剪保持（历史留存语义——读取方已删，写入面钉死）
         env = new MemEnv();
         LogStore s = LogStore.forEnv(env);
         long day = 24L * 3600 * 1000;
         s.recordOk(now - day - 1000, false);
         s.recordOk(now - day - 2000, false);
         s.recordOk(now - 3600_000, false);
-        TestHost.checkEq(1, s.autoOkCount24h(now), "T6g 过期自动成功腾出配额");
-        TestHost.check(LogUploader.autoEligible(now - h8, now, h8, 1, s.autoOkCount24h(now)),
-                "T6h 滚动窗口后允许第 3 次（严格 24h 语义）");
+        TestHost.checkEq(3, ledgerRows(env, "auto-ok-times.json"),
+                "T6g 自动成功入自动账本（写入保持）");
+        TestHost.check(LogUploader.autoEligible(now - h8, now, h8, 1),
+                "T6h v7.10.0：账本历史不再影响资格（无次数上限）");
     }
 
     /* T7：自动无新日志不创建 Issue。 */
@@ -317,7 +351,7 @@ public class LogUploaderTest {
         long h8 = 8L * 3600 * 1000;
         long now = System.currentTimeMillis();
         TestHost.check(!LogUploader.autoEligible(now - h8, now, h8,
-                s.pendingEventCount(), s.autoOkCount24h(now)), "T7a 空缓冲自动禁行");
+                s.pendingEventCount()), "T7a 空缓冲自动禁行");
         // 即便误入 runUpload：零事件零 POST
         LogUploader.Summary r = uploader(s, http).runUpload(false);
         TestHost.checkEq(0, http.posts.size(), "T7b 零 POST（绝不建空 Issue）");
@@ -356,7 +390,7 @@ public class LogUploaderTest {
         TestHost.checkEq(1, r3.rejected, "T9g rejected 如实计数");
         TestHost.checkEq(0, s3.pendingEventCount(), "T9h 拒收块移出 pending（隔离检视）");
         TestHost.checkEq(1, s3.rejectedCount(), "T9i 检视记录在案");
-        TestHost.checkEq(0, s3.okCount24h(System.currentTimeMillis()), "T9j 拒收不耗成功配额");
+        TestHost.checkEq(0, ledgerRows(env, "ok-times.json"), "T9j 拒收零成功记账（ok-times 未写）");
     }
 
     /* T10：Issue 编号与链接一致性（验证命中 → 真实 URL；404 → 空串不造链接）。 */
@@ -572,16 +606,21 @@ public class LogUploaderTest {
         }
     }
 
-    /* T13：限流 retryAfter 透传（服务端秒 → retryAfterMs 毫秒，钳制 ≤24h）。 */
+    /* T13：限流如实分类（v7.10.0：retryAfter 不再解析——次数限制文案已清；
+     *  waited/errKind/RATE_LIMITED 分类保持）。 */
     private static void t13_retryAfterPassthrough() {
         env = new MemEnv();
         LogStore s = storeWith(5);
         FakeHttp http = new FakeHttp();
         http.responses.add(FakeHttp.rateLimited()); // retryAfter=3600s
         LogUploader.Summary r = uploader(s, http).runUpload(true);
-        TestHost.checkEq(1, r.waited, "T13a 限流如实计数");
-        TestHost.checkEq(3600_000L, r.retryAfterMs, "T13b retryAfter 3600s → 3600000ms 透传");
-        // 巨值钳制（防溢出/荒谬 UI 展示）
+        TestHost.checkEq(1, r.waited, "T13a 限流如实计数（服务端瞬时报真）");
+        TestHost.check("RATE_LIMITED".equals(r.errKind), "T13b errKind=RATE_LIMITED（八类分类保持）");
+        // v7.10.0：retryAfter 不再解析（次数限制文案已清）——Summary JSON
+        // 不含 retryAfterMs/acked24h 键
+        TestHost.check(!r.toJson().contains("retryAfterMs") && !r.toJson().contains("acked24h"),
+                "T13c v7.10.0：Summary 无 retryAfterMs/acked24h 键（次数限制移除）");
+        // 巨值 retryAfter（防溢出面已随解析移除而消失——仍不崩溃）
         FakeHttp big = new FakeHttp();
         JSONObject j = new JSONObject();
         try {
@@ -594,7 +633,8 @@ public class LogUploaderTest {
         env = new MemEnv();
         LogStore s2 = storeWith(5);
         LogUploader.Summary r2 = uploader(s2, big).runUpload(true);
-        TestHost.checkEq(24L * 3600 * 1000, r2.retryAfterMs, "T13c retryAfter 巨值钳制 ≤24h");
+        TestHost.checkEq(1, r2.waited == 1 && !r2.toJson().contains("retryAfterMs") ? 1 : 0,
+                "T13d 巨值 retryAfter 不解析不崩溃（分类如实）");
     }
 
     /* T14：【进程被杀重启恢复】封批落盘（manifest 持久化）→ 上传中进程死亡 →
@@ -655,41 +695,25 @@ public class LogUploaderTest {
         TestHost.checkEq(0, s.pendingEventCount(), "T15e 全部消费");
     }
 
-    /* T16：【自动 24h/3 批粒度闸】200 条积压（5 批）自动排空——第 3 批成功
-     * 后即停（autoEligible 只挡 run 起点，v7.9.8b 前单次运行可越 3 批）；
-     * 窗口滑动（旧时间戳出窗）后下一次自动运行续传剩余。 */
+    /* T16：【v7.10.0 无批粒度闸】200 条积压（5 批）自动路径单次运行全部
+     * 成功排空——上传次数限制彻底移除：批粒度 24h/3 复核闸已删（每批独立
+     * batchId 幂等保护保持，绝不二建 Issue）；手动/自动路径同语义。 */
     private static void t16_autoInRunQuotaCap() {
         env = new MemEnv();
         LogStore s = storeWith(200);
         FakeHttp http = new FakeHttp();
         LogUploader.Summary r = uploader(s, http).runUpload(false); // 自动路径
-        TestHost.checkEq(3, r.acked, "T16a 200 条 5 批——自动路径只成功 3 批即停（24h/3）");
-        TestHost.checkEq(3, http.posts.size(), "T16b 第 4/5 批未发（批粒度闸）");
-        TestHost.checkEq(3, s.autoOkCount24h(System.currentTimeMillis()), "T16c 自动账本=3");
-        int remaining = s.pendingEventCount();
-        TestHost.check(remaining > 0, "T16d 剩余事件保留待窗口滑动（=" + remaining + "）");
-        // 窗口滑动：手动把自动账本时间戳回写为 25h 前（模拟时间流逝出窗）
-        try {
-            org.json.JSONArray old = new org.json.JSONArray();
-            long t25h = System.currentTimeMillis() - 25L * 3600 * 1000;
-            old.put(t25h); old.put(t25h); old.put(t25h);
-            java.io.File f = new java.io.File(new java.io.File(env.dir, "log-upload"), "auto-ok-times.json");
-            java.io.FileOutputStream fo = new java.io.FileOutputStream(f);
-            fo.write(old.toString().getBytes("UTF-8"));
-            fo.close();
-        } catch (Throwable ignored) {
-        }
-        TestHost.checkEq(0, s.autoOkCount24h(System.currentTimeMillis()), "T16e 窗口滑动后额度恢复");
-        FakeHttp http2 = new FakeHttp();
-        LogUploader.Summary r2 = uploader(s, http2).runUpload(false);
-        TestHost.checkEq(2, r2.acked, "T16f 续传剩余 2 批（含首块 STATS）");
-        TestHost.checkEq(0, s.pendingEventCount(), "T16g 排空完成");
-        // 对照：手动路径无批粒度闸（随时全量可用）
+        TestHost.checkEq(5, r.acked, "T16a 200 条 5 批——自动路径单次全部成功（无批粒度闸）");
+        TestHost.checkEq(5, http.posts.size(), "T16b 5 批全发（每批独立 batchId 幂等）");
+        TestHost.checkEq(0, s.pendingEventCount(), "T16c 排空完成（无剩余保留）");
+        TestHost.checkEq(5, ledgerRows(env, "auto-ok-times.json"),
+                "T16d 自动账本记 5 次（历史留存——无读取方）");
+        // 对照：手动路径同语义（随时全量可用——与自动完全一致）
         env = new MemEnv();
         LogStore s3 = storeWith(200);
         FakeHttp http3 = new FakeHttp();
         LogUploader.Summary r3 = uploader(s3, http3).runUpload(true); // 手动
-        TestHost.checkEq(5, r3.acked, "T16h 手动路径不受 24h/3 闸（5 批全传）");
+        TestHost.checkEq(5, r3.acked, "T16e 手动路径 5 批全传（与自动同语义）");
     }
 
     /* T17：【IDEMPOTENCY_CONFLICT 证据保留】终态冲突 → rejectHead 隔离：
@@ -706,7 +730,7 @@ public class LogUploaderTest {
         TestHost.checkEq("IDEMPOTENCY_CONFLICT", r.errKind, "T17c 冲突码透出（不吞码）");
         TestHost.checkEq(0, s.pendingEventCount(), "T17d 冲突块移出 pending（不再盲重试）");
         TestHost.checkEq(1, s.rejectedCount(), "T17e 检视记录在场");
-        TestHost.checkEq(0, s.okCount24h(System.currentTimeMillis()), "T17f 冲突不耗成功额度");
+        TestHost.checkEq(0, ledgerRows(env, "ok-times.json"), "T17f 冲突零成功记账（ok-times 未写）");
         // 证据完整性：rejected.json 保留 code + error + 事件体
         try {
             java.io.File f = new java.io.File(new java.io.File(env.dir, "log-upload"), "rejected.json");
@@ -734,8 +758,9 @@ public class LogUploaderTest {
         TestHost.checkEq(0, http2.posts.size(), "T17j 冲突块不再盲重试（零 POST）");
     }
 
-    /* T18：【额度文件损坏防御】ok-times.json / auto-ok-times.json 写入垃圾
-     * → 计数归零（不崩溃）、上传不受阻、recordOk 重写自愈。 */
+    /* T18：【账本文件损坏防御】ok-times.json / auto-ok-times.json 写入垃圾
+     * → 不崩溃、上传不受阻、recordOk 重写自愈（v7.10.0：读取方已删——
+     * 损坏面只剩写入路径的自愈语义）。 */
     private static void t18_corruptedQuotaFiles() {
         env = new MemEnv();
         LogStore s = storeWith(5);
@@ -749,15 +774,17 @@ public class LogUploaderTest {
             o2.close();
         } catch (Throwable ignored) {
         }
-        TestHost.checkEq(0, s.okCount24h(System.currentTimeMillis()), "T18a 损坏 ok-times 读作零（不崩溃）");
-        TestHost.checkEq(0, s.autoOkCount24h(System.currentTimeMillis()), "T18b 损坏 auto-ok-times 读作零");
+        TestHost.check(ledgerRaw(env, "ok-times.json").contains("corrupt"),
+                "T18a 损坏 ok-times 在场（读取方已删——不崩溃面）");
+        TestHost.check(ledgerRaw(env, "auto-ok-times.json").contains("not-json"),
+                "T18b 损坏 auto-ok-times 在场");
         FakeHttp http = new FakeHttp();
         LogUploader.Summary r = uploader(s, http).runUpload(true);
-        TestHost.checkEq(1, r.acked, "T18c 损坏额度文件不阻断上传");
+        TestHost.checkEq(1, r.acked, "T18c 损坏账本不阻断上传");
         s.recordOk(System.currentTimeMillis(), false);
-        TestHost.checkEq(1, s.autoOkCount24h(System.currentTimeMillis()),
-                "T18d recordOk 重写自愈（损坏内容被覆盖）");
-        TestHost.checkEq(2, s.okCount24h(System.currentTimeMillis()),
+        TestHost.check(ledgerRows(env, "auto-ok-times.json") >= 1,
+                "T18d recordOk 重写自愈（损坏内容被覆盖为合法 JSON）");
+        TestHost.check(ledgerRows(env, "ok-times.json") >= 2,
                 "T18e 全部账本同样自愈（手动 1 + 自动 1）");
     }
 }
