@@ -422,7 +422,9 @@ public class MainActivity extends Activity {
              * 前端出现注入（XSS），「kvSet 写 subCache 恶意规则」即可让服务
              * 重启时静默加载被投毒的自动点击规则——白名单把这个通道焊死。 */
             if (!"state".equals(key) && !"bug_feedback_confirmed_at".equals(key)
-                    && !"bug_feedback_shown_at".equals(key)) return;
+                    && !"bug_feedback_shown_at".equals(key)
+                    && !"pin_tip_confirmed_at".equals(key)
+                    && !"pin_tip_shown_at".equals(key)) return;
             SharedPreferences.Editor e = a.getSharedPreferences("adshield", Context.MODE_PRIVATE).edit();
             if (value == null) e.remove(key);
             else e.putString(key, value);
@@ -462,6 +464,16 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public boolean a11yEnabledInSettings() {
             return AdSkipService.registrationPresent(a);
+        }
+
+        /** v7.11.0：服务最近连接时刻（epoch ms 字符串；0 = 从未连接）——
+         *  页面冷启动宽限期判定依据：刚断开不久（如清理后台后 AMS 重绑慢）
+         *  时首页显示「服务重连中」而非「未开启」，避免误导向系统设置看
+         *  10 秒警告；重绑成功后前台看门狗自动恢复「守护中」。 */
+        @JavascriptInterface
+        public String serviceLastConnectedAt() {
+            return String.valueOf(a.getSharedPreferences("adshield", Context.MODE_PRIVATE)
+                    .getLong(AdSkipService.KEY_LAST_CONNECTED_AT, 0L));
         }
 
         /** 自动拉活（v5.2.0 自适应深挖版，RestoreGuard.pollPlan/decideInAppRevive）：

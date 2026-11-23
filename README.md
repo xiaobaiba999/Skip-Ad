@@ -7,7 +7,7 @@
 [![Releases](https://img.shields.io/github/v/release/xiaobaiba999/Skip-Ad?style=flat-square&label=%E6%9C%80%E6%96%B0%E5%8F%91%E5%B8%83)](https://github.com/xiaobaiba999/Skip-Ad/releases/latest)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](#许可)
 [![APK](https://img.shields.io/badge/APK-874KB-orange?style=flat-square)](https://github.com/xiaobaiba999/Skip-Ad/releases/latest)
-[![Tests](https://img.shields.io/badge/JVM%E6%96%AD%E8%A8%80-7305%20%E2%9C%85-brightgreen?style=flat-square)](docs/CHANGELOG.md)
+[![Tests](https://img.shields.io/badge/JVM%E6%96%AD%E8%A8%80-7313%20%E2%9C%85-brightgreen?style=flat-square)](docs/CHANGELOG.md)
 [![Matrix](https://img.shields.io/badge/%E6%9C%BA%E5%9E%8B%E7%9F%A9%E9%98%B5-9%E5%93%81%E7%89%8C%E5%8F%8A%E5%AD%90%E5%93%81%E7%89%8C36%E6%9C%BA%E5%9E%8B-396-blue?style=flat-square)](android-app/tests/com/zai/adshield/test/BrandFocus396Test.java)
 [![HumanTap](https://img.shields.io/badge/1%3A1%E4%BA%BA%E6%89%8B%E6%A8%A1%E6%8B%9F-%E8%AF%AF%E7%82%B9%E5%A4%9A%E7%82%B9%E6%A0%B9%E6%B2%BB-ff7043?style=flat-square)](android-app/tests/com/zai/adshield/test/HumanTapMatrixTest.java)
 [![Topic](https://img.shields.io/badge/topic-gkd--subscription-8e8e8e?style=flat-square)](https://github.com/topics/gkd-subscription)
@@ -23,30 +23,31 @@ Java 引擎 · GKD 订阅生态兼容 · [Releases](https://github.com/xiaobaiba
 | | |
 | --- | --- |
 | **怎么工作** | 无障碍服务读屏找到「跳过」控件（文本/描述/控件 ID/图片角落键四通道），0ms 露头即点；**广告任务状态机（v7.9.1）**：每窗唯一任务 + 不可逆成功终态（第一次关掉后旧任务拒收一切点击——重复点击/误触根治）+ 第一次失败仍安全有限重试（重试前重新验广告/验候选/验安全闸）；视频开屏画像（零候选连环+树静默/零事件归一 → 观察窗 20s + 轮询针）；**1:1 人手模拟触点**；点击冷却 300ms · 倒计时将尽提前 0.38s 开火 |
-| **拦截范围** | 开屏广告（含**视频开屏**——静默画像归一 v7.9.1）· 插屏/激励弹窗 · 摇一摇诱导 · 悬浮广告球 · 视频前贴 · **App 内广告主动关闭（信息流三路 20 款名单 + 插屏卫士：语境三路并集 + 图标关闭钮路径 + 订阅反饥饿 v7.9.1——远程 GKD 订阅重新参与匹配）**（134 款内置 + 任意 GKD 订阅扩展）· **应用生态兼容性目录（v7.9.2：compatibility/apps_catalog.json 233 款常用应用——包名三层来源严格区分，12 分类配额，每轮迭代 L1 回归）** |
+| **拦截范围** | 开屏广告（含**视频开屏**——静默画像归一 v7.9.1）· 插屏/激励弹窗 · 摇一摇诱导 · 悬浮广告球 · 视频前贴 · **App 内广告主动关闭（信息流三路 20 款名单 + 插屏卫士：语境三路并集 + 图标关闭钮路径 + 订阅反饥饿 v7.9.1——远程 GKD 订阅重新参与匹配）**（134 款内置 + 自动订阅扩展：id667 每日后台导入覆盖 600+ 款）· **应用生态兼容性目录（v7.9.2：compatibility/apps_catalog.json 233 款常用应用——包名三层来源严格区分，12 分类配额，每轮迭代 L1 回归）** |
 | **不碰什么** | 小程序/支付/团购容器零扫描零点击；银行/政务/相机零干预；只点应用自带「跳过」键（合规红线） |
 | **隐私与安全** | 数据仅存本机；联网仅日志上传（脱敏）与更新检查；零定位/通讯录/存储权限；更新包安装前 SHA-256 逐字节校验（镜像投毒/换包自动拦截）；订阅规则支付/诱导词双否决（注入防线） |
 | **体积** | APK 874KB（含三源离线订阅快照 ~520KB）· 冷启动毫秒级 · 典型日功耗 0.05mWh 级 |
 
-## 当前版本 v7.10.0（2026-11-25）· 上传零限制 + 更新检查异步化 + 开屏提醒解耦 + 统一版本规则
+## 当前版本 v7.11.0（2026-11-23）· 检查更新 CDN 兜底 + 开屏提醒提速 + 帮助页 + 订阅自动导入 + 重进状态修复
 
-**v7.10.0 用户四项指令驱动**（真机反馈：弱网「检查更新」页面冻结、上传次数限制多余、82300/plus 旧兼容链）：
+**v7.11.0 五项用户指令驱动**（检查失败无路可走 / 提醒太慢 / 缺使用说明 / 订阅太麻烦 / 每次重进都要重新开启）：
 
-1. **上传次数限制彻底移除**：自动上传不再有 24h/3 成功额度（仅心跳 8h + 有新日志才传双闸）；手动上传零次数/额度/冷却门槛，随时可传、短时连传多批全部放行（batchId 幂等保持——绝不二建 Issue）
-2. **更新检查异步化**：`updateCheckAsync` 后台线程 + 回调——JS 主线程零网络等待（弱网页面冻结最长 40s 的根因根治）；JS 单飞 + 过期序号丢弃 + 90s 回调兜底三重防线，手动检查绝不永久卡「检查中…」
-3. **开屏提醒与更新检查解耦**：独立 3s 定时评估——网络再慢（五源链预算 40s）也最多 3s 看到反馈提醒；24h 节流/5min 防重建/更新优先语义保持
-4. **统一版本规则**：全项目只比 versionCode（versionName 仅展示）；Release 正文元数据回退与 82300/plus 旧兼容链客户端/JS/生成器三面清理
-5. **版本**：versionCode 80000（> 79900 覆盖升级；82300 历史用户路径见 CHANGELOG）· 签名证书与历史一致 · Java 7305 + JS 204 + manifest 47 断言全绿 · 诚实口径：本版源码为灾后可验证重建（原工作区提交丢失，从 v7.9.9 基线 + 已分发 APK dex 符号核验重建，非字节级复原）· 真机 E2E 待用户实测
+1. **检查更新失败 CDN 兜底**：「查询失败」时出现「直连下载最新版（CDN 兜底）」按钮——jsDelivr CDN 仓库内 APK 直链（每版本随发布归档入库 + `adshield-latest.apk` 恒指最新版别名），下载后覆盖安装即升级，检查失败不再无路可走；正常路径新增 `cdnApkUrl` 兜底镜像（主源失败自动切换，SHA-256/大小闸不降级）
+2. **开屏提醒提速**：进入 App 即显示（不再等 3 秒）——提醒把卫士固定在后台（分机型操作指引：通用/小米 HyperOS/华为荣耀/OPPO vivo）；「24 小时内不再显示」选项（纯本地时间戳）、「知道了」不耗资格
+3. **新增帮助页（底栏）**：如何使用（三步）/ 固定后台（重要）/ 订阅规则（自动）/ 检查更新失败怎么办 / 常见问题 / 隐私与权限
+4. **订阅模块自动化**：底栏订阅页移除——id667 的 GKD 订阅（Lin-arm ⭐7.4k · 日更）后台每日自动导入一次（服务连接 + 5 分钟心跳双触发；八通道镜像链 + APK 内置离线快照双重兜底，失败 1h 冷却重试——永不硬失败）
+5. **重进体验修复**：冷启动宽限期（≤10 分钟）——刚断开不久时首页显示「服务重连中」而非「未开启」（AMS 重绑慢不再误导向系统设置看 10 秒警告）；服务最近连接时刻持久化，前台看门狗自动恢复「守护中」
+6. **版本**：versionCode 81000（> 80000 覆盖升级；82300 历史用户路径见 CHANGELOG）· 签名证书与历史一致 · JVM 7313 + JS 211 断言全绿 · 诚实口径：真机/模拟器 E2E NOT_RUN（本轮全部为 JVM/JS 行为级验证，待用户实测反馈）
 
 ## 近期版本速览
 
 | 版本 | 日期 | versionCode | 一句话 |
 | --- | --- | --- | --- |
-| **v7.10.0** | 2026-11-25 | 80000 | 上传零限制 + 更新检查异步化 + 开屏提醒解耦 + 统一版本规则 |
+| **v7.11.0** | 2026-11-23 | 81000 | 检查失败 CDN 兜底直连 + 开屏提醒提速（进入即显）+ 帮助页 + 订阅自动导入 + 重进状态修复 |
+| v7.10.0 | 2026-11-25 | 80000 | 上传零限制 + 更新检查异步化 + 开屏提醒解耦 + 统一版本规则 |
 | v7.9.9 | 2026-11-24 | 79900 | 网络链路热修复：检查更新五源链（jsDelivr 备用链国内可达）+ 上传超时阶段化分类 |
 | v7.9.8 | 2026-11-23 | 79800 | 冻结批次幂等根治上传两连失败 + 错误八类如实分类 + Bug 反馈 24h 节流 |
 | v7.9.7 | 2026-11-23 | 79700 | 版本体系收口（versionName 与 versionCode 同名同码）+ Bug 反馈提示 |
-| v7.9.6 | 2026-11-20 | 79600 | Bug#001 终局三漏根治 + L3 真实世界验证轮（一个真实 Bug 一个回归测试） |
 
 更早版本（v7.9.5 真实世界证据层、v7.9.4 误触红线与 Token 出库、v7.9.2 应用生态目录 233 款、v7.9.1 任务状态机、v7.8.0 视频开屏卫士……）全部归档在 [docs/CHANGELOG.md](docs/CHANGELOG.md)。
 
@@ -54,20 +55,20 @@ Java 引擎 · GKD 订阅生态兼容 · [Releases](https://github.com/xiaobaiba
 
 <table>
 <tr>
-<td><img src="docs/screenshots/app-home.png" width="240" alt="首页：守护状态与战绩"/><br><sub><b>首页</b> — 守护状态 / 战绩 / 开关（极简版）</sub></td>
-<td><img src="docs/screenshots/app-subscription.png" width="240" alt="订阅：市场与导入"/><br><sub><b>订阅</b> — 订阅市场 3 精选源（点一下即导入）/ GKD 导入</sub></td>
-<td><img src="docs/screenshots/app-me.png" width="240" alt="我的：版本与日志"/><br><sub><b>我的</b> — 版本 / 高级折叠 / 引擎日志（刷新+上传）</sub></td>
+<td><img src="docs/screenshots/app-home.png" width="240" alt="首页：守护状态与战绩"/><br><sub><b>首页</b> — 守护状态 / 战绩 / 开关 / 应用白名单</sub></td>
+<td><img src="docs/screenshots/app-help.png" width="240" alt="帮助：如何使用与固定后台"/><br><sub><b>帮助（v7.11.0 新增）</b> — 三步使用 / 固定后台（分机型）/ 订阅自动 / 常见问题</sub></td>
+<td><img src="docs/screenshots/app-me.png" width="240" alt="我的：版本与日志"/><br><sub><b>我的</b> — 检查更新 / 版本记录 / 使用报告 / 引擎日志</sub></td>
 </tr>
 </table>
 
-<sub>截图由 App 实际 WebView UI（`android-app/assets/www`）渲染截取，非设计稿；战绩数字为示例数据。</sub>
+<sub>截图由 App 实际 WebView UI（`android-app/assets/www`）渲染截取，非设计稿；战绩数字为示例数据。底栏三 Tab：首页 / 帮助 / 我的（v7.11.0 起订阅 Tab 移除，订阅后台自动导入）。</sub>
 
 ## 订阅
 
-- **订阅市场**（App 内点一下即导入，仅 3 个高星活跃源）：Lin-arm（⭐7.4k 日更）/ ganlinte（⭐935 · 610 APP）/ MengNianxiaoyao（⭐496）
+- **自动订阅（v7.11.0 起零操作）**：id667 的 GKD 订阅（Lin-arm ⭐7.4k · 日更）后台每日自动导入一次（服务连接 + 5 分钟心跳双触发；八通道镜像链 + APK 内置离线快照双重兜底，失败 1h 冷却重试——导入失败永不硬失败）；订阅命中情况在「我的 → 使用报告」查看
 - **官方订阅**：`https://cdn.jsdelivr.net/gh/xiaobaiba999/skip-ad-subscription@main/dist/gkd.json5`（100% GKD 兼容，也可直接在 GKD 客户端导入）
 - **更多订阅**：[github.com/topics/gkd-subscription](https://github.com/topics/gkd-subscription) 第三方订阅列表
-- **自建订阅**：[gkd-kit/subscription-template](https://github.com/gkd-kit/subscription-template) 五分钟构建自己的远程订阅
+- **自建订阅**：[gkd-kit/subscription-template](https://github.com/gkd-kit/subscription-template) 五分钟构建自己的远程订阅（自建源可在 GKD 客户端与本卫士生态共用）
 
 ## 核心能力
 
@@ -85,7 +86,7 @@ Java 引擎 · GKD 订阅生态兼容 · [Releases](https://github.com/xiaobaiba
 | 容器保护 | 小程序/团购/支付容器（抖音/微信/支付宝 XRiver）内零扫描零点击 |
 | 守护模式 | 银行/政务/支付：广告照拦，进程绝不杀 |
 | 习惯学习 | 手动点一次的位置/指纹，次启 P0 预拦截（广告未及呈现） |
-| 订阅 | 粘贴任意 gkd.li 订阅链接导入；订阅市场一键导入（八通道镜像+离线快照兑底） |
+| 订阅 | v7.11.0 起后台自动导入（id667 · Lin-arm，每日一次，八通道镜像+离线快照兜底——零手动操作） |
 | 功耗治理 | 分级扫描预算 + 探针前置 + 息屏零唤醒，典型日 < 0.05mWh |
 
 ## 技术栈（定版）
@@ -96,9 +97,9 @@ Java 引擎 · GKD 订阅生态兼容 · [Releases](https://github.com/xiaobaiba
 android-app/
 ├─ src/com/zai/adshield/        # Java 无障碍引擎（决策阶梯 L0-L6 · 纯 JVM 可测）
 │  └─ core/                      # AdDecisionCore / RuleEngine / GkdSelector / RestoreGuard …
-├─ assets/www/                   # JS 壳 UI（订阅市场八通道+离线快照 / 检查更新带序号描述 / 白名单中文名搜索 / 使用报告）
-├─ assets/subsnap/               # 三源离线订阅快照（导入兑底——永不失败）
-├─ tests/                        # 4067 项 JVM 断言（含 BrandFocus308Test 9品牌+子品牌 308 机型八维矩阵 + FeedAdGuardTest + RuleOrderTest + HumanTapMatrixTest + TapPointMatrixTest + ReleaseNotesTest + SubMirrorTest）
+├─ assets/www/                   # JS 壳 UI（帮助页 / 检查更新带 CDN 兜底与序号描述 / 白名单中文名搜索 / 使用报告）
+├─ assets/subsnap/               # 三源离线订阅快照（导入兜底——永不失败）
+├─ tests/                        # 7313 项 JVM 断言（含 BrandFocus308Test 9品牌+子品牌 308 机型八维矩阵 + FeedAdGuardTest + RuleOrderTest + HumanTapMatrixTest + TapPointMatrixTest + ReleaseNotesTest + SubMirrorTest）
 └─ run-tests.sh                  # 零依赖测试跑器
 ```
 
@@ -112,9 +113,9 @@ android-app/
 
 ## 安装
 
-1. [Releases](https://github.com/xiaobaiba999/Skip-Ad/releases/latest) 下载 APK（874KB）直接安装（v7.x 任何正式版覆盖安装即升级 v7.10.0——versionCode 80000，上传零限制 + 更新检查异步化即刻生效；已装 v7.9.6plus/82300 的历史用户见 CHANGELOG v7.9.7 节过渡口径）；
-   - GitHub 下载慢/不可达时用 jsDelivr 官方直链（同一 APK · SHA-256 见 Releases 页）：`https://cdn.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/android-app/dist/adshield-v7.10.0.apk`（gcore/testingcf 接入点同路径可换用；fastly 对 APK 会重定向到国内被阻断的 raw 源，勿用）；
-   - **v7.9.5/v7.9.6 用户应用内「检查更新」报「查询失败：GitHub 返回 401」**：这两个版本检查更新携带的内置令牌已被吊销（安全整改后旧版无法从服务侧修复）——请直接用上述任一链接下载安装（80000 > 79600 同签名覆盖安装，无障碍授权/学习数据/订阅全保留），详见 [CHANGELOG v7.10.0 节](docs/CHANGELOG.md)；
+1. [Releases](https://github.com/xiaobaiba999/Skip-Ad/releases/latest) 下载 APK（874KB）直接安装（v7.x 任何正式版覆盖安装即升级 v7.11.0——versionCode 81000，检查更新 CDN 兜底 + 订阅自动导入即刻生效；已装 v7.9.6plus/82300 的历史用户见 CHANGELOG v7.9.7 节过渡口径）；
+   - GitHub 下载慢/不可达时用 jsDelivr 官方直链（同一 APK · SHA-256 见 Releases 页）：`https://cdn.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/android-app/dist/adshield-v7.11.0.apk` 或「最新版」别名 `…/android-app/dist/adshield-latest.apk`（gcore/testingcf 接入点同路径可换用；fastly 对 APK 会重定向到国内被阻断的 raw 源，勿用）——App 内「检查更新」失败时也会引导此兜底通道（v7.11.0 新增）；
+   - **v7.9.5/v7.9.6 用户应用内「检查更新」报「查询失败：GitHub 返回 401」**：这两个版本检查更新携带的内置令牌已被吊销（安全整改后旧版无法从服务侧修复）——请直接用上述任一链接下载安装（81000 > 79600 同签名覆盖安装，无障碍授权/学习数据/订阅全保留），详见 [CHANGELOG v7.10.0 节](docs/CHANGELOG.md)；
 2. 开启无障碍服务（系统会弹 10 秒安全确认，属正常防诈设计——开启一次后 App 内/通知栏即可控制，绝不再去系统设置）；
 3. 常被清理后台的机型（HyperOS 等）：App 首页「保活体检」只显示待处理项，点「去设置」逐项确认。
 

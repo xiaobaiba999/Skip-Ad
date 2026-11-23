@@ -3,8 +3,8 @@
 # ─────────────────────────────────────────────────────────────
 # 与 scripts/check-appjs.sh（语义级三重断言闸）互补：本跑器执行
 # tests-js/ 下的行为测试（真实 app.js 全量加载 + 断言用户可感行为）。
-#  · test_bugtip24h.js    —— Bug 反馈提示 24h 节流 / 5min 防重建 /
-#                           版本判定真值表 / 旧版 cmpVer 兼容（legacy 资产）
+#  · test_bugtip24h.js    —— v7.11.0 兜底与状态修复专项（CDN 直连兜底/宽限期/底栏订阅移除/Java 接线面） + 
+#                           版本判定真值表 / cmpVer 死灰复燃防线
 #  · test_upload_errors.js —— 上传错误八类人话映射（含 v7.9.8b 裸
 #                           401→AUTH_FAILED / 403→FORBIDDEN 分家）
 # 用法: ./android-app/tests-js/run.sh   （bun 或 node 任一）

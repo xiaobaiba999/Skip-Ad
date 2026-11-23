@@ -81,9 +81,11 @@ const NEED = [
   "showUpdateGate",      // v7.9.6plus 全屏更新页
   "bridgeUpdateCheck",   // v7.10.0 异步更新检查（单飞/过期序号/90s 兜底）
   "isNewerByCode",       // v7.10.0 统一版本规则（versionCode 单一判定）
-  "maybeShowBugTip",     // Bug 反馈提示评估入口（v7.9.8 升 24h 节流）
-  "showBugTip",          // Bug 反馈提示卡渲染
-  "bugTipThrottled",     // v7.9.8 24h 节流判定（时间戳主闸）
+  "maybeShowPinTip",     // v7.11.0 开屏提醒评估入口（进入即显 + 24h 不再显示）
+  "showPinTip",          // v7.11.0 开屏提醒卡渲染（固定后台引导）
+  "pinTipThrottled",     // v7.11.0 「24h 不再显示」节流判定（时间戳主闸）
+  "doFallbackDirectDownload", // v7.11.0 检查失败 CDN 直连兜底
+  "serviceGraceActive",  // v7.11.0 冷启动宽限期（重进状态修复）
   "uploadErrText",       // v7.9.8 上传错误八类人话映射
   "doUploadLog",         // 一键上传主流程（导出下线后唯一日志出口）
   "resetUploadButtons",  // 上传双入口按钮复位

@@ -83,10 +83,17 @@ public final class UpdateAuditTest {
     }
 
     /** 剥注释（块注释与行注释），尊重字符串字面量——返回可执行代码面。 */
+    /* v7.11.0 修复：正则字面量感知。旧版扫描器不识别 JS 正则字面量——
+     * esc() 的 /[&<>"']/g 内嵌引号会把状态机打入字符串/字符模式并相位漂移，
+     * 随 app.js 内容改动（v7.11.0 订阅块移除/帮助页新增）恰好把「注释里的
+     * api.github.com 历史记述」泄漏进剥离输出 → A4a/A4d/A5a/A6 误报。
+     * 新增 mode 5（正则字面量）：模式 0 下 / 前一有效字符为 ( , = : [ ! & | ? { ; 等
+     * 运算符/开括号时按正则进入（跳过字符类 [] 内的 / 与 ]，直至未转义 / 结束），
+     * 字符串/字符字面量内容照常保留（URL 审计语义不变——只剔注释）。 */
     static String stripComments(String src) {
         StringBuilder out = new StringBuilder(src.length());
         int i = 0, n = src.length();
-        int mode = 0; // 0 代码 / 1 行注释 / 2 块注释 / 3 字符串 / 4 字符
+        int mode = 0; // 0 代码 / 1 行注释 / 2 块注释 / 3 字符串 / 4 字符 / 5 正则
         while (i < n) {
             char c = src.charAt(i);
             char next = i + 1 < n ? src.charAt(i + 1) : '\0';
@@ -95,6 +102,7 @@ public final class UpdateAuditTest {
                 if (c == '/' && next == '*') { mode = 2; i += 2; continue; }
                 if (c == '"') { mode = 3; out.append(c); i++; continue; }
                 if (c == '\'') { mode = 4; out.append(c); i++; continue; }
+                if (c == '/' && regexAllowed(out)) { mode = 5; out.append(c); i++; continue; }
                 out.append(c); i++;
             } else if (mode == 1) {
                 if (c == '\n') { mode = 0; out.append(c); }
@@ -107,14 +115,40 @@ public final class UpdateAuditTest {
                 if (c == '\\' && i + 1 < n) { out.append(src.charAt(i + 1)); i += 2; continue; }
                 if (c == '"') mode = 0;
                 i++;
-            } else {
+            } else if (mode == 4) {
                 out.append(c);
                 if (c == '\\' && i + 1 < n) { out.append(src.charAt(i + 1)); i += 2; continue; }
                 if (c == '\'') mode = 0;
                 i++;
+            } else { // mode 5：正则字面量——内容保留（URL 审计不剔正则），引号不再扰乱状态机
+                out.append(c);
+                if (c == '\\' && i + 1 < n) { out.append(src.charAt(i + 1)); i += 2; continue; }
+                if (c == '[') { // 字符类：跳到 ] （类内的 / 与 ] 不结束正则）
+                    int j = i + 1;
+                    while (j < n && src.charAt(j) != ']') {
+                        if (src.charAt(j) == '\\' && j + 1 < n) j += 2; else j++;
+                    }
+                    int end = Math.min(j + 1, n);
+                    out.append(src, i + 1, end);
+                    i = end;
+                    continue;
+                }
+                if (c == '/') mode = 0;
+                i++;
             }
         }
         return out.toString();
+    }
+
+    /** 模式 0 下 / 是否为正则起点（前一有效字符为运算符/开括号/起始 → 正则；
+     *  标识符/数字/)/]/引号之后 → 除号——JS 经典启发式，对本仓库源码足够）。 */
+    static boolean regexAllowed(StringBuilder out) {
+        for (int k = out.length() - 1; k >= 0; k--) {
+            char p = out.charAt(k);
+            if (p == ' ' || p == '\t' || p == '\n' || p == '\r') continue;
+            return !(Character.isLetterOrDigit(p) || p == ')' || p == ']' || p == '"' || p == '\'');
+        }
+        return true; // 文件起始
     }
 
     /* ═══ S1 Net.java ═══ */

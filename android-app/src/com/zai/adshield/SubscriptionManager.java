@@ -284,7 +284,7 @@ public final class SubscriptionManager {
     /** v7.1.0 两源候选收集（RuleRouter 裁决使用顺序）——用户实锤「内置规则库
      *  和订阅市场规则的使用顺序和命中问题」根治：
      *  · 市场源（用户主动导入·日更）在该应用有专属规则时【优先】；
-     *  · 内置源（APK 静态快照·21 款 vid 规则）兑底接力；
+     *  · 内置源（APK 静态快照·21 款 vid 规则）兜底接力；
      *  · 两源各贡献一个候选进点击轮换（文本候选用尽 → 市场候选 → 内置候选
      *    → …）——单源候选失效不再拖死整轮；
      *  · 源命中计数分别记账（订阅页「命中」+ 使用报告可见）；hit.src 带
@@ -418,6 +418,50 @@ public final class SubscriptionManager {
             long interval = snapshotPending ? SNAPSHOT_RETRY_MS : UPDATE_INTERVAL_MS;
             if (now - lastUpdateAt < interval) return;
             fetch(ctx, subUrl, sp, null);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /* ═══ v7.11.0 ID667 订阅每日后台自动导入（用户指令：底栏订阅模块移除——
+     * id667 的 7.4k 星社区事实标准源改为后台自动导入，App 内不再展示订阅页）═══
+     * 语义：
+     *  · subUrl 为空（从未导入过订阅/全新安装）→ 自动设为 ID667（Lin-arm
+     *    ⭐7.4k · 日更——订阅市场三源之首）并立即拉取：八通道镜像链
+     *    （SubMirrors）+ APK 内置离线快照兜底（subsnap/linarm.json5）——
+     *    导入路径【永不硬失败】；
+     *  · subUrl 非空（用户此前已导入任意源，含 ID667）→ 尊重既有选择，
+     *    静默刷新由 maybeSilentUpdate 的 24h 闸继续负责（本方法秒回）；
+     *  · 调用点：服务连接时（onServiceConnected 立即覆盖首次）+ 心跳 5 分钟
+     *    一跳（KeepAliveReceiver selfCheck——保底覆盖「首跳网络还没好」）；
+     *  · 失败重试闸 subAutoImportNextAt（1h 冷却）——极端态（连 APK 内置
+     *    快照都不可读——正常不可能）下个心跳不再硬撞八通道网络链，
+     *    1 小时后自然重试；成功后 subUrl 已非空，本路径不再进入。 */
+    public static final String AUTO_SUB_URL =
+            "https://cdn.jsdelivr.net/gh/Lin-arm/GKD_subscription@main/dist/gkd.json5";
+    static final long AUTO_IMPORT_RETRY_MS = 60 * 60 * 1000L;
+
+    public static void maybeDailyAutoImport(Context ctx) {
+        try {
+            ensureLoaded(ctx);
+            if (!remoteEnabled) return; // 远程订阅被显式停用——尊重既有选择（零打扰）
+            SharedPreferences sp = ctx.getSharedPreferences("adshield", Context.MODE_PRIVATE);
+            if (subUrl != null && subUrl.length() > 0) return; // 已有订阅——交 24h 静默更新
+            long now = System.currentTimeMillis();
+            if (now < sp.getLong("subAutoImportNextAt", 0L)) return; // 失败重试冷却中
+            subUrl = AUTO_SUB_URL;
+            sp.edit().putString("subUrl", AUTO_SUB_URL).apply();
+            String r = fetch(ctx, AUTO_SUB_URL, sp, null);
+            boolean ok = false;
+            try {
+                ok = new org.json.JSONObject(r).optBoolean("ok", false);
+            } catch (Throwable ignored) {
+            }
+            if (ok) return; // 成功（网络或快照兜底）——subUrl 已持久化
+            /* 失败：清空回「无订阅」态，下个心跳重走本路径（1h 冷却防风暴）。 */
+            subUrl = "";
+            sp.edit().remove("subUrl")
+                    .putLong("subAutoImportNextAt", now + AUTO_IMPORT_RETRY_MS)
+                    .apply();
         } catch (Throwable ignored) {
         }
     }

@@ -220,7 +220,7 @@ public final class FeedAdGuardTest {
         TestHost.suite("FeedAdGuard · S7 常量在场（安全闸参数）");
         TestHost.checkEq(1200L, FeedAdGuard.FEED_SCAN_THROTTLE_MS, "FEED_SCAN_THROTTLE_MS == 1200（1.2s 节流）");
         TestHost.checkEq(350L, FeedAdGuard.P2_SCAN_THROTTLE_MS, "v7.2.0 P2_SCAN_THROTTLE_MS == 350（armed 快节奏复查）");
-        TestHost.checkEq(300, FeedAdGuard.FEED_NODE_BUDGET, "FEED_NODE_BUDGET == 300（DFS 兑底预算）");
+        TestHost.checkEq(300, FeedAdGuard.FEED_NODE_BUDGET, "FEED_NODE_BUDGET == 300（DFS 兜底预算）");
         TestHost.checkEq(8000L, FeedAdGuard.P1_ARM_MS, "P1_ARM_MS == 8000（P2 指纹窗）");
         TestHost.check(Math.abs(FeedAdGuard.BADGE_W_MAX - 0.35) < 1e-9, "BADGE_W_MAX == 0.35（≤35% 屏宽）");
         TestHost.check(Math.abs(FeedAdGuard.BADGE_H_MAX - 0.08) < 1e-9, "BADGE_H_MAX == 0.08（≤8% 屏高）");

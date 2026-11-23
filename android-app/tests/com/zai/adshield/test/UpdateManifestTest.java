@@ -43,7 +43,67 @@ public final class UpdateManifestTest {
         s9_apkUrlGate();
         s10_passthrough();
         s11_versionCompare();
+        s12_cdnFallback();
         TestHost.done();
+    }
+
+    /* ═══ S12 v7.11.0 CDN 兜底下载通道（清单 cdnApkUrl 字段）═══ */
+    private static void s12_cdnFallback() {
+        try {
+            String CDN_URL = "https://cdn.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/android-app/dist/adshield-v7.11.0.apk";
+            // S12a：合法 jsDelivr 兜底地址 → 入 apkMirrors[0]（主源失败后镜像切换面）
+            JSONObject o1 = parseOk(withCdn(manifest("7.11.0", 81000, "v7.11.0", REAL_APK_URL, REAL_SHA, PKG),
+                    CDN_URL), 81000);
+            org.json.JSONArray m1 = o1.optJSONArray("apkMirrors");
+            TestHost.check(m1 != null && m1.length() == 1 && CDN_URL.equals(m1.optString(0)),
+                    "S12a 合法 cdnApkUrl → apkMirrors[0]（SHA-256/大小闸不变——同字节同源）");
+            TestHost.check(REAL_APK_URL.equals(o1.optString("apkUrl", "")),
+                    "S12a2 主源 apkUrl 不被兜底通道取代（GitHub Release 仍是首选）");
+            TestHost.check(CDN_URL.equals(o1.optString("cdnApkUrl", "")),
+                    "S12a3 cdnApkUrl 字段透传（JS mapManifest 同语义）");
+            // S12b：无 cdnApkUrl → 空 mirrors（不虚挂）
+            JSONObject o2 = parseOk(manifest("7.11.0", 81000, "v7.11.0", REAL_APK_URL, REAL_SHA, PKG), 81000);
+            org.json.JSONArray m2 = o2.optJSONArray("apkMirrors");
+            TestHost.check(m2 != null && m2.length() == 0,
+                    "S12b 无 cdnApkUrl → apkMirrors 空（主源单一不虚挂）");
+            // S12c：兜底字段非法域 → 置空忽略（不清真伪绝不拒整份清单）
+            JSONObject o3 = parseOk(withCdn(manifest("7.11.0", 81000, "v7.11.0", REAL_APK_URL, REAL_SHA, PKG),
+                    "https://evil.example.com/x.apk"), 81000);
+            org.json.JSONArray m3 = o3.optJSONArray("apkMirrors");
+            TestHost.check(o3.optBoolean("ok", false) && m3 != null && m3.length() == 0
+                    && "".equals(o3.optString("cdnApkUrl", "x")),
+                    "S12c 非法 cdnApkUrl → 置空忽略（主通道不受影响——兜底字段不污染清单）");
+            // S12d：http 明文兜底 → 置空忽略（HTTPS 硬闸同 apkUrl）
+            JSONObject o4 = parseOk(withCdn(manifest("7.11.0", 81000, "v7.11.0", REAL_APK_URL, REAL_SHA, PKG),
+                    "http://cdn.jsdelivr.net/gh/x/x.apk"), 81000);
+            org.json.JSONArray m4 = o4.optJSONArray("apkMirrors");
+            TestHost.check(o4.optBoolean("ok", false) && m4 != null && m4.length() == 0,
+                    "S12d http 明文 cdnApkUrl → 置空忽略（安全闸不降级）");
+            // S12e：其余 jsDelivr 接入点（fastly/gcore/testingcf）均过闸
+            boolean allPass = true;
+            String[] hosts = {"fastly.jsdelivr.net", "gcore.jsdelivr.net", "testingcf.jsdelivr.net"};
+            for (String h : hosts) {
+                JSONObject o = parseOk(withCdn(manifest("7.11.0", 81000, "v7.11.0", REAL_APK_URL, REAL_SHA, PKG),
+                        "https://" + h + "/gh/xiaobaiba999/Skip-Ad@main/android-app/dist/adshield-v7.11.0.apk"), 81000);
+                org.json.JSONArray m = o.optJSONArray("apkMirrors");
+                if (!(m != null && m.length() == 1)) { allPass = false; break; }
+            }
+            TestHost.check(allPass, "S12e jsDelivr 四接入点全部过闸（与 UpdateRepository 备用链同族）");
+            // S12f：githubusercontent 域作兜底 → 也允许（发布通道域同闸）
+            JSONObject o6 = parseOk(withCdn(manifest("7.11.0", 81000, "v7.11.0", REAL_APK_URL, REAL_SHA, PKG),
+                    "https://release-assets.githubusercontent.com/x/y.apk"), 81000);
+            org.json.JSONArray m6 = o6.optJSONArray("apkMirrors");
+            TestHost.check(m6 != null && m6.length() == 1,
+                    "S12f githubusercontent 兜底域 → 允许（官方资产 CDN 同闸）");
+        } catch (Exception e) {
+            TestHost.check(false, "S12 异常: " + e);
+        }
+    }
+
+    /** 清单 JSON 尾部注入 cdnApkUrl 字段（S12 专用构造器） */
+    private static String withCdn(String baseJson, String cdnUrl) {
+        return baseJson.substring(0, baseJson.length() - 1)
+                + ",\"cdnApkUrl\":\"" + cdnUrl + "\"}";
     }
 
     /* 正常清单构造器（真实 v7.9.7 字段形态——可按需覆写单项） */

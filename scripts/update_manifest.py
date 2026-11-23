@@ -185,6 +185,24 @@ def main(argv):
             print("⚠ 仓库现有清单损坏——按无守卫处理（直接生成）")
 
     # ── 产出清单（真实数据，零虚构）──
+    # v7.11.0 CDN 兜底下载通道：仓库内 APK 归档直链（每版本发布时随
+    # android-app/dist/adshield-vX.Y.Z.apk 归档入库——「检查更新失败时
+    # 直连 jsDelivr 最新版链接」的清单侧来源；与 Release 资产同字节同源，
+    # 客户端下载后过同一 SHA-256/大小闸）。仓库 slug 从 Release 资产
+    # browser_download_url（github.com/OWNER/REPO/releases/...）解析——
+    # 与本脚本其余字段同源零虚构。
+    repo_slug = ""
+    try:
+        dl = apk_asset.get("browser_download_url") or ""
+        m = re.match(r"https://github\.com/([^/]+/[^/]+)/releases/", dl)
+        if m:
+            repo_slug = m.group(1)
+    except Exception:
+        repo_slug = ""
+    cdn_apk_url = ""
+    if repo_slug:
+        cdn_apk_url = "https://cdn.jsdelivr.net/gh/%s@main/android-app/dist/adshield-v%s.apk" % (
+            repo_slug, vn)
     manifest = {
         "schemaVersion": SCHEMA_VERSION,
         "versionName": vn,
@@ -194,6 +212,7 @@ def main(argv):
         "releaseNotes": rel.get("body") or "",
         "publishedAt": rel.get("published_at") or "",
         "apkUrl": apk_asset.get("browser_download_url") or "",
+        "cdnApkUrl": cdn_apk_url,
         "apkFileName": apk_asset.get("name") or "adshield.apk",
         "apkSha256": actual_sha,
         "apkSize": actual_size,

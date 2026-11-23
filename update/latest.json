@@ -1,17 +1,18 @@
 {
   "schemaVersion": 1,
-  "versionName": "7.10.0",
-  "versionCode": 80000,
-  "releaseTag": "v7.10.0",
-  "releaseName": "Skip-Ad v7.10.0",
-  "releaseNotes": "versionCode: 80000\n\n# 开屏卫士 v7.10.0\n\n上传次数限制彻底移除 + 更新检查异步化 + 开屏提醒解耦 + 统一版本规则（82300/plus 旧兼容链清理）。\n\n> 诚实口径：本版源码为灾后可验证重建——原 v7.10.0 工作区提交丢失，本轮从 v7.9.9 基线 + 已分发 v7.10.0 APK dex 符号核验重建并全量回归（Java 7305 + JS 204 + manifest 47 断言全绿，非字节级复原）；真机 E2E 待用户实测反馈。\n\n## 本次更新\n\n1. **日志上传次数限制彻底移除**：自动上传不再有 24h/3 成功额度（仅受心跳间隔 8h 与「有新日志才传」双闸约束）；手动上传零次数/额度/冷却门槛，随时可传、短时连传多批全部放行（batchId 幂等保持——绝不二建 Issue）\n2. **更新检查异步化**：新增 updateCheckAsync 异步桥——JS 主线程零网络等待（旧同步桥在弱网下页面冻结最长 40s 的根因根治）；JS 单飞 + 过期序号丢弃 + 90 秒回调兜底三重防线，手动检查绝不永久卡「检查中…」\n3. **开屏提醒与更新检查彻底解耦**：反馈提醒独立 3 秒定时评估——网络再慢（五源链预算 40s）也最多 3s 看到提醒；24h 节流/5min 防重建/更新优先语义保持\n4. **统一版本判定规则**：全项目统一 remoteVersionCode > currentVersionCode——versionName 仅展示、绝不作为更新判断依据；Release 正文 versionCode 元数据行回退与 82300/plus 旧兼容链彻底清理（客户端/JS/生成器三面同步）\n5. **引擎零改动**：广告识别/跳过/无障碍扫描核心零改动——本版全部为上传与更新链路可靠性优化\n\n## 下载\n\n- 官方 APK：adshield-v7.10.0.apk（本页资产 · GitHub Releases 官方源 · HTTPS）\n- 文件大小：894,518 字节\n- SHA-256：`b32b63c92830646d8e4cebde5d5b97c62918940c7bad2b96cea3939afa508f4a`\n\n## 安装说明\n\n- 已安装 v7.9.x 及更早正式版本：直接安装本 APK 覆盖升级（versionCode 80000 > 79900 及以下全部，签名一致，无障碍授权/学习数据/已导入订阅全部保留）\n- 已安装 v7.9.6plus（versionCode 82300）：Android 判定 80000 为降级**无法覆盖安装**——可继续使用当前版本（功能完整），或手动卸载后安装本版（卸载会清学习规则/战绩/日志），或等待未来 versionCode > 82300 的正式版本无缝升级\n- 新安装：直接安装即可（Android 8+ 首次安装需允许「安装未知应用」授权）\n\n## 版本信息\n\n- versionName：7.10.0\n- versionCode：80000（major*10000 + minor*1000 + patch*100）\n- 签名证书 SHA-256：05ada6e3f7a4fc6bf77449611c24f51e1ef4caa0a91a5cdd02c4d877738e6f79（与历史正式版本一致）\n- APK 零凭据（无 GitHub Token/私钥/Secret——写凭据全部只在服务端）",
-  "publishedAt": "2026-11-23T03:17:27Z",
-  "apkUrl": "https://github.com/xiaobaiba999/Skip-Ad/releases/download/v7.10.0/adshield-v7.10.0.apk",
-  "apkFileName": "adshield-v7.10.0.apk",
-  "apkSha256": "b32b63c92830646d8e4cebde5d5b97c62918940c7bad2b96cea3939afa508f4a",
+  "versionName": "7.11.0",
+  "versionCode": 81000,
+  "releaseTag": "v7.11.0",
+  "releaseName": "Skip-Ad v7.11.0",
+  "releaseNotes": "versionCode: 81000\n\n# 开屏卫士 v7.11.0\n\n检查更新失败 CDN 兜底直连 + 开屏提醒提速 + 帮助页 + 订阅后台自动导入 + 重进状态修复。\n\n> 本轮测试口径：JVM 41 套件 7313 断言全绿 + JS 行为 6 文件 211 断言全绿（诚实口径：真机/模拟器 E2E NOT_RUN——本轮全部为 JVM/JS 行为级验证，待用户实测反馈）。\n\n## 本次更新\n\n1. **检查更新失败 CDN 兜底**：「查询失败」时出现「直连下载最新版（CDN 兜底）」按钮——jsDelivr CDN 仓库内 APK 直链（每版本随发布归档入库 + adshield-latest.apk 恒指最新版别名），下载后覆盖安装即升级，检查失败不再无路可走；正常路径新增 cdnApkUrl 兜底镜像（主源失败自动切换，SHA-256/大小闸不降级）\n2. **开屏提醒提速**：进入 App 即显示（0ms——不再等 3 秒）——提醒把卫士固定在后台（分机型操作指引：通用/小米 HyperOS/华为荣耀/OPPO vivo）；「24 小时内不再显示」选项（24h 节流纯本地时间戳）；「知道了」不耗资格\n3. **新增帮助页（底栏）**：如何使用（三步）/ 固定后台（重要）/ 订阅规则（自动）/ 检查更新失败怎么办 / 常见问题 / 隐私与权限——规范化有条理的使用说明\n4. **订阅模块自动化**：底栏订阅页移除——id667 的 GKD 订阅（Lin-arm ⭐7.4k · 日更）改为后台每日自动导入一次（服务连接 + 5 分钟心跳双触发；八通道镜像链 + APK 内置离线快照双重兜底，失败 1h 冷却重试——永不硬失败）\n5. **重进体验修复**：冷启动宽限期——刚断开不久（≤10 分钟）时首页显示「服务重连中」而非「未开启」（AMS 重绑慢不再误导向系统设置看 10 秒警告）；服务最近连接时刻持久化（lastServiceConnectedAt），前台看门狗自动恢复「守护中」\n\n## 下载\n\n- 官方 APK：adshield-v7.11.0.apk（GitHub Releases 官方源）\n- CDN 兜底直链：本清单 cdnApkUrl 字段（仓库内归档 · 同字节同源 · SHA-256 相同）\n- 文件大小：894518 字节\n- SHA-256：见 apkSha256 字段\n\n## 安装说明\n\n- versionCode ≤ 80000 的版本：直接覆盖升级（81000，签名一致，数据保留）\n- v7.9.6plus（82300）：判定降级无法覆盖——可继续使用或卸载重装（清数据）\n\n## 版本信息\n\n- versionName：7.11.0\n- versionCode：81000（major*10000 + minor*1000 + patch*100）",
+  "publishedAt": "2026-11-23T08:00:00Z",
+  "apkUrl": "https://github.com/xiaobaiba999/Skip-Ad/releases/download/v7.11.0/adshield-v7.11.0.apk",
+  "cdnApkUrl": "https://cdn.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/android-app/dist/adshield-v7.11.0.apk",
+  "apkFileName": "adshield-v7.11.0.apk",
+  "apkSha256": "213b2ee16ba22b43d847127d4e224108c2028a4c6b7183f4d711c794cec1237c",
   "apkSize": 894518,
   "packageName": "com.zai.adshield",
   "minSupportedVersionCode": 0,
   "mandatoryUpdate": false,
-  "manifestUpdatedAt": "2026-11-23T03:17:27Z"
+  "manifestUpdatedAt": "2026-11-23T08:00:00Z"
 }

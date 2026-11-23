@@ -1,4 +1,4 @@
-/* 开屏卫士 v7.10.0 · 上传次数限制彻底移除 + 更新检查异步化 + 开屏提醒解耦 + 统一版本规则专项：日志上传不再有人为次数上限/24h 额度/冷却等待（同 batchId 幂等保护保持，绝不二建 Issue）；更新检查改走 updateCheckAsync 异步桥（JS 主线程零网络等待，单飞/过期序号/90s 兑底三重防线）；开屏提醒不再依赖网络检查收尾（独立 3s 定时评估）；全项目统一版本判定 remoteVersionCode > currentVersionCode（versionName 仅展示，82300/plus 旧兼容链彻底清理） */
+/* 开屏卫士 v7.11.0 · 更新兜底直连 + 开屏提醒提速 + 帮助页 + 订阅自动导入 + 重进状态修复专项：检查更新失败时给 jsDelivr CDN 直连下载按钮（每版本仓库内 APK 兜底）；开屏提醒进入即显（0ms——固定后台引导 + 24h 不再显示）；底栏订阅模块移除（id667 订阅由后台每日自动导入，含八通道+快照兜底）；新增帮助页；冷启动宽限期（刚断开不久显示「服务重连中」，AMS 重绑慢不再误导向系统设置看 10 秒警告） */
 "use strict";
 
 /* ══════════ 环境 ══════════ */
@@ -23,8 +23,8 @@ const store = {
 };
 
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "7.10.0"; }
-function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "80000"; }
+function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "7.11.0"; }
+function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "81000"; }
 
 /* ══════════ 吉祥物（v4.1.0 全新形象：白机器人小侠 + 绿披风跳跃） ══════════
  * 与启动器图标同源；state: on（跳跃浮动）/ off（灰度待命） */
@@ -35,19 +35,18 @@ function mascotImg(size, state, head) {
 
 $("#brand-logo").innerHTML = mascotImg(30, "on", true);
 
-/* ═══ v7.10.0 版本记录（上传次数限制移除 + 更新检查异步化专项）═══ */
+/* ═══ v7.11.0 版本记录（更新兜底 + 开屏提醒 + 帮助页 + 订阅自动导入）═══ */
 const CURRENT_RELEASE = {
-  date: "2026-11-25",
-  title: "日志上传无次数限制 + 更新检查异步化 + 开屏提醒解耦",
+  date: "2026-11-23",
+  title: "检查更新 CDN 兜底 + 开屏提醒提速 + 帮助页 + 订阅自动导入",
   features: [
-    "日志上传次数限制彻底移除：自动上传不再有 24h/3 成功额度（仅受心跳间隔 8h 与「有新日志才传」约束）；手动上传零次数/额度/冷却门槛，随时可传、短时连传多批全部放行（同 batchId 幂等保护保持，绝不二建 Issue）",
-    "更新检查异步化：新增 updateCheckAsync 异步桥——JS 主线程不再同步等待网络（旧同步桥整体移除，弱网下页面冻结最长 40s 的根因根治）；JS 单飞 + 过期序号丢弃 + 90 秒回调兑底三重防线，手动检查绝不永久卡「检查中…」",
-    "开屏提醒与更新检查彻底解耦：反馈提醒独立 3 秒定时评估（不再链在网络检查收尾后）——网络再慢最多 3s 也能看到提醒；24h 节流/5min 防重建/更新优先语义保持",
-    "统一版本判定规则：全项目统一 remoteVersionCode > currentVersionCode——versionName 仅展示，绝不作为更新判断依据；Release 正文 versionCode 元数据行回退与 82300/plus 旧兼容链彻底清理（清单侧/JS 侧/生成器侧三面同步）",
-    "更新清单五源链/ETag/缓存回退/超时/退避/SHA-256 校验全部零改动保持；广告跳过核心零改动",
+    "检查更新失败兜底：查询失败时出现「直连下载最新版（CDN 兜底）」按钮——jsDelivr CDN 仓库内 APK 直链（每版本随发布归档入库），下载后覆盖安装即升级，检查失败不再无路可走",
+    "开屏提醒提速：进入 App 即显示（不再等 3 秒）——提醒把卫士固定在后台（分机型操作指引），可选择「24 小时内不再显示」",
+    "新增帮助页：底栏「帮助」承接如何使用 / 固定后台 / 订阅说明 / 常见问题 / 隐私与权限的规范化说明",
+    "订阅模块自动化：底栏订阅页移除——id667 的 GKD 订阅（Lin-arm ⭐7.4k）改为后台每日自动导入一次（八通道镜像 + 离线快照双重兜底，永不硬失败）",
+    "重进体验修复：刚断开不久时首页显示「服务重连中」（冷启动宽限期）——AMS 重绑慢不再误导向系统设置看 10 秒警告；重绑成功自动恢复「守护中」",
   ],
-  summary: "v7.10.0：上传次数限制移除 + 更新检查异步化 + 统一版本规则。",
-
+  summary: "v7.11.0：检查更新 CDN 兜底 + 开屏提醒提速 + 帮助页 + 订阅自动导入 + 重进体验修复。",
 };
 
 /* v7.0.0 新版功能描述（规范：≤5 个标题、带序号；检查更新发现新版本时就地渲染）。
@@ -107,7 +106,8 @@ $$(".tabbtn").forEach(b => b.addEventListener("click", () => {
   $("#page-" + b.dataset.page).classList.add("active");
   const pg = b.dataset.page;
   if (pg === "home") { refreshHome(); renderWhitelist(true); }
-  if (pg === "sub") refreshSub();
+  /* v7.11.0：订阅页已移除（id667 订阅改为后台每日自动导入——帮助页
+   * 「订阅规则（自动）」卡有说明；命中数据见「我的 → 使用报告」）。 */
   if (pg === "me") { renderLog(); renderReport(true); } // v7.2.0：进入我的页静默刷新使用报告（饼图常驻，零 toast）
 }));
 
@@ -158,6 +158,20 @@ function refreshHome() {
   refreshBattery(running);
 }
 
+/* ═══ v7.11.0 冷启动宽限期：刚断开不久（≤10 分钟）且服务未跑、登记也暂未
+ * 读到时——AMS 重绑慢（issue#56 同族场景）极可能只是慢，不是真吊销。
+ * 此时首页显示「服务重连中」而非「未开启」；前台看门狗每 3s 复查，登记
+ * 一回来就自动拉活，UI 自动切「守护中」——绝不把重绑慢误导向系统设置
+ * 看 10 秒警告（用户指令：解决每次退出重进都要重新开启）。 */
+const SERVICE_GRACE_MS = 10 * 60 * 1000;
+function serviceGraceActive() {
+  if (!HAS_BRIDGE) return false;
+  try {
+    const t = parseInt(AndroidApp.serviceLastConnectedAt(), 10) || 0;
+    return t > 0 && Date.now() - t < SERVICE_GRACE_MS;
+  } catch (e) { return false; }
+}
+
 function renderHero(running, enabledInSettings, masterOn) {
   const card = $("#hero-card");
   const mascot = $("#hero-mascot");
@@ -195,6 +209,15 @@ function renderHero(running, enabledInSettings, masterOn) {
     sub.textContent = "系统仍登记，正在/可一键重拉";
     revive.style.display = "";
     tip.textContent = "点「一键恢复」重新拉起（不碰系统设置，无需 10 秒等待）";
+  } else if (serviceGraceActive()) {
+    /* v7.11.0 冷启动宽限期：刚断开不久、登记暂未读到（AMS 重绑慢）——
+     * 显示「服务重连中」而非「未开启」；前台看门狗 3s 复查登记，一回来
+     * 就自动拉活（看门狗与 5s 刷新循环已覆盖，无需额外定时器）。 */
+    card.classList.remove("on", "paused");
+    mascot.innerHTML = mascotImg(88, "off");
+    title.textContent = "服务重连中";
+    sub.textContent = "正在等待系统重绑（通常几秒内）";
+    tip.textContent = "刚断开不久，卫士正在自动恢复——无需重新开启、不用去系统设置";
   } else {
     card.classList.remove("on", "paused");
     mascot.innerHTML = mascotImg(88, "off");
@@ -237,7 +260,7 @@ function doRevive() {
   try {
     AndroidApp.tryAutoReviveDeep("__reviveCb");
   } catch (e) {
-    // 旧版同步兑底（理论上不会走到）
+    // 旧版同步兜底（理论上不会走到）
     try {
       const r = JSON.parse(AndroidApp.tryAutoRevive());
       if (window.__reviveCb) window.__reviveCb(null, r);
@@ -629,199 +652,17 @@ $("#wl-input").addEventListener("keydown", (e) => {
 });
 
 
-/* ══════════ 订阅页 ══════════ */
-/* v5.6.0：旧默认源 @gkd-kit/subscription（已归档停更）下架；
- * 快速填入换成 Lin-arm 社区事实标准订阅（jsdelivr CDN 国内可达）；
- * 订阅市场卡片一键导入活跃维护源（subRecommend 注册表）。 */
-/* v5.8.0：推荐订阅按钮已随市场防呆版移除；示例链接保留注释态（Lin-arm 源已在市场一键导入）
-const SUB_EXAMPLE_UNUSED = "https://cdn.jsdelivr.net/gh/Lin-arm/GKD_subscription@main/dist/gkd.json5"; */
-let subCbSeq = 0;
-
-function subCall(method, ...args) {
-  return new Promise(resolve => {
-    if (!HAS_BRIDGE) { resolve({ ok: false, error: "仅 APK 内可用" }); return; }
-    const cbName = "__subCb" + (++subCbSeq);
-    window[cbName] = (name, result) => { try { delete window[name]; } catch (e) {} resolve(result); };
-    window.__subCb = (name, result) => {
-      const fn = window[name];
-      if (fn) fn(name, result);
-    };
-    try {
-      if (method === "subSetUrl") AndroidApp.subSetUrl(args[0], cbName);
-      else if (method === "subUpdateNow") AndroidApp.subUpdateNow(cbName);
-    } catch (e) {
-      resolve({ ok: false, error: "调用失败" });
-    }
-  });
-}
-
-function refreshSub() {
-  renderSubMarket(); /* v5.8.0：市场先行渲染（浏览器预览走兜底三源清单） */
-  if (!HAS_BRIDGE) {
-    $("#sub-builtin-apps").textContent = "21 款";
-    $("#sub-builtin-rules").textContent = "21 条";
-    return;
-  }
-  let sub = null;
-  try { sub = JSON.parse(AndroidApp.subState()); } catch (e) {}
-  if (!sub) return;
-  $("#sub-builtin-apps").textContent = (sub.builtinApps || 0) + " 款";
-  $("#sub-builtin-rules").textContent = (sub.builtinRules || 0) + " 条";
-  $("#sub-toggle").checked = sub.remoteEnabled !== false;
-  if (sub.url) $("#sub-url").value = sub.url;
-  const box = $("#sub-status");
-  if (sub.remoteOk) {
-    box.style.display = "";
-    $("#sub-name").textContent = sub.remoteName || "--";
-    $("#sub-count").textContent = (sub.remoteApps || 0) + " 款应用 · " + (sub.remoteRules || 0) + " 条规则";
-    $("#sub-updated").textContent = sub.updatedAt ? fmtTime(sub.updatedAt) : "--";
-    $("#sub-hits").textContent = (sub.remoteHits || 0) + " 次";
-  } else {
-    box.style.display = "none";
-  }
-  const err = $("#sub-result");
-  if (sub.error) { err.className = "fb-result err"; err.textContent = sub.error; }
-  else if (!sub.remoteOk) { err.className = "fb-result"; err.textContent = ""; }
-}
-
+/* ══════════ v7.11.0 订阅模块：页面整体移除（后台自动导入）════
+ * 用户指令：去除底栏订阅模块——id667 的 GKD 订阅（Lin-arm ⭐7.4k，
+ * 日更社区事实标准）由 SubscriptionManager.maybeDailyAutoImport 在
+ * 服务连接 + 心跳时每日后台自动导入一次（八通道镜像链 + APK 内置离线
+ * 快照双重兜底，永不硬失败——见 Java 侧）；本页 UI 与全部事件绑定随之
+ * 移除（#page-sub DOM 已不在 index.html）。命中与覆盖数据保留在
+ * 「我的 → 使用报告」订阅两源命中段（subState 桥仍在）。 */
 function fmtTime(ms) {
   try { return new Date(ms).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }); }
   catch (e) { return "--"; }
 }
-
-$("#btn-sub-import").addEventListener("click", async () => {
-  const url = $("#sub-url").value.trim();
-  const box = $("#sub-result");
-  if (!url) { box.className = "fb-result err"; box.textContent = "请先粘贴订阅链接"; return; }
-  box.className = "fb-result"; box.textContent = "正在拉取订阅（失败自动换镜像，全失败时离线快照兑底）…";
-  const r = await subCall("subSetUrl", url);
-  if (r.ok) {
-    box.className = "fb-result ok";
-    box.textContent = "已导入「" + (r.name || "订阅") + "」：" + (r.apps || 0) + " 款应用 · " + (r.rules || 0) + " 条规则";
-  } else {
-    box.className = "fb-result err"; box.textContent = r.error || "导入失败";
-  }
-  refreshSub();
-});
-
-/* ═══ v5.8.0 订阅市场（防呆版）：点一下整行即导入 ═══
- * 用户实锤：「点击订阅就直接导入进来，把仓库按钮去掉，再把底部更多
- * 订阅去掉，App 内尽量避免跳转操作，只保留 3-5 个活跃且 star 多的」：
- *  · 只留 3 个高星活跃源（Lin-arm ⭐7.4k / ganlinte ⭐935 /
- *    MengNianxiaoyao ⭐496——gkd-subscription 话题按星数前三）；
- *  · 整行即按钮：点一下直接导入，右侧状态位显示「导入中… → 已导入 ✓」；
- *  · 零跳转：无仓库按钮、无底部链接、无 openUrl。 */
-let subMarketData = [];
-/* 浏览器预览兜底（无桥环境渲染同一份 3 源清单） */
-const MARKET_FALLBACK = [
-  { name: "GKD 订阅（id667）", owner: "Lin-arm", badge: "日更",
-    desc: "⭐7.4k · 社区事实标准", idx: 0,
-    url: "https://cdn.jsdelivr.net/gh/Lin-arm/GKD_subscription@main/dist/gkd.json5" },
-  { name: "ganlin 的 GKD 订阅", owner: "ganlinte", badge: "周更",
-    desc: "⭐935 · 610 款应用", idx: 1,
-    url: "https://cdn.jsdelivr.net/gh/ganlinte/GKD-subscription@main/dist/ganlin_gkd.json5" },
-  { name: "小年侠订阅", owner: "MengNianxiaoyao", badge: "活跃",
-    desc: "⭐496 · 持续维护", idx: 2,
-    url: "https://cdn.jsdelivr.net/gh/MengNianxiaoyao/gkd-subscription@main/dist/gkd.json5" },
-];
-function renderSubMarket() {
-  const box = $("#sub-market");
-  if (!box) return;
-  let list = subMarketData;
-  if (HAS_BRIDGE && !list.length) {
-    try { list = subMarketData = JSON.parse(AndroidApp.subRecommend() || "[]"); } catch (e) {}
-  }
-  if (!HAS_BRIDGE && (!list || !list.length)) list = MARKET_FALLBACK;
-  if (!list || !list.length) {
-    box.innerHTML = '<div class="sub-note">订阅市场不可用（请更新到最新版）</div>';
-    return;
-  }
-  box.innerHTML = list.map((s, i) =>
-    '<button class="market-item market-tap" type="button" data-sub-import="' + i + '"'
-    + ' aria-label="一键导入订阅 ' + esc(s.name) + '">'
-    + '<div class="market-info">'
-    + '<div class="market-name">' + esc(s.name) + '</div>'
-    + '<div class="market-desc">' + esc(s.desc) + '</div>'
-    + '</div>'
-    + '<span class="market-go" data-sub-state="' + i + '">导入</span>'
-    + '</button>').join("");
-  box.querySelectorAll("[data-sub-import]").forEach((btn) => {
-    btn.addEventListener("click", () => { void importMarketSub(+btn.dataset.subImport, list); });
-  });
-}
-async function importMarketSub(idx, list) {
-  const s = list[idx];
-  if (!s) return;
-  const stateEl = $('#sub-market [data-sub-state="' + idx + '"]');
-  if (stateEl) stateEl.textContent = "导入中…";
-  $("#sub-url").value = s.url;
-  if (!HAS_BRIDGE) {
-    if (stateEl) stateEl.textContent = "已导入 ✓";
-    toast("已导入「" + s.name + "」（浏览器演示环境）");
-    return;
-  }
-  const r = await subCall("subSetUrl", s.url);
-  if (r.ok) {
-    /* v7.0.0：离线快照兑底导入（八通道全失败时 APK 内置快照直接生效） */
-    if (r.snapshot) {
-      if (stateEl) stateEl.textContent = "已导入(离线) ✓";
-      toast("已导入「" + (r.name || s.name) + "」离线快照：" + (r.apps || 0) + " 款应用（联网后自动更新最新版）");
-    } else {
-      if (stateEl) stateEl.textContent = "已导入 ✓";
-      toast("已导入「" + (r.name || s.name) + "」：" + (r.apps || 0) + " 款应用");
-    }
-  } else {
-    if (stateEl) stateEl.textContent = "再点重试";
-    toast(r.error || "导入失败，再点一下重试");
-  }
-  refreshSub();
-}
-
-/* ═══ v7.0.0 订阅导入镜像切换进度（Java 桥实时回报）═══
- * SubscriptionManager 每切换一个镜像通道回调一次：
- * window.__subProgress(attempt, total, host)——导入行状态位
- * 显示「镜像 X/Y」，页内结果框同步显示，等待期间零黑盒。 */
-window.__subProgress = function (attempt, total, host) {
-  try {
-    const stateEl = $('#sub-market [data-sub-state]');
-    if (stateEl && String(stateEl.textContent).indexOf("导入") === 0) {
-      stateEl.textContent = "镜像 " + attempt + "/" + total;
-    }
-    const box = $("#sub-result");
-    if (box) {
-      box.className = "fb-result";
-      box.textContent = "正在拉取订阅（镜像 " + attempt + "/" + total + " · " + esc(host) + "）…";
-    }
-  } catch (e) {}
-};
-
-$("#btn-sub-clear").addEventListener("click", async () => {
-  $("#sub-url").value = "";
-  const r = await subCall("subSetUrl", "");
-  const box = $("#sub-result");
-  box.className = "fb-result ok";
-  box.textContent = r.ok ? "已移除远程订阅" : (r.error || "操作失败");
-  refreshSub();
-});
-
-$("#btn-sub-update").addEventListener("click", async () => {
-  const box = $("#sub-result");
-  box.className = "fb-result"; box.textContent = "正在检查更新…";
-  const r = await subCall("subUpdateNow");
-  if (r.ok) {
-    box.className = "fb-result ok";
-    box.textContent = "已更新：" + (r.rules || 0) + " 条规则";
-  } else {
-    box.className = "fb-result err"; box.textContent = r.error || "更新失败";
-  }
-  refreshSub();
-});
-
-$("#sub-toggle").addEventListener("change", () => {
-  const on = $("#sub-toggle").checked;
-  if (HAS_BRIDGE) { try { AndroidApp.subSetEnabled(on); } catch (e) {} }
-  toast(on ? "远程订阅已启用" : "远程订阅已停用");
-});
 
 /* ══════════ 我的：版本与更新 ══════════ */
 $("#me-ver").textContent = "v" + appVer();
@@ -879,6 +720,15 @@ const UPDATE_MANIFEST_SOURCES = [
   "https://testingcf.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/update/latest.json",
 ];
 
+/* ═══ v7.11.0 检查更新失败兜底通道（用户指令：每版本做兜底——查询失败时
+ * 直接由 jsDelivr 最新版链接下载）═══
+ * 仓库内 APK 归档（android-app/dist/）+ 恒指向最新版的别名副本
+ * （adshield-latest.apk，发布时随同归档入库）——检查失败时无需任何
+ * 元数据即可直达最新版；下载后手动覆盖安装（浏览器/系统下载器通道）。
+ * 成功检查路径的兜底主通道在清单 cdnApkUrl（apkMirrors 镜像切换，
+ * SHA-256/大小闸照常——见 UpdateManifest/Downloader）。 */
+const FALLBACK_CDN_LATEST = "https://cdn.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/android-app/dist/adshield-latest.apk";
+
 /* 更新错误十类 → 人话（Java UpdateManifest 错误码的 UI 侧唯一文案出口；
  * 不再把服务端限流/网络异常混为一谈——每类如实转达） */
 function updateErrText(code) {
@@ -923,7 +773,7 @@ function mapManifest(j) {
     apkMB: j.apkSize ? Math.round(j.apkSize / 1048576 * 100) / 100 : 0,
     apkSize: j.apkSize || 0,
     apkDigest: j.apkSha256 ? "sha256:" + String(j.apkSha256).replace(/^sha256:/i, "").toLowerCase() : "",
-    apkMirrors: [],
+    apkMirrors: j.cdnApkUrl ? [j.cdnApkUrl] : [], // v7.11.0：CDN 兜底镜像（清单携带）
   };
 }
 
@@ -936,7 +786,7 @@ function mapManifest(j) {
  *   Promise（与原生侧 FlightGate 同族语义——绝不请求风暴）；
  * ② 过期序号（updSeq）：每次发起序号 +1，旧序号的回调一律丢弃——快速
  *   连续触发时只有最后一次的结果生效（阻止过期回调覆盖新状态）；
- * ③ 90s 兑底：桥回调永不抵达（线程丢失/进程竞态）时按超时失败收尾——
+ * ③ 90s 兜底：桥回调永不抵达（线程丢失/进程竞态）时按超时失败收尾——
  *   按钮与状态必然恢复，手动检查绝不永久卡「检查中…」。 */
 let updInFlight = null;
 let updSeq = 0;
@@ -957,7 +807,7 @@ function bridgeUpdateCheck(manual) {
       try { delete window[cbName]; } catch (e) {}
       resolve(v);
     };
-    const timer = setTimeout(() => {   // ③ 90s 兑底：回调永不抵达也必然收尾
+    const timer = setTimeout(() => {   // ③ 90s 兜底：回调永不抵达也必然收尾
       if (settled) return;
       settled = true;
       try { delete window[cbName]; } catch (e) {}
@@ -1022,7 +872,7 @@ async function fetchLatest(manual) {
 /* 新版本判定（Java Net.isNewerRelease 镜像——v7.10.0 统一规则）：
  * remoteVersionCode > currentVersionCode 才算新版；任一侧缺失/非法（≤0）
  * → 不提示（versionName 仅展示，绝不作为更新判断依据）。
- * （fetchLatest 已移至上方静态清单版；本函数为浏览器预览 isNewer 兑底保留） */
+ * （fetchLatest 已移至上方静态清单版；本函数为浏览器预览 isNewer 兜底保留） */
 function isNewerByCode(remoteVc, localVc) {
   return remoteVc > 0 && localVc > 0 && remoteVc > localVc;
 }
@@ -1191,8 +1041,18 @@ $("#btn-check-update").addEventListener("click", async () => {
     note.className = "fb-result err";
     note.style.display = "";
     note.textContent = "查询失败：" + (updateErrText(d.errorCode) || d.error || "未知");
+    /* ═══ v7.11.0 检查失败兜底：直达 jsDelivr CDN 仓库内最新 APK（
+     * adshield-latest.apk 恒指向最新版）——下载后覆盖安装即升级。
+     * 检查失败不再无路可走；直连下载走系统浏览器/下载器通道。 */
+    latestRelease = null;
+    fallbackDirectDl = true;
+    dlBtn.textContent = "直连下载最新版（CDN 兜底）";
+    dlBtn.dataset.phase = "fallback";
+    dlBtn.disabled = false;
+    dlBtn.style.display = "";
     return;
   }
+  fallbackDirectDl = false;
   if (!d.hasRelease) { note.className = "fb-result"; note.style.display = ""; note.textContent = "尚未发布版本"; return; }
   latestRelease = d;
   const latest = String(d.tag || "").replace(/^v/, "");
@@ -1227,6 +1087,7 @@ $("#btn-check-update").addEventListener("click", async () => {
 
 $("#page-dl-btn").addEventListener("click", () => {
   const btn = $("#page-dl-btn");
+  if (btn.dataset.phase === "fallback") { doFallbackDirectDownload(); return; }
   if (btn.dataset.phase === "install") {
     if (HAS_BRIDGE) doInstallUpdate("page");
     return;
@@ -1243,6 +1104,17 @@ $("#page-dl-btn").addEventListener("click", () => {
  * 缓存数据绝不提示降级）。用户选「暂不更新」→ 继续使用当前版本，下次
  * 进入 App 仍会检测。Draft/Pre-release 清单标记不作正式更新。 */
 let gateRelease = null;
+/* v7.11.0：检查失败兜底态（true = 下载按钮走 jsDelivr CDN 直链而非
+ * Release 下载状态机）。 */
+let fallbackDirectDl = false;
+
+/* 检查失败兜底直连下载：jsDelivr CDN 仓库内最新 APK（浏览器/系统下载器
+ * 通道——无 digest 元数据，不走应用内 SHA-256 安装闸；下载后从通知/文件
+ * 管理器点击安装，覆盖安装即升级）。 */
+function doFallbackDirectDownload() {
+  toast("已转系统下载：下载完成后点击安装（覆盖安装即升级）");
+  openUrl(FALLBACK_CDN_LATEST);
+}
 
 async function checkUpdateOnLaunch() {
   try {
@@ -1258,9 +1130,9 @@ async function checkUpdateOnLaunch() {
  * 关闭即回到原状；移动端优先适配无横向溢出） */
 function showUpdateGate(d) {
   gateRelease = d;
-  /* v7.10.0 更新优先于提醒：全屏更新页即将在场——先收起已展示的反馈
-   * 提示卡（两卡叠弹打扰面；用户确认过的 24h 节流时间戳不受影响） */
-  const tip = $("#bug-tip");
+  /* v7.11.0 更新优先于提醒：全屏更新页即将在场——先收起已展示的开屏
+   * 提醒卡（两卡叠弹打扰面；用户确认过的 24h 节流时间戳不受影响） */
+  const tip = $("#pin-tip");
   if (tip) tip.remove();
   let gate = $("#update-gate");
   if (gate) gate.remove();
@@ -1324,88 +1196,76 @@ function hideUpdateGate() {
   if (gate) gate.remove();
 }
 
-/* ══════════ v7.9.8 Bug 反馈提示（24h 节流 · 纯本地 · 绝不自动上传）══════════
- * 用户指令（取代 v7.9.7 一次性提示）：
- *  · 每次进入 App 都有机会看到提示（冷启动 init 评估，非前后台切换）；
- *  · 「知道了」/「去上传日志」任一确认 → 记录 bug_feedback_confirmed_at
- *    （epoch 毫秒，SharedPreferences kvSet 白名单键 / 浏览器 localStorage
- *    兑底），24h 内不再显示；超过 24h 下次进入 App 重新显示；
- *  · 用户未确认不永久消耗资格（无任何永久 true/false 标记——只看时间戳）；
- *  · Activity 重建/旋转防护：展示时记 bug_feedback_shown_at，5 分钟短窗内
+/* ══════════ v7.11.0 开屏提醒：固定后台引导（进入即显 · 24h 不再显示）══════════
+ * 用户指令：「开屏提醒速度一定要快，要显示把 app 固定在后台，进入 app 就
+ * 显示，然后可以选择 24 小时之内不再显示」。
+ *  · 进入 App 即显示（init 直调——0ms，不再等 3 秒；与更新检查彻底无关）；
+ *  · 内容：把卫士固定在后台的分机型操作指引（防「清理后台杀服务 →
+ *    下次进入要重新开启 + 再看一次系统 10 秒确认」——用户痛点闭环）；
+ *    底部一行反馈提示（发现问题 → 我的 → 引擎日志 → 一键上传）；
+ *  · 「知道了」= 仅本轮收起（不记 24h——下次进入仍会提醒）；
+ *  · 「24 小时内不再显示」= 记 pin_tip_confirmed_at（epoch 毫秒，
+ *    kvSet 白名单键 / 浏览器 localStorage 兜底），24h 内不再显示；
+ *  · Activity 重建/旋转防护：展示时记 pin_tip_shown_at，5 分钟短窗内
  *    重建不再重复弹（短窗只防抖不耗资格）；
- *  · 前后台切换不重复弹（visibilitychange 不评估——仅 init 调 maybeShowBugTip）；
- *  · 更新提示优先：#update-gate 在场不弹（z-index 110 < 更新页 120）；
- *  · 「去上传日志」只做导航（切「我的」页 + 滚到引擎日志卡片），绝不代替
- *    用户点击上传、绝不自动建 Issue、绝不消耗上传次数；同时记确认时间戳
- *    （从日志页返回 App 不立即重复弹）。 */
-const BUG_TIP_THROTTLE_MS = 24 * 60 * 60 * 1000;  /* 确认后 24h 节流 */
-const BUG_TIP_RESHOW_GUARD_MS = 5 * 60 * 1000;    /* 展示后 5min 防重建重复弹 */
-let bugTipShownThisSession = false;
-function bugTipThrottled() {
+ *  · 前后台切换不重复弹（visibilitychange 不评估——仅 init 调用）；
+ *  · 更新提示优先：#update-gate 在场不弹；更新页后到 → showUpdateGate
+ *    主动收起提醒卡（24h 时间戳不受影响）。 */
+const PIN_TIP_THROTTLE_MS = 24 * 60 * 60 * 1000;  /* 「24h 不再显示」节流 */
+const PIN_TIP_RESHOW_GUARD_MS = 5 * 60 * 1000;    /* 展示后 5min 防重建重复弹 */
+let pinTipShownThisSession = false;
+function pinTipThrottled() {
   try {
-    const t = parseInt(store.get("bug_feedback_confirmed_at", "0"), 10) || 0;
-    return t > 0 && (Date.now() - t) < BUG_TIP_THROTTLE_MS;
+    const t = parseInt(store.get("pin_tip_confirmed_at", "0"), 10) || 0;
+    return t > 0 && (Date.now() - t) < PIN_TIP_THROTTLE_MS;
   } catch (e) { return true; }
 }
-function bugTipRecentlyShown() {
+function pinTipRecentlyShown() {
   try {
-    const t = parseInt(store.get("bug_feedback_shown_at", "0"), 10) || 0;
-    return t > 0 && (Date.now() - t) < BUG_TIP_RESHOW_GUARD_MS;
+    const t = parseInt(store.get("pin_tip_shown_at", "0"), 10) || 0;
+    return t > 0 && (Date.now() - t) < PIN_TIP_RESHOW_GUARD_MS;
   } catch (e) { return true; }
 }
-function showBugTip() {
-  if (bugTipShownThisSession) return;
-  bugTipShownThisSession = true;
-  try { store.set("bug_feedback_shown_at", String(Date.now())); } catch (e) {}
-  let tip = $("#bug-tip");
+function showPinTip() {
+  if (pinTipShownThisSession) return;
+  pinTipShownThisSession = true;
+  try { store.set("pin_tip_shown_at", String(Date.now())); } catch (e) {}
+  let tip = $("#pin-tip");
   if (tip) tip.remove();
   tip = document.createElement("div");
-  tip.id = "bug-tip";
+  tip.id = "pin-tip";
   tip.innerHTML =
-    '<div class="ug-card" role="dialog" aria-modal="true" aria-label="反馈提示">'
+    '<div class="ug-card" role="dialog" aria-modal="true" aria-label="固定后台提醒">'
     + '<img class="ug-logo" src="mascot-head.png" width="56" height="56" alt="开屏卫士图标">'
-    + '<div class="ug-app-name">使用过程中发现问题了吗？</div>'
-    + '<div class="ug-badge">帮助改进开屏卫士</div>'
+    + '<div class="ug-app-name">把开屏卫士固定在后台</div>'
+    + '<div class="ug-badge">守护不中断</div>'
     + '<div class="ug-notes">'
-    + '<div class="ug-note-item">• 开屏广告没有跳过</div>'
-    + '<div class="ug-note-item">• 广告跳过不准确</div>'
-    + '<div class="ug-note-item">• 弹窗无法关闭</div>'
-    + '<div class="ug-note-item">• App 出现卡顿或异常</div>'
-    + '<div class="ug-note-item">• 其他使用体验问题</div>'
+    + '<div class="ug-note-item"><span class="ug-note-n">1</span>打开「最近任务」，找到卫士卡片</div>'
+    + '<div class="ug-note-item"><span class="ug-note-n">2</span>点卡片上的「固定 / 图钉 / 锁定」（MIUI：长按卡片选「锁定」）</div>'
+    + '<div class="ug-note-item"><span class="ug-note-n">3</span>固定后清理后台不影响卫士——下次进入无需重新开启</div>'
     + '</div>'
-    + '<div class="ug-size">可以进入「我的 → 引擎日志 → 一键上传」上传日志，'
-    + '帮助开发者定位和改进问题。仅在你主动点击时才会上传。</div>'
-    + '<button class="ug-btn-primary" id="bug-tip-go">去上传日志</button>'
-    + '<button class="ug-btn-ghost" id="bug-tip-ok">知道了</button>'
+    + '<div class="ug-size">不固定的后果：清理后台时卫士被一起杀掉，下次进入会被要求重新开启（并再看一次系统 10 秒确认）。'
+    + '若遇开屏广告未跳过等问题：「我的 → 引擎日志 → 一键上传」可帮助定位。</div>'
+    + '<button class="ug-btn-primary" id="pin-tip-ok">知道了</button>'
+    + '<button class="ug-btn-ghost" id="pin-tip-snooze">24 小时内不再显示</button>'
     + '</div>';
   document.body.appendChild(tip);
-  const confirm = () => {
-    /* 两个按钮都记确认时间（24h 节流主闸）——不自动上传任何东西 */
-    try { store.set("bug_feedback_confirmed_at", String(Date.now())); } catch (e) {}
-    const t = $("#bug-tip");
-    if (t) t.remove();
-  };
-  /* 「去上传日志」：确认节流 + 只做导航——切到「我的」页并滚到引擎日志
-   * 卡片，绝不代替用户点击上传（最终决定权属于用户） */
-  $("#bug-tip-go").addEventListener("click", () => {
-    confirm();
-    try {
-      const me = Array.from($$(".tabbtn")).find((b) => b.dataset && b.dataset.page === "me");
-      if (me) me.click();
-      const btn = $("#btn-upload-log");
-      const card = btn && btn.closest ? btn.closest(".card") : null;
-      if (card) setTimeout(() => { try { card.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (e) {} }, 80);
-    } catch (e) {}
+  const close = () => { const t = $("#pin-tip"); if (t) t.remove(); };
+  /* 「知道了」：仅本轮收起（下次进入仍提醒——进入 app 就显示语义保持） */
+  $("#pin-tip-ok").addEventListener("click", close);
+  /* 「24 小时内不再显示」：记确认时间戳（24h 节流主闸） */
+  $("#pin-tip-snooze").addEventListener("click", () => {
+    try { store.set("pin_tip_confirmed_at", String(Date.now())); } catch (e) {}
+    close();
+    toast("24 小时内不再显示（固定后台后守护更稳）");
   });
-  /* 「知道了」：只记确认时间，不上传任何东西 */
-  $("#bug-tip-ok").addEventListener("click", confirm);
 }
-function maybeShowBugTip() {
+function maybeShowPinTip() {
   try {
-    if (bugTipThrottled()) return;         // 24h 内已确认——节流
-    if (bugTipRecentlyShown()) return;     // 5min 内已展示过——防 Activity 重建重复弹
+    if (pinTipThrottled()) return;         // 24h 内已选「不再显示」——节流
+    if (pinTipRecentlyShown()) return;     // 5min 内已展示过——防 Activity 重建重复弹
     if ($("#update-gate")) return;         // 更新页在场——升级优先，本轮不打扰
-    showBugTip();
+    showPinTip();
   } catch (e) { /* 提示失败静默——绝不影响正常使用 */ }
 }
 
@@ -1806,6 +1666,15 @@ function toast(msg) {
 
 /* ══════════ 启动 ══════════ */
 (async function init() {
+  /* ═══ v7.11.0 开屏提醒提速（用户指令：提醒速度一定要快——进入 app 就显示）═══
+   * 提醒评估提到 init 第一步：先于 refreshHome/renderWhitelist/keepAlive
+   * 一切桥调用。实测教训（模拟器 TCG 慢环境实锤）：renderWhitelist 的
+   * whitelistJson 枚举全机应用（300+ PackageManager IPC）在慢设备上以
+   * 分钟计——同步桥阻塞 JS 线程时排在后面的 maybeShowPinTip 迟迟不执行
+   * ——「进入即显」被打折扣。现在第一步就评估（纯本地零桥调用——
+   * pinTipThrottled/pinTipRecentlyShown 读 kv 时间戳 + DOM 判定，毫秒级），
+   * 白名单等慢操作后置，提醒在任何设备上都是首帧即出。 */
+  try { maybeShowPinTip(); } catch (e) {}
   refreshHome();
   renderWhitelist(true);
   renderKeepAlive();
@@ -1836,15 +1705,10 @@ function toast(msg) {
   setTimeout(() => {
     void checkUpdateOnLaunch();
   }, 800);
-  // v7.10.0 开屏提醒与更新检查彻底解耦（用户指令：提醒不依赖网络检查
-  // 完成）：v7.9.7 的「检查收尾后才评估提醒」在弱网下会随五源链预算
-  // （40s）推迟提醒——提醒是纯本地状态（24h 节流/5min 防重建），与网络
-  // 无关。现改为独立 3 秒定时评估：网络再慢最多 3s 也能看到提醒；更新
-  // 页已在场则跳过（升级优先），更新页稍后到场则先收起提醒卡（见
-  // showUpdateGate——24h 节流时间戳不受影响）。
-  setTimeout(() => {
-    try { maybeShowBugTip(); } catch (e) {}
-  }, 3000);
+  /* v7.11.0 开屏提醒已在 init 第一步评估（见头部——先于一切慢桥调用，
+   * 纯本地毫秒级）；此处不再重复调用（pinTipShownThisSession/5min 防重建
+   * 闸保证幂等，但省一次冗余评估）。更新页先到（800ms 异步检查先回）
+   * 则本轮不打扰，更新页后到则主动收起提醒卡（见 showUpdateGate）。 */
   // 每 5s 刷新首页状态（首次进入最关心）
   setInterval(() => {
     if ($("#page-home").classList.contains("active")) {

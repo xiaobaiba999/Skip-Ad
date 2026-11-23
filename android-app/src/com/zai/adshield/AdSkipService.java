@@ -184,8 +184,8 @@ import java.util.Map;
  *    且文本键手动点击【同时学位置】（用户手指点通过的位置最可靠）；
  *    位置健全性校验拒学越界坐标（真机日志 (63%,102%) 越界白学）。
  *  · 根因⑤（微博）：陀螺仪文案 120ms 抢先返回键、角落键 500ms 才轮到；
- *    返回键被广告 Activity 拦截后扫描链熔断再无兑底。已改「点击优先、
- *    返回键兑底」+ 返回键后 600ms 复验不熔断；角落/关闭键树上限 40→150。
+ *    返回键被广告 Activity 拦截后扫描链熔断再无兜底。已改「点击优先、
+ *    返回键兜底」+ 返回键后 600ms 复验不熔断；角落/关闭键树上限 40→150。
  *  · 根因⑥（保活）：服务解绑即销毁、无心跳。已改 onUnbind 保留 + 15 分钟
  *    心跳自检闹钟 + 打开 App 自动拉活循环重试（此前仅一次）。
  *  · 兼容：flagIncludeNotImportantViews（部分广告跳过键被标 not-important，
@@ -240,6 +240,11 @@ public class AdSkipService extends AccessibilityService {
     private static final String PREFS = "adshield";
     private static final String KEY_STATE = "state";
     private static final String KEY_KEEPON = "keepOn";
+    /* v7.11.0 状态持久化：服务最近连接时刻（epoch ms）——冷启动宽限期判定
+     * 依据（JS 侧 serviceLastConnectedAt 桥读取）：「刚断开不久」的重进场景
+     * （清理后台后 AMS 重绑慢）先显示「服务重连中」而非「未开启」，避免把
+     * 重绑慢误导向系统设置看 10 秒警告。 */
+    public static final String KEY_LAST_CONNECTED_AT = "lastServiceConnectedAt";
     /* v4.1.0：App 内主开关（免去看系统设置 10 秒警告的暂停/恢复）。
      * 服务保持存活（保活四件套不受影响），但暂停期间绝不扫描、绝不
      * 点击、绝不学习、绝不突发检测——只维持窗口/前台追踪，恢复即无缝衔接。 */
@@ -876,6 +881,12 @@ public class AdSkipService extends AccessibilityService {
         super.onServiceConnected();
         instance = this;
         bound = true; // v4.4.0：真实绑定态
+        /* v7.11.0 状态持久化：记录服务连接时刻——重进 App 的冷启动宽限期
+         * 判定依据（详见 KEY_LAST_CONNECTED_AT 注释）。 */
+        try {
+            prefs().edit().putLong(KEY_LAST_CONNECTED_AT, System.currentTimeMillis()).apply();
+        } catch (Throwable ignored) {
+        }
         screenWidth = getResources().getDisplayMetrics().widthPixels;
         screenHeight = getResources().getDisplayMetrics().heightPixels;
         try {
@@ -922,6 +933,15 @@ public class AdSkipService extends AccessibilityService {
         registerA11yRegObserver();
         // v4.0.0 GKD 订阅融合：内置订阅 + 远程订阅（用户导入的 GKD 社区规则）
         SubscriptionManager.ensureLoaded(this);
+        /* v7.11.0 ID667 订阅每日后台自动导入：无订阅时自动设默认源并立即
+         * 拉取（八通道 + 离线快照兜底——永不硬失败；已有订阅秒回）。
+         * 后台线程执行（网络拉取绝不阻塞服务连接热路径）。 */
+        new Thread(() -> {
+            try {
+                SubscriptionManager.maybeDailyAutoImport(AdSkipService.this);
+            } catch (Throwable ignored) {
+            }
+        }, "sub-auto-import").start();
         Subscription bi = SubscriptionManager.builtinSub;
         appendLog("🧩 订阅引擎就绪：内置订阅 "
                 + (bi == null ? 0 : bi.apps.size()) + " 款应用/"
@@ -3279,7 +3299,7 @@ public class AdSkipService extends AccessibilityService {
                         subConsultedWin.add(subKey);
                         try {
                             /* v7.1.0 两源订阅候选（RuleRouter 使用顺序：市场优先 →
-                             * 内置兑底；各贡献一个候选进点击轮换——单源候选失效
+                             * 内置兜底；各贡献一个候选进点击轮换——单源候选失效
                              * 不再拖死整轮，市场规则不再被内置静态快照短路饿死） */
                             java.util.ArrayList<Hit> sh = SubscriptionManager.matchSources(
                                     pkg, new NodeAdapter(roots[ri]), ctx);
@@ -3309,7 +3329,7 @@ public class AdSkipService extends AccessibilityService {
                             rd.action = AdDecisionCore.A_CLICK_BOUNDS;
                             rd.node = hit.gestureOnly ? null : hit.clickNode;
                             rd.bounds = hit.tapBounds;
-                            /* v7.1.0：订阅命中带源标注（市场优先/内置兑底）——
+                            /* v7.1.0：订阅命中带源标注（市场优先/内置兜底）——
                              * 日志与 reasonZh 可诊断（订阅页两源命中也分别记账） */
                             rd.reason = "sub_gkd".equals(hit.appId)
                                     ? ("rule_sub_gkd_" + (String.valueOf(hit.src).startsWith("市场") ? "remote" : "builtin"))
@@ -3802,7 +3822,7 @@ public class AdSkipService extends AccessibilityService {
         return false;
     }
 
-    /** 无障碍代点 NodeView（反馈面板「取消」键的手势派发失败兑底） */
+    /** 无障碍代点 NodeView（反馈面板「取消」键的手势派发失败兜底） */
     private boolean performActionOn(AdDecisionCore.NodeView node) {
         try {
             if (node instanceof NodeAdapter) {
@@ -4207,7 +4227,7 @@ public class AdSkipService extends AccessibilityService {
                             firedTargetCount.remove(deadKey);
                         }
                     } catch (Throwable ignored) {
-                        firedTargetAt.clear(); // 排序异常兑底：绝不无限膨胀
+                        firedTargetAt.clear(); // 排序异常兜底：绝不无限膨胀
                         firedTargetCount.clear();
                     }
                 }
@@ -4976,7 +4996,7 @@ public class AdSkipService extends AccessibilityService {
         if (r.equals("rule_sdk_close_vid")) return "内嵌规则·SDK 窗图片关闭键";
         if (r.equals("rule_sub_gkd")) return "GKD 订阅规则命中（选择器定位控件）";
         if (r.equals("rule_sub_gkd_remote")) return "GKD 订阅规则命中（市场源优先——选择器定位控件）";
-        if (r.equals("rule_sub_gkd_builtin")) return "GKD 订阅规则命中（内置源兑底——选择器定位控件）";
+        if (r.equals("rule_sub_gkd_builtin")) return "GKD 订阅规则命中（内置源兜底——选择器定位控件）";
         if (r.equals("feed_p1_badge")) return "信息流广告披露角标（v7.1.0·自 v6.2.0 已验证实现移植）"; // feed 决策专用
         if (r.equals("feed_p2_close")) return "信息流广告关闭菜单中性项（v7.1.0·自 v6.2.0 已验证实现移植）";
         if (r.equals("skip_text")) return "文本跳过键";

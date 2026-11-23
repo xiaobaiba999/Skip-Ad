@@ -121,6 +121,15 @@ public final class UpdateManifest {
             if (apkUrl.length() > 0 && !Downloader.hostAllowed(apkUrl)) {
                 return fail(ERR_INVALID, "更新清单 APK 地址不在允许的发布通道内，已拒绝");
             }
+            /* v7.11.0 CDN 兜底下载通道：清单可携带 cdnApkUrl——jsDelivr
+             * 仓库内 APK 直链（android-app/dist/adshield-vX.Y.Z.apk，每个版本
+             * 发布时随 APK 归档入库——「GitHub 返回 401 查询失败」的兜底）。
+             * 校验与 apkUrl 同闸（HTTPS + 发布通道域白名单）；非法 → 忽略
+             * 该兜底通道（主通道不受影响——绝不因兜底字段污染拒收整份清单）。 */
+            String cdnApkUrl = d.optString("cdnApkUrl", "");
+            if (cdnApkUrl.length() > 0 && !Downloader.hostAllowed(cdnApkUrl)) {
+                cdnApkUrl = "";
+            }
             // APK SHA256：非空必须 64 位十六进制（sha256: 前缀容忍；大小写不敏感）
             String apkSha256 = normalizeSha(d.optString("apkSha256", ""));
             if (apkSha256 == null) {
@@ -157,7 +166,13 @@ public final class UpdateManifest {
             out.put("apkMB", Math.round(apkSize / 1048576.0 * 100) / 100.0);
             out.put("apkSize", apkSize);
             out.put("apkDigest", apkSha256.length() > 0 ? "sha256:" + apkSha256 : "");
-            out.put("apkMirrors", new JSONArray()); // v7.9.6plus 语义保持：唯一官方源
+            /* v7.11.0：CDN 兜底通道入 mirrors——主源（GitHub Releases）
+             * 失败/久无进展时下载状态机自动切换；同一 SHA-256/大小闸
+             * （仓库内 APK 与 Release 资产同字节——安装闸不降级）。 */
+            org.json.JSONArray mirrors = new org.json.JSONArray();
+            if (cdnApkUrl.length() > 0) mirrors.put(cdnApkUrl);
+            out.put("apkMirrors", mirrors);
+            out.put("cdnApkUrl", cdnApkUrl);
             int minSupported = d.optInt("minSupportedVersionCode", 0);
             out.put("minSupportedVersionCode", minSupported);
             if (minSupported > 0 && currentVersionCode > 0 && currentVersionCode < minSupported) {
@@ -171,7 +186,7 @@ public final class UpdateManifest {
     }
 
     /** SHA256 归一化：「sha256:HEX」/「HEX」（大小写不敏感）→ 小写 hex；
-     *  空串原样通过（弱校验回退语义保持——Downloader 字节数兑底）；非法 → null。 */
+     *  空串原样通过（弱校验回退语义保持——Downloader 字节数兜底）；非法 → null。 */
     static String normalizeSha(String s) {
         if (s == null) return "";
         String v = s.trim();

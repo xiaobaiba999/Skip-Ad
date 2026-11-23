@@ -75,8 +75,11 @@ public class KeepAliveReceiver extends BroadcastReceiver {
             // 闹钟（绝不把设备从 Doze 中唤醒，待机功耗治理）；亮屏仍 5 分钟精确
             AdSkipService.scheduleNextHeartbeat(ctx, System.currentTimeMillis() + AdSkipService.HEARTBEAT_MS, true);
             // v4.0.0：心跳顺带触发订阅 24h 静默更新（无订阅/未到期秒回，零开销）
+            // v7.11.0：ID667 订阅每日后台自动导入前置（无订阅时自动设默认源——
+            // 服务连接时已试过一次的，这里按 1h 冷却闸秒回，绝不风暴）
             Thread subThread = new Thread(() -> {
                 try {
+                    SubscriptionManager.maybeDailyAutoImport(ctx);
                     SubscriptionManager.maybeSilentUpdate(ctx);
                 } catch (Throwable ignored) {
                 }

@@ -837,7 +837,7 @@ public final class Subscription {
             /* ═══ v5.6.0 激进化扩充（用户实锤：好多广告没有命中）═══
              * 102 → 114 款：补齐汽车/天气/运营商/资讯类高频开屏；
              * 全局通用规则新增 vid*="skip" 与 vid*="countdown" 两档
-             *（第一方自绘窗的 vid 命名变体跟不上的直接兑底）。 */
+             *（第一方自绘窗的 vid 命名变体跟不上的直接兜底）。 */
             + appSplash("com.duowan.kiwi", "虎牙直播", null,
                     new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"}, null, 1200)
             + appSplash("com.cubic.autohome", "汽车之家", null,

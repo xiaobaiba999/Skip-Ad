@@ -1,6 +1,6 @@
 /** 版本与 GitHub 仓库信息（Web 端与发布节奏共用） */
-export const APP_VERSION = "7.10.0";
-export const VERSION_CODE = 80000; // v7.1.0 起标准公式 major*10000 + minor*1000 + patch*100（7.10.0→80000）；v7.10.0 统一版本规则：更新判定只看 versionCode，versionName 仅展示
+export const APP_VERSION = "7.11.0";
+export const VERSION_CODE = 81000; // v7.1.0 起标准公式 major*10000 + minor*1000 + patch*100（7.11.0→81000）；v7.10.0 统一版本规则：更新判定只看 versionCode，versionName 仅展示
 export const GITHUB_REPO = "xiaobaiba999/Skip-Ad";
 export const GITHUB_API = `https://api.github.com/repos/${GITHUB_REPO}`;
 export const GITHUB_HOME = `https://github.com/${GITHUB_REPO}`;
@@ -19,15 +19,16 @@ export interface VersionEntry {
  *  旧版本内容归档在 GitHub Releases 与 git 历史） */
 export const VERSION_HISTORY: VersionEntry[] = [
   {
-    version: "7.10.0",
-    code: 80000,
-    date: "2026-11-25",
-    tagline: "上传次数限制彻底移除 + 更新检查异步化 + 开屏提醒解耦 + 统一版本规则",
+    version: "7.11.0",
+    code: 81000,
+    date: "2026-11-23",
+    tagline: "检查更新失败 CDN 兜底直连 + 开屏提醒提速 + 帮助页 + 订阅后台自动导入 + 重进状态修复",
     notes: [
-      "日志上传次数限制彻底移除：自动上传不再有 24h/3 成功额度（仅受心跳间隔 8h 与「有新日志才传」约束）；手动上传零次数/额度/冷却门槛，随时可传、短时连传多批全部放行（同 batchId 幂等保护保持，绝不二建 Issue）",
-      "更新检查异步化：新增 updateCheckAsync 异步桥——JS 主线程零网络等待（旧同步桥整体移除，弱网下页面冻结最长 40s 的根因根治）；JS 单飞 + 过期序号丢弃 + 90 秒回调兜底三重防线，手动检查绝不永久卡「检查中…」",
-      "开屏提醒与更新检查彻底解耦：反馈提醒独立 3 秒定时评估——网络再慢（五源链预算 40s）也最多 3s 看到提醒；24h 节流/5min 防重建/更新优先语义保持",
-      "统一版本判定规则：全项目统一 remoteVersionCode > currentVersionCode——versionName 仅展示、绝不作为更新判断依据；Release 正文 versionCode 元数据行回退与 82300/plus 旧兼容链彻底清理（清单侧/JS 侧/生成器侧三面同步）",
+      "检查更新失败 CDN 兜底：「查询失败」时出现「直连下载最新版（CDN 兜底）」按钮——jsDelivr CDN 仓库内 APK 直链（每版本随发布归档入库 + adshield-latest.apk 恒指最新版别名），下载后覆盖安装即升级；正常路径新增 cdnApkUrl 兜底镜像（主源失败自动切换，SHA-256/大小闸不降级）",
+      "开屏提醒提速：进入 App 即显示（不再等 3 秒）——提醒把卫士固定在后台（分机型操作指引：通用/小米 HyperOS/华为荣耀/OPPO vivo）；「24 小时内不再显示」选项（纯本地时间戳）；「知道了」不耗资格",
+      "新增帮助页（底栏）：如何使用（三步）/ 固定后台（重要）/ 订阅规则（自动）/ 检查更新失败怎么办 / 常见问题 / 隐私与权限",
+      "订阅模块自动化：底栏订阅页移除——id667 的 GKD 订阅（Lin-arm ⭐7.4k · 日更）后台每日自动导入一次（服务连接 + 5 分钟心跳双触发；八通道镜像链 + APK 内置离线快照双重兜底，失败 1h 冷却重试——永不硬失败）",
+      "重进体验修复：冷启动宽限期——刚断开不久（≤10 分钟）时首页显示「服务重连中」而非「未开启」（AMS 重绑慢不再误导向系统设置看 10 秒警告）；服务最近连接时刻持久化，前台看门狗自动恢复「守护中」",
     ],
   },];
 

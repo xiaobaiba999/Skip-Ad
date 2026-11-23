@@ -1,0 +1,31 @@
+diff --git a/.github/workflows/update-manifest.yml b/.github/workflows/update-manifest.yml
+index c5d3c18..0195244 100644
+--- a/.github/workflows/update-manifest.yml
++++ b/.github/workflows/update-manifest.yml
+@@ -212,6 +212,8 @@ jobs:
+         # 看不到新版本。purge.jsdelivr.net 免认证公开端点（限频），一次
+         # purge 对四接入点（cdn/fastly/gcore/testingcf）整体生效；失败不
+         # 阻塞主链路（raw 主源已提交——线上核验步骤会如实报告各源状态）。
++        # v7.11.0：追加 purge CDN 兜底 APK 直链（android-app/dist/）与
++        # adshield-latest.apk 别名——检查更新失败兜底通道同样即时生效。
+         if: steps.rel.outputs.prerelease != 'true' && steps.gen.outputs.skipped != 'true' && env.COMMITTED == 'true'
+         run: |
+           set -uo pipefail
+@@ -225,6 +227,17 @@ jobs:
+             echo "⚠ purge 未确认（$OUT）——不阻塞：jsDelivr 最长 12h 后自然过期，raw 主源不受影响"
+             echo "PURGE_FAIL=1" >> "$GITHUB_ENV"
+           fi
++          # v7.11.0 CDN 兜底 APK 直链 purge（版本归档 + latest 别名——软失败不阻塞）
++          VN="${{ steps.rel.outputs.tag }}"
++          VN="${VN#v}"
++          for P in "android-app/dist/adshield-v${VN}.apk" "android-app/dist/adshield-latest.apk"; do
++            POUT=$(curl -fsSL --max-time 60 "https://purge.jsdelivr.net/gh/${GITHUB_REPOSITORY}@main/${P}" 2>&1 || true)
++            if echo "$POUT" | grep -q '"status"'; then
++              echo "✓ CDN 兜底 APK 已 purge：${P}"
++            else
++              echo "⚠ CDN 兜底 APK purge 未确认：${P}（12h 自然过期——raw 主源不受影响）"
++            fi
++          done
+ 
+       - name: 线上核验（raw 主源 + jsDelivr 备用链真实可达性——不伪造部署成功）
+         if: steps.rel.outputs.prerelease != 'true' && steps.gen.outputs.skipped != 'true'

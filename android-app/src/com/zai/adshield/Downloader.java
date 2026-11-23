@@ -290,11 +290,16 @@ public final class Downloader {
 
     /**
      * 发布通道 host 白名单（URL 解析后的 host 精确/后缀匹配）。
-     * v7.9.6plus：仅允许 GitHub 官方域（github.com · *.github.com ·
+     * v7.9.6plus：允许 GitHub 官方域（github.com · *.github.com ·
      * githubusercontent.com 及子域）——ghfast.top/gh-proxy.com 等 ghproxy
-     * 类第三方代理已移除（用户指令：来源不明/不稳定，不作正式下载源；
-     * 当前无经所有者确认的国内备用源，如实保留单一官方下载链路）。
-     * 拒绝一切构造绕过：userinfo 混淆、子串注入、尾点 FQDN。 */
+     * 类第三方代理已移除（用户指令：来源不明/不稳定，不作正式下载源）。
+     * v7.11.0 CDN 兜底通道（用户指令「每个版本做兜底操作——检查更新失败时
+     * 直连 jsDelivr 仓库内 APK」）：追加 jsDelivr 四接入点（cdn/fastly/
+     * gcore/testingcf——与 UpdateRepository 备用链 / SubMirrors 订阅链同族
+     * 的国内可达通道）。jsDelivr 服务【本仓库 GitHub 提交内容】，与 GitHub
+     * Releases 同字节同源——下载完成后 SHA-256+大小闸照常比对（安全强度
+     * 不降，代理投毒在安装前被拦下）。拒绝一切构造绕过：userinfo 混淆、
+     * 子串注入、尾点 FQDN。 */
     public static boolean hostAllowed(String u) {
         try {
             java.net.URL url = new java.net.URL(u);
@@ -305,7 +310,9 @@ public final class Downloader {
             String h = host.toLowerCase(java.util.Locale.ROOT);
             if (h.endsWith(".")) h = h.substring(0, h.length() - 1); // 尾点 FQDN 混淆
             return h.equals("github.com") || h.endsWith(".github.com")
-                    || h.equals("githubusercontent.com") || h.endsWith(".githubusercontent.com");
+                    || h.equals("githubusercontent.com") || h.endsWith(".githubusercontent.com")
+                    || h.equals("cdn.jsdelivr.net") || h.equals("fastly.jsdelivr.net")
+                    || h.equals("gcore.jsdelivr.net") || h.equals("testingcf.jsdelivr.net");
         } catch (Throwable t) {
             return false;
         }
@@ -342,7 +349,7 @@ public final class Downloader {
 
     /** v8.2.0：完整性比对判定（纯函数，JVM 可测）——检查次序与文案与 v6.3.0
      *  原实现逐字一致：① size 不符优先（即使有 digest）；② digest 在场 →
-     *  SHA-256 全量比对（大小写不敏感）；③ digest 缺失 → 字节数比对兑底；
+     *  SHA-256 全量比对（大小写不敏感）；③ digest 缺失 → 字节数比对兜底；
      *  ④ 双缺拒绝（正常 Release 必有 digest）。安全闸零降低（提取重构非改行为）。 */
     public static String verifyDigest(long totalBytes, String actualShaHex, String expectSha, long expectSize) {
         if (expectSize > 0 && totalBytes != expectSize) {
@@ -358,7 +365,7 @@ public final class Downloader {
         if (expectSize <= 0) {
             return "缺少校验元数据"; // digest 与 size 双缺：拒绝（正常 Release 必有 digest）
         }
-        return null; // digest 缺失但 size 在场：字节数比对兑底通过（弱校验兑底语义保持）
+        return null; // digest 缺失但 size 在场：字节数比对兜底通过（弱校验兜底语义保持）
     }
 
     /** v8.2.0：字节数组 → 小写十六进制（v6.3.0 内联逻辑提取——补零语义不变）。 */
