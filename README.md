@@ -6,7 +6,7 @@
 
 [![Releases](https://img.shields.io/github/v/release/xiaobaiba999/Skip-Ad?style=flat-square&label=%E6%9C%80%E6%96%B0%E5%8F%91%E5%B8%83)](https://github.com/xiaobaiba999/Skip-Ad/releases/latest)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](#许可)
-[![APK](https://img.shields.io/badge/APK-880KB-orange?style=flat-square)](https://github.com/xiaobaiba999/Skip-Ad/releases/latest)
+[![APK](https://img.shields.io/badge/APK-858KB-orange?style=flat-square)](https://github.com/xiaobaiba999/Skip-Ad/releases/latest)
 [![Tests](https://img.shields.io/badge/JVM%E6%96%AD%E8%A8%80-7344%20%E2%9C%85-brightgreen?style=flat-square)](docs/CHANGELOG.md)
 [![Matrix](https://img.shields.io/badge/%E6%9C%BA%E5%9E%8B%E7%9F%A9%E9%98%B5-9%E5%93%81%E7%89%8C%E5%8F%8A%E5%AD%90%E5%93%81%E7%89%8C36%E6%9C%BA%E5%9E%8B-396-blue?style=flat-square)](android-app/tests/com/zai/adshield/test/BrandFocus396Test.java)
 [![HumanTap](https://img.shields.io/badge/1%3A1%E4%BA%BA%E6%89%8B%E6%A8%A1%E6%8B%9F-%E8%AF%AF%E7%82%B9%E5%A4%9A%E7%82%B9%E6%A0%B9%E6%B2%BB-ff7043?style=flat-square)](android-app/tests/com/zai/adshield/test/HumanTapMatrixTest.java)
@@ -26,26 +26,23 @@ Java 引擎 · GKD 订阅生态兼容 · [Releases](https://github.com/xiaobaiba
 | **拦截范围** | 开屏广告（含**视频开屏**——静默画像归一 v7.9.1）· 插屏/激励弹窗 · 摇一摇诱导 · 悬浮广告球 · 视频前贴 · **App 内广告主动关闭（信息流三路 20 款名单 + 插屏卫士：语境三路并集 + 图标关闭钮路径 + 订阅反饥饿 v7.9.1——远程 GKD 订阅重新参与匹配）**（134 款内置 + 自动订阅扩展：id667 每日后台导入覆盖 600+ 款）· **应用生态兼容性目录（v7.9.2：compatibility/apps_catalog.json 233 款常用应用——包名三层来源严格区分，12 分类配额，每轮迭代 L1 回归）** |
 | **不碰什么** | 小程序/支付/团购容器零扫描零点击；银行/政务/相机零干预；只点应用自带「跳过」键（合规红线） |
 | **隐私与安全** | 数据仅存本机；联网仅日志上传（脱敏）与更新检查；零定位/通讯录/存储权限；更新包安装前 SHA-256 逐字节校验（镜像投毒/换包自动拦截）；订阅规则支付/诱导词双否决（注入防线） |
-| **体积** | APK 880KB（含三源离线订阅快照 ~520KB）· 冷启动毫秒级 · 典型日功耗 0.05mWh 级 |
+| **体积** | APK 858KB（含三源离线订阅快照 ~520KB）· 冷启动毫秒级 · 典型日功耗 0.05mWh 级 |
 
-## 当前版本 v7.15.0（2026-11-24）· 版本线重制——基于 v7.6.0 激进模式基线重构
+## 当前版本 v7.15.1（2026-11-24）· 息屏/解锁重入根治（真机日志实锤修复）
 
-**v7.15.0（用户指令驱动：清除 7.6 之后全部版本，基于「开屏卫士 v7.6.0 · 激进模式版本」整体重构；7.7~7.14 整体召回）**：
+**v7.15.1（用户扫描日志实锤：v7.15.0 的「亮屏/解锁视作重新进入」仍不生效——issue#94 真机日志定案死因链：息屏期间锁屏窗把前台追踪顶成锁屏宿主 → 解锁补扫补的是锁屏自己的树（「开屏未命中（systemui）」六连发）→ 真实应用内容事件被前台门盲区吞掉——广告白看）**：
 
-1. **日志上传回归 v7.6 直发方案（「连接上传服务超时」根治）**：v7.7~v7.14 的中转服务链路整体退役——回归内置混淆令牌直发 GitHub Issue（瞬时故障自动重试）；24 小时自动提交 3 次保持（每 8 小时一次，服务心跳顺带、成功才计时、息屏不传）
-2. **检查更新多源链（「检查更新不到新版本」结构性根治）**：静态清单 raw@main → jsdelivr@main → @tag 探测链（tag 引用不可变、零源站缓存——发布即新鲜；发布流程保证清单先于打 tag 提交，tag 树自含本版清单）→ GitHub API 兜底，多源合流取最高 versionCode——任一源活着即可检出新版
-3. **卫士卡死根治**：桥接层全面异步化（日志上传/检查更新等长 IO 一律后台线程 + 回调；同步长 IO 堵塞 JavaBridge 线程导致界面整体卡死、重进复现、只能重装的类别从机制上消除）+ 崩溃循环自愈（20 分钟内 3 次崩溃自动重置病态 UI 状态——免重装出路）
-4. **息屏/切应用回来广告拦不住根治**：亮屏/解锁视作「重新进入」——前台窗龄重置（旧窗龄不再把开屏扫描门判超窗拒扫）+ 包级节流清空 + 立即主动补扫（服务冻结期被吞的窗口事件由此补回）
-5. **底栏重构**：订阅页移除——id667 社区订阅（Lin-arm ⭐7.4k）每日后台自动导入（八通道镜像链 + APK 内置离线快照兜底，导入永不硬失败）+ 全新帮助页（使用指引 + 固定后台提醒，条理规范化）
-6. **进入 App 开屏提示弹窗（三按钮）**：知道了 / 24 小时不再提示 / 去上传日志（升级新版本后重新提醒一次）
-7. **更新下载多通道兜底（中国大陆下载失败根治）**：gcore CDN 直链优先 + GitHub 官方 + ghfast.top / gh-proxy.com 镜像自动切换（30s 无进展自动换通道）
-8. **版本**：versionCode 85000（> 84000 覆盖升级）· 签名证书与历史一致 · JVM 21 套件 4314 断言全绿 + 页面资产符号闸 11 项全过 · 诚实口径：真机/模拟器 E2E NOT_RUN（本轮全部为 JVM/浏览器行为级验证，待用户实测反馈）
+1. **补扫目标校正（RearmPlanner 纯函数 + lastAppPkg 真实应用追踪）**：解锁瞬间不再补扫锁屏自己的树，校正回息屏前的真实应用；前台追踪同步修复——解锁后真实应用的内容事件不再被前置过滤吞掉（引擎致盲根除点）
+2. **亮屏/解锁视作重新进入（根治版）**：窗龄重置（旧窗龄不再把扫描门判超窗拒扫）+ 三张包级节流表清空（interWinAt/nudgeAt/rescueAt）+ 收手态/倒计时锚点/触点轨迹同步重置（与真实「进入应用」同语义）+ bumpScanChain 全梯子 + 0ms 内联立即补扫 + 400ms 追加一针；扫描日志可直接核验：「🔓 亮屏/解锁视作重新进入（应用名）：窗龄重置 + 节流清空 → 立即补扫」
+3. **亮屏而锁屏还在场时绝不出手**：KeyguardManager 判定——屏上还是锁屏，坐标点击会落到锁屏上（误触红线）；补扫推迟到 USER_PRESENT 真正解锁瞬间（每解锁一次一链）
+4. **版本**：versionCode 85100（> 85000 覆盖升级）· 签名证书与历史一致 · JVM 22 套件 4348 断言全绿（新增 RearmPlannerTest 34 项：锁屏污染校正/直连重入/无需补扫/锁屏在场不出手/锁屏宿主族）· 诚实口径：真机 E2E 待用户实测反馈（本轮有真机日志定位证据链）
 
 ## 近期版本速览
 
 | 版本 | 日期 | versionCode | 一句话 |
 | --- | --- | --- | --- |
-| **v7.15.0** | 2026-11-24 | 85000 | 版本线重制：基于 v7.6.0 激进模式基线重构——日志直发回归 + 检查更新多源链 + 卡死/息屏拦截/重进开启三大根治 + 帮助页 + 订阅自动导入 + 下载多通道兜底 |
+| **v7.15.1** | 2026-11-24 | 85100 | 息屏/解锁重入根治（真机日志实锤）：锁屏污染前台追踪 → 补扫走偏 + 引擎致盲——目标校正 + 完整重入 + 日志可见 |
+| v7.15.0 | 2026-11-24 | 85000 | 版本线重制：基于 v7.6.0 激进模式基线重构——日志直发回归 + 检查更新多源链 + 卡死/息屏拦截/重进开启三大根治 + 帮助页 + 订阅自动导入 + 下载多通道兜底 |
 | v7.6.1 | 2026-11-19 | 76100 | 热修复：页面板块恢复（app.js 注释未闭合根治）+ 激进模式全量保持 |
 | v7.6.0 | 2026-11-19 | 76000 | 激进模式·开屏露头即点 + 插屏语境闸重做（宁可漏拦绝不误触→激进优先档） |
 
@@ -115,8 +112,8 @@ android-app/
 
 ## 安装
 
-1. [Releases](https://github.com/xiaobaiba999/Skip-Ad/releases/latest) 下载 APK（880KB）直接安装（v7.x 任何正式版覆盖安装即升级 v7.12.0——versionCode 82000，卡死根治 + 回切拦截修复即刻生效；已装 v7.9.6plus/82300 的历史用户见 CHANGELOG v7.9.7 节过渡口径）；
-   - GitHub 下载慢/不可达时用 jsDelivr 官方直链（同一 APK · SHA-256 见 Releases 页）——**优先 gcore 接入点**（实测直出稳定）：`https://gcore.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/android-app/dist/adshield-v7.12.0.apk` 或「最新版」别名 `…/android-app/dist/adshield-latest.apk`（cdn/testingcf 同路径可换用，但 cdn 偶发对 APK 301→raw 阻断域——见 CHANGELOG 2026-11-23 发布管线热修复节；fastly 对 APK 恒 301→raw 勿用）——App 内「检查更新」失败时也会引导此兜底通道（v7.11.0 新增）；
+1. [Releases](https://github.com/xiaobaiba999/Skip-Ad/releases/latest) 下载 APK（858KB）直接安装（v7.x 任何正式版覆盖安装即升级 v7.15.1——versionCode 85100，息屏/解锁重入根治即刻生效；已装 v7.9.6plus/82300 的历史用户见 CHANGELOG v7.9.7 节过渡口径）；
+   - GitHub 下载慢/不可达时用 jsDelivr 官方直链（同一 APK · SHA-256 见 Releases 页）——**优先 gcore 接入点**（实测直出稳定）：`https://gcore.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/android-app/dist/adshield-v7.15.1.apk` 或「最新版」别名 `…/android-app/dist/adshield-latest.apk`（cdn/testingcf 同路径可换用，但 cdn 偶发对 APK 301→raw 阻断域——见 CHANGELOG 2026-11-23 发布管线热修复节；fastly 对 APK 恒 301→raw 勿用）——App 内「检查更新」失败时也会引导此兜底通道（v7.11.0 新增）；
    - **应用内「检查更新」提示「已是最新」但 GitHub 已发新版**：jsDelivr 对 `@main` 分支有源站级缓存（最长 12h）——发布后半天内国内备用链可能仍在旧清单（raw 主源已即时生效但国内不可达）。此窗口内请直接用上面的 gcore 版本化直链手动安装；不操作也无损——≤12h 后四接入点自愈，检查更新即看到新版本；
    - **v7.9.5/v7.9.6 用户应用内「检查更新」报「查询失败：GitHub 返回 401」**：这两个版本检查更新携带的内置令牌已被吊销（安全整改后旧版无法从服务侧修复）——请直接用上述任一链接下载安装（82000 > 79600 同签名覆盖安装，无障碍授权/学习数据/订阅全保留），详见 [CHANGELOG v7.10.0 节](docs/CHANGELOG.md)；
 2. 开启无障碍服务（系统会弹 10 秒安全确认，属正常防诈设计——开启一次后 App 内/通知栏即可控制，绝不再去系统设置）；

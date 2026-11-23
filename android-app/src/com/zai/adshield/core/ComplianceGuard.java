@@ -166,6 +166,22 @@ public final class ComplianceGuard {
         return false;
     }
 
+    /**
+     * v7.15.1：锁屏宿主包（systemui / keyguard / lockscreen 族）。
+     * 与 isZeroScanScenario 的锁屏分支同源、语义独立：
+     *  · 零扫描门用 isZeroScanScenario（密码框等场景还需类名参与）；
+     *  · 亮屏/解锁 rearm（RearmPlanner）用本判定「前台追踪是否被锁屏
+     *    污染」——息屏期间锁屏窗把 lastFgPkg 顶掉真实应用（真机日志
+     *    实锤：解锁后引擎补扫的是锁屏树 73 节点，真实应用被前台门
+     *    盲区吞掉），重入目标必须校正回真实应用。
+     * 纯函数，JVM 可测（RearmPlannerTest）。
+     */
+    public static boolean isLockHostPkg(String pkg) {
+        if (pkg == null) return false;
+        String p = pkg.toLowerCase();
+        return p.contains("systemui") || p.contains("keyguard") || p.contains("lockscreen");
+    }
+
     /* ───────── 动作边界自检失败层（v5.5.1 可诊断化） ───────── */
     /** 失败层码（issue#64 实锤：旧日志只说「语义或越界」，无法定位是哪层拒绝） */
     public static final int BND_OK = 0;          // 全部通过

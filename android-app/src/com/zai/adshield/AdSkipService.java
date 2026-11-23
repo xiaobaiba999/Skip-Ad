@@ -395,6 +395,12 @@ public class AdSkipService extends AccessibilityService {
     private final java.util.HashMap<String, String> rootWinCls = new java.util.HashMap<>();
     /* v3.6.0：前台包名追踪（判断应用是否【新进入前台】→ 记录入口窗） */
     private volatile String lastFgPkg = null;
+    /* v7.15.1 真实应用前台追踪：锁屏宿主（systemui/keyguard）会在息屏
+     * 期间把 lastFgPkg 顶掉真实应用（零扫描门在息屏门前就登记锁屏窗），
+     * 亮屏/解锁 rearm 的目标解析（RearmPlanner）据此校正回真实应用。
+     * 本字段只在主路径（真实可扫描应用成为前台）更新——锁屏/桌面/
+     * 白名单/零扫描宿主永不写入，天然免疫污染。 */
+    private volatile String lastAppPkg = null;
     /* v3.6.0：本窗点击梯子已优雅收手（预算用尽后不再动作，新窗口重置） */
     private final java.util.HashMap<String, Boolean> gaveUp = new java.util.HashMap<>();
     private final java.util.HashMap<String, Integer> backTries = new java.util.HashMap<>();
@@ -1426,9 +1432,9 @@ public class AdSkipService extends AccessibilityService {
 
     /* ───────── v4.4.0 息屏缓存（功耗：热路径零 IPC）─────────
      * 静态内部类（规避 d8 8.2 匿名类 NPE bug，同 TapGestureCallback）。
-     * v7.15.0：亮屏/解锁视作「重新进入」（用户实锤：息屏十几分钟~半小时后
-     * 回来，当前 App 弹的广告拦截不了；切走十几分钟回来同理）——解锁瞬间
-     * rearmForScreenOn()：前台窗龄重置 + 包级节流清空 + 立即主动补扫。 */
+     * v7.15.1：亮屏/解锁视作「重新进入」（用户实锤 + 真机日志实锤根治版）
+     * ——SCREEN_ON（锁屏在场时按兵不动，等真正解锁）/ USER_PRESENT（解锁
+     * 瞬间完整重入）双入口见 rearmForScreenOn(boolean)。 */
     private static final class ScreenStateRx extends android.content.BroadcastReceiver {
         @Override
         public void onReceive(Context c, Intent i) {
@@ -1438,7 +1444,7 @@ public class AdSkipService extends AccessibilityService {
             s.screenInteractive = Intent.ACTION_SCREEN_ON.equals(act);
             if (Intent.ACTION_SCREEN_ON.equals(act)
                     || Intent.ACTION_USER_PRESENT.equals(act)) {
-                s.rearmForScreenOn();
+                s.rearmForScreenOn(Intent.ACTION_USER_PRESENT.equals(act));
             }
         }
     }
@@ -1476,49 +1482,124 @@ public class AdSkipService extends AccessibilityService {
         }
     }
 
-    /* ═══ v7.15.0 亮屏/解锁即时 rearm（用户实锤：息屏后回来广告拦不住）═══
-     * 死因：息屏期间事件全部丢弃（只维持前台包名追踪），前台窗的窗龄
-     * windowAt 一路老化；解锁回来当前 App 弹广告时「窗龄 > WINDOW_MS」把
-     * 开屏扫描门判死（splashLive=false → 整条扫描链拒扫）——广告白看。
-     * 修复：亮屏/解锁视作「重新进入」——
-     *  · 前台窗窗龄重置（gaveUp/clickTries 等收手状态同步重置——旧窗的
-     *    「已收手」不再拖住新广告）；
-     *  · 三张包级节流表清空（interWinAt 插屏 2.5s / nudgeAt 补扫 /
-     *    rescueAt 救回——旧时间戳不再拖慢解锁后的首扫）；
-     *  · bumpScanChain 全梯子重排 + 0ms 内联立即补扫——服务冻结期被吞的
-     *    窗口事件由此补回（CLEAN 档案窗自动走探针哨兵，功耗红线不破）；
-     *  · 400ms 后追加一针（广告窗内容晚到也接得住）。
-     * 仅前台非桌面/非白名单包生效；每解锁一次至多一链（与真实进入应用
-     * 完全同成本同路径——既有的省电档案/语义门/安全闸全量生效）。 */
-    void rearmForScreenOn() {
+    /* ═══ v7.15.1 亮屏/解锁视作「重新进入」（用户口径的根治版：窗龄重置 +
+     * 节流清空 + 立即主动补扫）═══
+     * v7.15.0 版只认 lastFgPkg——真机日志（issue#94 · Xiaomi 2410DPN6CC）
+     * 实锤死因链：息屏期间锁屏窗（com.android.systemui）走零扫描门把
+     * lastFgPkg 顶成锁屏宿主 → 「亮屏/解锁补扫」补的是锁屏自己的树
+     * （「开屏未命中（systemui）树 73 节点」×6 连发、锁屏时钟被当「倒计时
+     * 疑似装饰数字」）→ 真实应用若不伴随 WINDOW_STATE_CHANGED 回前台
+     * （HyperOS 常态），内容事件被前台门前置过滤全部吞掉——广告白看。
+     * 根治三件套：
+     *  · 目标解析（RearmPlanner 纯函数，JVM 可测）：lastFgPkg 是真实
+     *    应用直接用；被锁屏宿主污染 → 校正回 lastAppPkg（主路径维护的
+     *    「真实可扫描应用前台」）并同步修复 lastFgPkg——解锁后真实应用
+     *    的内容事件不再被前台门吞掉（引擎致盲根除点）；桌面/白名单/
+     *    设置等真前台 → 无需补扫（用户此刻就在那里）；
+     *  · 亮屏而锁屏仍在场（KeyguardManager.isKeyguardLocked，一次 IPC
+     *    仅亮屏瞬间用）→ 状态都不动、绝不出手——屏上还是锁屏，坐标点击
+     *    会落在锁屏上=误触红线；重入推迟到 USER_PRESENT（每解锁一次
+     *    一链的成本语义保持；无锁设备亮屏即完整重入）；
+     *  · 解锁重入 = 与真实「进入应用」同语义的完整重置（主路径进入块
+     *    逐项镜像）：窗龄 windowAt 重置（旧窗龄不再把扫描门判超窗拒扫）
+     *    + gaveUp/clickTries/backTries 收手态清零 + 倒计时锚点/触点轨迹/
+     *    学习窗资格清 + 三张包级节流表（interWinAt/nudgeAt/rescueAt 按
+     *    目标清）+ bumpScanChain 全梯子重排 + 0ms 内联立即补扫 + 400ms
+     *    追加一针（广告窗内容晚到也接得住；CLEAN 档案窗自动走探针哨兵，
+     *    功耗红线不破）。
+     * 日志可见（用户扫描日志可核验）：「🔓 亮屏/解锁视作重新进入（pkg）：
+     * 窗龄重置 + 节流清空 → 立即补扫」——污染校正时附注（前台追踪已校正）。 */
+    private long lastFullRearmAt = 0;
+
+    void rearmForScreenOn(boolean fromUnlock) {
         try {
             if (!masterOn) return;
-            final String fg = lastFgPkg;
-            if (fg == null || fg.length() == 0) return;
-            if (com.zai.adshield.core.AdDecisionCore.isLauncherLike(fg)
-                    || whitelistSet.contains(fg)) return;
             long now = System.currentTimeMillis();
-            windowAt.put(fg, now);
-            gaveUp.put(fg, Boolean.FALSE);
-            clickTries.put(fg, 0);
-            backTries.put(fg, 0);
-            chainKilledAt.remove(fg);
-            interWinAt.clear();
-            nudgeAt.clear();
-            rescueAt.clear();
-            bumpScanChain(fg);
-            if (!profileSuppressScan(fg, winClassOf(fg))) tryScan(fg, now, 0);
+            if (!fromUnlock) {
+                /* 亮屏但锁屏还在场：等 USER_PRESENT（真正解锁）再重入。
+                 * 无锁设备（亮屏即桌面/应用可见）走下方完整重入。 */
+                if (keyguardLocked()) return;
+            }
+            /* 同一解锁周期内（亮屏→解锁毫秒级连发）只完整重入一次 */
+            if (now - lastFullRearmAt < 1500) return;
+            /* ── 目标解析（RearmPlanner）：前台是真实应用直用；被锁屏
+             *    宿主污染则校正回真实应用并修复前台追踪 ── */
+            String fg = lastFgPkg;
+            String fgCls = fg == null ? "" : winClassOf(fg);
+            boolean fgOk = isRearmableApp(fg, fgCls);
+            String appCls = lastAppPkg == null ? "" : winClassOf(lastAppPkg);
+            boolean appOk = isRearmableApp(lastAppPkg, appCls);
+            com.zai.adshield.core.RearmPlanner.Plan plan =
+                    com.zai.adshield.core.RearmPlanner.resolve(fg, lastAppPkg, fgOk, appOk, true);
+            if (plan.action != com.zai.adshield.core.RearmPlanner.ARM_DIRECT
+                    && plan.action != com.zai.adshield.core.RearmPlanner.ARM_REPAIRED) return;
+            final String target = plan.target;
+            lastFullRearmAt = now;
+            /* 前台追踪修复：解锁瞬间键 guard 正在消散，屏上即将可见的就是
+             * 真实应用——修复后其内容事件不再被前台门前置过滤吞掉 */
+            if (plan.repairFg) lastFgPkg = target;
+            /* ── 与真实「进入应用」同语义的完整重置（主路径进入块镜像）── */
+            windowAt.put(target, now);        // 窗龄重置——旧窗龄不再把扫描门判超窗拒扫
+            gaveUp.put(target, Boolean.FALSE);
+            clickTries.put(target, 0);
+            backTries.put(target, 0);
+            clearTapTrail(target);            // v6.0.0：新窗清空触点轨迹（同窗去重不跨重入生效）
+            clearTapGuards(target);           // v6.1.0：清空同指纹目标静默/结果静默
+            cdLastN.remove(target);           // 倒计时锚点重置（新广告=新倒计时）
+            cdAnchorAt.remove(target);
+            cdWaitUntil.remove(target);
+            winClsLearned.remove(target);
+            chainKilledAt.remove(target);     // 旧窗早退作废
+            nudgeAt.remove(target);           // 节流清空：补扫
+            rescueAt.remove(target);          // 节流清空：早退救回
+            interWinAt.remove(target);        // 节流清空：插屏 2.5s 包级
+            adClosedAt.remove(target);        // 静默期落账清除（重入后未命中日志可见）
+            bumpScanChain(target);            // 全梯子重排（scanGen 代际护栏自动作废旧链）
+            /* 立即主动补扫（0ms 内联——与真实进入应用完全同路径；CLEAN
+             * 档案窗跳过内联扫，探针哨兵梯已由 bumpScanChain 排好） */
+            if (!profileSuppressScan(target, winClassOf(target))) tryScan(target, now, 0);
+            /* 400ms 追加一针：广告窗内容晚到也接得住（幂等：点击冷却/
+             * 复验门自然挡住重复出手，窗口已切则前台门自动作废） */
             handler.postDelayed(() -> {
                 try {
                     AdSkipService s = instance;
                     if (s == null || !masterOn) return;
                     String fg2 = lastFgPkg;
-                    if (fg2 == null || !fg2.equals(fg)) return;
-                    if (!profileSuppressScan(fg, winClassOf(fg))) tryScan(fg, winAt(fg), 0);
+                    if (fg2 == null || !fg2.equals(target)) return;
+                    if (!profileSuppressScan(target, winClassOf(target))) tryScan(target, winAt(target), 0);
                 } catch (Throwable ignored) {
                 }
             }, 400);
+            appendLog("🔓 亮屏/解锁视作重新进入（" + shortPkg(target) + "）：窗龄重置 + 节流清空 → 立即补扫"
+                    + (plan.repairFg ? "（前台追踪已校正——锁屏污染清除）" : ""));
         } catch (Throwable ignored) {
+        }
+    }
+
+    /** v7.15.1：rearm 目标资格（与主路径同键闸——桌面/白名单/系统噪声/
+     *  零扫描宿主（锁屏·设置·输入法）/相机/聊天主界面/小程序容器都不是
+     *  补扫目标；后两者 bumpScanChain 本就拒绝排梯，前置排除避免日志虚报） */
+    private boolean isRearmableApp(String pkg, String cls) {
+        if (pkg == null || pkg.length() == 0) return false;
+        if (AdDecisionCore.isLauncherLike(pkg)) return false;
+        if (whitelistSet.contains(pkg)) return false;
+        if (isSystemNoise(pkg)) return false;
+        if (com.zai.adshield.core.ComplianceGuard.isZeroScanScenario(pkg, cls)) return false;
+        if (AdDecisionCore.isCameraPkg(pkg) || AdDecisionCore.isCameraClass(cls)) return false;
+        if (AdDecisionCore.isChatMainUi(pkg, cls)) return false;
+        if (MiniProgramGuard.isMiniProgramWindow(pkg, cls)) return false;
+        return true;
+    }
+
+    /** v7.15.1：锁屏在场判定（一次 IPC，仅亮屏/解锁瞬间用——热路径零成本；
+     *  查询失败按无锁放行——绝不错杀无锁设备的亮屏重入） */
+    private boolean keyguardLocked() {
+        try {
+            android.app.KeyguardManager km = (android.app.KeyguardManager)
+                    getSystemService(Context.KEYGUARD_SERVICE);
+            return km != null && km.isKeyguardLocked();
+        } catch (Throwable t) {
+            return false;
         }
     }
 
@@ -1669,6 +1750,7 @@ public class AdSkipService extends AccessibilityService {
                 // 按返回键 = 退出应用，安全门据此禁一切返回键兜底
                 boolean entering = !pkg.equals(lastFgPkg);
                 lastFgPkg = pkg;
+                lastAppPkg = pkg; // v7.15.1：真实应用前台追踪（rearm 目标解析用——锁屏/桌面/白名单永不写入）
                 /* v4.2.0 用户主动打开窗口标记：用户真实点击后 2.5s 内切到的
                  * 非 Dialog 新窗口 = 用户主动打开（广告落地页/商品详情页）。
                  * 30s 内引擎对该窗口零动作——「点开又被自动关、手动重开

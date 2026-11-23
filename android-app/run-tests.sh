@@ -12,6 +12,9 @@
 #  放弃宁可漏拦绝不误触」——首击零门控时间线/重击 6s 封顶/1:1 人手多点防线时间线
 #  /九品牌触点钳制/决策梯子不变式）+ InterstitialGuardTest 重做为激进版
 #  （广告语境 contains 在场闸/关闭词扩表/interBoundaryCheck 终闸语义面收编）。
+# v7.15.1：新增 RearmPlannerTest（亮屏/解锁重入目标解析——真机日志实锤
+#  issue#94：锁屏宿主污染前台追踪致补扫走偏+引擎致盲；目标校正/锁屏在场
+#  绝不出手/锁屏宿主族识别三层钉死）。
 set -e
 set -o pipefail
 
@@ -44,7 +47,7 @@ echo "    编译产出: $OUT/classes"
 echo "==> [2/3] 运行测试套件"
 TOTAL_PASS=0
 TOTAL_FAIL=0
-for SUITE in MiniProgramGuardTest DecisionGuardTest SubscriptionBuiltinTest RegressionCoreTest MultiDeviceMatrixTest NonMainstreamAppTest RestoreGuardTest PowerGovernorTest RuleGovernorTest ComplianceGuardTest TapPointMatrixTest HumanTapMatrixTest BrandFocus308Test ReleaseNotesTest SubMirrorTest FeedAdGuardTest RuleOrderTest InterstitialGuardTest SplashCountdownTest AggressiveModeTest; do
+for SUITE in MiniProgramGuardTest DecisionGuardTest SubscriptionBuiltinTest RegressionCoreTest MultiDeviceMatrixTest NonMainstreamAppTest RestoreGuardTest PowerGovernorTest RuleGovernorTest ComplianceGuardTest TapPointMatrixTest HumanTapMatrixTest BrandFocus308Test ReleaseNotesTest SubMirrorTest FeedAdGuardTest RuleOrderTest InterstitialGuardTest SplashCountdownTest AggressiveModeTest RearmPlannerTest; do
   echo ""
   echo "══ $SUITE ══"
   if java -cp "$OUT/classes" "com.zai.adshield.test.$SUITE" | tee "$OUT/$SUITE.log"; then
