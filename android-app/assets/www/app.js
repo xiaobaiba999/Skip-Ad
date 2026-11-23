@@ -1,4 +1,4 @@
-/* 开屏卫士 v7.12.0 · 卡死根治 + 回切拦截修复 + 上传连接重试 + 开屏三按钮专项：白名单改异步加载（同步枚举 300+ PackageManager IPC 冻住 JS 线程是进入/点按钮「卡死」元凶）；亮屏/解锁即时踢链 + 前台竞速晋升（息屏/切走十几分钟后回来第一条广告拦不住的两大死因）；日志上传连接阶段自动三试重试（workers.dev 间歇可达——单次 10s 超时改为三试）；开屏提醒改三按钮弹窗（知道了/24 小时不再提示/去上传日志）+ 帮助页去冗余精简 */
+/* 开屏卫士 v7.13.0 · 提醒跨升级修复 + 切回即提醒 + 网络恢复自动补传 + 上传快失败专项：开屏提醒 24h 节流时间戳跨版本残留根治（旧版本点「不再提示」的时间戳吞掉升级后首次提醒——用户实锤「进入 app 没有弹出提醒」）；切回前台也是「进入 App」（visibilitychange 评估——24h/60s 双闸保护）；日志上传连接超时 10s→6s 快失败 + 四试退避；网络切换/恢复自动补传待传日志（无需手动重试） */
 "use strict";
 
 /* ══════════ 环境 ══════════ */
@@ -35,17 +35,17 @@ function mascotImg(size, state, head) {
 
 $("#brand-logo").innerHTML = mascotImg(30, "on", true);
 
-/* ═══ v7.12.0 版本记录（卡死根治 + 回切拦截 + 上传重试 + 开屏三按钮）═══ */
+/* ═══ v7.13.0 版本记录（提醒跨升级修复 + 切回即提醒 + 网络恢复补传）═══ */
 const CURRENT_RELEASE = {
-  date: "2026-11-23",
-  title: "卫士卡死根治 + 息屏/回切拦截修复 + 上传重试 + 开屏三按钮",
+  date: "2026-11-24",
+  title: "开屏提醒跨升级修复 + 切回即提醒 + 上传快失败与网络恢复自动补传",
   features: [
-    "卡死根治：应用白名单改异步加载——旧版进入卫士/点按钮时同步枚举全机应用，慢设备上 JS 线程被冻结分钟级（卡死到只能重装的元凶）；现在骨架即时出、勾选增删本地即改即显、慢机自动重试",
-    "回切拦截修复：息屏十几分钟再亮屏、或切去别的应用十几分钟后回来第一条广告拦不住——亮屏/解锁瞬间即时踢 AMS 重绑（不等五分钟心跳）+ 解锁首事件竞速实测放行 + 前台竞速晋升（窗口事件与活动窗口查询赛跑漏登记时，内容事件确认前台后按新进入补扫）",
-    "上传连接重试：日志上传连接阶段失败自动重试三次（上传服务间歇可达——单次超时改为三试大幅提成功率）；自动上传失败后 30 分钟即可再试（不再干等 8 小时）；失败提示如实注明已重试",
-    "开屏提醒三按钮：进入 App 弹出提醒卡——「知道了」（下次进入仍提醒）/「24 小时内不再提示」/「去上传日志」（直达引擎日志卡，仅在你主动点击时才上传）；每次进入都提醒（60 秒短窗仅防旋转重复弹）；帮助页去冗余精简",
+    "开屏提醒跨升级修复：旧版本点过「24 小时不再提示」的时间戳在覆盖升级后仍生效——升级到新版后第一次进入不再被旧节流吞掉（用户实锤「进入 app 没有弹出提醒」根因）；提醒卡记录当前版本，版本变化即重新提醒",
+    "切回即提醒：从后台切回前台也是「进入 App」——提醒评估在冷启动与切回两种场景都执行（60 秒短窗防旋转连弹，24 小时不再提示仍受尊重）",
+    "上传快失败：连接超时 10 秒→6 秒，自动重试三次→四次（退避 0.5/1.2/2.4 秒）——失败等待大幅缩短、间歇路由下成功率提升",
+    "网络恢复自动补传：切换 Wi-Fi/移动网络、网络恢复时自动补试待传日志（无需手动重传）——失败提示同步指引；自动上传保持每 8 小时心跳检查",
   ],
-  summary: "v7.12.0：卫士卡死根治 + 息屏/回切拦截修复 + 上传连接重试 + 开屏三按钮。",
+  summary: "v7.13.0：开屏提醒跨升级修复 + 切回即提醒 + 上传快失败与网络恢复自动补传。",
 };
 
 /* v7.0.0 新版功能描述（规范：≤5 个标题、带序号；检查更新发现新版本时就地渲染）。
@@ -1277,16 +1277,24 @@ function hideUpdateGate() {
  *  · 每次进入语义：v7.11.0 的 5min 防重建窗会把「退出后 1~5 分钟内再进入」
  *    也吞掉——v7.12.0 收紧为 60s 短窗（仅防 Activity 重建/旋转连弹），
  *    真实的「再次进入」一律照常提醒；
- *  · 前后台切换不重复弹（visibilitychange 不评估——仅 init 调用）；
+ *  · 切回前台也评估（v7.13.0：「进入就提醒」完整语义——冷启动与切回
+ *    双场景；60s 短窗 + 24h 节流双闸防连弹/防骚扰）；
  *  · 更新提示优先：#update-gate 在场不弹；更新页后到 → showUpdateGate
  *    主动收起提醒卡（24h 时间戳不受影响）。 */
 const PIN_TIP_THROTTLE_MS = 24 * 60 * 60 * 1000;  /* 「24h 不再提示」节流 */
-const PIN_TIP_RESHOW_GUARD_MS = 60 * 1000;       /* 展示后 60s 防旋转/重建重复弹 */
-let pinTipShownThisSession = false;
+const PIN_TIP_RESHOW_GUARD_MS = 60 * 1000;       /* 展示后 60s 防旋转/重建/切回连弹 */
 function pinTipThrottled() {
   try {
     const t = parseInt(store.get("pin_tip_confirmed_at", "0"), 10) || 0;
-    return t > 0 && (Date.now() - t) < PIN_TIP_THROTTLE_MS;
+    if (!(t > 0) || (Date.now() - t) >= PIN_TIP_THROTTLE_MS) return false;
+    /* v7.13.0 跨升级残留根治（用户实锤「进入 app 没有弹出提醒」根因）：
+     * 24h 节流时间戳可能是【旧版本】点「不再提示」记下的——覆盖升级
+     * 到新版本后，旧时间戳继续吞掉升级后的首次提醒（prefs 跨升级保留）。
+     * 提醒卡记 pin_tip_ver（点按钮时的版本）；版本已变 → 节流视为过期，
+     * 升级后第一次进入必弹（新版本的「进入就提醒」语义重新生效）。 */
+    const ver = String(store.get("pin_tip_ver", "") || "");
+    if (ver && ver !== appVer()) return false;
+    return true;
   } catch (e) { return true; }
 }
 function pinTipRecentlyShown() {
@@ -1296,8 +1304,9 @@ function pinTipRecentlyShown() {
   } catch (e) { return true; }
 }
 function showPinTip() {
-  if (pinTipShownThisSession) return;
-  pinTipShownThisSession = true;
+  /* v7.13.0：移除 pinTipShownThisSession 会话闸（旧实现挡住「切回前台
+   * 再弹」——会话变量跨切回保持 true，切回场景永远进不来）。防连弹统一
+   * 收口到 60s 持久短窗（旋转/重建/切回同防，60s 后真实进入照常弹）。 */
   try { store.set("pin_tip_shown_at", String(Date.now())); } catch (e) {}
   let tip = $("#pin-tip");
   if (tip) tip.remove();
@@ -1323,9 +1332,13 @@ function showPinTip() {
   const close = () => { const t = $("#pin-tip"); if (t) t.remove(); };
   /* 「知道了」：仅本轮收起（下次进入仍提醒——进入 app 就显示语义保持） */
   $("#pin-tip-ok").addEventListener("click", close);
-  /* 「24 小时内不再提示」：记确认时间戳（24h 节流主闸） */
+  /* 「24 小时内不再提示」：记确认时间戳（24h 节流主闸）+ 当前版本
+   * （v7.13.0：版本变化时节流失效——升级后重新提醒，见 pinTipThrottled） */
   $("#pin-tip-snooze").addEventListener("click", () => {
-    try { store.set("pin_tip_confirmed_at", String(Date.now())); } catch (e) {}
+    try {
+      store.set("pin_tip_confirmed_at", String(Date.now()));
+      store.set("pin_tip_ver", appVer());
+    } catch (e) {}
     close();
     toast("24 小时内不再提示（固定后台后守护更稳）");
   });
@@ -1415,11 +1428,12 @@ function setUploadPhase(btn, phase) {
 function uploadErrText(res) {
   const k = String((res && res.errKind) || "");
   const raw = String((res && res.lastError) || "");
-  /* v7.12.0：连接阶段失败文案注明「已自动重试」——Java 侧 RealHttp 连接
-   * 阶段（连接失败/连接超时/TLS）已自动三试（0/800/2000ms 退避），失败
-   * 回来时用户看到的是三试后的结果（如还不通——换网络建议更有分量）。 */
-  if (k === "NET_CONNECT_FAIL") return "网络连接失败，请检查网络后重试——本次已自动重试 3 次仍不通；日志已保留（不会丢失）";
-  if (k === "NET_CONNECT_TIMEOUT") return "连接上传服务超时——当前网络可能无法访问上传服务，可尝试切换 Wi-Fi/移动网络后重试；本次已自动重试 3 次仍不通，日志已保留（不会丢失）";
+  /* v7.13.0：连接阶段失败文案注明「已自动多次重试 + 网络恢复自动补试」——
+   * Java 侧 RealHttp 连接阶段（连接失败/连接超时/TLS）已自动四试
+   * （0/500/1200/2400ms 退避 + 单次 6s 超时快失败）；切网/网络恢复时
+   * AdSkipService NetworkCallback 自动补传待传日志（用户无需手动重试）。 */
+  if (k === "NET_CONNECT_FAIL") return "网络连接失败，请检查网络——已自动多次重试仍不通；日志已保留（不会丢失）。切换 Wi-Fi/移动网络后无需手动重试：网络恢复时 App 会自动补试上传";
+  if (k === "NET_CONNECT_TIMEOUT") return "连接上传服务超时——当前网络可能无法访问上传服务；已自动多次重试仍不通，日志已保留（不会丢失）。切换 Wi-Fi/移动网络后无需手动重试：网络恢复时 App 会自动补试上传";
   if (k === "NET_READ_TIMEOUT") return "上传超时，结果暂时无法确认——若服务端已收到，重试将使用原批次，不会重复创建 Issue";
   if (k === "NET_TLS") return "安全连接失败（网络传输可能被干扰）——可尝试切换网络后重试；日志已保留（不会丢失）";
   if (k === "NET_TIMEOUT") return "上传超时，请稍后重试——若服务端已收到，重试会自动复用原 Issue，不会重复提交";
@@ -1794,6 +1808,11 @@ function toast(msg) {
     if (document.visibilityState === "visible") {
       refreshHome();
       renderKeepAlive();
+      /* v7.13.0 切回即提醒：从后台切回前台也是「进入 App」（用户语义
+       * 实锤——「进入就提醒」包含切回场景）。提醒评估跑一次：24h 节流
+       * （含跨升级重置）+ 60s 短窗双闸保护——点过「不再提示」的用户
+       * 不被打扰，60s 内反复切回不连弹。 */
+      try { maybeShowPinTip(); } catch (e) {}
     }
   });
   // 通知权限（Android 13+，保活提醒需要）
@@ -1806,8 +1825,8 @@ function toast(msg) {
     void checkUpdateOnLaunch();
   }, 800);
   /* v7.11.0 开屏提醒已在 init 第一步评估（见头部——先于一切慢桥调用，
-   * 纯本地毫秒级）；此处不再重复调用（pinTipShownThisSession/5min 防重建
-   * 闸保证幂等，但省一次冗余评估）。更新页先到（800ms 异步检查先回）
+   * 纯本地毫秒级）；此处不再重复调用（pin_tip_shown_at 60s 持久短窗
+   * 保证幂等，省一次冗余评估）。更新页先到（800ms 异步检查先回）
    * 则本轮不打扰，更新页后到则主动收起提醒卡（见 showUpdateGate）。 */
   // 每 5s 刷新首页状态（首次进入最关心）
   setInterval(() => {

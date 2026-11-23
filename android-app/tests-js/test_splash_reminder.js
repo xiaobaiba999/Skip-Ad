@@ -15,9 +15,13 @@
 //  ⑧ 进程被杀：确认时间戳落 kv/localStorage——新会话在 24h 内仍抑制；
 //  ⑨ 时间回拨：未来时间戳 → 负时长 < 窗口 → 视为仍在抑制窗内；
 //  ⑩ 清数据：时间戳清除 → 重新展示资格恢复；
-//  ⑪ 重复弹窗：同一会话至多一张（pinTipShownThisSession 闸）；
-//  ⑫ 主线程零阻塞：maybeShowPinTip 纯同步本地路径（无网络/无重计算）；
-//  ⑬ 与更新检查彻底无关：网络检查永不收尾也照常展示（v7.10.0 语义保持）。
+//  ⑪ 连弹防护：60s 持久短窗（v7.13.0：会话闸已删，防旋转/重建/切回
+//     连弹统一收口到 pin_tip_shown_at 持久短窗）；
+//  ⑰ 主线程零阻塞：maybeShowPinTip 纯同步本地路径（无网络/无重计算）；
+//  ⑱ 与更新检查彻底无关：网络检查永不收尾也照常展示（v7.10.0 语义保持）；
+//  ⑲ v7.13.0 跨升级节流重置：旧版本点「24h 不再提示」记的版本 ≠ 当前
+//     版本 → 节流失效（升级后首次进入必弹——用户实锤「进入 app 没有弹出
+//     提醒」根因：v7.11.0 时间戳跨升级残留）；同版本点过照常节流。
 const fs = require("fs");
 const APPJS = __dirname + "/../assets/www/app.js";
 const src = fs.readFileSync(APPJS, "utf8");
@@ -67,7 +71,7 @@ const TAIL = `
   showUpdateGate, checkUpdateOnLaunch,
   store, appVer, appCode,
   HAS_BRIDGE,
-  resetPinTipSession: () => { pinTipShownThisSession = false; },
+  resetPinTipSession: () => { try { store.set("pin_tip_shown_at", "0"); } catch (e) {} },
   goUploadLogFromTip: (typeof goUploadLogFromTip === "function" ? goUploadLogFromTip : null),
 };`;
 (0, eval)(src + TAIL);
@@ -227,16 +231,38 @@ console.log("═══ S11 清数据恢复 ═══");
 lsMap.clear(); freshSession();
 A("时间戳清除 → 资格恢复（重新可弹）", T.pinTipThrottled() === false);
 
-console.log("═══ S12 同会话单卡 ═══");
+console.log("═══ S12 连弹防护（60s 持久短窗）═══");
 lsMap.clear(); freshSession();
 T.maybeShowPinTip();
 const firstTip = miniDom.tip;
 T.maybeShowPinTip();
-A("同会话重复评估不二弹（pinTipShownThisSession 闸）", miniDom.tip === firstTip);
+A("60s 窗内重复评估不二弹（pin_tip_shown_at 短窗）", miniDom.tip === firstTip);
 
 console.log("═══ S13 主线程零阻塞 ═══");
 A("maybeShowPinTip 纯同步本地路径（函数体无 await/fetch/网络）",
   !/function maybeShowPinTip\s*\(\)\s*\{[\s\S]*?await[\s\S]*?\}/.test(src));
+
+console.log("═══ S14 v7.13.0 跨升级节流重置（「进入没弹提醒」根因）═══");
+lsMap.clear(); freshSession();
+lsMap.set("adshield_pin_tip_confirmed_at", String(Date.now()));
+lsMap.set("adshield_pin_tip_ver", JSON.stringify("7.12.0")); // 旧版本（≠当前 7.11.0 stub）点过「不再提示」
+A("旧版本记的 24h 节流——版本已变 → 节流失效（升级后必弹）", T.pinTipThrottled() === false);
+T.maybeShowPinTip();
+A("跨升级后第一次进入照常弹出（版本变化即重新提醒）", !!miniDom.tip && !miniDom.tip.removed);
+lsMap.clear(); freshSession();
+lsMap.set("adshield_pin_tip_confirmed_at", String(Date.now()));
+lsMap.set("adshield_pin_tip_ver", JSON.stringify("7.11.0")); // 当前版本点过
+A("当前版本记的 24h 节流照常生效（同版本不重弹）", T.pinTipThrottled() === true);
+
+console.log("═══ S15 v7.13.0 切回即提醒（60s 窗过后真实再进入照常弹）═══");
+lsMap.clear(); freshSession();
+T.maybeShowPinTip();
+A("展示后 60s 内短窗判真（防旋转/切回连弹）", T.pinTipRecentlyShown() === true);
+nowMock = REAL_NOW + 61 * 1000;   // 越过 60s 短窗（时间前进/切回）
+A("60s 窗过后短窗判假（真实再进入照常弹——切回即提醒语义）", T.pinTipRecentlyShown() === false);
+nowMock = null;
+
+console.log("", "");
 
 console.log("");
 console.log("══════════════════════════");

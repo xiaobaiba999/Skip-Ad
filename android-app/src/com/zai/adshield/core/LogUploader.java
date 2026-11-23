@@ -155,8 +155,11 @@ public final class LogUploader {
     public static final class RealHttp implements Http {
         /* v7.9.9 连接超时 15s→10s：上传服务端点（Cloudflare workers.dev）
          * 在国内网络被 DNS 污染/TCP 阻断时表现为连接阶段悬挂——15s 让用户
-         * 白等；健康路径下 Android→CF 边缘 TCP+TLS 通常 <2s，10s 已极为宽裕。 */
-        private static final int CONNECT_TIMEOUT = 10_000;
+         * 白等；健康路径下 Android→CF 边缘 TCP+TLS 通常 <2s，10s 已极为宽裕。
+         * v7.13.0 10s→6s（用户实锤「又慢又成功不了」）：健康路径 <2s 不受
+         * 影响；阻断路径下四试总等待大幅缩短（10s×3+2.8s≈32.8s →
+         * 6s×4+4.1s≈28.1s，且多一次机会），失败反馈更快到达。 */
+        private static final int CONNECT_TIMEOUT = 6_000;
         /* v7.9.8：15s→45s——Worker 同步建 GitHub Issue（含重试）可超 15s；
          * 旧值把「服务端实际成功但响应未及」变成客户端「失败」，重试
          * 又因旧版 payload 漂移命中 IDEMPOTENCY_CONFLICT（真机两连失败
@@ -171,11 +174,15 @@ public final class LogUploader {
 
         /* ═══ v7.12.0 连接阶段自动重试（用户实锤「连接上传服务超时」）═══
          * 死因：上传中转端点（workers.dev）在用户网络下【间歇可达】——
-         * 单次 10s 连接超时即报失败，运气好一分钟后就能通。连接阶段失败
+         * 单次连接超时即报失败，运气好一分钟后就能通。连接阶段失败
          * （连接失败/连接超时/TLS）请求几乎必然未送达服务端 → 同址立即
-         * 重试绝对安全（且同 batchId 幂等双保险）。三试退避 0/800/2000ms，
-         * 最坏 ~15s 内三次机会——间歇可达路由下成功率大幅提升。 */
-        public static final long[] CONNECT_RETRY_BACKOFF_MS = {0L, 800L, 2000L};
+         * 重试绝对安全（且同 batchId 幂等双保险）。
+         * v7.13.0 三试→四试（0/500/1200/2400ms 退避，用户实锤「重试
+         * 3 次仍不通」且「又慢又成功不了」）：多一次机会换取间歇路由下
+         * 更高成功率（沙箱实测 DNS 污染到假 IP 的持续阻断路径靠重试救
+         * 不了——那类网络靠网络切换自动补传兜底，见 AdSkipService
+         * NetworkRecoveryCb；间歇抖动路由靠本重试救）。 */
+        public static final long[] CONNECT_RETRY_BACKOFF_MS = {0L, 500L, 1200L, 2400L};
 
         /** v7.12.0：网络异常 kind 是否属连接阶段（可安全立即重试——
          * 请求几乎必然未送达；batchId 幂等双保险）。纯函数·JVM 可回归。 */
@@ -553,6 +560,41 @@ public final class LogUploader {
         }
     }
 
+    /* ═══ v7.13.0 手动续传意图（网络恢复自动补传配套）═══
+     * 用户实锤：手动上传连接阶段失败（网络不通，重试 3 次仍不通）后，
+     * 切 Wi-Fi/移动网络是真实救济路径——但旧版要求用户切网后【再手动点
+     * 一次重试】。现在：手动上传失败（连接阶段）→ 记 30 分钟续传窗口
+     * （manualRetryUntilAt）；期间网络恢复（切网/断→通）时 AdSkipService
+     * NetworkRecoveryCb 自动补传本批（batchId 幂等——传的正是用户刚才
+     * 主动要传的内容，隐私红线保持：不是「自动上传」默认开启，是用户
+     * 手动意图的续传完成）。成功/终态后窗口即失效。 */
+    public static final long MANUAL_RETRY_WINDOW_MS = 30L * 60 * 1000;
+
+    private void markManualRetryIntent(Summary r) {
+        try {
+            if (r == null) return;
+            if (r.acked > 0) {
+                env.prefPut("manualRetryUntilAt", "0"); // 成功——续传窗口即失效
+                return;
+            }
+            if (soonerRetryForConnect(r.errKind)) {
+                env.prefPut("manualRetryUntilAt",
+                        String.valueOf(System.currentTimeMillis() + MANUAL_RETRY_WINDOW_MS));
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** v7.13.0：手动续传窗口是否活跃（网络恢复补传闸之一——另一个是
+     *  自动上传开关）。public 供 AdSkipService.NetworkRecoveryCb 查询。 */
+    public boolean manualRetryActive() {
+        try {
+            return prefLong("manualRetryUntilAt", 0L) > System.currentTimeMillis();
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
     /* ═══ 手动上传（一键上传——随时可用，不查额度）═══ */
 
     /** 手动一键上传（阻塞执行——调用方必须已在后台线程；与自动互斥 CAS，
@@ -573,7 +615,9 @@ public final class LogUploader {
                 }
             }
             try {
-                return runUpload(true);
+                Summary r = runUpload(true);
+                markManualRetryIntent(r); // v7.13.0：手动续传意图（见下）
+                return r;
             } finally {
                 running.set(false);
             }

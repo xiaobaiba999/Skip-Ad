@@ -420,11 +420,16 @@ public class MainActivity extends Activity {
              * 引擎/规则/订阅数据，写面无任何安全影响。其余键（subUrl、
              * subCache、dl 系列等）是服务/订阅/下载链路的持久化字段：一旦
              * 前端出现注入（XSS），「kvSet 写 subCache 恶意规则」即可让服务
-             * 重启时静默加载被投毒的自动点击规则——白名单把这个通道焊死。 */
+             * 重启时静默加载被投毒的自动点击规则——白名单把这个通道焊死。
+             * v7.12.0：pin_tip_confirmed_at / pin_tip_shown_at（开屏提醒
+             * 24h 节流 + 60s 防连弹短窗——纯 UI 时间戳）。
+             * v7.13.0：pin_tip_ver（提醒卡版本标记——版本变化时节流失效，
+             * 跨升级「进入没弹提醒」根治；纯 UI 版本号字符串）。 */
             if (!"state".equals(key) && !"bug_feedback_confirmed_at".equals(key)
                     && !"bug_feedback_shown_at".equals(key)
                     && !"pin_tip_confirmed_at".equals(key)
-                    && !"pin_tip_shown_at".equals(key)) return;
+                    && !"pin_tip_shown_at".equals(key)
+                    && !"pin_tip_ver".equals(key)) return;
             SharedPreferences.Editor e = a.getSharedPreferences("adshield", Context.MODE_PRIVATE).edit();
             if (value == null) e.remove(key);
             else e.putString(key, value);

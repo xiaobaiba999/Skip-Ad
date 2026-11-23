@@ -48,10 +48,13 @@ function A(name, cond) {
 console.log("═══ 用户八类错误表 → uploadErrText 映射 ═══");
 
 // ① 网络连接失败（workers.dev 被阻断/DNS 污染/无网——真机第一次失败的真实形态）
+// v7.13.0：文案升级——「已自动多次重试」+ 网络恢复自动补试指引（切网后无需手动重试）
 const c1 = T.uploadErrText({ errKind: "NET_CONNECT_FAIL", lastError: "network" });
-A("① NET_CONNECT_FAIL → 「网络连接失败，请检查网络后重试」",
-  c1.startsWith("网络连接失败，请检查网络后重试"));
+A("① NET_CONNECT_FAIL → 「网络连接失败，请检查网络」",
+  c1.startsWith("网络连接失败，请检查网络"));
 A("① 文案不吞日志去向（已保留声明）", c1.includes("日志已保留"));
+A("① v7.13.0 网络恢复自动补试指引（切网无需手动重试）",
+  c1.includes("网络恢复时") && c1.includes("自动补试"));
 
 // ② 请求超时（服务端慢/响应未及——真机第一次失败的另一形态）
 const c2 = T.uploadErrText({ errKind: "NET_TIMEOUT", lastError: "network" });

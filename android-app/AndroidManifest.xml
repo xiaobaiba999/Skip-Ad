@@ -1,11 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.zai.adshield"
-    android:versionCode="82000"
-    android:versionName="7.12.0">
+    android:versionCode="83000"
+    android:versionName="7.13.0">
 
     <!-- 网络：问题反馈（GitHub Issues）与检查更新（GitHub Releases） -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- v7.13.0 网络恢复自动补传：ConnectivityManager 网络事件回调（切网/
+         断→通时自动补试待传日志——零轮询零定时唤醒；normal 级权限零弹窗） -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- v3.0.0 应用内更新：系统 DownloadManager 下载 + 拉起安装 -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- v3.5.0 保活：前台常驻通知 + 更新/重启后断连提醒 -->

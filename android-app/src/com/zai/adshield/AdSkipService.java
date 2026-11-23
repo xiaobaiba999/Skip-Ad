@@ -308,6 +308,16 @@ public class AdSkipService extends AccessibilityService {
      * v7.9.7：客户端节拍值保留——最终限额以服务端 24h 滑窗（最多 3 次）为准 */
     public static final long AUTO_LOG_MS = 8 * 60 * 60 * 1000L;
 
+    /* ═══ v7.13.0 网络恢复自动补传（用户实锤：上传连接超时「已自动重试
+     * 3 次仍不通」「又慢又成功不了」——切 Wi-Fi/移动网络是真实救济路径，
+     * 但旧版要求用户切网后再手动点重试）。ConnectivityManager 系统推送
+     * 网络可用事件（onAvailable：网络从断到通/切网）→ 有待传日志且距
+     * 上次自动尝试 ≥1 分钟 → 自动补试一次（requestAutoCheck 资格闸内
+     * pending==0 直接跳过——无日志零网络请求）。
+     * 能耗：回调注册制零轮询零定时唤醒（网络事件系统推送，息屏无网变
+     * 不触发）；自动上传开关关时回调内直接 return（零动作）。 */
+    public static final long NET_LOG_RETRY_MIN_MS = 60 * 1000L;
+
     /* ═══ 日志事件埋点（LogStore.appendEvent 异步落盘——无障碍热路径零阻塞）═══
      * · logStore：onServiceConnected 懒初始化（服务未跑→tapEvent 空转，零行为）；
      * · v8.2.2：采集常开（不再绑定自动上传开关——v8.2.1「暂无可上传」根因修复）；
@@ -910,6 +920,9 @@ public class AdSkipService extends AccessibilityService {
         // 每事件一次的 PowerManager.isInteractive binder IPC（issue#40 能耗画像
         // 实锤 4602 事件 = 4602 次 IPC；广播零开销，屏幕翻转秒级同步）
         registerScreenReceiver();
+        // v7.13.0：网络恢复自动补传回调（幂等——踢链重绑/服务复用时
+        // netRecoveryCb 已在实例上则跳过，绝不重复注册）
+        registerNetworkRecovery();
         // v8.2.2：日志存储单例接线（采集常开——不再有授权门）
         initLogUploadTap();
         // v3.5.0 保活：服务连上即记「用户要求保持开启」；仅用户在 App 内手动
@@ -1307,6 +1320,16 @@ public class AdSkipService extends AccessibilityService {
         } catch (Throwable ignored) {
         }
         try {
+            if (netRecoveryCb != null) {
+                android.net.ConnectivityManager cm =
+                        (android.net.ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+                if (cm != null) cm.unregisterNetworkCallback(netRecoveryCb);
+            }
+        } catch (Throwable ignored) {
+        } finally {
+            netRecoveryCb = null;
+        }
+        try {
             if (a11yRegObserver != null) {
                 getContentResolver().unregisterContentObserver(a11yRegObserver);
                 a11yRegObserver = null;
@@ -1417,6 +1440,62 @@ public class AdSkipService extends AccessibilityService {
     volatile boolean screenInteractive = true;
     /* 广播注册成功后热路径才用缓存（失败回退逐次查询，功能绝不缩水） */
     private volatile boolean screenRxOk = false;
+
+    /* ═══ v7.13.0 网络恢复自动补传（见 NET_LOG_RETRY_MIN_MS 注释）═══
+     * NetworkCallback 注册制：ConnectivityManager 系统推送网络事件，
+     * 零轮询零定时唤醒；注册时刻用 elapsedRealtime 记录——注册后 3 秒内
+     * 的 onAvailable 是「当前网络初始回调」（非用户切网/恢复），跳过
+     * （否则每次服务重建都白发一次上传探测）。服务实例复用（踢链重绑
+     * onServiceConnected 重跑）时 netRecoveryCb != null 幂等跳过。 */
+    private android.net.ConnectivityManager.NetworkCallback netRecoveryCb;
+    private volatile long netCbRegisteredAtMs = 0L;
+
+    private void registerNetworkRecovery() {
+        try {
+            if (netRecoveryCb != null) return; // 幂等：实例复用不重复注册
+            android.net.ConnectivityManager cm =
+                    (android.net.ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+            if (cm == null) return;
+            netCbRegisteredAtMs = android.os.SystemClock.elapsedRealtime();
+            netRecoveryCb = new NetworkRecoveryCb();
+            try {
+                android.net.NetworkRequest req = new android.net.NetworkRequest.Builder().build();
+                cm.registerNetworkCallback(req, netRecoveryCb);
+            } catch (Throwable t) { // 老 ROM 兼容：无 NetworkRequest 构建器时放弃（功能降级，不影响其他）
+                netRecoveryCb = null;
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** v7.13.0：网络可用推送（切网/断→通）。静态内部类（规避 d8 匿名类
+     *  NPE bug，同 ScreenStateRx）。
+     *  补传闸（隐私红线保持）：①自动上传开关开启（用户已授权的定时
+     *  自动上传——网络恢复顺带补）或 ②手动续传窗口活跃（用户 30 分钟内
+     *  手动上传过且连接阶段失败——传的正是用户刚才主动要传的批次，
+     *  是手动意图的续传完成而非「自动上传默认开启」）。两者都不满足
+     *  时零动作（隐私红线：绝不未经用户任何主动行为就上传）。 */
+    private static final class NetworkRecoveryCb extends android.net.ConnectivityManager.NetworkCallback {
+        @Override
+        public void onAvailable(android.net.Network network) {
+            try {
+                AdSkipService s = AdSkipService.instance;
+                if (s == null) return;
+                // 初始回调屏蔽：注册后 3s 内的 onAvailable 是系统对当前
+                // 网络的立即回调（非用户切网/恢复）——跳过。
+                if (android.os.SystemClock.elapsedRealtime() - s.netCbRegisteredAtMs < 3000L) return;
+                if (Net.LOG_RELAY_URL.length() == 0) return;
+                com.zai.adshield.core.LogUploader up =
+                        com.zai.adshield.core.LogUploader.get(s.getApplicationContext());
+                // 补传闸（见类注释）：自动上传开关开启 或 手动续传窗口活跃
+                if (!autoLogUploadEnabled(s) && !up.manualRetryActive()) return;
+                // 资格闸：距上次自动尝试 ≥1min（防网络抖动连触发）+
+                // pending>0 才发网络请求（requestAutoCheck 内部全判）
+                up.requestAutoCheck(NET_LOG_RETRY_MIN_MS);
+            } catch (Throwable ignored) {
+            }
+        }
+    }
 
     private void registerScreenReceiver() {
         try {

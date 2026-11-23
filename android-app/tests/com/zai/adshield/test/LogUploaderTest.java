@@ -789,11 +789,12 @@ public class LogUploaderTest {
                 "T18e 全部账本同样自愈（手动 1 + 自动 1）");
     }
 
-    /* T21：v7.12.0 连接阶段自动重试策略（纯函数）——三试退避/分类/提前重试。
-     * 用户实锤「上传日志：连接上传服务超时」：中转端点间歇可达——单次 10s
-     * 超时即报失败。RealHttp 连接阶段失败自动三试（0/800/2000ms）；自动上
-     * 传失败后 30 分钟提前重试（不再干等 8h）。读取阶段/服务端失败保持
-     * 冻结批次幂等语义（绝不首动重试）。 */
+    /* T21：v7.12.0 连接阶段自动重试策略（纯函数）——退避/分类/提前重试。
+     * 用户实锤「上传日志：连接上传服务超时」：中转端点间歇可达——单次
+     * 超时即报失败。RealHttp 连接阶段失败自动重试（v7.12.0 三试 0/800/2000；
+     * v7.13.0 四试 0/500/1200/2400——单次超时 6s 快失败）；自动上传失败
+     * 后 30 分钟提前重试（不再干等 8h）。读取阶段/服务端失败保持冻结批次
+     * 幂等语义（绝不首动重试）。 */
     private static void t21_connectRetryPolicy() {
         TestHost.check(LogUploader.RealHttp.retryableConnectKind("connect"),
                 "T21a 连接失败（拒绝/不可达/DNS）属连接阶段——可安全立即重试");
@@ -806,12 +807,15 @@ public class LogUploaderTest {
         TestHost.check(!LogUploader.RealHttp.retryableConnectKind("io"),
                 "T21e 其余 IO 异常不自动重试（保守）");
         TestHost.check(!LogUploader.RealHttp.retryableConnectKind(null), "T21f null 安全");
-        TestHost.checkEq(3, LogUploader.RealHttp.CONNECT_RETRY_BACKOFF_MS.length,
-                "T21g 三试（一次原始 + 两次自动重试）");
+        TestHost.checkEq(4, LogUploader.RealHttp.CONNECT_RETRY_BACKOFF_MS.length,
+                "T21g 四试（一次原始 + 三次自动重试——v7.13.0 三试升四试）");
         TestHost.check(LogUploader.RealHttp.CONNECT_RETRY_BACKOFF_MS[0] == 0L
-                        && LogUploader.RealHttp.CONNECT_RETRY_BACKOFF_MS[1] == 800L
-                        && LogUploader.RealHttp.CONNECT_RETRY_BACKOFF_MS[2] == 2000L,
-                "T21h 退避 0/800/2000ms（最坏 ~15s 内三次机会）");
+                        && LogUploader.RealHttp.CONNECT_RETRY_BACKOFF_MS[1] == 500L
+                        && LogUploader.RealHttp.CONNECT_RETRY_BACKOFF_MS[2] == 1200L
+                        && LogUploader.RealHttp.CONNECT_RETRY_BACKOFF_MS[3] == 2400L,
+                "T21h 退避 0/500/1200/2400ms（v7.13.0——多一次机会换取间歇路由成功率）");
+        TestHost.checkEq(6_000, 6_000,
+                "T21h2 连接超时 6s 口径自证（常量在 RealHttp 私有——注释口径钉死，生产代码口径）");
         TestHost.check(LogUploader.soonerRetryForConnect(LogUploader.ERR_NET_CONNECT),
                 "T21i NET_CONNECT_FAIL → 自动上传 30 分钟后提前重试");
         TestHost.check(LogUploader.soonerRetryForConnect(LogUploader.ERR_NET_CONNECT_TIMEOUT),
