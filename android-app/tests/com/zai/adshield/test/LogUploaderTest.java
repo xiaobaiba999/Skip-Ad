@@ -202,6 +202,7 @@ public class LogUploaderTest {
         t18_corruptedQuotaFiles();
         t19_timeoutPhaseClassification();
         t20_readTimeoutFrozenRetry();
+        t21_connectRetryPolicy();
 
         TestHost.done();
     }
@@ -786,5 +787,43 @@ public class LogUploaderTest {
                 "T18d recordOk 重写自愈（损坏内容被覆盖为合法 JSON）");
         TestHost.check(ledgerRows(env, "ok-times.json") >= 2,
                 "T18e 全部账本同样自愈（手动 1 + 自动 1）");
+    }
+
+    /* T21：v7.12.0 连接阶段自动重试策略（纯函数）——三试退避/分类/提前重试。
+     * 用户实锤「上传日志：连接上传服务超时」：中转端点间歇可达——单次 10s
+     * 超时即报失败。RealHttp 连接阶段失败自动三试（0/800/2000ms）；自动上
+     * 传失败后 30 分钟提前重试（不再干等 8h）。读取阶段/服务端失败保持
+     * 冻结批次幂等语义（绝不首动重试）。 */
+    private static void t21_connectRetryPolicy() {
+        TestHost.check(LogUploader.RealHttp.retryableConnectKind("connect"),
+                "T21a 连接失败（拒绝/不可达/DNS）属连接阶段——可安全立即重试");
+        TestHost.check(LogUploader.RealHttp.retryableConnectKind("connect-timeout"),
+                "T21b 连接超时属连接阶段（请求几乎必然未送达）");
+        TestHost.check(LogUploader.RealHttp.retryableConnectKind("tls"),
+                "T21c TLS 握手失败属连接阶段");
+        TestHost.check(!LogUploader.RealHttp.retryableConnectKind("read-timeout"),
+                "T21d 读取超时不做传输层重试（请求可能已送达——语义交冻结批次）");
+        TestHost.check(!LogUploader.RealHttp.retryableConnectKind("io"),
+                "T21e 其余 IO 异常不自动重试（保守）");
+        TestHost.check(!LogUploader.RealHttp.retryableConnectKind(null), "T21f null 安全");
+        TestHost.checkEq(3, LogUploader.RealHttp.CONNECT_RETRY_BACKOFF_MS.length,
+                "T21g 三试（一次原始 + 两次自动重试）");
+        TestHost.check(LogUploader.RealHttp.CONNECT_RETRY_BACKOFF_MS[0] == 0L
+                        && LogUploader.RealHttp.CONNECT_RETRY_BACKOFF_MS[1] == 800L
+                        && LogUploader.RealHttp.CONNECT_RETRY_BACKOFF_MS[2] == 2000L,
+                "T21h 退避 0/800/2000ms（最坏 ~15s 内三次机会）");
+        TestHost.check(LogUploader.soonerRetryForConnect(LogUploader.ERR_NET_CONNECT),
+                "T21i NET_CONNECT_FAIL → 自动上传 30 分钟后提前重试");
+        TestHost.check(LogUploader.soonerRetryForConnect(LogUploader.ERR_NET_CONNECT_TIMEOUT),
+                "T21j NET_CONNECT_TIMEOUT → 提前重试");
+        TestHost.check(LogUploader.soonerRetryForConnect(LogUploader.ERR_NET_TLS),
+                "T21k NET_TLS → 提前重试");
+        TestHost.check(!LogUploader.soonerRetryForConnect(LogUploader.ERR_NET_READ_TIMEOUT),
+                "T21l NET_READ_TIMEOUT 不提前（幂等语义保持 8h）");
+        TestHost.check(!LogUploader.soonerRetryForConnect(LogUploader.ERR_RATE_LIMITED),
+                "T21m 服务端限流不提前（服务端繁忙——8h 语义保持）");
+        TestHost.check(!LogUploader.soonerRetryForConnect(""), "T21n 空码不提前");
+        TestHost.checkEq(30L * 60 * 1000, LogUploader.AUTO_RETRY_SOON_MS,
+                "T21o 提前重试间隔 = 30 分钟");
     }
 }

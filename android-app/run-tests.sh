@@ -8,6 +8,8 @@
 #  这个 app 期间会弹广告没有拦截到」——ReentryGuard 真值表/进入期全量门/主界面
 #  CLEAN 档案叠开屏层命中/插层键词典/自家包前台边界/离开时长记账全链路）
 #  + 品牌矩阵 308→352（每品牌 +4 · 2027 世代机型）+ 第九维回切开屏逐机型验证。
+# v7.12.0：新增 PendingForegroundTest（前台竞速晋升·息屏/切走后回切首窗漏拦根治）+ LogUploaderTest T21（连接阶段三试重试策略）。
+#  息屏/切走十几分钟回来广告拦截不了三死因：亮屏/解锁即时踢链（服务侧 onWakeGate）+ 解锁首事件竞速实测 + 前台竞速晋升（本套件）。
 # v7.5.0：新增 InterstitialGuardTest（插屏卫士·用户十四轮实锤「几乎都带有广告两个字」
 #  ——名单外 App 插入广告角标+关闭钮真值表/九品牌 1:1 缩放/相册反例零出手）
 #  + SplashCountdownTest（兄弟节点倒计时/门控第 0 击起全次生效/中部边带图片跳过键
@@ -79,7 +81,7 @@ echo "    编译产出: $OUT/classes"
 echo "==> [2/3] 运行测试套件"
 TOTAL_PASS=0
 TOTAL_FAIL=0
-for SUITE in MiniProgramGuardTest DecisionGuardTest SubscriptionBuiltinTest RegressionCoreTest MultiDeviceMatrixTest NonMainstreamAppTest RestoreGuardTest PowerGovernorTest RuleGovernorTest ComplianceGuardTest TapPointMatrixTest HumanTapMatrixTest BrandFocus396Test ReentrySplashTest ReleaseNotesTest SubMirrorTest FeedAdGuardTest RuleOrderTest InterstitialGuardTest SplashCountdownTest AggressiveModeTest VideoSplashTest InterstitialRoutingTest AdTaskTest AppCatalogTest PageScenarioTest FalsePositiveScenarioTest AdTaskTimingTest DecisionEvidenceTest MinimalWindowBatchTest Bug001RegressionTest LogPrivacyFilterTest LogStoreTest LogUploaderTest AdScanReviveTest UpdateChannelTest UpdateManifestTest UpdateRepositoryTest UpdateAuditTest DualDfsParityTest ScanBenchmark; do
+for SUITE in MiniProgramGuardTest DecisionGuardTest SubscriptionBuiltinTest RegressionCoreTest MultiDeviceMatrixTest NonMainstreamAppTest RestoreGuardTest PowerGovernorTest RuleGovernorTest ComplianceGuardTest TapPointMatrixTest HumanTapMatrixTest BrandFocus396Test ReentrySplashTest PendingForegroundTest ReleaseNotesTest SubMirrorTest FeedAdGuardTest RuleOrderTest InterstitialGuardTest SplashCountdownTest AggressiveModeTest VideoSplashTest InterstitialRoutingTest AdTaskTest AppCatalogTest PageScenarioTest FalsePositiveScenarioTest AdTaskTimingTest DecisionEvidenceTest MinimalWindowBatchTest Bug001RegressionTest LogPrivacyFilterTest LogStoreTest LogUploaderTest AdScanReviveTest UpdateChannelTest UpdateManifestTest UpdateRepositoryTest UpdateAuditTest DualDfsParityTest ScanBenchmark; do
   echo ""
   echo "══ $SUITE ══"
   if java -cp "$OUT/classes" "com.zai.adshield.test.$SUITE" | tee "$OUT/$SUITE.log"; then

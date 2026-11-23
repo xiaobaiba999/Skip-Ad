@@ -586,6 +586,18 @@ public class AdSkipService extends AccessibilityService {
     private volatile String lastAutoClickPkg;
     private volatile long lastAutoClickAt;
 
+    /* ═══ v7.12.0 前台竞速晋升（回切拦截修复·死因③——见 ReentryGuard 类注释）═══
+     * TYPE_WINDOW_STATE_CHANGED 与 isActiveWindowOf 竞速时，新前台应用的
+     * 窗口事件被丢弃且不登记 lastFgPkg → 后续内容事件被前台门全部丢弃 →
+     * 回切后的开屏广告整窗漏拦。丢弃时登记竞速候选；后续内容事件经
+     * ReentryGuard.shouldPromotePending + isActiveWindowOf 复核后按新进入
+     * 补扫（tryPromotePendingForeground）。 */
+    private volatile String fgPendingPkg;
+    private volatile String fgPendingCls;
+    private volatile long fgPendingAt;
+    /** v7.12.0：竞速候选窗口期（与 ReentryGuard.shouldPromotePending 共用）。 */
+    private static final long FG_PENDING_WINDOW_MS = 3000L;
+
     /* ═══ v4.4.0 服务真实绑定状态（「恢复防护跳系统页 10 秒」修复地基）═══
      * onUnbind 保留实例后 instance 仍非 null——但此时服务已解绑收不到任何
      * 事件（僵尸态）。UI/心跳此前把它当「守护中」→ 用户看到假状态，最终
@@ -1351,12 +1363,53 @@ public class AdSkipService extends AccessibilityService {
     }
 
     /* ───────── v4.4.0 息屏缓存（功耗：热路径零 IPC）─────────
-     * 静态内部类（规避 d8 8.2 匿名类 NPE bug，同 TapGestureCallback） */
+     * v7.12.0 亮屏/解锁门（回切拦截修复·死因①）：息屏十几分钟（心跳已
+     * 降频为 30~45 分钟窗口式）或进程被冻结/解绑后，服务可能处于「僵尸态」
+     * （解绑未重绑）——旧版要等下一个 5 分钟亮屏心跳才发现并踢链，期间
+     * 用户解锁打开目标 App 的第一条开屏广告已经漏拦。现在 SCREEN_ON /
+     * USER_PRESENT 广播瞬间立即核实绑定态：未绑定 → 当场踢一次 AMS +
+     * 排 1.5s 自检闹钟走 SmartRevive 完整踢链（1.5s + 600ms + 三轮
+     * 2.5s——解锁到用户真正点开 App 通常 ≥2s，抢在广告前完成重绑）。
+     * 静态内部类（规避 d8 8.2 匿名类 NPE bug，同 TapGestureCallback）。 */
     private static final class ScreenStateRx extends android.content.BroadcastReceiver {
         @Override
         public void onReceive(Context c, Intent i) {
             AdSkipService s = instance;
-            if (s != null) s.screenInteractive = Intent.ACTION_SCREEN_ON.equals(i.getAction());
+            if (s == null) return;
+            String act = i == null ? "" : String.valueOf(i.getAction());
+            s.screenInteractive = Intent.ACTION_SCREEN_ON.equals(act);
+            if (Intent.ACTION_SCREEN_ON.equals(act) || Intent.ACTION_USER_PRESENT.equals(act)) {
+                s.onWakeGate();
+            }
+        }
+    }
+
+    /** v7.12.0 亮屏/解锁门：见 ScreenStateRx 类注释（绑定态即时核实 +
+     *  僵尸态即时踢链——绝不等下一个心跳）。 */
+    private void onWakeGate() {
+        try {
+            if (!bound) {
+                kickA11yLocal();
+                scheduleSelfCheckAlarm(1500);   // SELF_CHECK → SmartRevive 完整踢链
+                scheduleHeartbeat();            // 心跳链保续（防后续再死无人知）
+                appendLog("🔌 亮屏发现服务未绑定——已即时踢 AMS 重绑（不等心跳）");
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** v7.12.0：本进程内踢 AMS（查询已启用服务列表常触发系统重绑）——
+     *  与 KeepAliveReceiver.kickA11y 同族（那边 private，这里独立一份）。 */
+    private void kickA11yLocal() {
+        try {
+            android.view.accessibility.AccessibilityManager am =
+                    (android.view.accessibility.AccessibilityManager)
+                            getSystemService(Context.ACCESSIBILITY_SERVICE);
+            if (am != null) {
+                am.getEnabledAccessibilityServiceList(
+                        android.accessibilityservice.AccessibilityServiceInfo.FEEDBACK_ALL_MASK);
+            }
+        } catch (Throwable ignored) {
         }
     }
 
@@ -1372,6 +1425,7 @@ public class AdSkipService extends AccessibilityService {
             android.content.IntentFilter f = new android.content.IntentFilter();
             f.addAction(Intent.ACTION_SCREEN_ON);
             f.addAction(Intent.ACTION_SCREEN_OFF);
+            f.addAction(Intent.ACTION_USER_PRESENT); // v7.12.0 亮屏/解锁门
             try {
                 if (Build.VERSION.SDK_INT >= 33) {
                     registerReceiver(screenRx, f, Context.RECEIVER_NOT_EXPORTED);
@@ -1516,6 +1570,17 @@ public class AdSkipService extends AccessibilityService {
         // v4.4.0 功耗：改用 SCREEN_ON/OFF 广播维护的缓存标记（零 IPC；
         // 此前每事件一次 PowerManager.isInteractive binder 调用）
         boolean screenOn = screenRxOk ? screenInteractive : isScreenOn(this);
+        /* ═══ v7.12.0 亮屏竞速实测（回切拦截修复·死因②）═══
+         * SCREEN_ON 广播与「解锁后首个窗口事件」赛跑——缓存标志可能仍
+         * 停在「息屏」，直接丢弃会把解锁后首个入口窗整事件吞掉（该窗的
+         * 进入扫描链整条丢失 → 用户打开 App 的第一条开屏广告漏拦——
+         * 用户实锤「息屏半小时回来广告拦截不了」形态之一）。
+         * STATE_CHANGED 现场实测一次（息屏期间该类事件极少，一次 IPC
+         * 可忽略）；实测亮屏 → 自愈缓存标志，事件照常走完整处理链。 */
+        if (!screenOn && et == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            screenOn = isScreenOn(this);
+            if (screenOn && screenRxOk) screenInteractive = true;
+        }
         if (!screenOn) {
             if (et == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
                 lastFgPkg = pkg;
@@ -1562,6 +1627,15 @@ public class AdSkipService extends AccessibilityService {
                          * 插屏卫士同分支接线（自带 1.5s 节流 + collectRoots
                          * 按事件包收集——外来包 Dialog 树可被收集到）。 */
                         maybeInterstitialScan(pkg, now);
+                    } else if (!isSmallOverlayWindow(pkg)) {
+                        /* ═══ v7.12.0 前台竞速候选登记（死因③接线）═══
+                         * 非 Dialog、非小窗，仅活动窗口查询赛输——新前台应用
+                         * 的窗口事件在切换动画期到达。登记候选，交由后续内容
+                         * 事件复核晋升（tryPromotePendingForeground——见
+                         * CONTENT_CHANGED 前台门）。 */
+                        fgPendingPkg = pkg;
+                        fgPendingCls = cls;
+                        fgPendingAt = now;
                     }
                     return;
                 }
@@ -1589,6 +1663,7 @@ public class AdSkipService extends AccessibilityService {
                 } else if (entering) {
                     entryFullUntil.put(pkg, ReentryGuard.entryUntil(now));
                 }
+                fgPendingPkg = null; // v7.12.0：正式进入处理已接管——竞速候选作废
                 lastFgPkg = pkg;
                 /* v4.2.0 用户主动打开窗口标记：用户真实点击后 2.5s 内切到的
                  * 非 Dialog 新窗口 = 用户主动打开（广告落地页/商品详情页）。
@@ -1701,8 +1776,15 @@ public class AdSkipService extends AccessibilityService {
                 // 绝不扫描、绝不突发检测——灵岛高频内容变化曾被当「内容
                 // 突发→覆盖层弹窗」开启弹窗识别窗 → 乱点灵岛控件
                 if (!pkg.equals(lastFgPkg)) {
-                    if (now < popupUntilGet(pkg)) nudgePopupScan(pkg, now);
-                    break;
+                    if (now < popupUntilGet(pkg)) { nudgePopupScan(pkg, now); break; }
+                    /* ═══ v7.12.0 前台竞速晋升（回切拦截修复·死因③）═══
+                     * 窗口事件与活动窗口查询赛跑时被丢弃且未登记 lastFgPkg
+                     * 的应用（fgPending 登记在 STATE_CHANGED 丢弃分支）——
+                     * 其首个内容事件到达时复核活动窗口归属：已归属 → 按新
+                     * 进入晋升补扫（tryPromotePendingForeground），本事件
+                     * 及后续内容事件照常走前台路径；否则照旧丢弃（前台门
+                     * 语义不变——灵岛/悬浮窗防线零影响）。 */
+                    if (!tryPromotePendingForeground(pkg, now)) break;
                 }
                 /* v7.8.0 视频开屏画像观测面：内容事件时刻记账（树静默时长 =
                  *  距最后一次内容事件的时长——SurfaceView 视频在放时零内容
@@ -1809,6 +1891,61 @@ public class AdSkipService extends AccessibilityService {
             return rp == null || pkg.contentEquals(rp); // 拿不到根节点时保守放行
         } catch (Throwable t) {
             return true;
+        }
+    }
+
+    /* ═══ v7.12.0 前台竞速晋升（回切拦截修复·死因③——见 fgPendingPkg 字段注释）═══
+     * STATE_CHANGED 与活动窗口查询赛跑的丢弃分支已登记竞速候选；本方法由
+     * CONTENT_CHANGED 前台门调用：候选在 3s 窗内 + 事件包一致 + 活动窗口
+     * 复核归属 → 按「新进入」完整晋升（复刻 STATE_CHANGED 进入路径的窗口
+     * 重置面 + 进入期全量门 + 0ms 内联首扫 + 信息流/插屏接线），本事件与
+     * 后续内容事件照常走前台路径——回切后的开屏广告不再整窗漏拦。
+     * 复核不过 → false（前台门照旧丢弃，灵岛/悬浮窗防线零影响）。 */
+    private boolean tryPromotePendingForeground(String pkg, long now) {
+        try {
+            String pp = fgPendingPkg;
+            if (pp == null) return false;
+            if (!ReentryGuard.shouldPromotePending(pp, fgPendingAt, pkg, now, FG_PENDING_WINDOW_MS)) {
+                if (now - fgPendingAt > FG_PENDING_WINDOW_MS) fgPendingPkg = null; // 过期清田
+                return false;
+            }
+            if (!isActiveWindowOf(pkg)) return false;   // 活动窗口仍不属它——等下一事件
+            String cls = fgPendingCls == null ? "" : fgPendingCls;
+            fgPendingPkg = null;
+            entryFullUntil.put(pkg, ReentryGuard.entryUntil(now));
+            if (reentryLogOk(pkg, now)) {
+                appendLog("⚡ 前台竞速晋升（" + shortPkg(pkg) + "）：窗口事件竞速漏登记 →"
+                        + " 内容事件确认前台 → 按新进入处理（进入期全量扫描）");
+            }
+            lastFgPkg = pkg;
+            /* 窗口重置面（与 STATE_CHANGED 进入路径同源）： */
+            taskOnWindowReset(pkg);
+            windowAt.put(pkg, now);
+            winClass.put(pkg, cls);
+            rootWinCls.put(pkg, cls);
+            backTries.put(pkg, 0);
+            clickTries.put(pkg, 0);
+            clearTapTrail(pkg);
+            clearTapGuards(pkg);
+            cdLastN.remove(pkg);
+            cdAnchorAt.remove(pkg);
+            cdWaitUntil.remove(pkg);
+            gaveUp.put(pkg, Boolean.FALSE);
+            winClsLearned.remove(pkg);
+            chainKilledAt.remove(pkg);
+            nudgeAt.remove(pkg);
+            rescueAt.remove(pkg);
+            videoPollAt.remove(pkg);
+            videoProbeMiss.remove(pkg);
+            cornerStrikeAt.remove(pkg);
+            contentAt.remove(pkg);
+            bumpScanChain(pkg, true);
+            if (!profileSuppressScan(pkg, cls)) tryScan(pkg, winAt(pkg), 0);
+            maybeFeedScan(pkg, now);
+            maybeInterstitialScan(pkg, now);
+            return true;
+        } catch (Throwable t) {
+            return false;
         }
     }
 

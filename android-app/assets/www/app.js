@@ -1,4 +1,4 @@
-/* 开屏卫士 v7.11.0 · 更新兜底直连 + 开屏提醒提速 + 帮助页 + 订阅自动导入 + 重进状态修复专项：检查更新失败时给 jsDelivr CDN 直连下载按钮（每版本仓库内 APK 兜底）；开屏提醒进入即显（0ms——固定后台引导 + 24h 不再显示）；底栏订阅模块移除（id667 订阅由后台每日自动导入，含八通道+快照兜底）；新增帮助页；冷启动宽限期（刚断开不久显示「服务重连中」，AMS 重绑慢不再误导向系统设置看 10 秒警告） */
+/* 开屏卫士 v7.12.0 · 卡死根治 + 回切拦截修复 + 上传连接重试 + 开屏三按钮专项：白名单改异步加载（同步枚举 300+ PackageManager IPC 冻住 JS 线程是进入/点按钮「卡死」元凶）；亮屏/解锁即时踢链 + 前台竞速晋升（息屏/切走十几分钟后回来第一条广告拦不住的两大死因）；日志上传连接阶段自动三试重试（workers.dev 间歇可达——单次 10s 超时改为三试）；开屏提醒改三按钮弹窗（知道了/24 小时不再提示/去上传日志）+ 帮助页去冗余精简 */
 "use strict";
 
 /* ══════════ 环境 ══════════ */
@@ -23,8 +23,8 @@ const store = {
 };
 
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "7.11.0"; }
-function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "81000"; }
+function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "7.12.0"; }
+function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "82000"; }
 
 /* ══════════ 吉祥物（v4.1.0 全新形象：白机器人小侠 + 绿披风跳跃） ══════════
  * 与启动器图标同源；state: on（跳跃浮动）/ off（灰度待命） */
@@ -35,18 +35,17 @@ function mascotImg(size, state, head) {
 
 $("#brand-logo").innerHTML = mascotImg(30, "on", true);
 
-/* ═══ v7.11.0 版本记录（更新兜底 + 开屏提醒 + 帮助页 + 订阅自动导入）═══ */
+/* ═══ v7.12.0 版本记录（卡死根治 + 回切拦截 + 上传重试 + 开屏三按钮）═══ */
 const CURRENT_RELEASE = {
   date: "2026-11-23",
-  title: "检查更新 CDN 兜底 + 开屏提醒提速 + 帮助页 + 订阅自动导入",
+  title: "卫士卡死根治 + 息屏/回切拦截修复 + 上传重试 + 开屏三按钮",
   features: [
-    "检查更新失败兜底：查询失败时出现「直连下载最新版（CDN 兜底）」按钮——jsDelivr CDN 仓库内 APK 直链（每版本随发布归档入库），下载后覆盖安装即升级，检查失败不再无路可走",
-    "开屏提醒提速：进入 App 即显示（不再等 3 秒）——提醒把卫士固定在后台（分机型操作指引），可选择「24 小时内不再显示」",
-    "新增帮助页：底栏「帮助」承接如何使用 / 固定后台 / 订阅说明 / 常见问题 / 隐私与权限的规范化说明",
-    "订阅模块自动化：底栏订阅页移除——id667 的 GKD 订阅（Lin-arm ⭐7.4k）改为后台每日自动导入一次（八通道镜像 + 离线快照双重兜底，永不硬失败）",
-    "重进体验修复：刚断开不久时首页显示「服务重连中」（冷启动宽限期）——AMS 重绑慢不再误导向系统设置看 10 秒警告；重绑成功自动恢复「守护中」",
+    "卡死根治：应用白名单改异步加载——旧版进入卫士/点按钮时同步枚举全机应用，慢设备上 JS 线程被冻结分钟级（卡死到只能重装的元凶）；现在骨架即时出、勾选增删本地即改即显、慢机自动重试",
+    "回切拦截修复：息屏十几分钟再亮屏、或切去别的应用十几分钟后回来第一条广告拦不住——亮屏/解锁瞬间即时踢 AMS 重绑（不等五分钟心跳）+ 解锁首事件竞速实测放行 + 前台竞速晋升（窗口事件与活动窗口查询赛跑漏登记时，内容事件确认前台后按新进入补扫）",
+    "上传连接重试：日志上传连接阶段失败自动重试三次（上传服务间歇可达——单次超时改为三试大幅提成功率）；自动上传失败后 30 分钟即可再试（不再干等 8 小时）；失败提示如实注明已重试",
+    "开屏提醒三按钮：进入 App 弹出提醒卡——「知道了」（下次进入仍提醒）/「24 小时内不再提示」/「去上传日志」（直达引擎日志卡，仅在你主动点击时才上传）；每次进入都提醒（60 秒短窗仅防旋转重复弹）；帮助页去冗余精简",
   ],
-  summary: "v7.11.0：检查更新 CDN 兜底 + 开屏提醒提速 + 帮助页 + 订阅自动导入 + 重进体验修复。",
+  summary: "v7.12.0：卫士卡死根治 + 息屏/回切拦截修复 + 上传连接重试 + 开屏三按钮。",
 };
 
 /* v7.0.0 新版功能描述（规范：≤5 个标题、带序号；检查更新发现新版本时就地渲染）。
@@ -533,24 +532,67 @@ function refreshLogUploadNote() {
   });
 })();
 
-/* ══════════ v4.3.0 应用白名单 ══════════ */
+/* ══════════ v4.3.0 应用白名单（v7.12.0 异步加载——卡死根治）══════════
+ * 死因（用户实锤：「卫士有时候点击按钮时或者进入时会导致卡死，重新进入
+ * 也不行，只能重新安装」）：旧版进入 App/每次切首页 tab/每次勾选白名单都
+ * 同步调 whitelistJson 桥——JavaBridge 线程上 300+ PackageManager IPC，慢
+ * 设备上以分钟计（v7.11.0 init 注释实测教训），JS 线程全程冻住＝「卡死」；
+ * 重进再来一遍＝「重新进入也不行」。v7.12.0 改异步：
+ *  · 桥 whitelistJsonAsync(cb)：后台线程枚举 + window[cb](json) 回调（与
+ *    同步桥共用 Java 侧 30s 记忆缓存——绝大多数回调即时命中）；
+ *  · 首次进入显示「加载中…」骨架，回调后渲染——JS 主线程零阻塞；
+ *  · 10s 看门狗 + 自动重试（至多 3 次）——慢设备也绝无「永久加载」；
+ *  · 勾选增删后本地更新缓存立即重渲（绝不再全量重拉——同步枚举是死因）；
+ *    30s 缓存过期后的下一次进入/切页自然刷新。 */
 let wlCache = null; // {list:Set, known:[{pkg,label}]}
+let wlCacheAt = 0;  // v7.12.0：本地缓存时刻（30s 新鲜窗——窗内不重拉）
+let wlAsyncSeq = 0;  // v7.12.0：异步请求序号（过期回调丢弃）
+let wlRetries = 0;   // v7.12.0：看门狗/失败自动重试计数（至多 3 次）
 let wlQuery = "";   // v7.1.0：白名单搜索词（中文名/包名实时过滤）
 let wlSearchTimer = null; // v7.2.0：搜索输入 120ms debounce 定时器
 let wlTotalEl = null;     // v7.2.0：列表上方「共 N 款应用」统计行（动态创建，避免改 index.html 结构）
 
-function loadWhitelist() {
-  if (!HAS_BRIDGE) {
-    wlCache = { list: new Set(), known: [] };
-    return wlCache;
+/* v7.12.0：异步拉取白名单 JSON（单飞序号 + 10s 看门狗 + 过期回调丢弃）。 */
+function wlBridgeAsync() {
+  const seq = ++wlAsyncSeq;
+  const cbName = "__wlCb" + seq;
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (v) => {
+      if (settled || seq !== wlAsyncSeq) return;   // 过期回调丢弃（新请求已发起）
+      settled = true;
+      clearTimeout(timer);
+      try { delete window[cbName]; } catch (e) {}
+      resolve(v);
+    };
+    const timer = setTimeout(() => done(null), 10 * 1000);  // 10s 看门狗（慢机兑底）
+    try {
+      window[cbName] = (json) => {
+        let v = null;
+        if (typeof json === "string") { try { v = JSON.parse(json); } catch (e) { v = null; } }
+        else v = json;
+        done(v && typeof v === "object" ? v : null);
+      };
+      AndroidApp.whitelistJsonAsync(cbName);
+    } catch (e) { done(null); }
+  });
+}
+
+/* v7.12.0：请求白名单数据（异步——绝不阻塞 JS 线程）；失败自动重试至多 3
+ * 次（1.5s 间隔），仍失败渲染「未能读取」空态（切回本页/下次进入再试）。 */
+async function requestWhitelist() {
+  if (!HAS_BRIDGE) { wlCache = { list: new Set(), known: [] }; wlCacheAt = Date.now(); return; }
+  const d = await wlBridgeAsync();
+  if (d && Array.isArray(d.list)) {
+    wlCache = { list: new Set(d.list), known: d.known || [] };
+    wlCacheAt = Date.now();
+    wlRetries = 0;
+  } else if (wlRetries < 3) {
+    wlRetries++;
+    setTimeout(() => { void requestWhitelist(); }, 1500);
+    return;
   }
-  try {
-    const d = JSON.parse(AndroidApp.whitelistJson());
-    wlCache = { list: new Set(d.list || []), known: d.known || [] };
-  } catch (e) {
-    wlCache = { list: new Set(), known: [] };
-  }
-  return wlCache;
+  renderWhitelist(false);
 }
 
 /* ═══ v7.1.0 白名单搜索匹配（用户实锤：应用白名单搜索栏实现 app 中文名搜索）═══
@@ -580,7 +622,21 @@ function wlTotalRow() {
 function renderWhitelist(force) {
   const box = $("#wl-list");
   if (!box) return;
-  if (!wlCache || force) loadWhitelist();
+  /* v7.12.0 异步化（卡死根治）：同步桥 whitelistJson 在 JavaBridge 线程上
+   * 枚举全机应用（300+ PackageManager IPC，慢设备分钟级）——进入/切页/
+   * 勾选后重拉全部改异步：无新鲜缓存则后台拉取 + 骨架占位，回调后再渲。
+   * 30s 本地新鲜窗：窗内直接用缓存（绝大多数场景零桥调用）。 */
+  if (force) wlRetries = 0;   // 用户主动进入/切换 → 重试预算重置
+  if (HAS_BRIDGE) {
+    const fresh = wlCache && (Date.now() - wlCacheAt) < 30000;
+    if (!fresh) void requestWhitelist();
+    if (!wlCache) {           // 尚无任何数据：骨架占位（绝不同步枚举）
+      box.innerHTML = '<div class="empty">加载中…</div>';
+      return;
+    }
+  } else if (!wlCache) {
+    wlCache = { list: new Set(), known: [] };
+  }
   const wl = wlCache;
   $("#wl-count").textContent = String(wl.list.size);
   // v7.2.0：列表上方统计行——全量基数（known.length，与搜索过滤无关）
@@ -601,7 +657,8 @@ function renderWhitelist(force) {
       : '<div class="empty">未能读取应用列表</div>';
     return;
   }
-  box.innerHTML = known.map(x => {
+  box.innerHTML = known.length
+    ? known.map(x => {
     const on = wl.list.has(x.pkg);
     return '<div class="wl-row">'
       + '<div class="wl-label"><span class="wl-name">' + esc(x.label) + '</span>'
@@ -609,7 +666,8 @@ function renderWhitelist(force) {
       + '<label class="switch"><input type="checkbox" data-wl="' + esc(x.pkg) + '"'
       + (on ? ' checked' : '') + '><span class="slider"></span></label>'
       + '</div>';
-  }).join("");
+  }).join("")
+    : '<div class="empty">未能读取应用列表（设备繁忙或权限受限）——可切回本页重试</div>';
   box.querySelectorAll('input[data-wl]').forEach(t => {
     t.addEventListener("change", () => {
       const pkg = t.dataset.wl;
@@ -617,8 +675,13 @@ function renderWhitelist(force) {
       try {
         ok = t.checked ? AndroidApp.whitelistAdd(pkg) : AndroidApp.whitelistRemove(pkg);
       } catch (e) {}
+      /* v7.12.0：本地即改即显——绝不再全量重拉（同步枚举是卡死元凶；
+       * Java 侧 30s 缓存已由增删失效，下次自然刷新带回权威列表） */
+      if (ok && wlCache) {
+        if (t.checked) wlCache.list.add(pkg); else wlCache.list.delete(pkg);
+      }
       toast(t.checked ? "已加入白名单：卫士在该应用内完全让路" : "已移出白名单：恢复守护");
-      renderWhitelist(true);
+      renderWhitelist(false);
     });
   });
 }
@@ -643,7 +706,12 @@ $("#btn-wl-add").addEventListener("click", () => {
   if (!HAS_BRIDGE) { toast("仅 APK 内可用"); return; }
   let ok = false;
   try { ok = AndroidApp.whitelistAdd(pkg); } catch (e) {}
-  if (ok) { inp.value = ""; toast("已加入白名单：" + pkg); renderWhitelist(true); }
+  if (ok) {
+    inp.value = "";
+    if (wlCache) wlCache.list.add(pkg);   // v7.12.0：本地即改（不再全量重拉）
+    toast("已加入白名单：" + pkg);
+    renderWhitelist(false);
+  }
   else toast("添加失败：包名格式不正确或已存在");
 });
 
@@ -1196,23 +1264,24 @@ function hideUpdateGate() {
   if (gate) gate.remove();
 }
 
-/* ══════════ v7.11.0 开屏提醒：固定后台引导（进入即显 · 24h 不再显示）══════════
- * 用户指令：「开屏提醒速度一定要快，要显示把 app 固定在后台，进入 app 就
- * 显示，然后可以选择 24 小时之内不再显示」。
- *  · 进入 App 即显示（init 直调——0ms，不再等 3 秒；与更新检查彻底无关）；
- *  · 内容：把卫士固定在后台的分机型操作指引（防「清理后台杀服务 →
- *    下次进入要重新开启 + 再看一次系统 10 秒确认」——用户痛点闭环）；
- *    底部一行反馈提示（发现问题 → 我的 → 引擎日志 → 一键上传）；
+/* ══════════ v7.12.0 开屏提醒：三按钮弹窗（知道了 / 24h 不再提示 / 去上传日志）══════════
+ * 用户指令：「开屏提示内容（24 小时可以不显示）不要放在帮助里，每次进入 app
+ * 时弹出提示，有三个按钮，知道了，24小时不再提示，去上传日志」。
+ *  · 进入 App 即显示（init 直调——0ms；内容与帮助页彻底分离，帮助页不再
+ *    重复开屏提示文案）；
  *  · 「知道了」= 仅本轮收起（不记 24h——下次进入仍会提醒）；
- *  · 「24 小时内不再显示」= 记 pin_tip_confirmed_at（epoch 毫秒，
- *    kvSet 白名单键 / 浏览器 localStorage 兜底），24h 内不再显示；
- *  · Activity 重建/旋转防护：展示时记 pin_tip_shown_at，5 分钟短窗内
- *    重建不再重复弹（短窗只防抖不耗资格）；
+ *  · 「24 小时内不再提示」= 记 pin_tip_confirmed_at（epoch 毫秒，kvSet
+ *    白名单键 / 浏览器 localStorage 兜底），24h 内不再显示；
+ *  · 「去上传日志」= 收起提醒 → 直达「我的 → 引擎日志」卡（滚动 + 高亮）
+ *    ——绝不自动上传（隐私红线：仅在你主动点「一键上传」时才上传）；
+ *  · 每次进入语义：v7.11.0 的 5min 防重建窗会把「退出后 1~5 分钟内再进入」
+ *    也吞掉——v7.12.0 收紧为 60s 短窗（仅防 Activity 重建/旋转连弹），
+ *    真实的「再次进入」一律照常提醒；
  *  · 前后台切换不重复弹（visibilitychange 不评估——仅 init 调用）；
  *  · 更新提示优先：#update-gate 在场不弹；更新页后到 → showUpdateGate
  *    主动收起提醒卡（24h 时间戳不受影响）。 */
-const PIN_TIP_THROTTLE_MS = 24 * 60 * 60 * 1000;  /* 「24h 不再显示」节流 */
-const PIN_TIP_RESHOW_GUARD_MS = 5 * 60 * 1000;    /* 展示后 5min 防重建重复弹 */
+const PIN_TIP_THROTTLE_MS = 24 * 60 * 60 * 1000;  /* 「24h 不再提示」节流 */
+const PIN_TIP_RESHOW_GUARD_MS = 60 * 1000;       /* 展示后 60s 防旋转/重建重复弹 */
 let pinTipShownThisSession = false;
 function pinTipThrottled() {
   try {
@@ -1245,25 +1314,51 @@ function showPinTip() {
     + '<div class="ug-note-item"><span class="ug-note-n">3</span>固定后清理后台不影响卫士——下次进入无需重新开启</div>'
     + '</div>'
     + '<div class="ug-size">不固定的后果：清理后台时卫士被一起杀掉，下次进入会被要求重新开启（并再看一次系统 10 秒确认）。'
-    + '若遇开屏广告未跳过等问题：「我的 → 引擎日志 → 一键上传」可帮助定位。</div>'
+    + '若遇开屏广告未跳过等问题，点下方「去上传日志」可帮助定位。</div>'
     + '<button class="ug-btn-primary" id="pin-tip-ok">知道了</button>'
-    + '<button class="ug-btn-ghost" id="pin-tip-snooze">24 小时内不再显示</button>'
+    + '<button class="ug-btn-ghost" id="pin-tip-snooze">24 小时内不再提示</button>'
+    + '<button class="ug-btn-link" id="pin-tip-upload">去上传日志</button>'
     + '</div>';
   document.body.appendChild(tip);
   const close = () => { const t = $("#pin-tip"); if (t) t.remove(); };
   /* 「知道了」：仅本轮收起（下次进入仍提醒——进入 app 就显示语义保持） */
   $("#pin-tip-ok").addEventListener("click", close);
-  /* 「24 小时内不再显示」：记确认时间戳（24h 节流主闸） */
+  /* 「24 小时内不再提示」：记确认时间戳（24h 节流主闸） */
   $("#pin-tip-snooze").addEventListener("click", () => {
     try { store.set("pin_tip_confirmed_at", String(Date.now())); } catch (e) {}
     close();
-    toast("24 小时内不再显示（固定后台后守护更稳）");
+    toast("24 小时内不再提示（固定后台后守护更稳）");
   });
+  /* 「去上传日志」：收起提醒 → 直达引擎日志卡（跳转不等于上传——上传
+   * 永远只在你主动点「一键上传」时发生） */
+  $("#pin-tip-upload").addEventListener("click", goUploadLogFromTip);
+}
+/* v7.12.0 「去上传日志」跳转：切「我的」页 → 滚动到引擎日志卡并高亮 →
+ * 指引点「一键上传」（隐私红线保持：零自动上传）。 */
+function goUploadLogFromTip() {
+  const close = () => { const t = $("#pin-tip"); if (t) t.remove(); };
+  close();
+  try {
+    const meBtn = document.querySelector('.tabbtn[data-page="me"]');
+    if (meBtn && meBtn.click) meBtn.click();
+    setTimeout(() => {
+      try {
+        const card = document.getElementById("card-engine-log");
+        if (card && card.scrollIntoView) card.scrollIntoView({ behavior: "smooth", block: "center" });
+        if (card && card.classList) {
+          card.classList.remove("flash");
+          void card.offsetWidth;
+          card.classList.add("flash");
+        }
+      } catch (e) {}
+    }, 160);
+    toast("在「引擎日志」点「一键上传」——仅在你主动点击时才上传");
+  } catch (e) {}
 }
 function maybeShowPinTip() {
   try {
-    if (pinTipThrottled()) return;         // 24h 内已选「不再显示」——节流
-    if (pinTipRecentlyShown()) return;     // 5min 内已展示过——防 Activity 重建重复弹
+    if (pinTipThrottled()) return;         // 24h 内已选「不再提示」——节流
+    if (pinTipRecentlyShown()) return;     // 60s 内已展示过——防旋转/重建重复弹
     if ($("#update-gate")) return;         // 更新页在场——升级优先，本轮不打扰
     showPinTip();
   } catch (e) { /* 提示失败静默——绝不影响正常使用 */ }
@@ -1320,8 +1415,11 @@ function setUploadPhase(btn, phase) {
 function uploadErrText(res) {
   const k = String((res && res.errKind) || "");
   const raw = String((res && res.lastError) || "");
-  if (k === "NET_CONNECT_FAIL") return "网络连接失败，请检查网络后重试——日志已保留（不会丢失）";
-  if (k === "NET_CONNECT_TIMEOUT") return "连接上传服务超时——当前网络可能无法访问上传服务，可尝试切换 Wi-Fi/移动网络后重试；日志已保留（不会丢失）";
+  /* v7.12.0：连接阶段失败文案注明「已自动重试」——Java 侧 RealHttp 连接
+   * 阶段（连接失败/连接超时/TLS）已自动三试（0/800/2000ms 退避），失败
+   * 回来时用户看到的是三试后的结果（如还不通——换网络建议更有分量）。 */
+  if (k === "NET_CONNECT_FAIL") return "网络连接失败，请检查网络后重试——本次已自动重试 3 次仍不通；日志已保留（不会丢失）";
+  if (k === "NET_CONNECT_TIMEOUT") return "连接上传服务超时——当前网络可能无法访问上传服务，可尝试切换 Wi-Fi/移动网络后重试；本次已自动重试 3 次仍不通，日志已保留（不会丢失）";
   if (k === "NET_READ_TIMEOUT") return "上传超时，结果暂时无法确认——若服务端已收到，重试将使用原批次，不会重复创建 Issue";
   if (k === "NET_TLS") return "安全连接失败（网络传输可能被干扰）——可尝试切换网络后重试；日志已保留（不会丢失）";
   if (k === "NET_TIMEOUT") return "上传超时，请稍后重试——若服务端已收到，重试会自动复用原 Issue，不会重复提交";
@@ -1673,10 +1771,12 @@ function toast(msg) {
    * 分钟计——同步桥阻塞 JS 线程时排在后面的 maybeShowPinTip 迟迟不执行
    * ——「进入即显」被打折扣。现在第一步就评估（纯本地零桥调用——
    * pinTipThrottled/pinTipRecentlyShown 读 kv 时间戳 + DOM 判定，毫秒级），
-   * 白名单等慢操作后置，提醒在任何设备上都是首帧即出。 */
+   * 白名单等慢操作后置，提醒在任何设备上都是首帧即出。
+   * v7.12.0：白名单已整体异步化（whitelistJsonAsync 桥——卡死根治），
+   * 同步阻塞源已消除；评估仍保持在第一步（首帧即出的语义不变）。 */
   try { maybeShowPinTip(); } catch (e) {}
   refreshHome();
-  renderWhitelist(true);
+  renderWhitelist(true);   // v7.12.0：异步化——骨架即时出，回调后渲（零阻塞）
   renderKeepAlive();
   // v4.4.0 零触摸自愈：打开 App 即发现服务掉线（设置仍登记）→ 自动深度拉活，
   // 用户连「一键恢复」都不用点（点按钮跳系统设置看 10 秒警告的历史遗留痛点

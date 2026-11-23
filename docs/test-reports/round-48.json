@@ -1,0 +1,90 @@
+{
+  "round": 48,
+  "version": "7.12.0",
+  "date": "2026-11-23",
+  "theme": "四大实锤修复轮：卫士卡死根治（白名单异步化）+ 息屏/回切拦截修复（亮屏/解锁即时踢链 + 前台竞速晋升）+ 上传连接三试重试 + 开屏三按钮弹窗——用户五项指令（含性能/能耗/响应/体验审计）",
+  "user_directives": [
+    "开屏提示内容（24 小时可以不显示）不要放在帮助里，每次进入 app 时弹出提示，有三个按钮：知道了、24 小时不再提示、去上传日志；优化帮助模块的内容，数字太冗余",
+    "上传日志：连接上传服务超时——当前网络可能无法访问上传服务，可尝试切换 Wi-Fi/移动网络后重试；日志已保留（不会丢失）重试——修复这个问题",
+    "在一个 app 中息屏十几分钟半小时再打开，此 app 跳出的广告拦截不了；或在一个 app 玩一会切到另一个 app，再过十几分钟半小时切回第一个 app，此时跳出的广告也拦截不了——修复",
+    "卫士有时候点击按钮时或者进入时会导致卡死，重新进入也不行，只能重新安装——修复",
+    "完成以上功能之后，进行性能、能耗、响应速度、使用体验测试；完成后推送 GitHub 和 push 版本；如果迭代功能很大可以进行大迭代",
+    "诚实口径保持：真机/模拟器 E2E NOT_RUN（用户前轮明示跳过模拟器实测）——全部验证为 JVM/JS 行为级 + 代码级性能/能耗审计；性能/能耗数字绝不伪造"
+  ],
+  "scope_of_change": {
+    "production_fix": [
+      "卡死根治（死因：whitelistJson 同步桥在 JavaBridge 线程枚举全机应用 300+ PackageManager IPC，慢设备分钟级冻结 JS 线程；主线程不阻塞→无 ANR→页面整块假死；进入/切页/勾选三入口同步阻塞）：MainActivity 新增 whitelistJsonAsync(cb) 后台线程桥（与同步桥共用 30s 记忆缓存，window[cb](json) 回调）；app.js wlBridgeAsync（单飞序号 + 过期回调丢弃 + 10s 看门狗）+ requestWhitelist（失败自动重试至多 3 次×1.5s）+ 骨架占位 + 勾选增删本地即改即显（wlCache.list 本地 Set 即时更新，绝不再全量重拉）+ 30s 本地新鲜窗",
+      "回切拦截修复·死因①（僵尸态发现太慢）：ScreenStateRx 新增 ACTION_USER_PRESENT 订阅；SCREEN_ON/USER_PRESENT 瞬间 onWakeGate() 核实绑定态——未绑定 → 当场 kickA11yLocal() 踢 AMS + scheduleSelfCheckAlarm(1500) 走 SmartRevive 三轮踢链 + scheduleHeartbeat 保续（不等 5~8 分钟窗口式心跳/30~45 分钟息屏心跳）",
+      "回切拦截修复·死因②（亮屏竞速吞首事件）：onAccessibilityEvent 息屏门对 TYPE_WINDOW_STATE_CHANGED 先做一次真实 isScreenOn(this) IPC 复测（缓存标志可能滞后于解锁首事件）——实测亮屏 → 放行本事件 + 自愈 screenInteractive 缓存",
+      "回切拦截修复·死因③（前台竞速漏登记）：STATE_CHANGED 丢弃分支（非 Dialog 非小窗）登记 fgPendingPkg/Cls/At 竞速候选（3s 窗口期）；CONTENT_CHANGED 前台门经 ReentryGuard.shouldPromotePending（纯函数）+ isActiveWindowOf 复核 → tryPromotePendingForeground 按「新进入」完整晋升（窗口重置面 + entryFullUntil 进入期全量门 + bumpScanChain + 0ms 内联首扫 + maybeFeedScan/maybeInterstitialScan）；正常进入到场候选作废",
+      "上传连接三试：LogUploader.RealHttp.post 连接阶段失败（connect/connect-timeout/tls——请求几乎必然未送达 + batchId 幂等双保险）自动重试三次（退避 0/800/2000ms）；读取阶段/服务端失败不做传输层重试（v7.9.8 冻结批次幂等语义保持）；requestAutoCheck 连接阶段失败回拨 lastAutoAttemptAt（AUTO_RETRY_SOON_MS=30min——不再干等 8h）",
+      "开屏三按钮：showPinTip 三按钮（知道了/24 小时内不再提示/去上传日志）；goUploadLogFromTip 跳转（切我的页 + 滚动至 #card-engine-log + 双轮高亮 + toast 指引；隐私红线：跳转绝不自动上传）；PIN_TIP_RESHOW_GUARD_MS 5min→60s（每次进入语义——v7.11.0 的 5min 窗吞掉「退出后 1~5 分钟内再进入」）；帮助页六卡精简为三卡（去数字冗余 + 与开屏提示文案分离）；index.html 两处陈旧文案修正（自动上传频率真语义）"
+    ],
+    "production_unchanged": [
+      "识别引擎全链路（AdDecisionCore/FeedAdGuard/InterstitialGuard/VideoSplashGuard/RuleEngine/HumanTap/SafetyGuard）零改动——ScanBenchmark 双 DFS 基准与 v7.11.0 持平",
+      "PowerGovernor 三零治理（CLEAN 档案/突发预算/位置学习验证）零改动——竞速晋升零新轮询（事件驱动，仅进入级一次全量扫）",
+      "ReentryGuard.isEntering/REENTER_GAP_MS 6s/ENTRY_FULL_MS 4s 零改动（竞速晋升是纯补漏——不改变既有回切判定）",
+      "上传冻结批次幂等/隐私过滤/服务端契约零改动（连接重试只在传输层；读取阶段失败语义保持）",
+      "更新检查五源链/CDN 兜底/订阅自动导入/保活四件套零改动"
+    ]
+  },
+  "tests": {
+    "jvm": {
+      "suites": 42,
+      "assertions": 7344,
+      "failed": 0,
+      "new": [
+        "PendingForegroundTest（15 断言）：shouldPromotePending 真值表——窗口期内/包一致可晋升、过期(3s+1ms)作废、他包不晋升、null/空/零时刻安全、恰好 3s 含端点、与 isEntering/回切 6s 闸/进入期 4s 全量门共存零侵蚀",
+        "LogUploaderTest T21（15 断言）：retryableConnectKind 五态分类（connect/connect-timeout/tls 可重试；read-timeout/io/null 不可）+ CONNECT_RETRY_BACKOFF_MS 0/800/2000 三试 + soonerRetryForConnect 提前重试分类 + AUTO_RETRY_SOON_MS=30min"
+      ]
+    },
+    "js": {
+      "files": 7,
+      "assertions": 244,
+      "failed": 0,
+      "new": [
+        "test_wl_async.js（24 断言）：源码级「全文零同步 whitelistJson 调用」死灰复燃防线 + init 进入即发异步请求 + 骨架占位 + Java 回调缓存渲染 + 勾选本地即改即显（30s 新鲜窗零重拉）+ 失败自动重试（过期序号丢弃）+ 10s 看门狗/3 次预算钉死",
+        "test_splash_reminder.js v7.12.0 版（36 断言，+9）：三按钮接线（去上传日志收起提醒/不耗 24h 资格/隐私红线 toast）+ 60s 防重建窗（源码级 5min→60s 收紧）+ 帮助页精简断言（test_bugtip24h 内）"
+      ]
+    },
+    "gates": {
+      "check_appjs": "PASS（语法 + 执行 + 17 符号在场）",
+      "check_version_sync": "PASS（web version.ts 与 AndroidManifest 双端统一 7.12.0/82000）",
+      "secret_scan": "PASS（零凭据保持）",
+      "build": "PASS（aapt versionCode=82000/versionName=7.12.0；apksigner 签名证书 05ada6e3 与历史一致；898614 字节）"
+    },
+    "real_device_e2e": "NOT_RUN（用户前轮明示跳过模拟器；本轮全部为 JVM/JS 行为级验证 + 代码级审计——待用户实测反馈）"
+  },
+  "performance_energy_audit": {
+    "responsiveness": [
+      "白名单异步化：慢设备最坏从「分钟级假死」（同步枚举冻结 JS 线程）→「骨架即时出 + ≤10s 回调/自动重试」；进入/切页/勾选三条热路径 JS 主线程与 JavaBridge 线程双零阻塞",
+      "开屏提醒保持 init 第一步 0ms 直调（纯本地毫秒级——先于一切桥调用）",
+      "refreshHome 轮询链（3s 前台看门狗 + 5s 状态刷新）全部轻桥调用（isServiceRunning/registrationPresent/isMasterOn）不变"
+    ],
+    "energy": [
+      "亮屏/解锁门零常驻开销：广播触发；绑定态正常时零动作零 IPC",
+      "前台竞速晋升零新轮询：仅「窗口事件被竞速丢弃 + 3s 内内容事件确认前台」才发生一次进入级全量扫——与正常进入同级功耗（典型日几十次进入量级）",
+      "亮屏竞速实测放行：仅「缓存标志=息屏 + STATE_CHANGED 到达」罕见组合做一次 PowerManager.isInteractive IPC（息屏期间 STATE_CHANGED 极少）",
+      "isSmallOverlayWindow 500ms 缓存复用：竞速登记分支的第二次调用零新增 getWindows 重 IPC",
+      "ScanBenchmark（JVM 基准，SIMULATED 口径）：新路径 24~168µs/scan（150/400/600 节点 × wide/deep/mixed 六组）与 v7.11.0 持平——识别热路径零改动",
+      "既有功耗治理全链（PowerGovernor 三零治理/息屏心跳降频/前台窗式闹钟/热路径前置过滤）零改动"
+    ],
+    "ux": [
+      "开屏三按钮闭环：遇广告未跳过 → 一键直达「引擎日志」卡（滚动 + 双轮高亮）——仅在你主动点击时才上传（隐私红线）",
+      "每次进入都提醒（60s 短窗仅防旋转连弹）；24 小时内不再提示为唯一跨进入抑制闸",
+      "帮助页三卡精简（数字冗余清除；开屏提示文案不再重复）",
+      "上传失败文案如实注明「已自动重试 3 次仍不通」——不再让用户误以为没试过；重试按钮保持"
+    ],
+    "honesty": "以上均为代码级审计 + JVM 基准口径（SIMULATED 标注保持）；真机 NOT_RUN——不伪造任何实测数字"
+  },
+  "release": {
+    "versionCode": 82000,
+    "versionName": "7.12.0",
+    "apk_size_bytes": 898614,
+    "apk_sha256": "12bde153830da14772fc5a0a8c42b0e85ec3aa822d88558e091d8784c9134980",
+    "signing_cert_sha256": "05ada6e3f7a4fc6bf77449611c24f51e1ef4caa0a91a5cdd02c4d877738e6f79",
+    "dist_archive": "android-app/dist/adshield-v7.12.0.apk + adshield-latest.apk 别名同步",
+    "manifest": "update/latest.json 由 update-manifest 工作流从真实 Release 资产自动生成（versionCode 82000 + cdnApkUrl CDN 兜底链）",
+    "cdn_fallback": "jsDelivr 四接入点 purge 核验（cdn/gcore/testingcf 直出可用；fastly 对 APK 301→raw 阻断域勿用——历史实测结论保持）"
+  }
+}

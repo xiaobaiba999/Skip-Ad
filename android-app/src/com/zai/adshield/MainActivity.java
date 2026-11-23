@@ -795,6 +795,51 @@ public class MainActivity extends Activity {
             return ok;
         }
 
+        /* ═══ v7.12.0 白名单异步加载桥（卫士「卡死」根治的核心一环）═══
+         * 死因（用户实锤「卫士有时候点击按钮时或者进入时会导致卡死，重新
+         * 进入也不行，只能重新安装」）：whitelistJson 同步桥在 JavaBridge
+         * 线程上枚举全机可启动应用（300+ PackageManager IPC + 逐应用
+         * getApplicationLabel IPC——慢设备上分钟级，v7.11.0 init 注释实
+         * 测教训同源），JS 线程全程冻住＝页面假死。本桥把同一份枚举
+         * （whitelistJson 全量逻辑零改动，含 30s 记忆缓存）放到后台线程
+         * 执行，结果经 window[cb](json) 回调（runOnUiThread——与
+         * tryAutoReviveDeep/logUploadSubmitNow 同族模式）；JS 侧骨架
+         * 占位 + 回调渲染——主线程与 JS 线程双零阻塞。
+         * 同步桥 whitelistJson() 保留（兼容旧页面/诊断用途），页面热路径
+         * 已全部改走本异步桥（见 app.js wlBridgeAsync）。 */
+        @JavascriptInterface
+        public void whitelistJsonAsync(final String cb) {
+            new Thread(() -> {
+                final String r;
+                try {
+                    r = whitelistJson();
+                } catch (final Throwable t) {
+                    a.runOnUiThread(() -> {
+                        try {
+                            if (a.webView != null) {
+                                a.webView.evaluateJavascript(
+                                        "window[" + JSON.stringifyCb(cb) + "] && window["
+                                                + JSON.stringifyCb(cb) + "]({})", null);
+                            }
+                        } catch (Throwable ignored) {
+                        }
+                    });
+                    return;
+                }
+                final String rr = r;
+                a.runOnUiThread(() -> {
+                    try {
+                        if (a.webView != null) {
+                            a.webView.evaluateJavascript(
+                                    "window[" + JSON.stringifyCb(cb) + "] && window["
+                                            + JSON.stringifyCb(cb) + "](" + rr + ")", null);
+                        }
+                    } catch (Throwable ignored) {
+                    }
+                });
+            }, "wl-json-async").start();
+        }
+
         @JavascriptInterface
         public boolean whitelistRemove(String pkg) {
             boolean ok = AdSkipService.whitelistRemove(a, pkg);

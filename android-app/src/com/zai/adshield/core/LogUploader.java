@@ -169,32 +169,60 @@ public final class LogUploader {
         /** URL 白名单：仅接受 https + github.com 域的真实链接。 */
         private static final String URL_ALLOWED_PREFIX = "https://github.com/";
 
+        /* ═══ v7.12.0 连接阶段自动重试（用户实锤「连接上传服务超时」）═══
+         * 死因：上传中转端点（workers.dev）在用户网络下【间歇可达】——
+         * 单次 10s 连接超时即报失败，运气好一分钟后就能通。连接阶段失败
+         * （连接失败/连接超时/TLS）请求几乎必然未送达服务端 → 同址立即
+         * 重试绝对安全（且同 batchId 幂等双保险）。三试退避 0/800/2000ms，
+         * 最坏 ~15s 内三次机会——间歇可达路由下成功率大幅提升。 */
+        public static final long[] CONNECT_RETRY_BACKOFF_MS = {0L, 800L, 2000L};
+
+        /** v7.12.0：网络异常 kind 是否属连接阶段（可安全立即重试——
+         * 请求几乎必然未送达；batchId 幂等双保险）。纯函数·JVM 可回归。 */
+        public static boolean retryableConnectKind(String kind) {
+            return "connect".equals(kind) || "connect-timeout".equals(kind) || "tls".equals(kind);
+        }
+
         @Override
         public Resp post(String urlStr, JSONObject body) {
-            HttpURLConnection c = null;
-            try {
-                URL url = new URL(urlStr);
-                c = (HttpURLConnection) url.openConnection();
-                c.setConnectTimeout(CONNECT_TIMEOUT);
-                c.setReadTimeout(READ_TIMEOUT);
-                c.setRequestMethod("POST");
-                c.setRequestProperty("Content-Type", "application/json; charset=utf-8");
-                c.setRequestProperty("Accept", "application/json");
-                c.setRequestProperty("X-Skip-Ad-Client", "com.zai.adshield");
-                c.setDoOutput(true);
-                byte[] payload = body.toString().getBytes(StandardCharsets.UTF_8);
-                c.setFixedLengthStreamingMode(payload.length);
-                OutputStream os = c.getOutputStream();
-                os.write(payload);
-                os.close();
-                int code = c.getResponseCode();
-                InputStream in = code >= 400 ? c.getErrorStream() : c.getInputStream();
-                return new Resp(code, parseJson(readAll(in)));
-            } catch (Throwable t) {
-                return Resp.netError(netKindOf(t)); // v7.9.9 阶段化分类（见 netKindOf）
-            } finally {
-                if (c != null) c.disconnect();
+            byte[] payload = body.toString().getBytes(StandardCharsets.UTF_8);
+            for (int attempt = 0; attempt < CONNECT_RETRY_BACKOFF_MS.length; attempt++) {
+                if (attempt > 0) {
+                    try { Thread.sleep(CONNECT_RETRY_BACKOFF_MS[attempt]); } catch (Throwable ignored) { }
+                }
+                HttpURLConnection c = null;
+                try {
+                    URL url = new URL(urlStr);
+                    c = (HttpURLConnection) url.openConnection();
+                    c.setConnectTimeout(CONNECT_TIMEOUT);
+                    c.setReadTimeout(READ_TIMEOUT);
+                    c.setRequestMethod("POST");
+                    c.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+                    c.setRequestProperty("Accept", "application/json");
+                    c.setRequestProperty("X-Skip-Ad-Client", "com.zai.adshield");
+                    c.setDoOutput(true);
+                    c.setFixedLengthStreamingMode(payload.length);
+                    OutputStream os = c.getOutputStream();
+                    os.write(payload);
+                    os.close();
+                    int code = c.getResponseCode();
+                    InputStream in = code >= 400 ? c.getErrorStream() : c.getInputStream();
+                    return new Resp(code, parseJson(readAll(in)));
+                } catch (Throwable t) {
+                    // v7.9.9 阶段化分类（见 netKindOf）；v7.12.0 连接阶段失败
+                    // 且还有重试预算 → 换新连接重试；读取阶段失败不做传输层
+                    // 自动重试（请求可能已送达——语义交由冻结批次幂等重试）。
+                    String kind = netKindOf(t);
+                    if (retryableConnectKind(kind)
+                            && attempt < CONNECT_RETRY_BACKOFF_MS.length - 1) {
+                        continue;
+                    }
+                    return Resp.netError(kind); // 网络层失败不再丢细节
+                } finally {
+                    if (c != null) c.disconnect();
+                }
             }
+            return Resp.netError("io"); // 结构性安全网（不可达——循环内必 return）
         }
 
         @Override
@@ -465,6 +493,20 @@ public final class LogUploader {
 
     /* ═══ 自动上传（心跳检查点——KeepAliveReceiver 顺带调用）═══ */
 
+    /* ═══ v7.12.0 连接阶段失败后的提前重试间隔 ═══
+     * 用户实锤「连接上传服务超时」在间歇可达网络下不是持续故障——
+     * 自动上传失败后干等下一个 8h 窗口太久。连接阶段失败（请求几乎必然
+     * 未送达）时把 lastAutoAttemptAt 回拨，30 分钟后的下一次心跳检查
+     * （5~8 分钟粒度）即可再试。纯函数·JVM 可回归。 */
+    public static final long AUTO_RETRY_SOON_MS = 30L * 60 * 1000;
+
+    /** v7.12.0：分类码是否属连接阶段（值得 30 分钟后提前重试）。
+     * 纯函数·JVM 可回归（RealHttp.retryableConnectKind 的分类码镜像）。 */
+    public static boolean soonerRetryForConnect(String errKind) {
+        return ERR_NET_CONNECT.equals(errKind) || ERR_NET_CONNECT_TIMEOUT.equals(errKind)
+                || ERR_NET_TLS.equals(errKind);
+    }
+
     /** 自动上传资格（纯函数·JVM 可回归；v7.10.0 次数限制彻底移除版）：
      *  距上次自动尝试 ≥ minInterval 且存在待传事件——仅此两闸（心跳间隔
      *  8h + 「有新日志才传」）。24h/3 成功额度闸已随「上传次数限制彻底
@@ -476,7 +518,10 @@ public final class LogUploader {
         return pendingEvents > 0;  // 没有新日志——零网络请求直接跳过
     }
 
-    /** 自动检查点（后台线程一次性上传——无守护线程无退避表）。 */
+    /** 自动检查点（后台线程一次性上传——无守护线程无退避表）。
+     *  v7.12.0：连接阶段失败 → 回拨 lastAutoAttemptAt（30 分钟后心跳检查
+     *  即可再试——不再干等 8h 窗口；读取阶段/服务端失败保持 8h 语义——
+     *  幂等重试交冻结批次）。 */
     public void requestAutoCheck(long minIntervalMs) {
         try {
             if (com.zai.adshield.Net.LOG_RELAY_URL.length() == 0) return;
@@ -486,11 +531,20 @@ public final class LogUploader {
             env.prefPut("lastAutoAttemptAt", String.valueOf(now));
             if (!running.compareAndSet(false, true)) return;
             Thread t = new Thread(() -> {
+                Summary r = null;
                 try {
-                    runUpload(false);
+                    r = runUpload(false);
                 } catch (Throwable ignored) {
                 } finally {
                     running.set(false);
+                }
+                try {
+                    if (r != null && r.acked == 0 && soonerRetryForConnect(r.errKind)) {
+                        // v7.12.0：连接阶段失败——回拨下次自动资格时刻到 30 分钟后
+                        env.prefPut("lastAutoAttemptAt",
+                                String.valueOf(now - minIntervalMs + AUTO_RETRY_SOON_MS));
+                    }
+                } catch (Throwable ignored) {
                 }
             }, "log-upload-auto");
             t.setDaemon(true);

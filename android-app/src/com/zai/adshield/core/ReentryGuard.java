@@ -65,4 +65,23 @@ public final class ReentryGuard {
         long away = now - lastWinAt;
         return away >= REENTER_GAP_MS ? away : 0L;
     }
+
+    /* ═══ v7.12.0 前台竞速晋升（回切拦截修复·死因③）═══
+     * 窗口事件与「活动窗口归属查询」的竞速：新前台应用的
+     * TYPE_WINDOW_STATE_CHANGED 到达时活动窗口尚未切换完成（最近任务
+     * 恢复/应用切换动画期）→ isActiveWindowOf=false → 旧版整事件丢弃且
+     * 不更新 lastFgPkg → 该应用后续全部内容事件被前台门丢弃 → 回切后
+     * 开屏广告整窗漏拦（用户实锤「切去别的应用十几分钟回来，广告拦截
+     * 不了」）。服务侧在丢弃时登记竞速候选（fgPendingPkg）；后续内容
+     * 事件经本判定 + 活动窗口复核确认后按新进入补扫。纯函数·JVM 可测。 */
+
+    /** v7.12.0：竞速候选是否值得晋升（事件包一致 + 在窗口期内）。
+     *  调用方还需自行复核 isActiveWindowOf(eventPkg)（服务侧 Android API，
+     *  不可纯函数化）。窗口期 3s：竞速只发生在切换瞬间，过期即作废。 */
+    public static boolean shouldPromotePending(String pendingPkg, long pendingAt,
+                                                String eventPkg, long now, long windowMs) {
+        if (pendingPkg == null || eventPkg == null || eventPkg.length() == 0) return false;
+        if (pendingAt <= 0L || now - pendingAt > windowMs) return false; // 过期/未登记
+        return pendingPkg.equals(eventPkg);
+    }
 }

@@ -1,19 +1,23 @@
-// ═══ v7.11.0 开屏提醒提速 · 真实 app.js 全量加载测试 ═══
-// 用户指令「开屏提醒速度一定要快，要显示把 app 固定在后台，进入 app 就显示，
-// 然后可以选择 24 小时之内不再显示」专项：
+// ═══ v7.12.0 开屏提醒三按钮 · 真实 app.js 全量加载测试 ═══
+// 用户指令「开屏提示内容（24 小时可以不显示）不要放在帮助里，每次进入
+// app 时弹出提示，有三个按钮，知道了，24小时不再提示，去上传日志」专项：
 //  ① 进入即显：init 直调 maybeShowPinTip（0ms——不再有 3s 定时器）；
 //  ② 内容钉死：提醒卡文案包含「固定在后台」引导（源码级断言）；
-//  ③ 24h 抑制：「24 小时内不再显示」确认后 24h 内不再弹（纯本地时间戳主闸）；
+//  ③ 24h 抑制：「24 小时内不再提示」确认后 24h 内不再弹（纯本地时间戳主闸）；
 //  ④ 「知道了」不耗资格：仅本轮收起——下轮评估资格保持；
-//  ⑤ 5min 防重建：展示后 5 分钟内 Activity 重建不重复弹（短窗不耗资格）；
-//  ⑥ 更新优先：更新页在场 → 提醒跳过；更新页后到 → 提醒卡被收起
+//  ⑤ 三按钮接线（v7.12.0）：「去上传日志」收起提醒 + 指引文案 +
+//     绝不自动上传（隐私红线：仅在你主动点「一键上传」时才上传）；
+//  ⑥ 60s 防重建：展示后 60 秒内 Activity 重建/旋转不重复弹（v7.11.0 的
+//     5min 窗会把「退出后 1~5 分钟内再进入」也吞掉——用户指令是每次
+//     进入都提示，v7.12.0 收紧为 60s）；
+//  ⑦ 更新优先：更新页在场 → 提醒跳过；更新页后到 → 提醒卡被收起
 //     （showUpdateGate 主动移除 #pin-tip——确认时间戳不受影响）；
-//  ⑦ 进程被杀：确认时间戳落 kv/localStorage——新会话在 24h 内仍抑制；
-//  ⑧ 时间回拨：未来时间戳 → 负时长 < 窗口 → 视为仍在抑制窗内；
-//  ⑨ 清数据：时间戳清除 → 重新展示资格恢复；
-//  ⑩ 重复弹窗：同一会话至多一张（pinTipShownThisSession 闸）；
-//  ⑪ 主线程零阻塞：maybeShowPinTip 纯同步本地路径（无网络/无重计算）；
-//  ⑫ 与更新检查彻底无关：网络检查永不收尾也照常展示（v7.10.0 语义保持）。
+//  ⑧ 进程被杀：确认时间戳落 kv/localStorage——新会话在 24h 内仍抑制；
+//  ⑨ 时间回拨：未来时间戳 → 负时长 < 窗口 → 视为仍在抑制窗内；
+//  ⑩ 清数据：时间戳清除 → 重新展示资格恢复；
+//  ⑪ 重复弹窗：同一会话至多一张（pinTipShownThisSession 闸）；
+//  ⑫ 主线程零阻塞：maybeShowPinTip 纯同步本地路径（无网络/无重计算）；
+//  ⑬ 与更新检查彻底无关：网络检查永不收尾也照常展示（v7.10.0 语义保持）。
 const fs = require("fs");
 const APPJS = __dirname + "/../assets/www/app.js";
 const src = fs.readFileSync(APPJS, "utf8");
@@ -64,6 +68,7 @@ const TAIL = `
   store, appVer, appCode,
   HAS_BRIDGE,
   resetPinTipSession: () => { pinTipShownThisSession = false; },
+  goUploadLogFromTip: (typeof goUploadLogFromTip === "function" ? goUploadLogFromTip : null),
 };`;
 (0, eval)(src + TAIL);
 const T = globalThis.__T__;
@@ -137,20 +142,22 @@ A("旧 3s 提醒定时器已移除（不再等 3000ms）",
 A("提醒不再链在 checkUpdateOnLaunch().finally 之后",
   !/checkUpdateOnLaunch\(\)\.finally\([\s\S]*?maybeShowPinTip/.test(src));
 
-console.log("═══ S3 内容钉死：固定后台引导 ═══");
+console.log("═══ S3 内容钉死：固定后台引导 + 三按钮 ═══");
 lsMap.clear(); freshSession();
 T.maybeShowPinTip();
 A("提醒卡已展示", !!miniDom.tip && !miniDom.tip.removed);
 A("标题包含「固定在后台」", String(miniDom.tip._html).includes("把开屏卫士固定在后台"));
 A("引导包含最近任务/锁定操作", String(miniDom.tip._html).includes("最近任务") && String(miniDom.tip._html).includes("锁定"));
-A("包含「24 小时内不再显示」选项", String(miniDom.tip._html).includes("24 小时内不再显示"));
+A("包含「24 小时内不再提示」选项（v7.12.0 措辞）", String(miniDom.tip._html).includes("24 小时内不再提示"));
+A("包含「去上传日志」按钮（v7.12.0 三按钮）", String(miniDom.tip._html).includes("去上传日志"));
+A("卡内文案指引「点下方去上传日志」（隐私措辞见 S6 toast）", String(miniDom.tip._html).includes("点下方「去上传日志」"));
 
-console.log("═══ S4 24h 抑制（「24 小时内不再显示」确认后）═══");
+console.log("═══ S4 24h 抑制（「24 小时内不再提示」确认后）═══");
 lsMap.clear(); freshSession();
 T.maybeShowPinTip();
 A("提示已展示（按钮接线面就绪）", !!miniDom.tip && !miniDom.tip.removed);
 const snoozeBtn = miniDom.buttons["pin-tip-snooze:click"];
-A("「24 小时内不再显示」按钮已接线", typeof snoozeBtn === "function");
+A("「24 小时内不再提示」按钮已接线", typeof snoozeBtn === "function");
 snoozeBtn();  // 确认
 A("确认后卡片移除 + 时间戳落库", miniDom.tip.removed === true
   && lsMap.has("adshield_pin_tip_confirmed_at"));
@@ -171,15 +178,28 @@ A("「知道了」仅本轮收起（卡片移除）", miniDom.tip.removed === tr
 A("「知道了」不写确认时间戳（下轮进入仍会提醒）",
   !lsMap.has("adshield_pin_tip_confirmed_at") && T.pinTipThrottled() === false);
 
-console.log("═══ S6 5min 防重建（展示后短窗）═══");
+console.log("═══ S6 「去上传日志」按钮（v7.12.0 三按钮之三）═══");
+lsMap.clear(); freshSession();
+T.maybeShowPinTip();
+const uploadBtn = miniDom.buttons["pin-tip-upload:click"];
+A("「去上传日志」按钮已接线", typeof uploadBtn === "function");
+uploadBtn();
+A("点击后提醒卡收起（跳转不叠弹）", miniDom.tip.removed === true);
+A("不写确认时间戳（跳转不耗 24h 资格）", !lsMap.has("adshield_pin_tip_confirmed_at"));
+const afterToast = (byId.get("toast") && byId.get("toast")._html) || "";
+A("指引文案提醒「仅在你主动点击时才上传」（绝不自动上传）", String(afterToast).includes("仅在你主动点击时才上传"));
+
+console.log("═══ S7 60s 防重建（展示后短窗——每次进入语义）═══");
 lsMap.clear(); freshSession();
 lsMap.set("adshield_pin_tip_shown_at", String(Date.now()));
-A("刚展示过 → 5min 内防重建抑制", T.pinTipRecentlyShown() === true);
-nowMock = Date.now() + 5 * 60 * 1000 + 1;
-A("5min+1ms 短窗结束", T.pinTipRecentlyShown() === false);
+A("刚展示过 → 60s 内防旋转/重建重复弹", T.pinTipRecentlyShown() === true);
+nowMock = Date.now() + 60 * 1000 + 1;
+A("60s+1ms 短窗结束（再进入即弹）", T.pinTipRecentlyShown() === false);
+A("源码级：RESHOW_GUARD = 60 * 1000（旧 5min 窗已收紧）",
+  /PIN_TIP_RESHOW_GUARD_MS = 60 \* 1000/.test(src));
 nowMock = null;
 
-console.log("═══ S7 更新优先 ═══");
+console.log("═══ S8 更新优先 ═══");
 lsMap.clear(); freshSession();
 miniDom.gate = new El("update-gate");   // 更新页已在场
 T.maybeShowPinTip();
@@ -192,29 +212,29 @@ A("提醒先展示", !!miniDom.tip && !miniDom.tip.removed);
 T.showUpdateGate({ tag: "v7.11.1", apkMB: 0.9, apkDigest: "sha256:x", remoteVersionCode: 81100, notes: "1. x" });
 A("更新页后到 → 提醒卡被收起（showUpdateGate 主动移除 #pin-tip）", miniDom.tip.removed === true);
 
-console.log("═══ S8 进程被杀重启（时间戳持久）═══");
+console.log("═══ S9 进程被杀重启（时间戳持久）═══");
 lsMap.clear(); freshSession();
 lsMap.set("adshield_pin_tip_confirmed_at", String(Date.now()));
 T.resetPinTipSession();   // 等价新进程（会话闸复位——时间戳在 kv/localStorage）
 A("新会话 24h 内仍抑制（时间戳跨进程持久）", T.pinTipThrottled() === true);
 
-console.log("═══ S9 时间回拨防御 ═══");
+console.log("═══ S10 时间回拨防御 ═══");
 lsMap.clear(); freshSession();
 lsMap.set("adshield_pin_tip_confirmed_at", String(Date.now() + 3600 * 1000)); // 未来时间戳（回拨后遗留）
 A("未来时间戳（回拨面）→ 负时长仍判抑制（防回拨刷弹窗）", T.pinTipThrottled() === true);
 
-console.log("═══ S10 清数据恢复 ═══");
+console.log("═══ S11 清数据恢复 ═══");
 lsMap.clear(); freshSession();
 A("时间戳清除 → 资格恢复（重新可弹）", T.pinTipThrottled() === false);
 
-console.log("═══ S11 同会话单卡 ═══");
+console.log("═══ S12 同会话单卡 ═══");
 lsMap.clear(); freshSession();
 T.maybeShowPinTip();
 const firstTip = miniDom.tip;
 T.maybeShowPinTip();
 A("同会话重复评估不二弹（pinTipShownThisSession 闸）", miniDom.tip === firstTip);
 
-console.log("═══ S12 主线程零阻塞 ═══");
+console.log("═══ S13 主线程零阻塞 ═══");
 A("maybeShowPinTip 纯同步本地路径（函数体无 await/fetch/网络）",
   !/function maybeShowPinTip\s*\(\)\s*\{[\s\S]*?await[\s\S]*?\}/.test(src));
 

@@ -132,8 +132,12 @@ A("index.html 无 #page-sub（订阅页 DOM 移除）", !html.includes('id="page
 A("index.html 无订阅市场/导入按钮残留", !html.includes('id="sub-market"') && !html.includes('id="btn-sub-import"') && !html.includes('id="sub-url"'));
 A("index.html 底栏 = 首页 / 帮助 / 我的（data-page 三枚）",
   html.includes('data-page="home"') && html.includes('data-page="help"') && html.includes('data-page="me"') && !html.includes('data-page="sub"'));
-A("index.html 帮助页关键卡在场（如何使用/固定后台/订阅规则（自动）/常见问题）",
-  html.includes("如何使用") && html.includes("把 App 固定在后台") && html.includes("订阅规则（自动）") && html.includes("常见问题"));
+A("index.html 帮助页关键卡在场（v7.12.0 精简版：快速上手/让守护更稳/常见问题）",
+  html.includes("快速上手") && html.includes("让守护更稳") && html.includes("常见问题"));
+A("v7.12.0 帮助页去冗余：开屏提示文案不再在帮助页重复（无「固定在后台（重要）」旧卡）",
+  !html.includes("把 App 固定在后台（重要）") && !html.includes("订阅规则（自动）") && !html.includes("⭐7.4k"));
+A("帮助页常见问题含「遇到广告没跳过→去上传日志」指引（v7.12.0 三按钮闭环）",
+  html.includes("开屏提醒里点「去上传日志」"));
 A("app.js 无订阅页接线残留（refreshSub/sub-market/导入按钮）",
   !/refreshSub|sub-market|btn-sub-import|renderSubMarket|__subProgress/.test(src));
 
