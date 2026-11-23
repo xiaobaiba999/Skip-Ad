@@ -201,7 +201,12 @@ def main(argv):
         repo_slug = ""
     cdn_apk_url = ""
     if repo_slug:
-        cdn_apk_url = "https://cdn.jsdelivr.net/gh/%s@main/android-app/dist/adshield-v%s.apk" % (
+        # v7.12.0 发布管线热修复（2026-11-23 实测）：cdn 接入点当日对 APK
+        # 文件返回 301→raw.githubusercontent.com（大陆阻断域——与 fastly 历史
+        # 行为同型，旧「cdn 直出可用」结论过时）；gcore 全日直出稳定
+        # （版本化 APK 直出 200 字节级一致、latest 别名陈旧但自愈）。镜像
+        # 字段改用 gcore——清单侧自动下载镜像链大陆可靠化的最小改动。
+        cdn_apk_url = "https://gcore.jsdelivr.net/gh/%s@main/android-app/dist/adshield-v%s.apk" % (
             repo_slug, vn)
     manifest = {
         "schemaVersion": SCHEMA_VERSION,

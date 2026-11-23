@@ -1,0 +1,138 @@
+diff --git a/.github/workflows/update-manifest.yml b/.github/workflows/update-manifest.yml
+index c5d3c18..72bfe12 100644
+--- a/.github/workflows/update-manifest.yml
++++ b/.github/workflows/update-manifest.yml
+@@ -206,24 +206,71 @@ jobs:
+         if: steps.pages.outputs.enabled == 'true'
+         uses: actions/deploy-pages@v4
+ 
+-      - name: Purge jsDelivr 备用链缓存（四接入点共享后端——热修复即时生效）
+-        # v7.9.9 网络专项：客户端备用链改用 jsDelivr 四接入点（国内可达）；
+-        # @main 分支引用 jsDelivr 缓存 12h——不 purge 则国内用户最长 12h
+-        # 看不到新版本。purge.jsdelivr.net 免认证公开端点（限频），一次
+-        # purge 对四接入点（cdn/fastly/gcore/testingcf）整体生效；失败不
+-        # 阻塞主链路（raw 主源已提交——线上核验步骤会如实报告各源状态）。
+-        if: steps.rel.outputs.prerelease != 'true' && steps.gen.outputs.skipped != 'true' && env.COMMITTED == 'true'
++      - name: Purge jsDelivr 备用链 + 四点重试核验（清单 + APK 三路——陈旧窗口根因定案版）
++        # v7.12.0 发布管线热修复（2026-11-23 实测定案）：jsDelivr @main 分支
++        # 有源站级分支解析缓存（TTL ≤12h）——purge API 仅清 CF/FY 边缘
++        # （gcore 完全不受 purge 影响），源站分支缓存未到期时边缘 MISS 回源
++        # 拿到的仍是旧内容（实测：v7.12.0 发布后 purge 返回 finished 但四点
++        # 0/4 生效、age/etag 证明陈旧层在源站）。旧步骤「purge 后 1 秒核验、
++        # 失败只打警告」即本轮用户实锤「7.11.0 检查更新检测不到 7.12.0」的
++        # 根因。新步骤：三路径 purge（清单 + latest 别名 + 版本化 APK——旧步骤
++        # 只 purge 清单，App 401 兼底直连的 adshield-latest.apk 从未被清）
++        # ×四轮「purge → 75s 传播窗 → 四点实测 versionCode」，全生效早退；
++        # 仍陈旧则如实报告（已知 ≤12h 自愈窗口，raw 主源已生效不受影响）。
++        # 陈旧不判失败（源站 TTL 机制非故障）——但结论汇总里如实呈现。
++        if: steps.rel.outputs.prerelease != 'true' && steps.gen.outputs.skipped != 'true'
+         run: |
+           set -uo pipefail
+-          PURGE_URL="https://purge.jsdelivr.net/gh/${GITHUB_REPOSITORY}@main/update/latest.json"
+-          OUT=$(curl -fsSL --max-time 60 "$PURGE_URL" 2>&1 || true)
+-          if echo "$OUT" | grep -q '"status"'; then
+-            echo "✓ jsDelivr 缓存已 purge（cdn/fastly/gcore/testingcf 四接入点共享生效）"
+-            echo "$OUT" | head -c 400; echo ""
+-            echo "PURGE_FAIL=0" >> "$GITHUB_ENV"
+-          else
+-            echo "⚠ purge 未确认（$OUT）——不阻塞：jsDelivr 最长 12h 后自然过期，raw 主源不受影响"
+-            echo "PURGE_FAIL=1" >> "$GITHUB_ENV"
++          EXPECT_VC=$(jq -r '.versionCode' /tmp/latest.json)
++          EXPECT_SIZE=$(jq -r '.apkSize' /tmp/latest.json)
++          TAG="${{ steps.rel.outputs.tag }}"
++          PATHS=(
++            "update/latest.json"
++            "android-app/dist/adshield-latest.apk"
++            "android-app/dist/adshield-${TAG}.apk"
++          )
++          JSDELIVR_OK=0
++          for ROUND in 1 2 3 4; do
++            echo "── 第 ${ROUND} 轮 purge（3 路径）──"
++            for P in "${PATHS[@]}"; do
++              OUT=$(curl -fsSL --max-time 60 "https://purge.jsdelivr.net/gh/${GITHUB_REPOSITORY}@main/${P}" 2>&1 || true)
++              ST=$(echo "$OUT" | jq -r '.status // "未确认"' 2>/dev/null || true)
++              TH=$(echo "$OUT" | jq -r '[.paths[]?.throttled] | any // empty' 2>/dev/null || true)
++              echo "  purge ${P} → ${ST}${TH:+（throttled!）}"
++              sleep 5
++            done
++            echo "  等待 75s（边缘回源传播窗）后核验四接入点…"
++            sleep 75
++            OK=0
++            for HOST in cdn.jsdelivr.net fastly.jsdelivr.net gcore.jsdelivr.net testingcf.jsdelivr.net; do
++              VC=$(curl -fsSL --max-time 30 "https://${HOST}/gh/${GITHUB_REPOSITORY}@main/update/latest.json" 2>/dev/null | jq -r '.versionCode // empty' 2>/dev/null || true)
++              if [ "${VC:-}" = "${EXPECT_VC}" ]; then
++                OK=$((OK+1))
++                echo "  ✓ ${HOST} → versionCode=${VC}（生效）"
++              else
++                echo "  ⚠ ${HOST} → versionCode=${VC:-无}（陈旧——源站 @main 分支缓存未到期）"
++              fi
++            done
++            JSDELIVR_OK=$OK
++            if [ "$OK" = "4" ]; then
++              echo "✓ jsDelivr 四接入点全部生效（第 ${ROUND} 轮）"
++              break
++            fi
++            echo "⚠ 第 ${ROUND} 轮 ${OK}/4 生效——已知机制：源站 @main 分支缓存 TTL ≤12h 自愈；raw 主源不受影响"
++          done
++          echo "JSDELIVR_OK=${JSDELIVR_OK}" >> "$GITHUB_ENV"
++          echo "JSDELIVR_TOTAL=4" >> "$GITHUB_ENV"
++          # 陈旧期救济通道核验：版本化 APK 直链（@main 下新文件首取即新鲜，
++          # 2026-11-23 实测 898614B 字节级一致）——陈旧窗内国内用户手装出路
++          if [ "${JSDELIVR_OK}" != "4" ]; then
++            APK_URL="https://cdn.jsdelivr.net/gh/${GITHUB_REPOSITORY}@main/android-app/dist/adshield-${TAG}.apk"
++            APK_SZ=$(curl -fsSL --max-time 120 "$APK_URL" 2>/dev/null | wc -c | tr -d ' ')
++            if [ "${APK_SZ:-0}" = "${EXPECT_SIZE}" ]; then
++              echo "✓ 陈旧窗救济直链已新鲜：${TAG} → ${APK_SZ}B（与 Release 资产同字节）"
++              echo "  ${APK_URL}"
++            else
++              echo "⚠ 救济直链未确认（${APK_SZ:-0}B ≠ 清单载 ${EXPECT_SIZE}B）——请人工核验"
++            fi
+           fi
+ 
+       - name: 线上核验（raw 主源 + jsDelivr 备用链真实可达性——不伪造部署成功）
+@@ -252,25 +299,16 @@ jobs:
+             fi
+             sleep 60
+           done
+-          # jsDelivr 备用链：软核验（如实报告，不阻塞——raw 主源已生效）
+-          JSDELIVR_OK=0
+-          JSDELIVR_TOTAL=0
+-          for HOST in cdn.jsdelivr.net fastly.jsdelivr.net gcore.jsdelivr.net testingcf.jsdelivr.net; do
+-            JSDELIVR_TOTAL=$((JSDELIVR_TOTAL+1))
+-            URL="https://${HOST}/gh/${GITHUB_REPOSITORY}@main/update/latest.json"
+-            BODY=$(curl -fsSL --max-time 30 "$URL" || true)
+-            VC=$(echo "$BODY" | jq -r '.versionCode // empty' 2>/dev/null || true)
+-            if [ "$VC" = "$EXPECT_VC" ]; then
+-              echo "✓ jsDelivr 备用源已生效：$HOST（versionCode=$VC）"
+-              JSDELIVR_OK=$((JSDELIVR_OK+1))
+-            else
+-              echo "⚠ jsDelivr 备用源未确认：$HOST（versionCode=${VC:-无}·purge 后缓存回源最长几分钟）——国内用户备用源最长 12h 后自然回源"
+-            fi
+-          done
+-          echo "JSDELIVR_OK=$JSDELIVR_OK" >> "$GITHUB_ENV"
+-          echo "JSDELIVR_TOTAL=$JSDELIVR_TOTAL" >> "$GITHUB_ENV"
++          # jsDelivr 备用链：状态由 Purge 步骤的四轮重试核验给出（此处不重复探测；
++          # 陈旧=已知 ≤12h 源站分支缓存自愈窗口，非故障）
++          echo "jsDelivr 备用链（Purge 步骤四轮重试后）：${JSDELIVR_OK:-0}/${JSDELIVR_TOTAL:-4} 生效"
++          if [ "${JSDELIVR_OK:-0}" != "${JSDELIVR_TOTAL:-4}" ]; then
++            echo "  陈旧期间国内用户救济：raw 主源已生效；版本化 APK 直链（Purge 步骤已核验字节）"
++            echo "  https://cdn.jsdelivr.net/gh/${GITHUB_REPOSITORY}@main/android-app/dist/adshield-${{ steps.rel.outputs.tag }}.apk"
++            echo "  陈旧窗内旧版应用内检查更新可能显示「已是最新」——≤12h 后四点自愈为 ${EXPECT_VC}"
++          fi
+           if [ "$RAW_OK" != "1" ]; then
+-            echo "⚠ 6 分钟内 raw 主源未确认——清单已提交 main，jsDelivr 备用 $JSDELIVR_OK/$JSDELIVR_TOTAL 生效；请稍后手动核验 $RAW_URL"
++            echo "⚠ 6 分钟内 raw 主源未确认——清单已提交 main，jsDelivr 备用 ${JSDELIVR_OK:-0}/${JSDELIVR_TOTAL:-4} 生效；请稍后手动核验 $RAW_URL"
+           fi
+           exit 0
+ 
+@@ -293,5 +331,9 @@ jobs:
+           else
+             echo "备用地址     : Pages 未启用（客户端备用链已改用 jsDelivr 四接入点——v7.9.9）"
+           fi
+-          echo "jsDelivr 链  : 生效 ${JSDELIVR_OK:-0}/${JSDELIVR_TOTAL:-4}（purge 失败标记=${PURGE_FAIL:-未设置}）"
++          if [ "${JSDELIVR_OK:-0}" = "${JSDELIVR_TOTAL:-4}" ]; then
++            echo "jsDelivr 链  : 生效 ${JSDELIVR_OK:-0}/${JSDELIVR_TOTAL:-4}（四接入点全部新鲜）"
++          else
++            echo "jsDelivr 链  : 生效 ${JSDELIVR_OK:-0}/${JSDELIVR_TOTAL:-4}（陈旧——已知 ≤12h 源站 @main 分支缓存自愈窗口：期间国内旧版应用内检查更新可能显示「已是最新」；raw 主源已生效、版本化 APK 直链字节级救济通道见 Purge 步骤日志）"
++          fi
+           echo "══════════════════════════════════════════"

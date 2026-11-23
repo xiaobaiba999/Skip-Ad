@@ -114,7 +114,8 @@ android-app/
 ## 安装
 
 1. [Releases](https://github.com/xiaobaiba999/Skip-Ad/releases/latest) 下载 APK（880KB）直接安装（v7.x 任何正式版覆盖安装即升级 v7.12.0——versionCode 82000，卡死根治 + 回切拦截修复即刻生效；已装 v7.9.6plus/82300 的历史用户见 CHANGELOG v7.9.7 节过渡口径）；
-   - GitHub 下载慢/不可达时用 jsDelivr 官方直链（同一 APK · SHA-256 见 Releases 页）：`https://cdn.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/android-app/dist/adshield-v7.12.0.apk` 或「最新版」别名 `…/android-app/dist/adshield-latest.apk`（gcore/testingcf 接入点同路径可换用；fastly 对 APK 会重定向到国内被阻断的 raw 源，勿用）——App 内「检查更新」失败时也会引导此兜底通道（v7.11.0 新增）；
+   - GitHub 下载慢/不可达时用 jsDelivr 官方直链（同一 APK · SHA-256 见 Releases 页）——**优先 gcore 接入点**（实测直出稳定）：`https://gcore.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/android-app/dist/adshield-v7.12.0.apk` 或「最新版」别名 `…/android-app/dist/adshield-latest.apk`（cdn/testingcf 同路径可换用，但 cdn 偶发对 APK 301→raw 阻断域——见 CHANGELOG 2026-11-23 发布管线热修复节；fastly 对 APK 恒 301→raw 勿用）——App 内「检查更新」失败时也会引导此兜底通道（v7.11.0 新增）；
+   - **应用内「检查更新」提示「已是最新」但 GitHub 已发新版**：jsDelivr 对 `@main` 分支有源站级缓存（最长 12h）——发布后半天内国内备用链可能仍在旧清单（raw 主源已即时生效但国内不可达）。此窗口内请直接用上面的 gcore 版本化直链手动安装；不操作也无损——≤12h 后四接入点自愈，检查更新即看到新版本；
    - **v7.9.5/v7.9.6 用户应用内「检查更新」报「查询失败：GitHub 返回 401」**：这两个版本检查更新携带的内置令牌已被吊销（安全整改后旧版无法从服务侧修复）——请直接用上述任一链接下载安装（82000 > 79600 同签名覆盖安装，无障碍授权/学习数据/订阅全保留），详见 [CHANGELOG v7.10.0 节](docs/CHANGELOG.md)；
 2. 开启无障碍服务（系统会弹 10 秒安全确认，属正常防诈设计——开启一次后 App 内/通知栏即可控制，绝不再去系统设置）；
 3. 常被清理后台的机型（HyperOS 等）：App 首页「保活体检」只显示待处理项，点「去设置」逐项确认。
