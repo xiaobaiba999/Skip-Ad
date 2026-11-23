@@ -3,6 +3,15 @@
 > 首页只保留当前版本要点；全部历史版本详情在本页归档。
 > 发布物（APK/报告/文档）见 [Releases](https://github.com/xiaobaiba999/Skip-Ad/releases) 与 `docs/test-reports/`。
 
+## v7.14.0（2026-11-24）—— 检查更新陈旧窗口根治（@tag 探测链）+ 兜底直连 gcore 化
+
+- **本轮定位（「继续执行，进行修复优化」指令 + 发布管线三连实锤驱动）**：v7.11.0 检测不到 v7.12.0 → 上轮根因定案（jsDelivr @main 源站分支缓存 TTL ≤12h）→ 本轮 v7.13.0 发布后四接入点再次全陈旧（实测 cdn=81000 · gcore/fastly/testingcf=80000）——**每次发布后旧客户端 ≤12h 看到「已是最新」的根结构性问题**。本轮按上轮 CHANGELOG 预埋的「未来硬化方向」实施根治：@tag 探测链。**诚实口径：真机/模拟器 E2E NOT_RUN，JVM/JS 行为级验证 + 代码级审计**（同既往口径，待用户实测反馈）。
+- **①@tag 探测链（根治——本轮实测验证的机制差）**：jsDelivr 对 `@main` 分支引用有源站级分支解析缓存（TTL ≤12h、purge 不可达），但对 **`@tag` 引用是不可变键**——无源站分支缓存，发布即新鲜（本轮实测：`@v7.13.0` tag 清单 cdn/gcore 双点即时返回 83000；未发布 tag 干净 404）。`UpdateRepository` 新增 `probeTagUpdates`：@main 链 SUCCESS 且未判出新版（陈旧窗口/同版/hasRelease:false——网络已证实活着）→ 探测当前版本之后的候选 tag 清单（vM.m.p+1 / vM.(m+1).0 / vM.(m+1).1 / vM.(m+2).0——下一补丁 + 下两个 minor）；任一 tag 清单 isNewer → 采纳（写缓存 + `tagSourced:true` 打标），跳级发布取最高 versionCode 候选。**安全闸零放宽**：tag 清单经 `UpdateManifest.parse` 同一信任链（包名/HTTPS 发布通道/SHA-256 校验全套）。成本闸：每 tag 先 gcore 后 cdn 两点至多两取（404 = 干净「未发布」结论不换点，仅网络类错误换点）；独立预算 12s；15min 缓存/单飞/退避全复用——无轮询风暴。versionName 取自 PackageManager（异常 → null 优雅降级为 v7.13.0 语义零行为变更）。**诚实边界**：隔两个以上 minor 的老版本（探测集覆盖不到最新版）仍靠 @main 链源站缓存 ≤12h 自愈或 gcore 版本化直链手工救济。
+- **②兜底直连 gcore 化（401 救济链当日实锤修复）**：`FALLBACK_CDN_LATEST`（检查更新失败时的 CDN 直连下载按钮出口）cdn→gcore——本轮实测 cdn 对 APK 文件返回 403（与 fastly 301→raw 同型阻断边界；v7.11.0 兜底直连按钮在 cdn 当日阻断下失效），gcore 全日直出且与 Release 资产 SHA-256 逐字节一致（898614B 实测）。
+- **③浏览器预览同源镜像**：app.js 浏览器路径 fetchLatest 追加 `probeTagManifests`（与 Java 侧同候选集公式 + 同端点容错语义——预览环境与 APK 行为可互证）。
+- **测试**：JVM `UpdateRepositoryTest` 新增 S9 探测链套件（候选集纯函数四 tag 序/非三段优雅降级/命中 isNewer 载荷/全 404 零行为变更/gcore 网络异常换 cdn 点/跳级取最高/不新款不采信/payloadShowsNewer·markTagSourced·isNetClassError 辅助三态）；JS `test_update_check.js` 新增 ③z/③y/③x 三场景（@main 陈旧→tag 命中零陈旧窗口/全 404 照常/gcore 异常换点）+ withFetch tagHandler 缝（默认 404 零污染既有场景）+ 67 断言全绿；`test_bugtip24h.js` 兜底直链断言 gcore 化。**测试环境事故如实记**：本轮沙箱曾整体重置（仓库已重克隆恢复、构建工具链已重建）——v7.13.0 发布链在重置前已完成并经 GitHub 远端核验完好（Release/资产/清单/tag 逐项）。
+- **本轮发布口径（诚实）**：因沙箱重置丢失本地凭据（local-gh-token 不入库不可恢复），v7.14.0 的 GitHub 推送与 Release 创建需要新凭据后执行——代码/测试/构建物已本地就绪待推。
+
 ## v7.13.0（2026-11-24）—— 开屏提醒跨升级修复 + 切回即提醒 + 上传快失败与网络恢复自动补传
 
 - **本轮定位（用户三项实锤驱动）**：①「进入 app 没有弹出提醒，提醒窗口还是按之前说的来，进入就提醒（知道了 / 24 小时不再提醒 / 去上传日志三按钮）」；②「日志上传的又慢又成功不了（连接上传服务超时——已自动重试 3 次仍不通）」+「8 小时自动提交一次日志要实现（不在 GLM 加定时任务——App 内实现）」；③jsDelivr purge 巡更（v7.12.0 陈旧窗口翻转盯守）+ 版本检测确认正常 + 性能/能耗/响应/体验测试 + 推送 GitHub/Release。**诚实口径：真机/模拟器 E2E NOT_RUN，全部为 JVM/JS 行为级验证 + 代码级性能/能耗审计**（同 v7.12.0 口径，待用户实测反馈）。

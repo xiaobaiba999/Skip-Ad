@@ -35,6 +35,7 @@ public final class UpdateRepositoryTest {
         s6_cacheInfoRobustness();
         s7_okPayload();
         s8_walkSourcesChain();
+        s9_tagProbeChain();
         TestHost.done();
     }
 
@@ -413,5 +414,119 @@ public final class UpdateRepositoryTest {
                 "com.zai.adshield", 79800);
         TestHost.check(w10.kind == UpdateRepository.WalkResult.SUCCESS,
                 "S8m Fetcher 异常返回 null → 防御性继续链成功");
+    }
+
+    /* ═══ S9 v7.14.0 @tag 探测链（陈旧窗口根治——Fetcher 缝全链可测）═══
+     * 候选集构造（纯函数）/ 探测命中 / 全 404 未命中 / 不新款跳过 /
+     * 网络异常换点（gcore→cdn）/ 跳级取最高 versionCode / 兜底防御。 */
+    private static final String TAG_MANIFEST_714 = "{\"schemaVersion\":1,\"versionName\":\"7.14.0\","
+            + "\"versionCode\":84000,\"releaseTag\":\"v7.14.0\",\"releaseName\":\"Skip-Ad v7.14.0\","
+            + "\"releaseNotes\":\"versionCode: 84000\\n1. tag 探测\","
+            + "\"publishedAt\":\"2026-11-23T12:00:00Z\","
+            + "\"apkUrl\":\"https://github.com/xiaobaiba999/Skip-Ad/releases/download/v7.14.0/adshield-v7.14.0.apk\","
+            + "\"apkFileName\":\"adshield-v7.14.0.apk\","
+            + "\"apkSha256\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\","
+            + "\"apkSize\":890422,\"packageName\":\"com.zai.adshield\"}";
+    private static final String TAG_MANIFEST_715 = TAG_MANIFEST_714
+            .replace("7.14.0", "7.15.0").replace("84000", "85000");
+
+    private static String tagUrl(int idx, String tag) {
+        return UpdateRepository.TAG_PROBE_ENDPOINTS[idx] + tag + UpdateRepository.TAG_MANIFEST_PATH;
+    }
+
+    private static void s9_tagProbeChain() {
+        // S9a 候选集纯函数：7.13.0 → v7.13.1 / v7.14.0 / v7.14.1 / v7.15.0（gcore 端点）
+        java.util.List<String> urls = UpdateRepository.tagProbeUrls("7.13.0");
+        TestHost.check(urls != null && urls.size() == 4
+                        && urls.get(0).equals(tagUrl(0, "v7.13.1"))
+                        && urls.get(1).equals(tagUrl(0, "v7.14.0"))
+                        && urls.get(2).equals(tagUrl(0, "v7.14.1"))
+                        && urls.get(3).equals(tagUrl(0, "v7.15.0")),
+                "S9a 候选集 = 下一补丁 + 下两 minor 四 tag（gcore 端点）");
+        TestHost.check(UpdateRepository.tagProbeUrls("v7.13.0").equals(urls),
+                "S9a2 v 前缀容忍（同候选集）");
+
+        // S9b 非三段版本名（plus 系）→ null（不探测，零行为变更）
+        TestHost.check(UpdateRepository.tagProbeUrls(null) == null
+                        && UpdateRepository.tagProbeUrls("7.9.6plus") == null
+                        && UpdateRepository.tagProbeUrls("7.13") == null
+                        && UpdateRepository.tagProbeUrls("x.y.z") == null,
+                "S9b 非三段 versionName → null（优雅降级）");
+
+        // S9c 探测命中：@tag v7.14.0 清单（84000 > 83000）→ SUCCESS（tag URL 为源）
+        ScriptFetcher f = new ScriptFetcher();
+        f.script.put(tagUrl(0, "v7.14.0"), TAG_MANIFEST_714);
+        for (String t : new String[]{"v7.13.1", "v7.14.1", "v7.15.0"}) {
+            f.script.put(tagUrl(0, t), "ERR:" + UpdateManifest.ERR_HTTP); // 干净 404（未发布）
+        }
+        UpdateRepository.WalkResult w = UpdateRepository.probeTagUpdates(f,
+                "com.zai.adshield", 83000, "7.13.0");
+        TestHost.check(w != null && w.kind == UpdateRepository.WalkResult.SUCCESS
+                        && w.url.equals(tagUrl(0, "v7.14.0"))
+                        && w.payload.contains("\"isNewer\":true") && w.payload.contains("84000"),
+                "S9c tag 清单命中 → SUCCESS（isNewer=true 载荷 · tag URL 为源）");
+        TestHost.check(f.requested.size() == 4,
+                "S9c 四候选各探一次（命中后不中断——跳级面取最高 versionCode）");
+
+        // S9d 全候选 404（未发布——ERR_HTTP 干净结论不换点）→ null
+        ScriptFetcher f4 = new ScriptFetcher();
+        for (String u : UpdateRepository.tagProbeUrls("7.13.0")) {
+            f4.script.put(u, "ERR:" + UpdateManifest.ERR_HTTP);
+        }
+        TestHost.check(UpdateRepository.probeTagUpdates(f4, "com.zai.adshield", 83000, "7.13.0") == null,
+                "S9d 全 tag 404 → null（未发布，@main 结果照常）");
+        TestHost.check(f4.requested.size() == 4, "S9d 404 干净结论不换点（恰四请求）");
+
+        // S9e 网络异常换点：gcore ERR_NETWORK → cdn 命中（接入点容错）
+        ScriptFetcher fe = new ScriptFetcher();
+        fe.script.put(tagUrl(0, "v7.14.0"), "ERR:" + UpdateManifest.ERR_NETWORK);
+        fe.script.put(tagUrl(1, "v7.14.0"), TAG_MANIFEST_714);
+        for (String t : new String[]{"v7.13.1", "v7.14.1", "v7.15.0"}) {
+            fe.script.put(tagUrl(0, t), "ERR:" + UpdateManifest.ERR_HTTP);
+        }
+        UpdateRepository.WalkResult we = UpdateRepository.probeTagUpdates(fe,
+                "com.zai.adshield", 83000, "7.13.0");
+        TestHost.check(we != null && we.url.equals(tagUrl(1, "v7.14.0")),
+                "S9e gcore 网络异常 → cdn 点命中（同 tag 换点）");
+        TestHost.check(fe.requested.size() == 5,
+                "S9e 404 一次 + 换点两取 + 其余 404 各一次 = 恰五请求");
+
+        // S9f 跳级取最高：v7.14.0 与 v7.15.0 双命中 → 85000 胜出
+        ScriptFetcher fb = new ScriptFetcher();
+        fb.script.put(tagUrl(0, "v7.14.0"), TAG_MANIFEST_714);
+        fb.script.put(tagUrl(0, "v7.15.0"), TAG_MANIFEST_715);
+        for (String t : new String[]{"v7.13.1", "v7.14.1"}) {
+            fb.script.put(tagUrl(0, t), "ERR:" + UpdateManifest.ERR_HTTP);
+        }
+        UpdateRepository.WalkResult wb = UpdateRepository.probeTagUpdates(fb,
+                "com.zai.adshield", 83000, "7.13.0");
+        TestHost.check(wb != null && wb.payload.contains("85000") && wb.url.equals(tagUrl(0, "v7.15.0")),
+                "S9f 跳级发布 → 最高 versionCode 候选胜出");
+
+        // S9g 不新款 tag 清单（≤ 当前）→ 跳过不采信
+        ScriptFetcher fo = new ScriptFetcher();
+        fo.script.put(tagUrl(0, "v7.14.0"), TAG_MANIFEST_714);
+        TestHost.check(UpdateRepository.probeTagUpdates(fo, "com.zai.adshield", 84000, "7.13.0") == null,
+                "S9g tag 清单不新款（≤ 当前 versionCode）→ 不采信");
+
+        // S9h 辅助纯函数：payloadShowsNewer / markTagSourced / isNetClassError
+        TestHost.check(UpdateRepository.payloadShowsNewer(
+                        UpdateManifest.parse(TAG_MANIFEST_714, "com.zai.adshield", 83000))
+                        && !UpdateRepository.payloadShowsNewer(
+                        UpdateManifest.parse(TAG_MANIFEST_714, "com.zai.adshield", 84000))
+                        && !UpdateRepository.payloadShowsNewer("{\"ok\":false}"),
+                "S9h payloadShowsNewer 三态（新款真/同版假/失败载荷假）");
+        String marked = UpdateRepository.markTagSourced(
+                UpdateManifest.parse(TAG_MANIFEST_714, "com.zai.adshield", 83000));
+        TestHost.check(marked.contains("\"tagSourced\":true"),
+                "S9h2 markTagSourced 打标在场（诚实口径）");
+        TestHost.check(UpdateRepository.isNetClassError(UpdateManifest.ERR_NETWORK)
+                        && UpdateRepository.isNetClassError(UpdateManifest.ERR_DNS)
+                        && UpdateRepository.isNetClassError(UpdateManifest.ERR_TIMEOUT)
+                        && UpdateRepository.isNetClassError(UpdateManifest.ERR_TLS)
+                        && !UpdateRepository.isNetClassError(UpdateManifest.ERR_HTTP)
+                        && !UpdateRepository.isNetClassError(UpdateManifest.ERR_SERVER)
+                        && !UpdateRepository.isNetClassError(null),
+                "S9h3 isNetClassError：网络类真 / HTTP 状态结论与 null 假");
     }
 }

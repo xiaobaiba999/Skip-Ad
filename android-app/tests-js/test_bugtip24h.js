@@ -90,8 +90,8 @@ A('appVer() 浏览器兜底 = "7.11.0"', T.appVer() === "7.11.0");
 A('appCode() 浏览器兜底 = "81000"', T.appCode() === "81000");
 
 console.log("═══ S1 检查更新失败 CDN 兜底 ═══");
-A("FALLBACK_CDN_LATEST = jsDelivr 仓库内 adshield-latest.apk 直链",
-  T.FALLBACK_CDN_LATEST === "https://cdn.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/android-app/dist/adshield-latest.apk");
+A("FALLBACK_CDN_LATEST = jsDelivr 仓库内 adshield-latest.apk 直链（v7.14.0 接入点 gcore 化——cdn 当日对 APK 403 实测定案）",
+  T.FALLBACK_CDN_LATEST === "https://gcore.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/android-app/dist/adshield-latest.apk");
 A("doFallbackDirectDownload 函数在场（失败→直连下载出口）",
   /function doFallbackDirectDownload\s*\(/.test(src));
 A("失败分支接线：note 报错 + dlBtn 置为 fallback 相（「直连下载最新版（CDN 兜底）」）",

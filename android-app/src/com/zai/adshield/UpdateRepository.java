@@ -89,6 +89,31 @@ public final class UpdateRepository {
      * v7.9.8 双源最坏 38s 实测可容忍；五源链靠本预算闸保持同量级上界。 */
     public static final long CHAIN_BUDGET_MS = 40 * 1000L;
 
+    /* ═══ v7.14.0 @tag 探测链（陈旧窗口根治——发布管线三连实锤驱动）═══
+     * 实锤史：v7.11.0 检测不到 v7.12.0（本轮前实锤）、v7.12.0 清单四接入点
+     * 陈旧窗口（本轮实测：cdn=81000 · gcore/fastly/testingcf=80000，源站
+     * @main 分支解析缓存 TTL ≤12h 不受 purge 影响）——每次发布后旧客户端
+     * 在 ≤12h 内看到「已是最新」。
+     * 根治：jsDelivr 对 @tag 引用是【不可变键】——无源站分支解析缓存，发布
+     * 即新鲜（本轮实测：@v7.13.0 tag 清单双点即时返回 83000；未发布 tag
+     * 干净 404）。探测当前版本之后的候选 tag 清单：命中即拿到零陈旧窗口的
+     * 新版元数据，彻底绕开 @main 12h 陈旧窗口。
+     * 探测集（当前 M.m.p）：vM.m.p+1 / vM.(m+1).0 / vM.(m+1).1 /
+     * vM.(m+2).0——覆盖下一补丁与下两个 minor（发布序列实测口径）。
+     * 老客户端（隔两个以上 minor）探测集覆盖不到最新版——仍靠 @main 链
+     * （TTL 到期后自愈）或手工救济（诚实边界，CHANGELOG 定案）。
+     * 触发条件：@main 链 SUCCESS 且未判出新版（isNewer≠true——含陈旧、
+     * 含 hasRelease:false）时才探测：网络已证实活着；已判出新款无需再探。
+     * 成本闸：每 tag 先 gcore 后 cdn 两点至多两取（404 = 干净未发布即停，
+     * 换端点仅限网络异常）；独立预算 12s；15min 缓存/单飞/退避全部复用
+     * 既有闸——无轮询风暴。 */
+    public static final long TAG_PROBE_BUDGET_MS = 12 * 1000L;
+    public static final String[] TAG_PROBE_ENDPOINTS = {
+            "https://gcore.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@",
+            "https://cdn.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@",
+    };
+    public static final String TAG_MANIFEST_PATH = "/update/latest.json";
+
     /* ═══ 策略常量（防风暴参数——全部可调于测试）═══ */
     public static final long FRESH_TTL_MS = 15 * 60 * 1000L;        // 新鲜缓存有效期
     public static final long MANUAL_COOLDOWN_MS = 30 * 1000L;       // 手动联网冷却
@@ -311,8 +336,29 @@ public final class UpdateRepository {
         WalkResult w = walkSources(REAL_FETCHER, cache, deadline, expectedPackage,
                 currentVersionCode);
         if (w.kind == WalkResult.SUCCESS) {
-            writeCache(ctx, buildCacheJson(new CacheInfo(w.body, w.etag, w.lastModified,
-                    System.currentTimeMillis(), w.url)));
+            /* ═══ v7.14.0 @tag 探测链接线（陈旧窗口根治）═══
+             * @main 链 SUCCESS 但未判出新版（陈旧窗口/无发布/同版）→ 探测候选
+             * tag 清单（不可变键零陈旧）。命中 → 采纳 tag 清单（写缓存 + 返回
+             * tagSourced 载荷）；未命中 → @main 结果照常（零行为变更）。
+             * 网络全灭（ALL_FAILED）不探测——快速失败保持 v7.13.0 语义。 */
+            WalkResult finalW = w;
+            boolean probed = false;
+            if (!payloadShowsNewer(w.payload)) {
+                String versionName = currentVersionNameOf(ctx);
+                if (versionName != null) {
+                    WalkResult tag = probeTagUpdates(REAL_FETCHER, expectedPackage,
+                            currentVersionCode, versionName);
+                    if (tag != null) {
+                        finalW = tag;
+                        probed = true;
+                    }
+                }
+            }
+            writeCache(ctx, buildCacheJson(new CacheInfo(finalW.body, finalW.etag,
+                    finalW.lastModified, System.currentTimeMillis(), finalW.url)));
+            if (probed) {
+                return markTagSourced(finalW.payload); // tagSourced:true（诚实口径）
+            }
             return w.payload; // ok:true —— fromCache:false（联网新得）
         }
         if (w.kind == WalkResult.NOT_MODIFIED && cache != null) {
@@ -334,6 +380,127 @@ public final class UpdateRepository {
             return new JSONObject(raw);
         } catch (Exception e) {
             return null;
+        }
+    }
+
+    /* ═══════════ v7.14.0 @tag 探测链（纯函数 + 探测走查——JVM 全链可测）═══════════ */
+
+    /** 当前版本名（PackageManager——生产恒在场；异常 → null = 探测链优雅
+     *  降级为 v7.13.0 语义，绝不影响主链）。 */
+    public static String currentVersionNameOf(Context ctx) {
+        try {
+            android.content.pm.PackageInfo pi = ctx.getPackageManager()
+                    .getPackageInfo(ctx.getPackageName(), 0);
+            return pi.versionName != null && pi.versionName.length() > 0
+                    ? pi.versionName : null;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /** 载荷是否已判出新版（ok && hasRelease && isNewer——true 才免探测）。 */
+    public static boolean payloadShowsNewer(String payload) {
+        JSONObject p = parseQuietly(payload);
+        return p != null && p.optBoolean("ok", false)
+                && p.optBoolean("hasRelease", false)
+                && p.optBoolean("isNewer", false);
+    }
+
+    /** 候选 tag 清单 URL 集（纯函数·JVM 可回归）。
+     *  当前 vX.Y.Z → [vX.Y.Z+1, vX.(Y+1).0, vX.(Y+1).1, vX.(Y+2).0]
+     *  （覆盖下一补丁 + 下两个 minor——发布序列实测口径；隔两个以上 minor
+     *  的老客户端靠 @main 链/手工救济，CHANGELOG 诚实边界定案）。
+     *  versionName 非三段（历史 plus 系等）→ null（不探测，零行为变更）。 */
+    public static java.util.List<String> tagProbeUrls(String versionName) {
+        if (versionName == null) return null;
+        String v = versionName.trim();
+        if (v.startsWith("v")) v = v.substring(1);
+        String[] seg = v.split("\\.");
+        if (seg.length != 3) return null;
+        int maj, min, pat;
+        try {
+            maj = Integer.parseInt(seg[0]);
+            min = Integer.parseInt(seg[1]);
+            pat = Integer.parseInt(seg[2]);
+            if (maj <= 0 || min < 0 || pat < 0) return null;
+        } catch (NumberFormatException e) {
+            return null;
+        }
+        String[] tags = {
+                "v" + maj + "." + min + "." + (pat + 1),
+                "v" + maj + "." + (min + 1) + ".0",
+                "v" + maj + "." + (min + 1) + ".1",
+                "v" + maj + "." + (min + 2) + ".0",
+        };
+        java.util.List<String> urls = new java.util.ArrayList<String>(tags.length);
+        for (String tag : tags) {
+            urls.add(TAG_PROBE_ENDPOINTS[0] + tag + TAG_MANIFEST_PATH);
+        }
+        return urls;
+    }
+
+    /** @tag 探测走查（Fetcher 缝——JVM 全链可测）。
+     *  依序探候选 tag（每 tag 先 gcore 后 cdn：404/无效清单 = 干净结论不换点；
+     *  网络异常才换点再试一次）；任一 tag 清单判出新版 → 记录【最高
+     *  versionCode】候选（跳级发布时取真最新）；预算耗尽即停。
+     *  命中 → WalkResult.SUCCESS（tag URL 为源）；未命中 → null。
+     *  解析/包名/发布通道闸全部复用 UpdateManifest.parse（同一信任链——
+     *  绝不因 tag 通道放宽任何安全闸）。 */
+    public static WalkResult probeTagUpdates(Fetcher f, String expectedPackage,
+                                             int currentVersionCode, String versionName) {
+        java.util.List<String> urls = tagProbeUrls(versionName);
+        if (urls == null || urls.isEmpty()) return null;
+        long deadline = System.currentTimeMillis() + TAG_PROBE_BUDGET_MS;
+        WalkResult best = null;
+        int bestVc = 0;
+        for (int i = 0; i < urls.size(); i++) {
+            String tagUrl = urls.get(i);
+            if (i > 0 && System.currentTimeMillis() >= deadline) break;
+            HttpOutcome o = f.fetch(tagUrl, null);
+            // 网络类异常（DNS/超时/TLS/连接——非 404 非 HTTP 状态结论）→ cdn 点
+            // 再试一次（同 tag；404 = ERR_HTTP = 干净「未发布」结论，绝不换点）
+            if (o == null || (o.body == null && !o.notModified && isNetClassError(o.errorCode))) {
+                if (System.currentTimeMillis() < deadline) {
+                    String alt = TAG_PROBE_ENDPOINTS[1] + tagUrl.substring(
+                            TAG_PROBE_ENDPOINTS[0].length());
+                    HttpOutcome o2 = f.fetch(alt, null);
+                    if (o2 != null && o2.body != null) o = o2;
+                }
+            }
+            if (o == null || o.body == null) continue; // 404/网络双点失败——该 tag 未发布
+            String parsed = UpdateManifest.parse(o.body, expectedPackage, currentVersionCode);
+            JSONObject p = parseQuietly(parsed);
+            if (p == null || !p.optBoolean("ok", false)
+                    || !p.optBoolean("hasRelease", false)
+                    || !p.optBoolean("isNewer", false)) continue; // 未发布/无效/不更新
+            int vc = p.optInt("versionCode", 0);
+            if (vc > bestVc) {
+                bestVc = vc;
+                best = WalkResult.success(parsed, o.body, o.etag, o.lastModified, o.url);
+            }
+        }
+        return best;
+    }
+
+    /** 网络类错误码（连接层面失败——值得换接入点重试；HTTP 状态结论如
+     *  404/限流/5xx 是干净结论，不换点）。纯函数·JVM 可回归。 */
+    public static boolean isNetClassError(String errorCode) {
+        return UpdateManifest.ERR_NETWORK.equals(errorCode)
+                || UpdateManifest.ERR_DNS.equals(errorCode)
+                || UpdateManifest.ERR_TIMEOUT.equals(errorCode)
+                || UpdateManifest.ERR_TLS.equals(errorCode);
+    }
+
+    /** 探测命中载荷打标（tagSourced:true——诚实口径；UI 不依赖该字段，
+     *  仅诊断/日志可观测）。 */
+    public static String markTagSourced(String payload) {
+        try {
+            JSONObject p = parseQuietly(payload);
+            if (p == null) return payload;
+            p.put("tagSourced", true);
+            return p.toString();
+        } catch (Throwable t) {
+            return payload;
         }
     }
 

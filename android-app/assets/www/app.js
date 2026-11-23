@@ -1,4 +1,4 @@
-/* 开屏卫士 v7.13.0 · 提醒跨升级修复 + 切回即提醒 + 网络恢复自动补传 + 上传快失败专项：开屏提醒 24h 节流时间戳跨版本残留根治（旧版本点「不再提示」的时间戳吞掉升级后首次提醒——用户实锤「进入 app 没有弹出提醒」）；切回前台也是「进入 App」（visibilitychange 评估——24h/60s 双闸保护）；日志上传连接超时 10s→6s 快失败 + 四试退避；网络切换/恢复自动补传待传日志（无需手动重试） */
+/* 开屏卫士 v7.14.0 · 检查更新陈旧窗口根治专项：@tag 探测链（jsDelivr @tag 引用是不可变键无源站分支缓存——发布即新鲜；@main 清单源站分支缓存 TTL ≤12h 是「旧版检测不到新版」三连实锤根因）；检查失败兑底直连 cdn→gcore（cdn 当日对 APK 403 实测定案，gcore 全日直出字节级一致）；APK 侧探测链在 UpdateRepository（Java），本文件为浏览器预览同源镜像 */
 "use strict";
 
 /* ══════════ 环境 ══════════ */
@@ -23,8 +23,8 @@ const store = {
 };
 
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "7.12.0"; }
-function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "82000"; }
+function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "7.14.0"; }
+function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "84000"; }
 
 /* ══════════ 吉祥物（v4.1.0 全新形象：白机器人小侠 + 绿披风跳跃） ══════════
  * 与启动器图标同源；state: on（跳跃浮动）/ off（灰度待命） */
@@ -35,17 +35,15 @@ function mascotImg(size, state, head) {
 
 $("#brand-logo").innerHTML = mascotImg(30, "on", true);
 
-/* ═══ v7.13.0 版本记录（提醒跨升级修复 + 切回即提醒 + 网络恢复补传）═══ */
+/* ═══ v7.14.0 版本记录（检查更新陈旧窗口根治）═══ */
 const CURRENT_RELEASE = {
   date: "2026-11-24",
-  title: "开屏提醒跨升级修复 + 切回即提醒 + 上传快失败与网络恢复自动补传",
+  title: "检查更新陈旧窗口根治（@tag 探测链）+ 兑底直连 gcore 化",
   features: [
-    "开屏提醒跨升级修复：旧版本点过「24 小时不再提示」的时间戳在覆盖升级后仍生效——升级到新版后第一次进入不再被旧节流吞掉（用户实锤「进入 app 没有弹出提醒」根因）；提醒卡记录当前版本，版本变化即重新提醒",
-    "切回即提醒：从后台切回前台也是「进入 App」——提醒评估在冷启动与切回两种场景都执行（60 秒短窗防旋转连弹，24 小时不再提示仍受尊重）",
-    "上传快失败：连接超时 10 秒→6 秒，自动重试三次→四次（退避 0.5/1.2/2.4 秒）——失败等待大幅缩短、间歇路由下成功率提升",
-    "网络恢复自动补传：切换 Wi-Fi/移动网络、网络恢复时自动补试待传日志（无需手动重传）——失败提示同步指引；自动上传保持每 8 小时心跳检查",
+    "检查更新陈旧窗口根治：每次发布后旧版检查更新最长 12 小时看到「已是最新」（jsDelivr @main 清单源站分支缓存——三连实锤根因）；现在追加 @tag 探测链（tag 引用是不可变键零缓存）：当前版本之后的候选 tag 清单发布即新鲜，命中即拿到新版元数据——发布后第一时间可检测到新版（老版本隔两个以上 minor 时仍靠 @main 链自愈或手工救济，诚实边界）",
+    "兑底直连 gcore 化：检查更新失败时的 CDN 直连下载链 cdn→gcore（cdn 当日对 APK 返回 403 实测定案，gcore 全日直出且与 Release 资产字节级一致）",
   ],
-  summary: "v7.13.0：开屏提醒跨升级修复 + 切回即提醒 + 上传快失败与网络恢复自动补传。",
+  summary: "v7.14.0：检查更新陈旧窗口根治（@tag 探测链）+ 兑底直连 gcore 化。",
 };
 
 /* v7.0.0 新版功能描述（规范：≤5 个标题、带序号；检查更新发现新版本时就地渲染）。
@@ -794,8 +792,11 @@ const UPDATE_MANIFEST_SOURCES = [
  * （adshield-latest.apk，发布时随同归档入库）——检查失败时无需任何
  * 元数据即可直达最新版；下载后手动覆盖安装（浏览器/系统下载器通道）。
  * 成功检查路径的兜底主通道在清单 cdnApkUrl（apkMirrors 镜像切换，
- * SHA-256/大小闸照常——见 UpdateManifest/Downloader）。 */
-const FALLBACK_CDN_LATEST = "https://cdn.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/android-app/dist/adshield-latest.apk";
+ * SHA-256/大小闸照常——见 UpdateManifest/Downloader）。
+ * v7.14.0 接入点 gcore 化：cdn 当日对 APK 文件返回 403（301/403 阻断域
+ * 实测定案——与 fastly 同型）；gcore 全日直出且与 Release 资产字节级
+ * 一致（本轮 SHA-256 逐字节实测）。 */
+const FALLBACK_CDN_LATEST = "https://gcore.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/android-app/dist/adshield-latest.apk";
 
 /* 更新错误十类 → 人话（Java UpdateManifest 错误码的 UI 侧唯一文案出口；
  * 不再把服务端限流/网络异常混为一谈——每类如实转达） */
@@ -905,6 +906,7 @@ async function fetchLatest(manual) {
    * 每源至多一次，任一源成功即返回；包名不匹配/清单非法也换下一源
    * （疑似劫持/错源——不采信也不放弃）；全链失败 → 首个错误码如实报告） */
   let firstErr = null;
+  let mainManifest = null;
   for (let i = 0; i < UPDATE_MANIFEST_SOURCES.length; i++) {
     const url = UPDATE_MANIFEST_SOURCES[i];
     try {
@@ -924,13 +926,67 @@ async function fetchLatest(manual) {
         if (!firstErr) firstErr = { errorCode: "UPDATE_PACKAGE_MISMATCH" };
         continue;
       }
-      return mapManifest(j);
+      mainManifest = mapManifest(j);
+      break;
     } catch (e) { /* 网络异常 → 试下一源 */
       if (!firstErr) firstErr = { errorCode: "UPDATE_NETWORK_ERROR" };
     }
   }
+  if (mainManifest) {
+    /* ═══ v7.14.0 @tag 探测链（浏览器预览同源镜像——APK 侧在
+     * UpdateRepository.probeTagUpdates）═══
+     * @main 清单未判出新版（陈旧窗口/同版）→ 探测候选 tag 清单
+     * （不可变键零源站缓存，发布即新鲜）。命中 → 采纳；未命中 →
+     * @main 结果照常。当前版本之后的候选集与 Java 侧同公式：
+     * vM.m.p+1 / vM.(m+1).0 / vM.(m+1).1 / vM.(m+2).0。 */
+    const cur = parseInt(appCode(), 10) || 0;
+    if (!(mainManifest.versionCode > cur)) {
+      const tagHit = await probeTagManifests(cur);
+      if (tagHit) return tagHit;
+    }
+    return mainManifest;
+  }
   const errCode = (firstErr && firstErr.errorCode) || "UPDATE_NETWORK_ERROR";
   return { ok: false, error: updateErrText(errCode) || "网络连接失败，请检查网络后重试", errorCode: errCode };
+}
+
+/* v7.14.0 浏览器预览 @tag 探测（Java UpdateRepository.tagProbeUrls 镜像）：
+ * 候选 tag 依序试 gcore（网络异常才换 cdn）；404 = 干净未发布结论；
+ * 命中最高 versionCode 的 tag 清单 → mapManifest 返回。 */
+function probeTagManifests(currentVc) {
+  const v = String(appVer() || "").trim();
+  const seg = v.replace(/^v/, "").split(".");
+  if (seg.length !== 3) return Promise.resolve(null);
+  const maj = parseInt(seg[0], 10), min = parseInt(seg[1], 10), pat = parseInt(seg[2], 10);
+  if (!(maj > 0) || isNaN(min) || isNaN(pat)) return Promise.resolve(null);
+  const tags = ["v" + maj + "." + min + "." + (pat + 1),
+                "v" + maj + "." + (min + 1) + ".0",
+                "v" + maj + "." + (min + 1) + ".1",
+                "v" + maj + "." + (min + 2) + ".0"];
+  const endpoints = ["https://gcore.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@", "https://cdn.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@"];
+  return (async () => {
+    let best = null, bestVc = 0;
+    for (const tag of tags) {
+      let j = null;
+      for (const ep of endpoints) {
+        try {
+          const r = await fetch(ep + tag + "/update/latest.json", { headers: { Accept: "application/json" } });
+          if (!r.ok) break;              /* 404 = 干净未发布（不换点） */
+          try { j = await r.json(); } catch (e) { j = null; }
+          if (j && typeof j === "object") break; /* 命中本 tag → 停止换点 */
+          j = null;                       /* 坏 JSON → 换点再试 */
+        } catch (e) { /* 网络异常 → 换点 */ }
+      }
+      if (!j || j.draft || j.prerelease) continue;
+      if (j.packageName && j.packageName !== "com.zai.adshield") continue;
+      const vc = parseInt(j.versionCode, 10) || 0;
+      if (vc > currentVc && vc > bestVc) {
+        bestVc = vc;
+        best = mapManifest(j);
+      }
+    }
+    return best;
+  })();
 }
 
 /* ═══ v7.10.0：versionCodeFromNotes 已删（统一版本规则专项）═══

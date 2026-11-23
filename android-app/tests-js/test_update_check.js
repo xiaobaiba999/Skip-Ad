@@ -118,9 +118,14 @@ const REAL_MANIFEST = {
   apkSize: 886326, packageName: "com.zai.adshield",
   minSupportedVersionCode: 0, mandatoryUpdate: false,
 };
-function withFetch(handler, fn) {
+function withFetch(handler, fn, tagHandler) {
   const orig = globalThis.fetch;
-  globalThis.fetch = handler;
+  const th = tagHandler || (async () => ({ ok: false, status: 404 })); // v7.14.0：探测链默认未发布（各场景零污染）
+  globalThis.fetch = async (url) => {
+    const u = String(url);
+    if (/jsdelivr\.net\/gh\/.*@v\d+\.\d+\.\d+\/update\/latest\.json$/.test(u)) return th(u);
+    return handler(url);
+  };
   return Promise.resolve().then(fn).finally(() => { globalThis.fetch = orig; });
 }
 
@@ -248,6 +253,61 @@ A("小时前", T.ageText(NOW - 3 * 3600 * 1000).includes("小时前"));
 A("天前", T.ageText(NOW - 30 * 3600 * 1000).includes("天前"));
 A("零值 → 空串", T.ageText(0) === "");
 A("非法 → 空串", T.ageText("abc") === "");
+
+// ③z v7.14.0 @tag 探测链（陈旧窗口根治）：@main 陈旧（79700 < 浏览器兜底版 84000）→ 候选 tag v7.15.0 清单命中 → 零陈旧窗口拿新版
+// （浏览器预览的「当前版本」= app.js 兜底 7.14.0/84000——候选集 v7.14.1/v7.15.0/v7.15.1/v7.16.0）
+{
+  const TAG_MANIFEST_798 = {
+    schemaVersion: 1, versionName: "7.15.0", versionCode: 85000,
+    releaseTag: "v7.15.0", releaseName: "v7.15.0",
+    releaseNotes: "versionCode: 85000\n1. tag 探测链验证",
+    publishedAt: "2026-11-23T12:00:00Z",
+    apkUrl: "https://github.com/xiaobaiba999/Skip-Ad/releases/download/v7.15.0/adshield-v7.15.0.apk",
+    apkFileName: "adshield-v7.15.0.apk",
+    apkSha256: "2367a2fbb4d7b49c596e7f930383468b7fc310abbd185a2a462d2e9ddf4cd4c7",
+    apkSize: 886326, packageName: "com.zai.adshield",
+    minSupportedVersionCode: 0, mandatoryUpdate: false,
+  };
+  const tagHits = [];
+  await withFetch(async (url) => {
+    A("③z @main 主源返回陈旧同版清单（79700）", url === T.MANIFEST_URL);
+    return { ok: true, status: 200, json: async () => REAL_MANIFEST };
+  }, async () => {
+    const d = await T.fetchLatest(true);
+    A("③z 探测链命中 → tag v7.15.0（85000 > 84000——零陈旧窗口）",
+      d.ok === true && d.versionCode === 85000 && d.tag === "v7.15.0" && d.remoteVersionCode === 85000);
+    A("③z 命中来自 gcore @tag 不可变键 URL",
+      tagHits.length >= 1 && tagHits.every(u => u.startsWith("https://gcore.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@v7.15.0/")));
+  }, async (u) => {
+    if (!/@v7\.15\.0\/update\/latest\.json$/.test(String(u))) return { ok: false, status: 404 }; // 其余候选 tag 未发布
+    tagHits.push(String(u));
+    return { ok: true, status: 200, json: async () => TAG_MANIFEST_798 };
+  });
+
+  // ③y 探测链未命中（全部候选 tag 404——未发布）→ @main 结果照常返回（零行为变更）
+  await withFetch(async (url) => {
+    return { ok: true, status: 200, json: async () => REAL_MANIFEST };
+  }, async () => {
+    const d = await T.fetchLatest(true);
+    A("③y 全候选 tag 未发布（404）→ @main 同版结果照常（探测零行为变更）",
+      d.ok === true && d.versionCode === 79700 && d.tag === "v7.9.7");
+  });
+
+  // ③x gcore 点网络异常 → cdn 点换点再试命中（探测链接入点容错）
+  await withFetch(async (url) => {
+    return { ok: true, status: 200, json: async () => REAL_MANIFEST };
+  }, async () => {
+    const d = await T.fetchLatest(true);
+    A("③x gcore 网络异常换 cdn 点命中 → 仍拿到 tag v7.15.0（85000）",
+      d.ok === true && d.versionCode === 85000 && d.tag === "v7.15.0");
+  }, async (u) => {
+    if (/@v7\.15\.0\/update\/latest\.json$/.test(String(u))) {
+      if (String(u).startsWith("https://gcore.jsdelivr.net/")) throw new Error("gcore down");
+      return { ok: true, status: 200, json: async () => TAG_MANIFEST_798 };
+    }
+    return { ok: false, status: 404 };
+  });
+}
 
 console.log("═══ ⑥ 桥接线与 UI 文案（源断言）═══");
 A("手动按钮传 manual=true（绕过新鲜缓存受冷却）", src.includes("await fetchLatest(true)"));
