@@ -162,7 +162,7 @@ public final class FeedAdGuard {
             "com.UCMobile",                      // UC 浏览器
             "com.tencent.mtt",                   // QQ 浏览器
             "com.tencent.news",                   // 腾讯新闻
-            "com.netease.newsreader.activity",    // 网易新闻（v7.9.2 包名校准：真实包名带 .activity 后缀——旧值 com.netease.newsreader 从未命中，信息流护栏对网易新闻全程无效）
+            "com.netease.newsreader",            // 网易新闻
             "com.sina.news",                     // 新浪新闻
             "com.quark.browser",                 // 夸克浏览器
             "com.snda.wifilocating",             // WiFi 万能钥匙
@@ -235,13 +235,9 @@ public final class FeedAdGuard {
     public static final String[] CLOSE_ICON_WORDS = {
             "×", "✕", "✖", "╳", "⨯", "关闭",
     };
-    /** P1X 广告上下文证据词（contains——绝不点击，只证明「同窗有广告」）。
-     *  v7.8.0：裸「广告/廣告」收编——feed 名单 20 款 App 内插屏角标
-     *  （「广告 · 了解详情」等变体）此前被名单门排除在插屏卫士之外、
-     *  P1X 语境词又不含裸「广告」→ 名单内插屏孤儿化（用户实锤：
-     *  「app内插入广告也不会拦截关闭」第 N 轮）。 */
+    /** P1X 广告上下文证据词（contains——绝不点击，只证明「同窗有广告」）。 */
     public static final String[] AD_CONTEXT_WORDS = {
-            "来自广告推荐", "广告推荐", "赞助", "广告", "廣告", "推广",
+            "来自广告推荐", "广告推荐", "赞助",
     };
 
     /* ══ 决策结果（服务侧薄接线消费）══ */

@@ -59,7 +59,7 @@ import java.util.ArrayList;
  *    (88%,7%) 等——每台手机屏幕大小不一样，位置肯定不一样（用户原话）。
  *    桌面简单树被误判后盲点桌面图标拉起微信→回弹狂按返回键踢出用户
  *    =issue#12 闪退完整毒链。主路径改由 RuleEngine（内嵌规则引擎，
- *    控件属性匹配+点控件自身 bounds 中心）接管，本类退居复杂信号兜底；
+ *    控件属性匹配+点控件自身 bounds 中心）接管，本类退居复杂信号兑底；
  *  · 【提速】露头就秒跳（以 Keep 开屏为标杆）：学习位置 500→100ms、
  *    开屏×关闭键 600→250ms、角落键 500→300ms（但增加广告形态确认门，
  *    绝不在正常页面上乱点角落图标）；
@@ -287,10 +287,7 @@ public final class AdDecisionCore {
             /* v5.8.0 扫描日志三轮激进（用户实锤：好多广告没有命中——大胆
              * 激进一点）：电商/资讯类 App 常以「推广」代「广告」作整词标签
              * （合规敏感 App 普遍如此，旧库未收零命中），SKIP 族全量补收 */
-            "跳过推广", "关闭推广", "跳過片頭", "跳過推廣",
-            /* v7.7.0 回切开屏配套：繁体「關閉廣告」整词键（切回 App 期间
-             * 弹的插层/回切开屏以整词作键——含匹配族补收，探针词同步扩） */
-            "關閉廣告"};
+            "跳过推广", "关闭推广", "跳過片頭", "跳過推廣"};
     public static final String[] GYRO_HINTS = {"翻转", "摇一摇", "摇晃", "晃动", "摇动", "扭一扭", "转动手机", "倾斜手机", "拿起手机"};
     public static final String[] CLOSE_TEXTS = {"×", "x", "X", "✕", "✖", "╳", "关闭", "close", "不感兴趣", "我知道了", "知道了", "关闭广告", "跳过", "忽略", "暂不"};
     public static final String[] BADGE_TEXTS = {"广告", "推广", "赞助", "广告推广", "sponsored", "promoted", "sponsor"};
@@ -370,7 +367,6 @@ public final class AdDecisionCore {
         public final java.util.ArrayList<CornerCand> corners = new java.util.ArrayList<CornerCand>(); // 角落候选（v3.5.0 多候选）
         public final java.util.ArrayList<CdDigit> cdDigits = new java.util.ArrayList<CdDigit>(); // v7.5.0 独立倒计时数字（walk 后并入门控）
         public boolean dialogForm;     // 根节点 Dialog/Popup 形态
-        public boolean webviewPresent; // v7.8.0：窗内存在 WebView 容器（H5 插屏语境铁证——插屏闸⓪第二在场证据）
     }
 
     /* ───────── 决策上下文（服务侧填充） ───────── */
@@ -401,10 +397,6 @@ public final class AdDecisionCore {
         public boolean halfScreenAd;
         public boolean updateDialog;
         public boolean videoApp;
-        /* v7.8.0 视频开屏画像（VideoSplashGuard.videoLike 服务侧扫描前判定填入）：
-         * 观察窗 12s→20s 延长 + 轮询针 + 白点节流 + L4 形态门放宽 +
-         * 新键预算刷新——「开屏广告带视频的全部未命中」根治。 */
-        public boolean videoLike;
         /* v7.1.0 底层算法优化：分应用规则行预筛结果（服务侧每窗一次
          * RuleEngine.rowsFor(pkg) 填入；null = matchText 回落全表扫描——
          * 探针/DFS 双路径共享，每窗省下 ~340 节点 × 50 行前缀比对）。 */
@@ -434,9 +426,6 @@ public final class AdDecisionCore {
 
     /* ═════════ 控件树遍历（多信号一次收集） ═════════ */
 
-    /** 决策核心单树遍历（v8.0.2 起 rider 参数化：rider=null 纯 walk 语义，
-     *  行为与历版 byte-for-byte 一致——复验针/插屏扫描等独立调用方继续用本入口）。
-     *  主扫描路径改走 walkFused（规则骑士与决策信号单遍收集，双 DFS 消除）。 */
     public static ScanFind walk(NodeView root, Ctx ctx) {
         ScanFind f = new ScanFind();
         if (root == null) return f;
@@ -449,7 +438,7 @@ public final class AdDecisionCore {
         String rootCls = nz(root.cls()).toLowerCase();
         f.dialogForm = rootCls.contains("dialog") || rootCls.contains("popup");
         int[] budget = {ctx.budgetNodes};
-        visit(root, 0, budget, f, ctx, null);
+        visit(root, 0, budget, f, ctx);
         // v3.8.0 候选排序：真键优先——① 自身可点（无祖先中转）② 文案更短（精确「跳过」
         // 优先于「5s后可跳过」类长文案）③ 面积更小。防「第 1 候选是广告图内假文本」
         try {
@@ -467,98 +456,6 @@ public final class AdDecisionCore {
          * 门控到「倒计时将尽」再出手——首击不再白点烧耐心预算）。 */
         resolveCdDigits(f, ctx);
         return f;
-    }
-
-    /* ═════════ v8.0.2 双 DFS 单遍化（P3-1 专项）═════════
-     * 旧主扫描路径：RuleEngine.matchAll（规则 DFS）与 walk（决策 DFS）对
-     * 同一棵树先后各走一遍——零命中扫描（内容页/无文本规则广告，档位大头）
-     * 时 matchAll 整趟白付：同节点 text/desc/visible/bounds/childCount 读
-     * 两遍、getChild() binder 调用×2、NodeAdapter 分配×2。
-     * walkFused = 一次遍历同时收集【规则命中（骑士）】与【决策信号（walk）】：
-     *  · 骑士条件与 matchAll 逐字段等价：text 规则门（vis&&b!=null&&label>0
-     *    &&area≤SKIP_AREA_MAX→matchText）/ vid 叶子门（label==0&&childCount==0
-     *    →matchVid）/ addCand 去重（label+tapBounds）/ tierFull+短文案排序 /
-     *    满 max 中即止（与 collect 的 entry 检查+子循环条件同停点）；
-     *  · 决策信号与 walk 逐字段等价：同一 visit 体（rider=null 时 byte-for-byte
-     *    旧路径），预算同源同减点，候选排序/倒计时并入/根 Dialog 形态全同；
-     *  · 骑士满 max 即止 = collect 早停同点；此时规则路径必走（hits 非空），
-     *    find 将被服务侧丢弃——早停不产生任何可观测差异；
-     *  · 小程序容器门与 walk 同位（入口即返空）：旧路径 matchAll 无此门、
-     *    命中后在 execute() L0 被拦——新路径骑士同被抑制（更早更省，出手
-     *    结果同为零点击，差异仅日志量/acted 标志，见 V8-SYSTEM-AUDIT）。
-     * 已知语义差（诚实清单，DualDfsParityTest 场景 11/12 钉死）：
-     *  ① 树在两趟 DFS 之间变化时，旧 walk 看到第二时刻快照、fused 只看
-     *    第一时刻——晚到候选顺延到下一档（60ms）/nudge 通道，与 v8.0.1
-     *    P2-1 同类权衡；出手前 refreshLive 复核不变，零新增误触面；
-     *  ② 子树瞬时 binder 异常（throw-once）旧 walk 重试可得、fused 单次
-     *    即失——确定性异常两者等价（同丢同子树）。 */
-    public static final class RuleRiderState {
-        public final java.util.ArrayList<RuleEngine.Hit> hits = new java.util.ArrayList<RuleEngine.Hit>();
-        final int max;
-
-        RuleRiderState(int max) {
-            this.max = max;
-        }
-
-        boolean done() {
-            return hits.size() >= max;
-        }
-
-        /** RuleEngine.addCand 同款去重（label+tapBounds 双等——换了也是白点） */
-        void addIfNew(RuleEngine.Hit h) {
-            if (hits.size() >= max) return;
-            for (int i = 0; i < hits.size(); i++) {
-                RuleEngine.Hit o = hits.get(i);
-                if (o.label.equals(h.label) && RuleEngine.sameBounds(o.tapBounds, h.tapBounds)) return;
-            }
-            hits.add(h);
-        }
-    }
-
-    /** walkFused 输出：决策信号（find，walk 同构）+ 规则命中（ruleHits，matchAll 同构） */
-    public static final class FusedScan {
-        public final ScanFind find = new ScanFind();
-        public final java.util.ArrayList<RuleEngine.Hit> ruleHits = new java.util.ArrayList<RuleEngine.Hit>();
-    }
-
-    /** 单遍融合扫描：ruleRider=false 等价 walk()（弹窗窗等无规则路径）；
-     *  true 时骑士与决策信号同遍收集。maxHits<=0 视同骑士关闭。 */
-    public static FusedScan walkFused(NodeView root, Ctx ctx, boolean ruleRider, int maxHits) {
-        FusedScan out = new FusedScan();
-        if (root == null) return out;
-        if (MiniProgramGuard.isMiniProgramWindow(ctx.pkg, ctx.activityId)) return out;
-        RuleRiderState rider = (ruleRider && maxHits > 0) ? new RuleRiderState(maxHits) : null;
-        String rootCls = nz(root.cls()).toLowerCase();
-        out.find.dialogForm = rootCls.contains("dialog") || rootCls.contains("popup");
-        int[] budget = {ctx.budgetNodes};
-        visit(root, 0, budget, out.find, ctx, rider);
-        // walk 同款候选排序（比较器逐字段复制，不得漂移）
-        try {
-            java.util.Collections.sort(out.find.skipCands, (a, b) -> {
-                if (a.selfClick != b.selfClick) return a.selfClick ? -1 : 1;
-                int la = a.label == null ? 0 : a.label.length();
-                int lb = b.label == null ? 0 : b.label.length();
-                if (la != lb) return la - lb;
-                return Double.compare(areaRatio(a.tapBounds, ctx), areaRatio(b.tapBounds, ctx));
-            });
-        } catch (Throwable ignored) {
-        }
-        resolveCdDigits(out.find, ctx);
-        if (rider != null) {
-            out.ruleHits.addAll(rider.hits);
-            // matchAll 同款排序（tierFull 降序 + 同级短文案优先）
-            try {
-                java.util.Collections.sort(out.ruleHits, (a, b) -> {
-                    int d = RuleEngine.tierFull(b.appId) - RuleEngine.tierFull(a.appId);
-                    if (d != 0) return d;
-                    int la = a.label == null ? 0 : a.label.length();
-                    int lb = b.label == null ? 0 : b.label.length();
-                    return la - lb;
-                });
-            } catch (Throwable ignored) {
-            }
-        }
-        return out;
     }
 
     /** v7.5.0：独立倒计时数字解析（倒计时区或跳过候选近旁才计入）。 */
@@ -582,12 +479,8 @@ public final class AdDecisionCore {
         return false;
     }
 
-    private static void visit(NodeView node, int depth, int[] budget, ScanFind f, Ctx ctx,
-                             RuleRiderState rider) {
-        /* v8.0.2 骑士早停：满 max 命中即止（RuleEngine.collect 同停点——
-         * 入口不预算不减计数；此时规则路径必走，find 将被服务侧丢弃） */
-        if (node == null || depth > 32 || budget[0] <= 0
-                || (rider != null && rider.done())) return;
+    private static void visit(NodeView node, int depth, int[] budget, ScanFind f, Ctx ctx) {
+        if (node == null || depth > 32 || budget[0] <= 0) return;
         budget[0]--;
         f.nodeCount++;
         try {
@@ -600,40 +493,13 @@ public final class AdDecisionCore {
             if (node.editable() || cls.contains("edittext")) f.editPresent = true;
             if (node.scrollable() || cls.contains("scrollview") || cls.contains("recyclerview")
                     || cls.contains("viewpager") || cls.contains("listview")) f.scrollPresent = true;
-            /* v7.8.0 WebView 容器铁证（插屏闸⓪扩容配套）：H5 插屏/视频开屏
-             * 的文字在网页内核里非原生文本节点（角标探不到）——WebView 在场
-             * + 关闭钮在场即插屏签名（李跳跳同款 H5 广告关闭面）。 */
-            if (!f.webviewPresent && cls.contains("webview")) f.webviewPresent = true;
 
             int[] b = node.bounds();
             boolean clickable = node.clickable();
             double areaRatio = areaRatio(b, ctx);
-            // v8.0.2 上提：childCount 单读共用（骑士 vid 叶门与子循环同源——
-            // 旧版 vid 门与子循环各读一次，纯 getter 语义零变化）
-            int n = node.childCount();
 
             // 全屏热区：可点且 ≥55% 屏幕
             if (!f.hotZone && clickable && areaRatio >= HOT_ZONE_AREA) f.hotZone = true;
-
-            /* ═══ v8.0.2 规则骑士（与决策信号同遍收集——双 DFS 消除）═══
-             * 门序与 RuleEngine.collect 逐字段等价：text 门（label>0）优先、
-             * else vid 叶子门（label==0 且零子）。异常隔离：骑士自身异常
-             * 只丢该节点骑士结果，不拖累决策信号与子树（旧 matchAll 异常
-             * 会断子树——新路径异常面只严不减，见 DualDfsParityTest S12）。 */
-            if (rider != null && !rider.done()) {
-                try {
-                    if (vis && b != null && label.length() > 0 && areaRatio <= SKIP_AREA_MAX) {
-                        RuleEngine.Hit h = RuleEngine.matchText(label, b, node, ctx);
-                        if (h != null) rider.addIfNew(h);
-                    } else if (vis && b != null && label.length() == 0 && n == 0
-                            && areaRatio <= SKIP_AREA_MAX) {
-                        RuleEngine.Hit h = RuleEngine.matchVid(node, b, ctx);
-                        if (h != null) rider.addIfNew(h);
-                    }
-                } catch (Throwable ignored) {
-                }
-                if (rider.done()) return; // 同 collect：满 max 即止，后续子树不再入
-            }
 
             if (label.length() > 0) {
                 if (label.length() <= 14 && matchesSkip(label)) {
@@ -719,7 +585,7 @@ public final class AdDecisionCore {
                     d.bounds = b;
                     f.cdDigits.add(d);
                 }
-            } else if (b != null && vis && n == 0 && isVidSkip(node)) {
+            } else if (b != null && vis && node.childCount() == 0 && isVidSkip(node)) {
                 // v3.8.0：viewId 跳过键（GKD 全局规则同款）：vid 含 skip（穿山甲 tt_splash_skip_btn /
                 // 微博 iv_skip 类零文本图片键）或倒计时控件（count+down 非 download）——
                 // 零文本图片跳过键的头号信号，此前只能靠角落形态猜，猜不中就只能返回键
@@ -769,10 +635,9 @@ public final class AdDecisionCore {
                 }
             }
 
+            int n = node.childCount();
             for (int i = 0; i < n; i++) {
-                // v8.0.2 骑士满额即止（RuleEngine.collect 子循环条件 out.size()<max 同停点）
-                if (rider != null && rider.done()) break;
-                visit(node.child(i), depth + 1, budget, f, ctx, rider);
+                visit(node.child(i), depth + 1, budget, f, ctx);
             }
         } catch (Throwable ignored) {
         }
@@ -996,16 +861,6 @@ public final class AdDecisionCore {
         }
         /* ── 开屏/插屏窗内 ── */
         if (ctx.splashLive) {
-            /* ═══ v7.9.5 WebView 综合证据路径（真广告+ScrollView/Input/WebView 专项）══
-             * isAdLikeLoose 对滚动容器/输入框/大树（WebView 视频容器常态
-             * >150 节点）形成过强阻断——真 H5 广告带跳过文本时整窗漏拦。
-             * 用户指令六红线：不能简单取消安全门——综合判断 = WebView 容器
-             * 在场【且】至少一个广告语境证据（角标/SDK 窗指纹/Dialog 形态/
-             * 全屏热区）同窗。WebView 单独在场【不】构成证据（应用内浏览器
-             * 普通页面不因 WebView 使命中——误触红线）；候选语义（跳过词族）
-             * +形状门+SafetyGuard 终闸全部在岗不变。 */
-            boolean webviewAdEvidence = f.webviewPresent
-                    && (f.adBadge || ctx.sdkAdWin || f.dialogForm || f.hotZone);
             /* v3.7.0 学习位置【前置】到 L1 之前（issue#10 根因）：
              * 用户手动点通过的位置 = 真实手指触点真正生效的坐标——比盲点
              * 文本候选可靠得多（文本候选可能是广告图内假「跳过」文本）。
@@ -1028,19 +883,10 @@ public final class AdDecisionCore {
              *  · 新增假跳过手势候选——「跳过」文案+大容器可点祖先（微博实锤：isSmallClick
              *    判假→从不点击只返回键，返回键又被广告拦截）→ 手势直点标签自身坐标
              *    （clickCenter），performAction 大容器=点开广告绝不走；
-             *  · walk 内候选排序：自身可点/短文案/小面积优先，真键排前
-             * v7.9.4（FalsePositiveScenarioTest 实锤根治——孤立「跳过」词红线）：
-             *  · 旧版 R+F>0 即出手——零页面形态证据。开屏窗龄（12s）内的聊天窗/
-             *    内容列表页里孤立出现的「跳过」字样（聊天气泡/列表行文案）会被
-             *    直接当成跳过键点击（用户 20 类误触红线场景 10/孤立词红线）。
-             *  · 证据质量提升（不是关闭扫描）：出手需页面形态证据——
-             *    广告形态树 isAdLikeLoose（无滚动/无输入框/≤150 节点——真开屏
-             *    窗恒满足：静态图+跳过键从不带滚动容器或输入框）或 SDK 广告窗
-             *    指纹或学习指纹。内容页（可滚/可输入）与聊天窗的孤立词一律拒。
-             *    与 L1.6 关闭键路径（v3.7.0 起同款 isAdLikeLoose 门）口径对齐。 */
+             *  · walk 内候选排序：自身可点/短文案/小面积优先，真键排前 */
             int R = f.skipCands.size();
             int F = f.fakeCands.size();
-            if (R + F > 0 && (isAdLikeLoose(f) || ctx.sdkAdWin || ctx.learnedCls || webviewAdEvidence)) {
+            if (R + F > 0) {
                 int idx = Math.min(ctx.clickAttempts, R + F - 1);
                 if (idx < R) {
                     SkipCand c = f.skipCands.get(idx);
@@ -1055,12 +901,12 @@ public final class AdDecisionCore {
             //     v7.5.0 前置 L1.5（角标在场关闭键）：角标替换「顶部 35%」成为
             //     第二证据——插屏×常在右下/中部，旧 L1.6 位置闸把它们全灭
             if (f.foundClose && f.closeBounds != null && f.adBadge && !f.longText
-                    && (isAdLikeLoose(f) || ctx.sdkAdWin || ctx.learnedCls || webviewAdEvidence)
+                    && (isAdLikeLoose(f) || ctx.sdkAdWin || ctx.learnedCls)
                     && ctx.elapsedMs >= SPLASH_CLOSE_MS) {
                 return click(f.closeNode, f.closeBounds, "badge_close");
             }
             if (f.foundClose && f.closeBounds != null && !f.longText
-                    && (isAdLikeLoose(f) || ctx.sdkAdWin || ctx.learnedCls || webviewAdEvidence)
+                    && (isAdLikeLoose(f) || ctx.sdkAdWin || ctx.learnedCls)
                     && inTopArea(f.closeBounds, ctx)
                     && ctx.elapsedMs >= SPLASH_CLOSE_MS) {
                 return click(f.closeNode, f.closeBounds, "splash_close");
@@ -1076,9 +922,8 @@ public final class AdDecisionCore {
             //     有可点目标绝不先按返回键
             if (!f.corners.isEmpty() && ctx.clickAttempts < f.corners.size()
                     && !f.scrollPresent && !f.editPresent
-                    && f.nodeCount <= (ctx.videoLike ? com.zai.adshield.core.VideoSplashGuard.VIDEO_CORNER_TREE_MAX : CORNER_TREE_MAX_NODES)
-                    && ctx.elapsedMs >= CORNER_MIN_MS
-                    && ctx.elapsedMs <= (ctx.videoLike ? com.zai.adshield.core.VideoSplashGuard.VIDEO_EXT_WINDOW_MS : CORNER_MAX_MS)
+                    && f.nodeCount <= CORNER_TREE_MAX_NODES
+                    && ctx.elapsedMs >= CORNER_MIN_MS && ctx.elapsedMs <= CORNER_MAX_MS
                     // v3.9.0 广告形态确认门（不乱点红线）：角落无字控件必须
                     // 同时具备广告信号（热区/角标/SDK 窗/学习窗）或树极简
                     //（≤60 节点）才出手——普通主页角落图标绝不误点
@@ -1086,11 +931,9 @@ public final class AdDecisionCore {
                     // 仅强广告形态（热区/角标/SDK窗/学习窗）可出手（FAB 防线）。
                     // 逐候选分层门控：从第 clickAttempts 个起取首个过闸的候选
                     //（无 strongOnly 候选时与旧「第 N 击第 N 候选」逐字等价）
-                    // v7.8.0 视频画像入强广告形态位（视频开屏窗 + 零候选连环 +
-                    // 树静默——非广告窗零候选时轮询针不接管，画像不成立）
-                    && (f.hotZone || f.adBadge || ctx.sdkAdWin || ctx.learnedCls || ctx.videoLike
+                    && (f.hotZone || f.adBadge || ctx.sdkAdWin || ctx.learnedCls
                         || f.nodeCount <= CORNER_CONFIRM_NODES)) {
-                boolean strongAdForm = f.hotZone || f.adBadge || ctx.sdkAdWin || ctx.learnedCls || ctx.videoLike;
+                boolean strongAdForm = f.hotZone || f.adBadge || ctx.sdkAdWin || ctx.learnedCls;
                 for (int ci = ctx.clickAttempts; ci < f.corners.size(); ci++) {
                     CornerCand c = f.corners.get(ci);
                     boolean tierOk = !c.strongOnly || strongAdForm;
@@ -1208,25 +1051,6 @@ public final class AdDecisionCore {
             return zeroCandScans >= TINY_TREE_SCANS_KILL && elapsedMs >= TINY_TREE_KILL_MS;
         }
         return zeroCandScans >= ZERO_CAND_SCANS_KILL && elapsedMs >= ZERO_CAND_KILL_MS;
-    }
-
-    /* ═══ v8.1.0 零候选退避豁免判定（真机反馈「很多 App 跳不过」根因之三）═══
-     * 服务侧原内联五豁免（SDK 广告窗类/Dialog/视频画像/arm-hint/学习指纹）
-     * 提取为纯函数（JVM 可回归）+ 新增第六豁免：
-     *  · 第一方入口窗（rootWindow）且无订阅覆盖——开屏广告与主界面同窗的
-     *    App，其跳过按钮常 3s+ 才渲染，「3 次零候选+2.6s」杀链在按钮出现
-     *    前就把本窗剩余固定档全灭（真机实锤：晚出键只能赌内容事件救回，
-     *    而 4s 后 nudge 断流 = 整窗失明）。
-     *  · 豁免只放宽【单窗内】杀链时机（梯子跑满 12s 观察窗）；跨窗功耗
-     *    治理仍由 CLEAN 档案兜底（连续 3 窗零候选 → 纯探针哨兵）——功耗
-     *    上限不变，观察覆盖显著提升（18 档全跑 vs 3 档杀链）。
-     *  · 有订阅覆盖的窗不豁免（订阅路径 {0,700} 低频档 + 规则直查已保障；
-     *    避免订阅覆盖面内功耗回退）。 */
-    public static boolean zeroCandExempt(boolean adCls, boolean dialogCls, boolean videoLike,
-                                         boolean armHint, boolean learnedCls,
-                                         boolean rootWindow, boolean subCovered) {
-        if (adCls || dialogCls || videoLike || armHint || learnedCls) return true;
-        return rootWindow && !subCovered;
     }
 
     /** 跳过成功后静默期：广告刚关掉，首页内容还在落定（waimaiii 实锤：复验
@@ -1369,17 +1193,6 @@ public final class AdDecisionCore {
              *  依旧绝不误认（红线不碰）。 */
             if (s.contains("mintegral") || s.contains("pangle")
                     || s.contains("topon") || s.contains("moloco")) return true;
-            /* v7.9.1 淘宝 TMS 营销容器指纹（用户实锤：taobao TMSActivity 12
-             * 节点 WebView 容器——广告语境/关闭钮均不在原生树（H5 内核渲染），
-             * 三路语境全空 → 插屏整窗漏拦）。TMS = 淘宝营销系统容器窗
-             *（TmsActivity/TMSActivity——阿里系广告/营销落地页约定命名，
-             * 业务 App 窗口绝无此命名）。收编收益：① wctx.sdkAdWin=true →
-             * 插屏闸⓪第三路在场证据接通（WebView+窗指纹双证据）；②
-             * 图标关闭钮路径语境闸放行（纯图标 × 钮可出手）；③ videoLike
-             * 的 sdkAdWin 路径（零候选 streak≥3 + 窗龄≥3.2s）接通。
-             * 误报面：段级 contains（tmsactivity）——普通业务窗命名
-             * TmsActivity 的概率极低且此类窗本身即营销容器。 */
-            if (s.contains("tmsactivity")) return true;
             /* v5.9.0 四轮激进（用户实锤：继续大胆激进——国内聚合漏网主力）：
              *  · ksad——快手 KSAdSDK 广告窗命名段（com.ksad.* 家族与
              *    com.kwad.* 并行的真实包段，LearnGovernor 泛化表已认、

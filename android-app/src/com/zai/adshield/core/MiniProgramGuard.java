@@ -21,7 +21,7 @@ package com.zai.adshield.core;
  * 真机日志佐证：issue#45（v4.5.0）小米 2410DPN6CC 出现
  * MiniAppChildProcessMultiInsActivity0 窗口——「miniapp」标记即命中；
  * issue#51-55（v4.4.0）支付宝 XRiverActivity 容器胶囊「关闭」被代点
- * （v5.1.1 增补 xriver 标记 + 胶囊文案兜底）。
+ * （v5.1.1 增补 xriver 标记 + 胶囊文案兑底）。
  */
 public final class MiniProgramGuard {
 
@@ -153,7 +153,7 @@ public final class MiniProgramGuard {
         String v = vid.toLowerCase();
         if (v.contains("miniapp") || v.contains("appbrand") || v.contains("mini_program")
                 || v.contains("miniprogram") || v.contains("nebula")
-                /* v5.1.1：XRiver 容器 vid 标识（类名未知的漏网容器兜底） */
+                /* v5.1.1：XRiver 容器 vid 标识（类名未知的漏网容器兑底） */
                 || v.contains("xriver")) {
             return n;
         }

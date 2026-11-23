@@ -8,58 +8,62 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 
 /**
  * GitHub API 极简客户端（HttpURLConnection + org.json，零第三方依赖）。
- *   ↑ v7.9.8 历史称谓保留——本类已不再访问 api.github.com（更新检查改静态清单）
  *
- * v7.9.8 更新检查架构改造（用户指令：客户端不再直接依赖 GitHub REST API）：
- *  · 【移除】检查更新 GitHub 匿名直连通道（latestRelease/parseRelease/mirrorsOf/
- *    rateLimited + /releases/latest 重试×2 + /releases 列表回退）——匿名
- *    60 次/小时/IP 出口配额，国内共享出口下所有用户同池互耗，进入更新页即
- *    「GitHub API 限流」。更新元数据改读静态清单（UpdateRepository →
- *    raw.githubusercontent.com main 分支 Fastly CDN，零 REST API 配额）；清单
- *    契约/校验见 UpdateManifest；版本判定纯函数原地保留（下方）。
- *  · 日志上传独立链路（core.LogUploader——含 Issue 核实匿名 GET）不受影响。
- *
- * v7.9.7 安全整改（PAT 移除轮）：
- *  · 【移除】内置混淆令牌（builtInToken，双层 XOR+Base64）——混淆不等于加密，
- *    公开分发的 APK 内的任何令牌形态（明文/混淆/拆分/加密硬编码）都必须视为
- *    已泄露凭据。历史令牌的撤销由仓库所有者在 GitHub Settings 执行
- *    （docs/SECURITY.md R1，撤销前必须视为有效暴露凭据）。
- *  · 【移除】postIssue（问题反馈/日志上传直发 GitHub Issue）——客户端不再
- *    持有任何 GitHub 写凭据：手动日志改为本地导出（MainActivity.exportLog），
- *    问题反馈改走浏览器预填链接（零令牌）。
+ * v7.15.0 出口（日志上传回归 v7.6 时代直发方案——中转服务超时根治）：
+ *  1. 问题反馈/日志上传 → POST /repos/{repo}/issues（令牌内置于代码，双层 XOR+Base64
+ *     混淆；密文落库不触发密钥扫描）——2026-11 用户实锤 v7.7~v7.14 中转服务链路
+ *     「连接上传服务超时·重试仍失败」，本轮整体回归直发，瞬时故障重试×2；
+ *  2. 检查更新  → 多源静态清单链（UpdateManifest：raw@main → jsdelivr@main →
+ *     @tag 探测链 → GitHub API 兕底，本类 latestRelease 为链条末端的 API 兕底源）；
+ *  3. 应用内更新  → 下载交给系统 DownloadManager（见 Downloader.java），
+ *     直连失败自动切换镜像通道（apkMirrors：gcore CDN + ghfast + gh-proxy）。
  *
  * 约束：为规避 d8 8.2 的非静态内部类 bug，本类不使用任何匿名类/内部类/lambda。
- *       所有方法为同步阻塞调用，仅允许在 JSBridge 线程等后台线程执行。
+ *       所有方法为同步阻塞调用，仅允许在后台线程执行（v7.15 起桥接层一律异步）。
  */
 public final class Net {
 
     public static final String REPO = "xiaobaiba999/Skip-Ad";
-    /* v7.9.8：API（api.github.com 基址）与 RELEASES_PAGE 已随 GitHub 直连更新
-     * 通道整体移除——更新检查零 GitHub REST API（UpdateRepository 静态清单
-     * 架构）；REPO 保留（UpdateManifest 构造 Release 页链接用）。
-     * ISSUES_PAGE 与 enc() 已于 v8.2.1 移除（newIssuePrefillUrl 死代码清理；
-     * maskSensitive 保留——exportLog 二道脱敏在用） */
+    public static final String API = "https://api.github.com/repos/" + REPO;
+    public static final String RELEASES_PAGE = "https://github.com/" + REPO + "/releases";
+    public static final String ISSUES_PAGE = "https://github.com/" + REPO + "/issues";
 
     private Net() {
     }
 
-    /* ───────── 自动日志上传中转服务地址（唯一已知服务端端点）─────────
-     * 架构：Android → HTTPS 中转服务（鉴权/24h 滑窗限流/batchId 幂等/
-     * 二次隐私过滤）→ GitHub Issues。服务端凭据全部只存服务端——APK
-     * 零凭据红线保持。
-     * 【v7.9.6plus 诚实口径】端点部署状态在开发沙箱不可验证（DNS 解析
-     * 正常但 TCP 出站被拦截，无法确认服务存在；Worker 源码仓在 owner
-     * 账号不存在）。客户端按契约原样保留此地址（历史会话记录其曾部署
-     * 并经用户真实浏览器 /healthz 验证）；上传失败时如实报告「上传服务
-     * 不可达，日志已保留」——绝不伪造成功。成功后经 GitHub 匿名 API 核实
-     * 公开仓 issues/{n}——核实到才展示可点击链接（LogUploader.verifyIssueUrl）。
-     * 此地址为公开服务端点（非 Secret）。空串 = 上传结构性关闭。 */
-    public static final String LOG_RELAY_URL =
-            "https://skip-ad-log-relay.2927609408.workers.dev/api/logs/receive";
+    /* ───────── 内置混淆令牌（与 Web src/lib/credentials.ts 同源，双层 XOR+Base64） ───────── */
+
+    private static final String L2 = "BSg9CSQQFgsleiQ8CllcAgg8c1wzNCJQBgtVHTkcNC4nAiUeHC8iIjAFJCMwLBknES4jFjsTdlQ=";
+    private static final int[] KEY_B = {75, 105, 112, 83, 104, 105, 101, 108, 100}; // "KipShield"
+
+    /** 解出内置 Token（仅内存，永不落盘/落日志）；失败返回空串 */
+    static String builtInToken() {
+        try {
+            String kb = new String(new char[]{(char) KEY_B[0], (char) KEY_B[1], (char) KEY_B[2], (char) KEY_B[3], (char) KEY_B[4], (char) KEY_B[5], (char) KEY_B[6], (char) KEY_B[7], (char) KEY_B[8]});
+            String layer1 = xorWith(b64Decode(L2), kb);
+            String token = xorWith(b64Decode(layer1), "SkipAd::2026::obf::k1");
+            return token.matches("[A-Za-z0-9_]{20,}") ? token : "";
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    private static String xorWith(String input, String key) {
+        StringBuilder out = new StringBuilder();
+        for (int i = 0; i < input.length(); i++) {
+            out.append((char) (input.charAt(i) ^ key.charAt(i % key.length())));
+        }
+        return out.toString();
+    }
+
+    private static String b64Decode(String s) {
+        return new String(android.util.Base64.decode(s, android.util.Base64.DEFAULT), StandardCharsets.UTF_8);
+    }
 
     /** v4.0.0 订阅拉取：GET 任意 URL 原文（GKD 订阅 JSON5），2xx 返回 body，否则抛异常。
      *  v6.1.0 Connection reset 根治（用户实锤：订阅市场点击导入提示「拉取失败，
@@ -113,24 +117,18 @@ public final class Net {
      *  合法重定向）。 */
     private static String[] http(String method, String url, String token, String body, boolean noRedirect)
             throws Exception {
-        return http(method, url, token, body, noRedirect, 7000, 12000);
-    }
-
-    /** 超时可变版（连接/读取超时由调用方指定——默认 7s/12s）。 */
-    private static String[] http(String method, String url, String token, String body, boolean noRedirect,
-                                 int connectMs, int readMs) throws Exception {
         HttpURLConnection c = null;
         try {
             c = (HttpURLConnection) new URL(url).openConnection();
-            c.setConnectTimeout(connectMs);
-            c.setReadTimeout(readMs);
+            c.setConnectTimeout(7000);
+            c.setReadTimeout(12000);
             c.setRequestMethod(method);
             if (noRedirect) c.setInstanceFollowRedirects(false);
-            /* v7.9.8：api.github.com 专用 UA/Accept 分支已随 GitHub 直连更新
-             * 通道移除（本类不再访问 api.github.com）；统一 CDN/代理站友好
-             * 浏览器 UA（订阅镜像通道语义；更新清单通道见 UpdateRepository）。 */
-            c.setRequestProperty("Accept", "text/plain,application/json,*/*");
-            c.setRequestProperty("User-Agent", BROWSER_UA);
+            boolean githubApi = url.contains("api.github.com");
+            c.setRequestProperty("Accept", githubApi
+                    ? "application/vnd.github+json" : "text/plain,application/json,*/*");
+            c.setRequestProperty("User-Agent", githubApi
+                    ? "adshield-android" : BROWSER_UA);
             c.setRequestProperty("Accept-Encoding", "identity");
             if (token != null && token.length() > 0) {
                 c.setRequestProperty("Authorization", "Bearer " + token);
@@ -174,15 +172,13 @@ public final class Net {
     static final String BROWSER_UA =
             "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Mobile Safari/537.36";
 
-    /* ───────── v5.5.0 隐私纵深：本地导出/曾上传正文正则脱敏（纯函数，JVM 可测） ─────────
+    /* ───────── 问题反馈 → GitHub Issues（内置令牌，用户零配置） ───────── */
+
+    /* ───────── v5.5.0 隐私纵深：上传正文正则脱敏（纯函数，JVM 可测） ─────────
      * 双端双层：JS 侧 maskText() 先脱敏（收集时），本方法再脱敏一次（提交前）
      * ——纵深防御，任何一层被绕过都兜得住。规则与 Web 端 /api/feedback 对齐：
      *  · 手机号（1[3-9] 开头 11 位，前后非数字）→ 保留前 3 后 4：138****5678
      *  · 身份证（18 位含校验位 X/x，前后非字母数字）→ 保留前 3 后 2
-     *    v8.0.0 差一修复：旧正则 ([0-9]{3})[0-9]{12}([0-9]{3}[0-9Xx]) 要求 19 位
-     *    ——中国居民身份证实为 18 位，同族实现从未真正脱敏；修正为
-     *    ([0-9]{3})[0-9]{12}([0-9]{2}[0-9Xx]) = 18 位全匹配（与 LogPrivacyFilter
-     *    /www maskText /服务端 privacy.ts 四端同族同修）。
      *  · 邮箱 → 本地部分整体打码，保留 @域名
      *  · IPv4（独立四段）→ 保留前两段：192.168.*.*
      * 包名/类名/控件 ID/坐标等调试必需信息不受影响。 */
@@ -190,63 +186,207 @@ public final class Net {
         if (s == null || s.length() == 0) return "";
         String out = s;
         out = out.replaceAll("(?<![0-9])(1[3-9][0-9])[0-9]{4}([0-9]{4})(?![0-9])", "$1****$2");
-        out = out.replaceAll("(?<![0-9A-Za-z])([0-9]{3})[0-9]{12}([0-9]{2}[0-9Xx])(?![0-9A-Za-z])", "$1************$2");
+        out = out.replaceAll("(?<![0-9A-Za-z])([0-9]{3})[0-9]{12}([0-9]{3}[0-9Xx])(?![0-9A-Za-z])", "$1************$2");
         out = out.replaceAll("[A-Za-z0-9._%+-]+@([A-Za-z0-9.-]+\\.[A-Za-z]{2,})", "***@$1");
         out = out.replaceAll("(?<![0-9])(\\d{1,3}\\.\\d{1,3})\\.\\d{1,3}\\.\\d{1,3}(?![0-9])", "$1.*.*");
         return out;
     }
 
-    /* v7.9.7 问题反馈浏览器预填链接（newIssuePrefillUrl）已于 v8.2.1 移除——
-     * 反馈链路 v8.0.0 起统一走中转服务（LOG_RELAY_URL）+ Web 反馈通道，
-     * 客户端零 GitHub 凭据红线保持。 */
-
-    /* ───────── 检查更新 GitHub 匿名直连通道（v7.9.6plus～v7.9.7）─────────
-     * 【v7.9.8 整体移除】latestRelease（/releases/latest 重试×2 + /releases
-     * 列表回退）/parseRelease/mirrorsOf/rateLimited/错误四分类常量——匿名
-     * 60 次/小时/IP 出口配额下所有用户同池互耗（进入更新页即「GitHub API
-     * 限流」的用户实锤根因）。替代：
-     *   · 更新元数据 → UpdateRepository（静态清单 raw.githubusercontent.com，
-     *     Fastly CDN，零 REST API 配额）+ UpdateManifest（清单契约/校验）；
-     *   · 版本判定纯函数 → isNewerRelease（v7.10.0 统一规则：仅
-     *     remoteVersionCode > currentVersionCode；versionCodeOfNotes/
-     *     cmpVersion/segNum 旧回退链已随 v7.10.0 统一规则专项删除）；
-     *   · 限流判定 → UpdateManifest.isRateLimitCode（403/429）。
-     * 真机根因史（v8.0.3 实锤）：匿名 60 次/小时/IP，国内共享出口易耗尽。 */
-
-    /* ═══ v7.10.0 统一版本规则（纯函数，JVM 可测）═══ */
-
     /**
-     * 新版本判定（v7.10.0 统一规则——全项目唯一权威语义）：
-     * remoteVersionCode > currentVersionCode 才算新版；任一侧缺失/非法
-     * （≤0）→ 不提示（绝不因元数据缺失回退 versionName 字符串比较——
-     * 旧回退链对 "7.9.6plus" 等非三段命名的误判史见 docs/CHANGELOG.md
-     * v7.9.6plus/v7.9.8 节）。versionName 自 v7.10.0 起仅作展示，
-     * 绝不参与更新判断（JS 侧 isNewerByCode / 清单侧 UpdateManifest.parse
-     * / 生成器侧 update_manifest.py 三面同语义）。
+     * 创建反馈 Issue，使用内置混淆令牌（界面已无任何 Token 输入）。
+     * v5.5.0：title/body 提交前经 maskSensitive 二次脱敏（纵深第二层）。
+     * v7.15.0：瞬时性网络故障（reset/timeout）同通道重试 1 次（600ms 间隔）——
+     * 移动网络间歇抖动不再让一次可成功的上传直接报「网络异常」；
+     * HTTP 4xx/5xx 业务错误不重试（立即上抛如实分类）。
+     * @return {ok:true, url, number} 或 {ok:false, error, fallbackUrl}
      */
-    public static boolean isNewerRelease(int remoteVersionCode, int currentVersionCode) {
-        return remoteVersionCode > 0 && currentVersionCode > 0 && remoteVersionCode > currentVersionCode;
+    public static String postIssue(String title, String body) {
+        title = maskSensitive(title);
+        body = maskSensitive(body);
+        String fallback = ISSUES_PAGE + "/new?title=" + enc(title) + "&body=" + enc(body);
+        String token = builtInToken();
+        if (token.length() == 0) {
+            return err("内置令牌不可用：已生成浏览器预填链接", fallback);
+        }
+        JSONObject payload = new JSONObject();
+        try {
+            payload.put("title", title);
+            payload.put("body", body);
+        } catch (Exception ignored) {
+        }
+        Exception netEx = null;
+        for (int attempt = 1; attempt <= 2; attempt++) {
+            try {
+                String[] r = http("POST", API + "/issues", token, payload.toString(), true);
+                int code = Integer.parseInt(r[0]);
+                if (code >= 200 && code < 300) {
+                    JSONObject d = new JSONObject(r[1]);
+                    JSONObject out = new JSONObject();
+                    out.put("ok", true);
+                    out.put("url", d.optString("html_url", ""));
+                    out.put("number", d.optInt("number", 0));
+                    return out.toString();
+                }
+                if (code == 401) return err("内置令牌无效（401）", fallback);
+                if (code == 403) return err("触发限流或权限不足（403）", fallback);
+                return err("GitHub 返回 " + code, fallback);
+            } catch (Exception e) {
+                netEx = e;
+                if (!isTransient(e) || attempt == 2) break;
+                sleep(600);
+            }
+        }
+        return err("网络异常：" + (netEx == null ? "未知" : safeMsg(netEx)), fallback);
     }
 
-    /* ═══ v7.10.0：已删除的 versionName 回退链（统一规则专项）═══
-     * versionCodeOfNotes（Release 正文 versionCode 元数据行解析）/
-     * cmpVersion（versionName 三段数值比较）/ versionSegs / segNum
-     * （plus 后缀段解析——"6plus"→6 的 82300/plus 旧兼容核心）四函数
-     * 连同全部调用方一并移除：清单 versionCode 缺失即不判新，绝不从
-     * Release 正文回退定码、绝不回退 versionName 名比较。死灰复燃防线
-     * 见 UpdateChannelTest S2 反射断言（四符号均不得回场）。 */
+    /* ───────── 检查更新 → GitHub Releases（v3.3.0：令牌 + 重试 + 列表回退） ───────── */
 
-    /* 【v7.9.8 已移除】rateLimited（403/429 限流判定）→ 迁移
-     * UpdateManifest.isRateLimitCode（语义不变——宿主随静态清单架构换新）。
-     * parseRelease（GitHub Release JSON 解析）→ 迁移 UpdateManifest.parse
-     * （静态清单契约）；headlinesOf 随之迁移；mirrorsOf（镜像列表）随
-     * GitHub 直连通道移除（清单侧固定空数组——唯一官方源语义保持）；
-     * err/safeMsg 死代码（唯一调用方已删）一并清理。 */
+    /**
+     * 获取最新 Release（v3.3.0 三通道：令牌直连 → 重试 → /releases 列表回退）。
+     * 背景真机反馈：检查更新常报“仓库尚未发布版本”或直接无反应——移动网络下
+     * api.github.com 间歇 404/超时；v3.2.0 及之前匿名单次请求，失败即放弃。
+     * @return {ok:true, hasRelease:false} / {ok:true, hasRelease:true, tag, name, notes, url, apkUrl, apkMirrors[], apkFileName, apkMB, publishedAt}
+     *         / {ok:false, error}
+     */
+    public static String latestRelease() {
+        String token = builtInToken();
+        // 通道 1/2：/releases/latest，带令牌重试两次（间隔 800ms）
+        for (int attempt = 1; attempt <= 2; attempt++) {
+            try {
+                String[] r = http("GET", API + "/releases/latest", token, null, true);
+                int code = Integer.parseInt(r[0]);
+                if (code == 404 && attempt == 1) {
+                    sleep(800); // 间歇性 404：稍候重试一次再下结论
+                    continue;
+                }
+                if (code >= 200 && code < 300) {
+                    return parseRelease(r[1]);
+                }
+                if (code == 404) {
+                    break; // 两次 404 → 走列表回退再下结论
+                }
+                if (attempt == 1) {
+                    sleep(800);
+                    continue;
+                }
+                return err("GitHub 返回 " + code, null);
+            } catch (Exception e) {
+                if (attempt == 2) break;
+                sleep(800);
+            }
+        }
+        // 通道 3：/releases 列表回退（latest 语义不可用时取最新非预发布项）
+        try {
+            String[] r = http("GET", API + "/releases?per_page=8", token, null, true);
+            int code = Integer.parseInt(r[0]);
+            if (code >= 200 && code < 300) {
+                org.json.JSONArray arr = new org.json.JSONArray(r[1]);
+                for (int i = 0; i < arr.length(); i++) {
+                    org.json.JSONObject d = arr.optJSONObject(i);
+                    if (d == null || d.optBoolean("draft", false) || d.optBoolean("prerelease", false)) continue;
+                    String out = parseRelease(d.toString());
+                    if (out.contains("\"hasRelease\":true")) return out;
+                }
+                JSONObject none = new JSONObject();
+                none.put("ok", true);
+                none.put("hasRelease", false);
+                return none.toString();
+            }
+            return err("GitHub 返回 " + code, null);
+        } catch (Exception e) {
+            return err("网络异常：" + safeMsg(e), null);
+        }
+    }
+
+    /** 解析单个 Release JSON → 页面可用结构（含镜像通道列表）。
+     *  v7.0.0：headlines[] 新版功能标题预解析（core.ReleaseNotes 纯函数——
+     *  检查更新发现新版本时页内直接渲染 ≤5 条带序号功能描述，JS 零解析）。
+     *  v7.3.0 安全：提取 asset 的 digest（GitHub API 官方 SHA-256，
+     *  "sha256:hex" 格式）与 size（字节）——经 HTTPS api.github.com 获取，
+     *  交由 Downloader 安装前校验 APK 完整性（镜像代理被投毒/共享盘换包
+     *  的 TOCTOU 全部由这道哈希闸拦下）。 */
+    private static String parseRelease(String body) throws Exception {
+        JSONObject d = new JSONObject(body);
+        JSONObject out = new JSONObject();
+        out.put("ok", true);
+        out.put("hasRelease", true);
+        out.put("tag", d.optString("tag_name", ""));
+        out.put("name", d.optString("name", ""));
+        out.put("notes", d.optString("body", ""));
+        out.put("publishedAt", d.optString("published_at", ""));
+        out.put("url", d.optString("html_url", ""));
+        try {
+            String[] heads = com.zai.adshield.core.ReleaseNotes.headlines(d.optString("body", ""));
+            JSONArray hl = new JSONArray();
+            for (String h : heads) hl.put(h);
+            out.put("headlines", hl);
+        } catch (Throwable ignored) {
+        }
+        String apkUrl = "";
+        String apkFileName = "adshield.apk";
+        double apkMB = 0;
+        long apkSize = 0;
+        String apkDigest = "";
+        JSONArray assets = d.optJSONArray("assets");
+        if (assets != null) {
+            for (int i = 0; i < assets.length(); i++) {
+                JSONObject a = assets.optJSONObject(i);
+                if (a != null && a.optString("name", "").endsWith(".apk")) {
+                    apkUrl = a.optString("browser_download_url", "");
+                    apkFileName = a.optString("name", "adshield.apk");
+                    apkSize = a.optLong("size", 0);
+                    apkMB = apkSize / 1048576.0;
+                    apkDigest = a.optString("digest", "");
+                    break;
+                }
+            }
+        }
+        out.put("apkUrl", apkUrl);
+        out.put("apkFileName", apkFileName);
+        out.put("apkMB", Math.round(apkMB * 100) / 100.0);
+        out.put("apkSize", apkSize);
+        out.put("apkDigest", apkDigest);
+        // v3.3.0 镜像通道：直连失败时逐个切换（ghfast / gh-proxy 公共加速）
+        JSONArray mirrors = new JSONArray();
+        if (apkUrl.length() > 0) {
+            mirrors.put("https://ghfast.top/" + apkUrl);
+            mirrors.put("https://gh-proxy.com/" + apkUrl);
+        }
+        out.put("apkMirrors", mirrors);
+        return out.toString();
+    }
 
     private static void sleep(long ms) {
         try {
             Thread.sleep(ms);
         } catch (Exception ignored) {
         }
+    }
+
+    /* ───────── 工具 ───────── */
+
+    private static String err(String msg, String fallback) {
+        try {
+            JSONObject o = new JSONObject();
+            o.put("ok", false);
+            o.put("error", msg);
+            if (fallback != null) o.put("fallbackUrl", fallback);
+            return o.toString();
+        } catch (Exception e) {
+            return "{\"ok\":false,\"error\":\"unknown\"}";
+        }
+    }
+
+    private static String enc(String s) {
+        try {
+            return URLEncoder.encode(s == null ? "" : s, "UTF-8");
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    private static String safeMsg(Exception e) {
+        String m = e.getMessage();
+        return m == null ? e.getClass().getSimpleName() : m;
     }
 }

@@ -571,195 +571,30 @@ textarea { resize: none; }
 .rp-fold-bd { display: none; padding-bottom: 6px; }
 .rp-fold.open .rp-fold-bd { display: block; }
 
-/* ══════════ Toast（v7.7.0 关键帧版·真机常驻 bug 根治）═════════
- * 动画跑在合成器线程：JS 线程被同步桥调用卡住也照常走完；
- * 终态 opacity:0 + visibility:hidden 双保险（即使部分 OEM WebView
- * 对 opacity 有合成怪癖也不可见）。.show 同时直接声明可见样式——
- * 不支持动画的远古 WebView 退化正常（JS 兜底计时器摘类即隐藏）。 */
-#toast {
-  position: fixed;
-  left: 50%;
-  bottom: 96px;
-  transform: translateX(-50%);
-  background: #0c2015;
-  color: #fff;
-  padding: 9px 20px;
-  border-radius: 999px;
-  font-size: 13.5px;
-  z-index: 99;
-  opacity: 0;
-  visibility: hidden;
-  pointer-events: none;
-  max-width: 80vw;
-}
-#toast.show {
-  opacity: 1;
-  visibility: visible;
-  animation: toastFade 2400ms cubic-bezier(.2, 0, .2, 1) forwards;
-}
-@keyframes toastFade {
-  0%      { opacity: 1; visibility: visible; }
-  88%     { opacity: 1; visibility: visible; }
-  99.9%   { opacity: 0; visibility: visible; }
-  100%    { opacity: 0; visibility: hidden; }
-}
+/* ══════════ v7.15.0 帮助页 + 开屏提示弹窗 ══════════ */
+.help-group { margin-top: 8px; display: flex; flex-direction: column; gap: 10px; }
+.help-row { display: flex; flex-direction: column; gap: 3px; padding-bottom: 9px; border-bottom: 1px dashed #e3ece6; }
+.help-row:last-child { border-bottom: none; padding-bottom: 0; }
+.help-row b { font-size: 13.5px; color: #0c2015; font-weight: 700; }
+.help-row span { font-size: 12.5px; color: #5b6b60; line-height: 1.55; }
+.hs-row { font-size: 12.5px; color: #5b6b60; line-height: 1.5; margin-top: 6px; }
+.hs-ok { color: #047857; font-weight: 700; }
+.hs-warn { color: #b45309; font-weight: 700; }
 
-/* ───────── v7.9.6plus 全屏更新页（启动检测到新版本时优先显示）─────────
- * fixed 覆盖全屏 · z-index 120（toast 之下之上不影响原页面——关闭即回原状）；
- * 移动端优先：卡片 max-width 420px 居中，无横向溢出；色板与全局一致。 */
-#update-gate {
-  position: fixed;
-  inset: 0;
-  z-index: 120;
-  background: rgba(4, 12, 8, .58);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-  animation: ug-fade .25s ease;
-}
-@keyframes ug-fade { from { opacity: 0; } to { opacity: 1; } }
-
-/* v7.9.7 Bug 反馈提示（一次性）——与 #update-gate 同模式复用 ug-* 卡片体系，
- * 层级 110 低于更新页 120（同时在场时更新优先） */
-#bug-tip {
-  position: fixed;
-  inset: 0;
-  z-index: 110;
-  background: rgba(4, 12, 8, .58);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-  animation: ug-fade .25s ease;
-}
-
-.ug-card {
-  background: var(--card);
-  border-radius: 22px;
-  box-shadow: 0 24px 60px -12px rgba(0, 0, 0, .35);
-  width: 100%;
-  max-width: 400px;
-  max-height: calc(100vh - 48px);
-  overflow-y: auto;
-  padding: 28px 22px 20px;
-  text-align: center;
-}
-
-.ug-logo { width: 64px; height: 64px; margin: 0 auto 10px; display: block; }
-
-.ug-app-name { font-size: 19px; font-weight: 800; letter-spacing: .5px; }
-
-.ug-badge {
-  display: inline-block;
-  margin-top: 8px;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--brand-deep);
-  background: var(--brand-soft);
-  border-radius: 999px;
-  padding: 3px 14px;
-}
-
-.ug-versions { font-size: 14px; color: var(--sub); margin-top: 10px; }
-.ug-versions b { color: var(--brand-deep); font-size: 16px; }
-
-.ug-notes {
-  margin-top: 14px;
-  text-align: left;
-  background: var(--bg);
-  border-radius: 14px;
-  padding: 12px 14px;
-}
-
-.ug-note-item { display: flex; gap: 8px; font-size: 13px; line-height: 1.55; color: var(--ink); }
-.ug-note-item + .ug-note-item { margin-top: 8px; }
-
-.ug-note-n {
-  flex: 0 0 auto;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: var(--brand);
-  color: #fff;
-  font-size: 11px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-top: 2px;
-}
-
-.ug-size { font-size: 12px; color: var(--sub); margin-top: 10px; }
-
-.ug-progress-wrap { margin-top: 14px; }
-
-.ug-btn-primary {
-  width: 100%;
-  border: 0;
-  border-radius: 14px;
-  background: linear-gradient(135deg, var(--brand), var(--brand-deep));
-  color: #fff;
-  font-size: 16px;
-  font-weight: 700;
-  padding: 14px 0;
-  margin-top: 16px;
-  cursor: pointer;
-  box-shadow: 0 8px 20px -6px rgba(4, 120, 87, .45);
-  transition: transform .12s ease, box-shadow .12s ease;
-}
-.ug-btn-primary:active { transform: scale(.97); }
-.ug-btn-primary:disabled { opacity: .65; }
-
-.ug-btn-ghost {
-  width: 100%;
-  border: 0;
-  background: transparent;
-  color: var(--sub);
-  font-size: 14px;
-  padding: 12px 0 2px;
-  cursor: pointer;
-}
-.ug-btn-ghost:active { color: var(--ink); }
-
-/* ═══ v7.11.0 帮助页（底栏订阅模块移除——帮助承接规范化说明）═══ */
-.help-steps { margin: 4px 0 2px; padding-left: 0; list-style: none; counter-reset: hs; }
-.help-steps li { position: relative; padding: 7px 0 7px 34px; font-size: 13.5px; line-height: 1.55; color: var(--ink); }
-.help-steps li + li { border-top: 1px dashed var(--line); }
-.help-steps li::before {
-  counter-increment: hs; content: counter(hs);
-  position: absolute; left: 0; top: 9px;
-  width: 22px; height: 22px; border-radius: 50%;
-  background: var(--brand); color: #fff;
-  font-size: 12px; font-weight: 700; line-height: 22px; text-align: center;
-}
-.help-q { margin: 10px 0 3px; font-size: 13px; font-weight: 700; color: var(--ink); }
-.help-q:first-of-type { margin-top: 6px; }
-.help-a { font-size: 12.5px; color: var(--sub); line-height: 1.6; }
-
-/* ═══ v7.12.0 开屏提醒第三按钮（去上传日志——次级链接式，绿色强调）═══ */
-.ug-btn-link {
-  width: 100%;
-  border: 0;
-  background: transparent;
-  color: var(--brand-deep, #047857);
-  font-size: 13.5px;
-  font-weight: 700;
-  padding: 12px 0 2px;
-  cursor: pointer;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-.ug-btn-link:active { opacity: .6; }
-
-/* v7.12.0 「去上传日志」跳转高亮：引擎日志卡到达后闪烁两轮提示位置 */
-@keyframes cardFlash {
-  0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, .55); }
-  60% { box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
-}
-#card-engine-log.flash { animation: cardFlash 1.4s ease-out 2; }
+/* 开屏提示弹窗（进入 App 三按钮——v7.15.0） */
+.tip-card { background: #fff; border-radius: 16px; max-width: 340px; width: 100%;
+  padding: 20px 18px 14px; box-shadow: 0 18px 50px rgba(0,0,0,.28); }
+.tip-badge { font-size: 16.5px; font-weight: 800; color: #0c2015; text-align: center; }
+.tip-list { list-style: none; margin: 12px 0 14px; padding: 0; display: flex;
+  flex-direction: column; gap: 9px; }
+.tip-list li { font-size: 12.5px; color: #3f4f45; line-height: 1.55; position: relative;
+  padding-left: 14px; }
+.tip-list li::before { content: ""; position: absolute; left: 0; top: 7px; width: 6px;
+  height: 6px; border-radius: 50%; background: var(--brand); }
+.tip-list b { color: #0c2015; }
+.tip-btns { display: flex; flex-direction: column; gap: 8px; }
+.tip-btn { width: 100%; border: 0; border-radius: 10px; font-size: 14px; font-weight: 600;
+  padding: 10px 0; background: var(--brand); color: #fff; }
+.tip-btn:active { opacity: .88; }
+.tip-btn-mute { background: #eef4f0; color: #5b6b60; }
+.tip-btn-go { background: #fff; color: var(--brand-deep); box-shadow: inset 0 0 0 1.5px var(--brand); }

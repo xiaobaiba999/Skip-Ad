@@ -1,10 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- v7.8.0：补订 typeWindowsChanged——无焦点变化的 Dialog/PopupWindow 插层挂载
-     （window id 新增）此前不产生任何被订阅事件（插屏扫描死因之一：同窗内
-     Fragment/View overlay 插层完全无人扫）；新窗挂载事件拉起插屏扫描
-     （AdSkipService TYPE_WINDOWS_CHANGED → maybeInterstitialScan，1.5s 节流）。 -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
-    android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged|typeViewClicked|typeWindowsChanged"
+    android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged|typeViewClicked"
     android:accessibilityFeedbackType="feedbackGeneric"
     android:accessibilityFlags="flagDefault|flagReportViewIds|flagRetrieveInteractiveWindows|flagIncludeNotImportantViews"
     android:canRetrieveWindowContent="true"

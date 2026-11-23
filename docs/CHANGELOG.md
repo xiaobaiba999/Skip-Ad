@@ -1,4 +1,27 @@
-# 版本变更归档（CHANGELOG）
+# 变更记录
+
+## v7.15.0 · 2026-11-24 · 版本线重制（基于 v7.6.0 激进模式基线重构，7.7~7.14 整体召回）
+
+**用户指令**：清除 7.6 之后的所有版本；下一次迭代版本直接为 7.15.0；基于「开屏卫士 v7.6.0 · 激进模式版本」进行代码重构；清除除 7.6 版本外不需要的代码和其他 Action。
+
+**本轮交付**：
+
+1. **日志上传回归 v7.6 直发方案（「连接上传服务超时」根治）**：删除 v7.7~v7.14 的中转服务复杂层（LogUploader/LogStore/LogEvents/LogPrivacyFilter ~1600 行），回归内置混淆令牌直发 GitHub Issue（Net.postIssue 瞬时故障自动重试×2）；24 小时自动提交 3 次保持（每 8 小时一次：KeepAliveReceiver 心跳顺带 · 成功才计时 · 服务暂停/息屏不传）；上传全异步（不再阻塞桥线程）
+2. **检查更新多源链（「检查更新不到新版本」结构性根治）**：新 UpdateManifest——静态清单 raw@main → jsdelivr@main → @tag 探测链（tag 不可变键零源站缓存，候选 = 下一补丁 + 下两个 minor）→ GitHub API 兜底，多源合流取最高 versionCode；结果 10 分钟缓存 + synchronized 单飞；浏览器预览同源镜像（app.js fetchLatestBrowser 与 Java 侧同候选集同语义）
+3. **卫士卡死根治（「点按钮/进 App 卡死、重进不行、只能重装」）**：根因 = 同步长 IO 桥（netPostIssue/netGetLatestRelease）把 JavaBridge 线程占住十几秒，期间所有后续桥调用排队 = 界面卡死；重进撞同一链路复现；重装清 prefs 偶然自愈。根治 = 桥接层全面异步化（后台线程 + window.__netCb 回调）+ 崩溃循环自愈（CrashCapture：20 分钟内 ≥3 次崩溃自动重置病态 UI 状态——免重装出路）
+4. **息屏/切应用回来广告拦不住根治**：根因 = 息屏期间事件丢弃致前台窗龄老化，解锁回来弹广告时「窗龄超窗」把开屏扫描门判死。根治 = 亮屏/解锁（SCREEN_ON + USER_PRESENT）视作重新进入：窗龄重置 + gaveUp/clickTries 重置 + interWinAt/nudgeAt/rescueAt 节流清空 + bumpScanChain 全梯子 + 0ms 内联补扫 + 400ms 追加一针
+5. **「每次退出重新进入都要重新开启 + 10 秒系统警告」**：v7.6.1 基线的免重开机制恢复（v4.5.0 开关解耦 + v5.2.0 深挖拉活 + 前台看门狗 + 通知一键恢复；系统开关永不触碰——10 秒警告只在登记真被吊销时才需要）
+6. **底栏重构**：订阅页移除 + id667 订阅每日后台自动导入（SubscriptionManager.maybeAutoImport：subUrl 空时自动设 Lin-arm 默认源，八通道镜像 + APK 内置离线快照兜底——导入永不硬失败；已有源尊重既有选择；失败 30 分钟退避重试）；新增帮助页（快速上手/固定后台三步/常见问题/日志与隐私——条理规范化，数字仅保留功能性最少集合）
+7. **进入 App 开屏提示弹窗（三按钮）**：知道了（本次关闭）/ 24 小时不再提示（tipDismissUntil + tipPinVer 版本钉——升级后重新提醒一次）/ 去上传日志（直达我的页并自动发起上传）；每次进入 App 评估（含 visibilitychange 切回）；kvSet 白名单扩展（tipDismissUntil ≤16 字符 / tipPinVer ≤12 字符，严格钉死）
+8. **更新下载多通道兜底（中国大陆下载失败根治）**：gcore CDN 直链（仓库 dist 直出）优先 + GitHub 官方 + ghfast.top / gh-proxy.com 镜像（30s 无进展自动换通道；Downloader 安装前 SHA-256 完整性校验保持）
+9. **仓库清理**：android-app 源码树整体重置到 v7.6.1 基线（= v7.6.0 激进模式 + app.js 修复）；删除 7.6 之后的一次性发布脚本 ×12、tests-js、net-verify.yml（中转服务验证 Action——随直发方案退役；update-manifest.yml 保留——清单自动提交是「永不漏检」的关键闸）、7.6 之后的 APK 产物 ×54；GitHub 侧删除 v7.7.0~v7.14.0 的 tags 与 Releases
+10. **测试与验证**：JVM 21 套件 4314 断言全绿（v7.6.1 基线零回退）；APK 构建六步全过（页面资产符号闸 11 项在场——含 v7.15 新增接线符号）；浏览器预览行为级验证：三按钮弹窗（每次进入/24h 静音/版本钉/去上传直达）+ 帮助页渲染 + 检查更新多源链实测可达；诚实口径：真机/模拟器 E2E NOT_RUN——待用户实测反馈
+
+**版本口径**：versionCode 85000（> 84000 覆盖升级）；签名证书 SHA-256 05ada6e3…（与历史正式版本一致）；APK 857,654 字节。
+
+---
+
+（CHANGELOG）
 
 > 首页只保留当前版本要点；全部历史版本详情在本页归档。
 > 发布物（APK/报告/文档）见 [Releases](https://github.com/xiaobaiba999/Skip-Ad/releases) 与 `docs/test-reports/`。

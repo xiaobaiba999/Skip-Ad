@@ -82,16 +82,6 @@
           <span class="sw-name">习惯学习</span>
           <label class="switch"><input type="checkbox" id="toggle-learning" checked><span class="slider"></span></label>
         </div>
-        <!-- v7.9.7：自动上传开关（默认关）。v8.2.2：采集常开（不随开关停）、手动上传不受开关影响 -->
-        <div class="switch-row">
-          <span class="sw-name">自动上传日志</span>
-          <label class="switch"><input type="checkbox" id="toggle-log-upload"><span class="slider"></span></label>
-        </div>
-        <div class="sub-note" id="log-upload-note" style="margin-top:4px">默认关闭 · 每 8 小时自动检查一次（有新日志才传）· 采集与手动上传不受影响</div>
-        <div class="btn-row" id="log-upload-actions" style="display:none;margin-top:8px">
-          <button class="btn btn-ghost" id="btn-log-upload-now">立即提交</button>
-          <button class="btn btn-ghost" id="btn-log-upload-clear">清理待上传</button>
-        </div>
       </div>
 
       <!-- v4.3.0 应用白名单 -->
@@ -117,42 +107,62 @@
       </div>
     </section>
 
-    <!-- ───────── 帮助（v7.12.0 精简重写：去冗余——开屏提示文案不在此重复，
-         统计数字大幅精简，三卡结构） ───────── -->
+    <!-- ───────── 帮助（v7.15.0：底栏新增——订阅页已移除，id667 订阅每日后台自动导入）───────── -->
     <section class="page" id="page-help">
 
+      <!-- 动态状态行（app.js renderHelpDynamic 刷新） -->
+      <div class="card" id="help-status-card">
+        <div class="row-between">
+          <div class="card-title">卫士状态</div>
+          <span class="chip chip-green" id="help-status-chip">实时</span>
+        </div>
+        <div id="help-status"></div>
+      </div>
+
+      <!-- 快速上手 -->
       <div class="card">
         <div class="card-title">快速上手</div>
-        <div class="sub-note">开启一次，之后无需再动</div>
-        <div class="help-q">① 开启</div>
-        <div class="help-a">首页点「开启服务」，系统页倒计时结束确认（系统防诈设计，仅一次）</div>
-        <div class="help-q">② 生效</div>
-        <div class="help-a">看到「守护中」即生效，开屏广告露头自动跳过</div>
-        <div class="help-q">③ 固定后台</div>
-        <div class="help-a">把卫士固定在后台（见下）——退出 App 守护不中断</div>
+        <div class="help-group">
+          <div class="help-row"><b>开启服务</b><span>点「首页 → 开启服务」直达系统开关页。系统会显示 10 秒安全确认（防诈设计，属正常），等待后确认即可。</span></div>
+          <div class="help-row"><b>持续守护</b><span>开启一次即可：开屏广告露头即点、软件内弹窗/插屏自动关闭，日常零操作。</span></div>
+          <div class="help-row"><b>免重复开启</b><span>退出 App、清理后台、重启手机后都会自动恢复，无需重新开启，也无需再去系统设置。</span></div>
+        </div>
       </div>
 
+      <!-- 固定后台（核心指引） -->
       <div class="card">
         <div class="row-between">
-          <div class="card-title">让守护更稳</div>
-          <span class="chip chip-green">保活</span>
+          <div class="card-title">请把卫士固定在后台（很重要）</div>
+          <span class="chip" style="background:#FEF3C7;color:#92400E">必读</span>
         </div>
-        <div class="sub-note">不固定后台：清理后台 / 息屏久了卫士可能被系统回收，下次进入要重新开启</div>
-        <div class="help-a">· 最近任务卡片上选「固定 / 锁定」（小米长按卡片；华为荣耀下拉卡片；OPPO / vivo 卡片菜单）</div>
-        <div class="help-a">· 首页「保活体检」一键直达电池白名单等加固项</div>
-        <div class="help-a">· 遇到广告没跳过：开屏提醒里点「去上传日志」，帮助定位</div>
+        <div class="sub-note" style="margin-top:6px">后台被清理是「息屏或切应用回来，第一条广告拦不住」的主要原因。三步加固：</div>
+        <div class="help-group">
+          <div class="help-row"><b>1 · 最近任务加锁</b><span>打开多任务界面，找到开屏卫士卡片，下拉加锁（或长按选「锁定」）——厂商清理后台不再清掉卫士。</span></div>
+          <div class="help-row"><b>2 · 电池白名单</b><span>首页「保活体检」里有直达引导：允许卫士后台运行，省电策略不再杀服务。</span></div>
+          <div class="help-row"><b>3 · 通知权限</b><span>允许通知——万一服务被系统关闭，通知栏会一键恢复（点按即回，全程不去系统设置）。</span></div>
+        </div>
+        <div class="sub-note">若卫士短暂掉线：打开卫士首页会自动恢复（也可以从通知栏一键恢复），无需任何手动设置。</div>
       </div>
 
+      <!-- 常见问题 -->
       <div class="card">
         <div class="card-title">常见问题</div>
-        <div class="help-q">费电吗？</div>
-        <div class="help-a">安静时段零扫描，日常耗电极低；「我的 → 使用报告」可看能耗画像。</div>
-        <div class="help-q">支持哪些应用？</div>
-        <div class="help-a">内置与每日自动导入的社区订阅覆盖主流应用；个别应用手动示范一次，卫士会学习。</div>
-        <div class="help-q">订阅 / 检查更新失败怎么办？</div>
-        <div class="help-a">订阅每日自动重试并兜底内置快照；检查更新失败时页内有 CDN 直连下载通道。</div>
-        <div class="help-q">无障碍权限安全吗？</div>
-        <div class="help-a">只用屏幕识别能力找「跳过」键；数据仅存本机，联网仅更新检查与你主动的日志上传。</div>
+        <div class="help-group">
+          <div class="help-row"><b>息屏或切应用回来，第一个广告没拦住？</b><span>卫士后台被清理所致（见上方「固定后台」）。新版已在亮屏/解锁瞬间自动补扫，但后台被杀仍需恢复——按三步加固即可根治。</span></div>
+          <div class="help-row"><b>进入 App 弹出的提示是什么？</b><span>开屏广告拦截提示（知道了 / 24 小时不再提示 / 去上传日志）。选「24 小时不再提示」当日静音，升级新版本后会再提醒一次。</span></div>
+          <div class="help-row"><b>检查更新慢或下载失败？</b><span>内置多条备用下载通道会自动切换（CDN 直链优先）；也可到 GitHub Releases 页手动下载安装。</span></div>
+          <div class="help-row"><b>订阅规则还要手动导入吗？</b><span>不用。社区订阅每日后台自动导入（失败自动重试 + 内置快照兜底），无需任何操作。</span></div>
+        </div>
+      </div>
+
+      <!-- 日志与隐私 -->
+      <div class="card">
+        <div class="card-title">日志与隐私</div>
+        <div class="help-group">
+          <div class="help-row"><b>数据仅存本机</b><span>联网只用于日志提交与版本更新，无账号、无云端。</span></div>
+          <div class="help-row"><b>自动提交</b><span>引擎日志每 8 小时自动提交一次（一日 3 次），也可在「我的 → 引擎日志」手动上传。</span></div>
+          <div class="help-row"><b>自动脱敏</b><span>上传前手机号/身份证/邮箱/地址自动打码，只保留定位问题所需的技术信息。</span></div>
+        </div>
       </div>
     </section>
 
@@ -200,12 +210,12 @@
            实现、必须连电脑执行的活太麻烦——不要了）：一键恢复 + 前台看门狗 +
            零触摸自愈已覆盖普通用户全部场景，ADB 极客入口整体移除。 -->
 
-      <div class="card" id="card-engine-log">
+      <div class="card">
         <div class="row-between">
           <div class="card-title">引擎日志</div>
           <div class="btn-row" style="margin:0">
             <button class="btn btn-ghost btn-sm" id="btn-refresh-log">刷新</button>
-            <button class="btn btn-primary btn-sm" id="btn-upload-log">一键上传</button>
+            <button class="btn btn-primary btn-sm" id="btn-upload-log">上传日志</button>
           </div>
         </div>
         <div class="log-box" id="real-log"></div>
@@ -218,7 +228,7 @@
         </button>
       </div>
 
-      <p class="foot-note">数据仅存本机 · 联网仅更新检查与你主动的日志上传 · 上传失败日志永远保留可重试</p>
+      <p class="foot-note">数据仅存本机 · 联网仅日志与更新 · 日志每 8 小时自动提交一次（一日 3 次）</p>
     </section>
   </main>
 
@@ -229,7 +239,7 @@
       <span>首页</span>
     </button>
     <button class="tabbtn" data-page="help">
-      <svg viewBox="0 0 24 24" width="22" height="22"><circle cx="12" cy="12" r="9.2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M9.4 9.2c.2-1.6 1.4-2.6 3-2.6 1.7 0 2.9 1.1 2.9 2.6 0 2.3-3.2 2.1-3.2 4.3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="12.1" cy="16.9" r="1.15" fill="currentColor"/></svg>
+      <svg viewBox="0 0 24 24" width="22" height="22"><circle cx="12" cy="12" r="9.2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M9.4 9.2a2.7 2.7 0 1 1 3.9 2.4c-.8.4-1.3 1-1.3 1.9v.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="17.4" r="1.1" fill="currentColor"/></svg>
       <span>帮助</span>
     </button>
     <button class="tabbtn" data-page="me">

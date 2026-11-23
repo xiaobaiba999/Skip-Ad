@@ -27,7 +27,7 @@ import org.json.JSONObject;
  * · WebView 装载离线页面 assets/www（首页 / 学习中心 / 关于）
  * · 启动即静默检查 GitHub Releases：发现新版 → 页面顶部弹出更新横幅，
  *   页内直接下载（系统 DownloadManager）→ 进度条 → 完成后拉起安装，全程不跳浏览器
- * · v7.9.7：问题反馈/引擎日志本地导出曾上线（exportLog 桥）；v7.9.8 用户指令下线导出功能（UI 导出按钮 + exportLog/shareLogText 桥一并移除——日志采集/查看/一键上传全保留）；日志上传走中转服务（logUploadSubmitNow 桥）
+ * · 问题反馈 / 引擎日志上传使用内置混淆令牌（Net.builtInToken），界面零 Token 输入
  * · v3.5.0 保活：通知权限引导（Android 13+）、jump_a11y 通知一键恢复直达、
  *   电池优化白名单与 keepOn 状态桥接（配合 KeepAliveReceiver）
  * · v3.6.0 自动拉活：清理后台后服务被杀但系统设置仍登记时，打开 App
@@ -55,7 +55,14 @@ import org.json.JSONObject;
  *   ④ 新增保活体检桥：keepAliveItems（近 5 年全品牌自启动/省电策略
  *     直达候选，硬编码系统包零注入面）+ openKeepAliveTarget（逐候选
  *     resolveActivity 校验回退）+ notifPermGranted；
- *   ⑤ 登记判断改 RestoreGuard.registrationState 精确解析（子串误报绝纻）。
+ *   ⑤ 登记判断改 RestoreGuard.registrationState 精确解析（子串误报绝杀）。
+ * · v7.15.0（用户实锤：点按钮/进 App 卡死，重进不行只能重装）：
+ *   桥接层全面异步化——netPostIssue/netGetLatestRelease 两个同步长 IO 桥
+ *   会把 JavaBridge 线程占住长达十几秒，期间所有后续 AndroidApp.* 调用
+ *   排队、WebView 界面整体「卡死」；重进 App 撞同一链路 → 复现；重装
+ *   清 prefs → 偶然自愈。现全部改为后台线程 + window.__netCb(name,json)
+ *   回调（JavaBridge 线程瞬时返回），卡死类别从机制上根除；另加崩溃
+ *   循环自愈（CrashCapture.selfHealIfNeeded——免重装出路）。
  */
 public class MainActivity extends Activity {
 
@@ -88,6 +95,11 @@ public class MainActivity extends Activity {
 
         // v5.5.0 崩溃采集：进程崩溃堆栈写本地（8KB 截断），下次日志上传自动附带
         CrashCapture.install(this);
+        // v7.15.0 崩溃循环自愈：连续快速崩溃时重置易病态 UI 状态（免重装出路）
+        try {
+            CrashCapture.selfHealIfNeeded(this);
+        } catch (Throwable ignored) {
+        }
 
         // v3.5.0 保活：通知权限（13+）——保活常驻通知与恢复提醒必需
         requestNotifPermission();
@@ -224,17 +236,6 @@ public class MainActivity extends Activity {
             return pi.versionName;
         } catch (Exception e) {
             return "5.1.1";
-        }
-    }
-
-    /** v7.9.6plus：当前 versionCode（PackageManager——更新检查 versionCode
-     *  主判依据；取不到回退 0=禁用主判，isNewerRelease 回退 versionName 比较）。 */
-    static int versionCodeOf(Context ctx) {
-        try {
-            PackageInfo pi = ctx.getPackageManager().getPackageInfo(ctx.getPackageName(), 0);
-            return pi.versionCode;
-        } catch (Exception e) {
-            return 0;
         }
     }
 
@@ -412,24 +413,17 @@ public class MainActivity extends Activity {
         public void kvSet(String key, String value) {
             // v4.5.0 安全：value 长度上限（防 prefs 膨胀/DoS；正常页面状态远小于此）
             if (value != null && value.length() > 262144) return;
-            /* v4.5.0/v7.3.0 安全：key 白名单——JS 侧（app.js store.set）合法写入
-             * 的键只有 "state"（页面状态/战绩/开关）与 v7.9.8 Bug 反馈提示两个
-             * 纯 UI 时间戳键：bug_feedback_confirmed_at（用户确认时刻——24h
-             * 节流主闸）与 bug_feedback_shown_at（本次展示时刻——防 Activity
-             * 重建/旋转短窗内重复弹）。两者值均为 epoch 毫秒数字符串，非
-             * 引擎/规则/订阅数据，写面无任何安全影响。其余键（subUrl、
-             * subCache、dl 系列等）是服务/订阅/下载链路的持久化字段：一旦
-             * 前端出现注入（XSS），「kvSet 写 subCache 恶意规则」即可让服务
-             * 重启时静默加载被投毒的自动点击规则——白名单把这个通道焊死。
-             * v7.12.0：pin_tip_confirmed_at / pin_tip_shown_at（开屏提醒
-             * 24h 节流 + 60s 防连弹短窗——纯 UI 时间戳）。
-             * v7.13.0：pin_tip_ver（提醒卡版本标记——版本变化时节流失效，
-             * 跨升级「进入没弹提醒」根治；纯 UI 版本号字符串）。 */
-            if (!"state".equals(key) && !"bug_feedback_confirmed_at".equals(key)
-                    && !"bug_feedback_shown_at".equals(key)
-                    && !"pin_tip_confirmed_at".equals(key)
-                    && !"pin_tip_shown_at".equals(key)
-                    && !"pin_tip_ver".equals(key)) return;
+            /* v7.3.0 安全：key 白名单——除下方两枚 UI 提示键（v7.15.0，值长度严格
+             * 钉死）外，合法写入的键只有 "state"（页面状态/战绩/开关）。其余键
+             * （subUrl、subCache、dl 系列与 autoLogAt 等）是服务/订阅/下载链路
+             * 的持久化字段：一旦前端出现注入（XSS），「kvSet 写 subCache 恶意
+             * 规则」即可让服务重启时静默加载被投毒的自动点击规则——白名单把这个
+             * 通道焊死。 */
+            if (!"state".equals(key)
+                    && !"tipDismissUntil".equals(key)
+                    && !"tipPinVer".equals(key)) return;
+            if ("tipDismissUntil".equals(key) && (value == null || value.length() > 16)) return;
+            if ("tipPinVer".equals(key) && (value == null || value.length() > 12)) return;
             SharedPreferences.Editor e = a.getSharedPreferences("adshield", Context.MODE_PRIVATE).edit();
             if (value == null) e.remove(key);
             else e.putString(key, value);
@@ -469,16 +463,6 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public boolean a11yEnabledInSettings() {
             return AdSkipService.registrationPresent(a);
-        }
-
-        /** v7.11.0：服务最近连接时刻（epoch ms 字符串；0 = 从未连接）——
-         *  页面冷启动宽限期判定依据：刚断开不久（如清理后台后 AMS 重绑慢）
-         *  时首页显示「服务重连中」而非「未开启」，避免误导向系统设置看
-         *  10 秒警告；重绑成功后前台看门狗自动恢复「守护中」。 */
-        @JavascriptInterface
-        public String serviceLastConnectedAt() {
-            return String.valueOf(a.getSharedPreferences("adshield", Context.MODE_PRIVATE)
-                    .getLong(AdSkipService.KEY_LAST_CONNECTED_AT, 0L));
         }
 
         /** 自动拉活（v5.2.0 自适应深挖版，RestoreGuard.pollPlan/decideInAppRevive）：
@@ -800,51 +784,6 @@ public class MainActivity extends Activity {
             return ok;
         }
 
-        /* ═══ v7.12.0 白名单异步加载桥（卫士「卡死」根治的核心一环）═══
-         * 死因（用户实锤「卫士有时候点击按钮时或者进入时会导致卡死，重新
-         * 进入也不行，只能重新安装」）：whitelistJson 同步桥在 JavaBridge
-         * 线程上枚举全机可启动应用（300+ PackageManager IPC + 逐应用
-         * getApplicationLabel IPC——慢设备上分钟级，v7.11.0 init 注释实
-         * 测教训同源），JS 线程全程冻住＝页面假死。本桥把同一份枚举
-         * （whitelistJson 全量逻辑零改动，含 30s 记忆缓存）放到后台线程
-         * 执行，结果经 window[cb](json) 回调（runOnUiThread——与
-         * tryAutoReviveDeep/logUploadSubmitNow 同族模式）；JS 侧骨架
-         * 占位 + 回调渲染——主线程与 JS 线程双零阻塞。
-         * 同步桥 whitelistJson() 保留（兼容旧页面/诊断用途），页面热路径
-         * 已全部改走本异步桥（见 app.js wlBridgeAsync）。 */
-        @JavascriptInterface
-        public void whitelistJsonAsync(final String cb) {
-            new Thread(() -> {
-                final String r;
-                try {
-                    r = whitelistJson();
-                } catch (final Throwable t) {
-                    a.runOnUiThread(() -> {
-                        try {
-                            if (a.webView != null) {
-                                a.webView.evaluateJavascript(
-                                        "window[" + JSON.stringifyCb(cb) + "] && window["
-                                                + JSON.stringifyCb(cb) + "]({})", null);
-                            }
-                        } catch (Throwable ignored) {
-                        }
-                    });
-                    return;
-                }
-                final String rr = r;
-                a.runOnUiThread(() -> {
-                    try {
-                        if (a.webView != null) {
-                            a.webView.evaluateJavascript(
-                                    "window[" + JSON.stringifyCb(cb) + "] && window["
-                                            + JSON.stringifyCb(cb) + "](" + rr + ")", null);
-                        }
-                    } catch (Throwable ignored) {
-                    }
-                });
-            }, "wl-json-async").start();
-        }
-
         @JavascriptInterface
         public boolean whitelistRemove(String pkg) {
             boolean ok = AdSkipService.whitelistRemove(a, pkg);
@@ -872,100 +811,65 @@ public class MainActivity extends Activity {
             }
         }
 
-        /* ───── v7.9.7：日志本地导出 + 自动上传授权桥（PAT 移除轮） ─────
-         * 旧 netPostIssue（内置令牌直发 GitHub Issue）已移除——客户端零 GitHub
-         * 写凭据。手动日志 = 本地导出（应用外部私有目录，无任何新权限）+
-         * 系统分享面板（ACTION_SEND 纯文本，用户自行投递：邮件/网盘/仓库
-         * Issue 浏览器预填）。自动上传授权 = 独立开关（默认关，见
-         * AdSkipService.KEY_AUTO_LOG_UPLOAD；v7.9.7 中转服务未上线结构性关闭）。 */
+        /* ───── 问题反馈 / 引擎日志上传（内置令牌，无任何用户配置） ───── */
 
-        /* ═══ v7.9.8：exportLog/shareLogText 桥已随导出功能下线移除 ═══
-         * （用户指令：移除引擎日志页导出按钮及对应无用事件绑定/弹窗/导出
-         * 逻辑；日志采集/查看/一键上传与自动上传规则零改动。Net.maskSensitive
-         * 保留在 Net 工具库——LogPrivacyFilter 同族正则与 JVM 测试仍在用。） */
+        /* ═══ v7.15.0 桥接全面异步化（卫士卡死根治）═══
+         * 死因（用户实锤：点按钮/进 App 卡死，重进不行只能重装）：旧版
+         * netPostIssue/netGetLatestRelease 是同步桥——JavaBridge 线程被一次
+         * 长 IO（网络超时最坏十几秒）占住期间，所有后续 AndroidApp.* 桥调用
+         * 排队等待——WebView JS 全部等回包 = 整个界面「卡死」。重进 App 又撞
+         * 同一链路 → 复现；重装清 prefs → 偶然自愈。现一律后台线程执行，结果
+         * 经 window.__netCb(name, json) 回调；JavaBridge 线程瞬时返回。 */
 
-        /** v7.9.7：自动日志上传授权状态（默认关）。 */
+        /** 异步创建反馈 Issue（引擎日志上传共用此通道；后台线程执行，
+         *  结果回调 window.__netCb(name, json)）。
+         *  v4.5.0 安全闸保留：标题/正文长度上限 + 15s 频控。 */
         @JavascriptInterface
-        public boolean logUploadConsent() {
+        public void netPostIssueAsync(final String title, final String body, final String cb) {
+            final String t;
+            final String b;
             try {
-                return AdSkipService.autoLogUploadEnabled(a);
-            } catch (Throwable t) {
-                return false;
-            }
-        }
-
-        /** v7.9.7：设置自动日志上传授权（仅写授权位与采集门；上传行为另受中转服务
-         *  配置与服务端 24h 限额双重门控——授权 ≠ 上传）。 */
-        @JavascriptInterface
-        public void setLogUploadConsent(boolean enabled) {
-            try {
-                AdSkipService.setAutoLogUploadEnabled(a, enabled);
-            } catch (Throwable ignored) {
-            }
-        }
-
-        /** v8.0.0：上传状态行真数据。v8.2.2：LogStore.overview——待传事件数/
-         *  拒收检视/累计采集/最近成功时间（服务端权威，本地仅展示）。
-         *  v7.10.0：24h 成功数（acked24h）键已随「上传次数限制彻底移除」删除。 */
-        @JavascriptInterface
-        public String logUploadStatus() {
-            try {
-                return com.zai.adshield.core.LogStore.get(a)
-                        .overview(System.currentTimeMillis()).toString();
-            } catch (Throwable t) {
-                return "{\"pending\":0,\"pendingEvents\":0,\"lastAckedAt\":0,\"rejected\":0,\"lastError\":\"\"}";
-            }
-        }
-
-        /** 手动「一键上传」（用户主动操作——后台线程阻塞执行 LogUploader.submitNow，
-         *  完成后经 window[cb] 回调 UI）。v8.2.2：简化上传器——手动不受 24h/3
-         *  本地额度限制（服务端限额如实转达）；成功显示 Issue 编号与经验证的真实
-         *  链接，失败显示原因并保留可重试。（v8.0.0 原文：
-         *  batchId 幂等，绝不绕过；单后台守护线程执行，绝不阻塞页面）。
-         *  v8.1.0：升级为一键上传带回调版（cb=JS 回调函数名）——后台线程
-         *  阻塞执行 submitNowBlocking（强制封批 + 结果 Summary），完成后经
-         *  window[cb] 回调 UI；成功显示 Issue 编号，失败显示原因。v7.10.0：
-         *  本地已无任何次数/额度/冷却限制（上传次数限制彻底移除——同
-         *  batchId 幂等保持，服务端 per-minute 瞬时防爆层如实转达）。） */
-        @JavascriptInterface
-        public void logUploadSubmitNow(final String cb) {
-            new Thread(() -> {
-                String r;
-                try {
-                    r = com.zai.adshield.core.LogUploader.get(a)
-                            .submitNow().toJson();
-                } catch (final Throwable t) {
-                    r = "{\"busy\":false,\"acked\":0,\"lastError\":\"internal\"}";
+                long now = System.currentTimeMillis();
+                if (now - lastPostIssueAt < 15000) {
+                    netCb(cb, "{\"ok\":false,\"error\":\"提交太频繁，请稍后再试\"}");
+                    return;
                 }
-                final String rr = r;
+                lastPostIssueAt = now;
+                t = title == null ? "" : (title.length() > 128 ? title.substring(0, 128) : title);
+                b = body == null ? "" : (body.length() > 24000 ? body.substring(0, 24000) : body);
+            } catch (Throwable er) {
+                netCb(cb, "{\"ok\":false,\"error\":\"内部错误\"}");
+                return;
+            }
+            new Thread(() -> {
+                String rr = "{\"ok\":false,\"error\":\"内部错误\"}";
+                try {
+                    rr = Net.postIssue(t, b);
+                } catch (Throwable er) {
+                }
+                netCb(cb, rr);
+            }, "issue-post").start();
+        }
+
+        /** v7.15.0：统一异步回调出口（UI 线程上执行 evaluateJavascript） */
+        private void netCb(String cb, String json) {
+            try {
                 a.runOnUiThread(() -> {
                     try {
                         if (a.webView != null) {
+                            String payload = (json != null ? json : "null").replaceAll("\\u0000", "");
                             a.webView.evaluateJavascript(
-                                    "window[" + JSON.stringifyCb(cb) + "] && window["
-                                            + JSON.stringifyCb(cb) + "](" + rr + ")", null);
+                                    "window.__netCb && window.__netCb("
+                                            + JSON.stringifyCb(cb) + "," + payload + ")", null);
                         }
                     } catch (Throwable ignored) {
                     }
                 });
-            }, "log-upload-now").start();
-        }
-
-        /** v8.0.0：清理本地待上传日志（用户主动操作——ACK 前批次一并清理；
-         *  只删本地文件，不影响服务端已建 Issue）。 */
-        @JavascriptInterface
-        public String logUploadClearPending() {
-            try {
-                int n = com.zai.adshield.core.LogStore.get(a).clearPending();
-                org.json.JSONObject o = new org.json.JSONObject();
-                o.put("ok", true);
-                o.put("cleared", n);
-                o.put("unit", "events");
-                return o.toString();
-            } catch (Throwable t) {
-                return "{\"ok\":false,\"cleared\":0}";
+            } catch (Throwable ignored) {
             }
         }
+
+        private static volatile long lastPostIssueAt = 0L;
 
         /** v4.5.0：后台深挖拉活（MainActivity.onResume 自动拉活用；
          *  与页面 tryAutoReviveDeep 同一逻辑，静默版——不打扰 UI）。
@@ -1153,58 +1057,31 @@ public class MainActivity extends Activity {
             return o.toString();
         }
 
-        /* 统一更新检查（v7.9.8 静态清单架构——所有更新入口的唯一通道）。
-         *  原 netGetLatestRelease（GitHub 匿名 REST API 直连）已移除：匿名
-         *  60 次/小时/IP 出口配额下所有用户同池互耗（进入更新页即「GitHub
-         *  API 限流」的用户实锤根因）。现由 UpdateRepository 完成：
-         *  静态清单（raw.githubusercontent.com main 分支，Fastly CDN，零
-         *  REST API 配额）+ 本地缓存 15min + 单飞并发合并 + 手动 30s 冷却/
-         *  自动单次 + 失败指数退避 + ETag 304 + 受控备用源 + 错误十类
-         *  （UpdateManifest）；isNewer 权威判定 = versionCode 主判
-         *  （Net.isNewerRelease——v7.10.0 统一规则：remoteVersionCode >
-         *  currentVersionCode；versionName 仅展示，绝不参与更新判断）。
-         *
-         *  v7.10.0 异步化（用户指令：禁止在 JavaScript 主线程同步等待网络）：
-         *  旧同步桥 updateCheck(manual) 整体移除——JS 调用同步桥会阻塞 JS
-         *  线程直至网络返回（五源链预算 40s，弱网下页面冻结 40s 的实锤
-         *  根因）。替代：updateCheckAsync(manual, cb) 后台线程执行
-         *  UpdateRepository.check，结果经 window[cb](json) 回调
-         *  （runOnUiThread——与 logUploadSubmitNow/tryAutoReviveDeep 同族
-         *  模式）；JS 侧配套三重防线：单飞共享 + 过期序号丢弃 + 90 秒回调
-         *  兜底（见 app.js bridgeUpdateCheck——手动检查绝不永久卡住）。
-         *  缓存/ETag/冷却/退避/单飞语义全部零改动保持。
-         * @param manual true = 用户主动「检查更新」（绕过新鲜缓存，受冷却/
-         *               单飞约束）；false = 启动自动检查（优先缓存，静默失败）
-         * @param cb     JS 回调函数名（结果 JSON 经 window[cb](json) 回传）
-         */
+        /* ═══ v7.15.0 异步检查更新（多源静态清单链——同步旧桥已随卡死根治整体退役）═══ */
         @JavascriptInterface
-        public void updateCheckAsync(final boolean manual, final String cb) {
+        public void netGetUpdateAsync(final String cb) {
+            final String vn = versionNameOf(a);
+            final int vc;
+            try {
+                vc = a.getPackageManager().getPackageInfo(a.getPackageName(), 0).versionCode;
+            } catch (Throwable er) {
+                netCb(cb, "{\"ok\":false,\"error\":\"版本信息不可用\"}");
+                return;
+            }
             new Thread(() -> {
-                String r;
+                String rr = "{\"ok\":false,\"error\":\"内部错误\"}";
                 try {
-                    r = UpdateRepository.check(a, versionCodeOf(a), manual);
-                } catch (final Throwable t) {
-                    r = UpdateManifest.fail(UpdateRepository.classifyNetError(t),
-                            "检查更新失败（" + t.getClass().getSimpleName() + "）");
+                    rr = com.zai.adshield.UpdateManifest.fetchLatestUpdate(vn, vc);
+                } catch (Throwable er) {
                 }
-                final String rr = r;
-                a.runOnUiThread(() -> {
-                    try {
-                        if (a.webView != null) {
-                            a.webView.evaluateJavascript(
-                                    "window[" + JSON.stringifyCb(cb) + "] && window["
-                                            + JSON.stringifyCb(cb) + "](" + rr + ")", null);
-                        }
-                    } catch (Throwable ignored) {
-                    }
-                });
-            }, "update-check-async").start();
+                netCb(cb, rr);
+            }, "update-check").start();
         }
 
         /* ───── 应用内更新：页内下载 → 进度 → 安装（不跳浏览器） ───── */
 
-        /** v7.3.0 安全（v7.9.8 措辞更新）：digest/size 从静态清单（HTTPS）
-         *  元数据透传给 Downloader——安装前 SHA-256 完整性校验的期望值。 */
+        /** v7.3.0 安全：digest/size 从 GitHub API（HTTPS）元数据透传给
+         *  Downloader——安装前 SHA-256 完整性校验的期望值。 */
         @JavascriptInterface
         public String startUpdateDownload(String url, String fileName, String digest, long sizeBytes) {
             return Downloader.start(a, url, fileName, digest, sizeBytes);
@@ -1213,13 +1090,6 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public String updateProgress() {
             return Downloader.progress(a);
-        }
-
-        /** v7.9.6plus：取消当前下载（全屏更新页「取消下载」按钮——移除
-         *  系统任务与部分文件，清理任务元数据）。 */
-        @JavascriptInterface
-        public String cancelUpdateDownload() {
-            return Downloader.cancel(a);
         }
 
         /** v3.2.0 能耗画像：本次开机累计（事件/扫描/返回键 + 弹窗战果）
@@ -1288,11 +1158,9 @@ public class MainActivity extends Activity {
     }
 
     /* ═══ v4.5.0 WebView 硬化：URL 劫持防护（攻击面收缩核心）═══
-     * 本地离线页装载了带能力的 JS 桥——若页面被诱导跳转到远程页面（更新
-     * 横幅里的链接/订阅预览/恶意注入），远程页面将直接拿到 AndroidApp 桥
-     * （kvSet 任意写等已收敛白名单）。v7.9.7 起 netPostIssue（内置
-     * 令牌直发 GitHub Issue）已随 PAT 移除下线——桥已无任何凭据能力，
-     * 劫持面进一步收缩，但白名单制保持不变（纵深防御不因单点移除而松绑）。
+     * 本地离线页装载了带 GitHub 令牌能力的 JS 桥——若页面被诱导跳转到
+     * 远程页面（更新横幅里的链接/订阅预览/恶意注入），远程页面将直接
+     * 拿到 AndroidApp 桥（netPostIssue 内置令牌、kvSet 任意写）。
      * 对策：shouldOverrideUrlLoading 白名单制——只允许本应用 asset 目录
      * 内导航；http(s) 链接一律转交系统浏览器（无桥）；其余 scheme 全部
      * 拦截。返回 true = 本应用接管，WebView 绝不加载。 */

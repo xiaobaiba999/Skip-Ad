@@ -721,9 +721,9 @@ public final class Subscription {
                     new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"}, null, 1200)
             + appSplash("com.android.bankabc", "农业银行", null,
                     new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"}, null, 1200)
-            + appSplash("com.chinamworld.main", "建设银行", null,
+            + appSplash("com.chinamworld.main", "中国银行", null,
                     new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"}, null, 1200)
-            + appSplash("com.chinamworld.BOCMB", "中国银行", null,
+            + appSplash("com.chinamworld.BOCMB", "建设银行", null,
                     new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"}, null, 1200)
             + appSplash("com.cmbchina.ccd.pluto.spongeactivity", "招商银行", null,
                     new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"}, null, 1200)
@@ -742,12 +742,7 @@ public final class Subscription {
                     new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"}, null, 1200)
             + appSplash("com.umetrip.android.msky.app", "航旅纵横", null,
                     new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"}, null, 1200)
-            /* v7.9.2 包名校准（200+应用生态审计实锤——应用商店上架信息核实）：
-             * com.flightmanager.view = 航班管家（非飞常准）；飞常准真实包名
-             * veryzhun.vzcom 此前完全缺失 → 两条分立补齐。规则同源零变化。 */
-            + appSplash("com.flightmanager.view", "航班管家", null,
-                    new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"}, null, 1200)
-            + appSplash("veryzhun.vzcom", "飞常准", null,
+            + appSplash("com.flightmanager.view", "飞常准", null,
                     new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"}, null, 1200)
             + appSplash("com.jingyao.easybike", "哈啰", null,
                     new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"}, null, 1200)
@@ -825,19 +820,14 @@ public final class Subscription {
                     new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"}, null, 1200)
             + appSplash("com.ss.android.lark", "飞书", null,
                     new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"}, null, 1200)
-            /* v7.9.2 包名校准（200+应用生态审计实锤）：com.lemon.lvoverseas
-             * = CapCut（海外版剪映）；国内版剪映真实包名 com.lemon.lv
-             * 此前缺失 → 两条分立补齐。规则同源零变化。 */
-            + appSplash("com.lemon.lvoverseas", "CapCut", null,
-                    new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"}, null, 1200)
-            + appSplash("com.lemon.lv", "剪映", null,
+            + appSplash("com.lemon.lvoverseas", "剪映", null,
                     new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"}, null, 1200)
             + appSplash("com.mt.mtxx.mtxx", "美图秀秀", null,
                     new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"}, null, 1200)
             /* ═══ v5.6.0 激进化扩充（用户实锤：好多广告没有命中）═══
              * 102 → 114 款：补齐汽车/天气/运营商/资讯类高频开屏；
              * 全局通用规则新增 vid*="skip" 与 vid*="countdown" 两档
-             *（第一方自绘窗的 vid 命名变体跟不上的直接兜底）。 */
+             *（第一方自绘窗的 vid 命名变体跟不上的直接兑底）。 */
             + appSplash("com.duowan.kiwi", "虎牙直播", null,
                     new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"}, null, 1200)
             + appSplash("com.cubic.autohome", "汽车之家", null,
@@ -854,10 +844,7 @@ public final class Subscription {
                     new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"}, null, 1200)
             + appSplash("com.greenpoint.android.mc10086.activity", "中国移动", null,
                     new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"}, null, 1200)
-            /* v7.9.2 包名校准（应用商店核实：中国联通真实包名
-             * com.sinovatech.unicom.ui——旧条目把 Activity 类名当包名，
-             * 规则从未命中过）。规则同源零变化。 */
-            + appSplash("com.sinovatech.unicom.ui", "中国联通", null,
+            + appSplash("com.sinovatech.unicom.ui.welcome.WelcomeActivity", "中国联通", null,
                     new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"}, null, 1200)
             + appSplash("com.ct.client", "中国电信", null,
                     new String[]{"@[text^=\"跳过\"]", "@[desc*=\"跳过\"]", "@[vid*=\"skip\"]"}, null, 1200)

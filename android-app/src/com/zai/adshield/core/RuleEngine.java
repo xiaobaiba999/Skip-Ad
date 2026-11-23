@@ -196,10 +196,6 @@ public final class RuleEngine {
             "跳过 ad", "跳过ad",
             "skip", "skip ad", "skipad", "skip this ad", "skip ads",
             "跳過", "跳過廣告", "跳過此廣告",
-            /* v7.7.0 回切开屏/插层探针配套（切回 App 期间弹的广告常以繁体
-             * 「關閉廣告」整词作键——繁体区 App 与出海 SDK 开屏；与探针词
-             * 表 v7.7.0 扩容配套，探得到也要匹配得上） */
-            "關閉廣告", "關閉此廣告",
             /* v5.7.0 激进化扩充（扫描日志：视频类 App 开屏「跳过片头/
              * 跳过视频」整词独立标签——旧库未收，walk 分类不进真候选） */
             "跳过视频", "跳过片头", "跳過視頻",
@@ -211,20 +207,12 @@ public final class RuleEngine {
     static final java.util.HashSet<String> TEXT_EXACT_SET =
             new java.util.HashSet<String>(java.util.Arrays.asList(TEXT_EXACT));
 
-    /** v8.1.0：全局跳过精确表成员查询（public 查询方法——保持字段封装，
-     *  供 AdScanReviveTest 分层红线断言：「关闭」裸词绝不进本表）。 */
-    public static boolean textExactContains(String s) {
-        return s != null && TEXT_EXACT_SET.contains(s);
-    }
-
     /* ── 第2层：倒计时形态（严格正则，营销话术数学上无法混入） ──
        P1：跳过5 / 跳过 5 / 跳过广告3 / 跳过广告 5s / 跳過廣告 5秒
        P2：3s后可跳过 / 5 秒后可跳过广告 / 3秒后可跳过廣告
-       注意：广告/廣告是两字词——必须用分组 (广告)? 而非单字类 [广告]?
-       v7.8.0：P2 「后」改可选（视频开屏实锤：「5s 跳过」「5秒跳过」无
-       「后」字变体全被拒——视频开屏词典扩容配套）。 */
+       注意：广告/廣告是两字词——必须用分组 (广告)? 而非单字类 [广告]? */
     static final String P_COUNTDOWN_TAIL = "^跳[过過](广告|廣告)?\\s*\\d{1,2}\\s*[s秒]?$";
-    static final String P_COUNTDOWN_HEAD = "^\\d{1,2}\\s*[s秒]?\\s*(后後)?\\s*可?\\s*跳[过過](广告|廣告)?$";
+    static final String P_COUNTDOWN_HEAD = "^\\d{1,2}\\s*[s秒]?\\s*后後?\\s*可?\\s*跳[过過](广告|廣告)?$";
     /* v5.6.0 热路径优化三件套之一（4.9× 提速）：String.matches 每调用隐式
      * Pattern.compile（含锁+分配）→ 类加载期一次预编译，语义零变化（475 断言全绿） */
     static final java.util.regex.Pattern RE_COUNTDOWN_TAIL =

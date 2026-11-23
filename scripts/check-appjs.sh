@@ -77,18 +77,13 @@ const NEED = [
   "renderReleaseNotes",  // 更新说明渲染
   "renderLog",           // 扫描日志
   "renderReport",        // 使用报告
-  "checkUpdateOnLaunch", // v7.9.6plus 启动时新版本检测
-  "showUpdateGate",      // v7.9.6plus 全屏更新页
-  "bridgeUpdateCheck",   // v7.10.0 异步更新检查（单飞/过期序号/90s 兜底）
-  "isNewerByCode",       // v7.10.0 统一版本规则（versionCode 单一判定）
-  "maybeShowPinTip",     // v7.11.0 开屏提醒评估入口（进入即显 + 24h 不再显示）
-  "showPinTip",          // v7.11.0 开屏提醒卡渲染（固定后台引导）
-  "pinTipThrottled",     // v7.11.0 「24h 不再显示」节流判定（时间戳主闸）
-  "doFallbackDirectDownload", // v7.11.0 检查失败 CDN 直连兜底
-  "serviceGraceActive",  // v7.11.0 冷启动宽限期（重进状态修复）
-  "uploadErrText",       // v7.9.8 上传错误八类人话映射
-  "doUploadLog",         // 一键上传主流程（导出下线后唯一日志出口）
-  "resetUploadButtons",  // 上传双入口按钮复位
+  // ── v7.15.0 新增板块接线（同一死因类防护：开屏提示弹窗/异步桥/帮助页）──
+  "showSplashTip",       // 进入 App 开屏提示弹窗（三按钮）
+  "tipDue",              // 提示到期判定（24h 窗 + 版本钉）
+  "netCall",             // 异步桥调用（卡死根治的 JS 侧）
+  "fetchLatest",         // 多源检查更新入口
+  "doUploadLog",         // 日志上传主流程（异步直发）
+  "renderHelpDynamic",   // 帮助页动态状态行
 ];
 
 let runErr = null;

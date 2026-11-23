@@ -41,11 +41,7 @@ public final class FeedAdGuardTest {
                 "com.ss.android.ugc.aweme", "com.smile.gifmaker", "com.xingin.xhs",
                 "tv.danmaku.bili", "com.zhihu.android", "com.baidu.searchbox",
                 "com.UCMobile", "com.tencent.mtt", "com.tencent.news",
-                /* v7.9.2 包名校准：网易新闻真实包名带 .activity 后缀——
-                 * 旧值 com.netease.newsreader 从未命中任何真实设备（死条目），
-                 * 信息流护栏对网易新闻全程无效。此处同步更正（Google Play 上架
-                 * id=com.netease.newsreader.activity 核实）。 */
-                "com.netease.newsreader.activity", "com.sina.news", "com.quark.browser",
+                "com.netease.newsreader", "com.sina.news", "com.quark.browser",
                 "com.snda.wifilocating", "com.hupu.games", "com.cubic.autohome",
                 "com.zol.android", "com.xiaomi.market",
         };
@@ -220,7 +216,7 @@ public final class FeedAdGuardTest {
         TestHost.suite("FeedAdGuard · S7 常量在场（安全闸参数）");
         TestHost.checkEq(1200L, FeedAdGuard.FEED_SCAN_THROTTLE_MS, "FEED_SCAN_THROTTLE_MS == 1200（1.2s 节流）");
         TestHost.checkEq(350L, FeedAdGuard.P2_SCAN_THROTTLE_MS, "v7.2.0 P2_SCAN_THROTTLE_MS == 350（armed 快节奏复查）");
-        TestHost.checkEq(300, FeedAdGuard.FEED_NODE_BUDGET, "FEED_NODE_BUDGET == 300（DFS 兜底预算）");
+        TestHost.checkEq(300, FeedAdGuard.FEED_NODE_BUDGET, "FEED_NODE_BUDGET == 300（DFS 兑底预算）");
         TestHost.checkEq(8000L, FeedAdGuard.P1_ARM_MS, "P1_ARM_MS == 8000（P2 指纹窗）");
         TestHost.check(Math.abs(FeedAdGuard.BADGE_W_MAX - 0.35) < 1e-9, "BADGE_W_MAX == 0.35（≤35% 屏宽）");
         TestHost.check(Math.abs(FeedAdGuard.BADGE_H_MAX - 0.08) < 1e-9, "BADGE_H_MAX == 0.08（≤8% 屏高）");
@@ -452,16 +448,9 @@ public final class FeedAdGuardTest {
         }
         TestHost.check(closeWordsOk && FeedAdGuard.CLOSE_ICON_WORDS.length == 6,
                 "CLOSE_ICON_WORDS 6 词全过精确等值闸（× 家族 5 + 关闭）");
-        boolean ctxWordsOk = FeedAdGuard.AD_CONTEXT_WORDS.length == 6
+        boolean ctxWordsOk = FeedAdGuard.AD_CONTEXT_WORDS.length == 3
                 && FeedAdGuard.AD_CONTEXT_WORDS[0].equals("来自广告推荐");
-        boolean bareAd = false, tradAd = false, promo = false;
-        for (String w : FeedAdGuard.AD_CONTEXT_WORDS) {
-            if (w.equals("广告")) bareAd = true;
-            if (w.equals("廣告")) tradAd = true;
-            if (w.equals("推广")) promo = true;
-        }
-        TestHost.check(ctxWordsOk && bareAd && tradAd && promo,
-                "AD_CONTEXT_WORDS 6 词在场（v7.8.0 裸「广告/廣告/推广」收编——feed 名单插屏孤儿化解除·来自广告推荐真机文案置首保持）");
+        TestHost.check(ctxWordsOk, "AD_CONTEXT_WORDS 3 词在场（来自广告推荐真机文案置首）");
         // 不可见直关钮拒
         SimNode invX = new SimNode("×", 1000, 700, 1060, 760);
         invX.visible = false;

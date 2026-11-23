@@ -1,4 +1,4 @@
-/* 开屏卫士 v7.14.0 · 检查更新陈旧窗口根治专项：@tag 探测链（jsDelivr @tag 引用是不可变键无源站分支缓存——发布即新鲜；@main 清单源站分支缓存 TTL ≤12h 是「旧版检测不到新版」三连实锤根因）；检查失败兑底直连 cdn→gcore（cdn 当日对 APK 403 实测定案，gcore 全日直出字节级一致）；APK 侧探测链在 UpdateRepository（Java），本文件为浏览器预览同源镜像 */
+/* 开屏卫士 v7.15.0 · 激进模式重构版（基于 v7.6.0 激进模式基线 · 7.6 之后版本整体召回后的重制版） */
 "use strict";
 
 /* ══════════ 环境 ══════════ */
@@ -23,8 +23,8 @@ const store = {
 };
 
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "7.14.0"; }
-function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "84000"; }
+function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "7.15.0"; }
+function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "85000"; }
 
 /* ══════════ 吉祥物（v4.1.0 全新形象：白机器人小侠 + 绿披风跳跃） ══════════
  * 与启动器图标同源；state: on（跳跃浮动）/ off（灰度待命） */
@@ -35,19 +35,24 @@ function mascotImg(size, state, head) {
 
 $("#brand-logo").innerHTML = mascotImg(30, "on", true);
 
-/* ═══ v7.14.0 版本记录（检查更新陈旧窗口根治）═══ */
+/* ═══ v7.15.0 版本记录（版本线重制：基于 v7.6.0 激进模式基线重构，7.7~7.14 整体召回）═══ */
 const CURRENT_RELEASE = {
   date: "2026-11-24",
-  title: "检查更新陈旧窗口根治（@tag 探测链）+ 兑底直连 gcore 化",
+  title: "版本线重制：基于 v7.6.0 激进模式基线重构 + 日志/更新/卡死/息屏四大根治",
   features: [
-    "检查更新陈旧窗口根治：每次发布后旧版检查更新最长 12 小时看到「已是最新」（jsDelivr @main 清单源站分支缓存——三连实锤根因）；现在追加 @tag 探测链（tag 引用是不可变键零缓存）：当前版本之后的候选 tag 清单发布即新鲜，命中即拿到新版元数据——发布后第一时间可检测到新版（老版本隔两个以上 minor 时仍靠 @main 链自愈或手工救济，诚实边界）",
-    "兑底直连 gcore 化：检查更新失败时的 CDN 直连下载链 cdn→gcore（cdn 当日对 APK 返回 403 实测定案，gcore 全日直出且与 Release 资产字节级一致）",
+    "日志上传回归 v7.6 直发方案（中转服务超时根治）+ 24 小时自动提交 3 次保持（每 8 小时一次）",
+    "检查更新多源链：静态清单 raw@main → jsdelivr@main → @tag 探测链 → GitHub API 兜底——发布后第一时间可检测到新版",
+    "卫士卡死根治：桥接层全面异步化（同步长 IO 堵塞 JavaBridge 线程导致界面卡死的类别从机制上消除）+ 崩溃循环自愈（免重装出路）",
+    "息屏/切应用回来广告拦不住根治：亮屏/解锁视作重新进入——窗龄重置 + 节流清空 + 立即主动补扫",
+    "底栏重构：订阅页移除（id667 订阅每日后台自动导入，含镜像链+离线快照兜底）+ 全新帮助页（使用指引 + 固定后台提醒）",
+    "进入 App 开屏提示弹窗：知道了 / 24 小时不再提示 / 去上传日志（升级新版重新提醒一次）",
+    "更新下载多通道兜底：gcore CDN 直链优先 + GitHub 官方 + ghfast/gh-proxy 镜像自动切换（中国大陆下载失败根治）",
   ],
-  summary: "v7.14.0：检查更新陈旧窗口根治（@tag 探测链）+ 兑底直连 gcore 化。",
+  summary: "按用户指令基于 v7.6.0 · 激进模式版本整体重构：清除 7.6 之后全部版本与中转服务复杂层，日志上传回归直发 GitHub Issue（内置混淆令牌 + 瞬时故障重试），24 小时自动提交 3 次保持；检查更新改多源静态清单链（@tag 探测链根治「检查更新不到新版本」）；卫士卡死根治（桥接全面异步化 + 崩溃循环自愈）；息屏/切应用回来漏拦根治（亮屏/解锁即时 rearm）；订阅页移除、id667 订阅后台自动导入（永不硬失败）；底栏新增帮助页；进入 App 弹开屏提示三按钮弹窗；更新下载多通道兜底。",
 };
 
 /* v7.0.0 新版功能描述（规范：≤5 个标题、带序号；检查更新发现新版本时就地渲染）。
- * 优先用 Java 桥预解析的 headlines[]（UpdateManifest.parse → core.ReleaseNotes
+ * 优先用 Java 桥预解析的 headlines[]（Net.parseRelease → core.ReleaseNotes
  * 纯函数，格式四代兼容：1. 序号 / ① / #- / - *）；桥字段缺失时回落 JS 解析。 */
 function notesToHeadlines(d, maxN) {
   const cap = maxN || 5;
@@ -103,8 +108,7 @@ $$(".tabbtn").forEach(b => b.addEventListener("click", () => {
   $("#page-" + b.dataset.page).classList.add("active");
   const pg = b.dataset.page;
   if (pg === "home") { refreshHome(); renderWhitelist(true); }
-  /* v7.11.0：订阅页已移除（id667 订阅改为后台每日自动导入——帮助页
-   * 「订阅规则（自动）」卡有说明；命中数据见「我的 → 使用报告」）。 */
+  if (pg === "help") renderHelpDynamic();
   if (pg === "me") { renderLog(); renderReport(true); } // v7.2.0：进入我的页静默刷新使用报告（饼图常驻，零 toast）
 }));
 
@@ -155,20 +159,6 @@ function refreshHome() {
   refreshBattery(running);
 }
 
-/* ═══ v7.11.0 冷启动宽限期：刚断开不久（≤10 分钟）且服务未跑、登记也暂未
- * 读到时——AMS 重绑慢（issue#56 同族场景）极可能只是慢，不是真吊销。
- * 此时首页显示「服务重连中」而非「未开启」；前台看门狗每 3s 复查，登记
- * 一回来就自动拉活，UI 自动切「守护中」——绝不把重绑慢误导向系统设置
- * 看 10 秒警告（用户指令：解决每次退出重进都要重新开启）。 */
-const SERVICE_GRACE_MS = 10 * 60 * 1000;
-function serviceGraceActive() {
-  if (!HAS_BRIDGE) return false;
-  try {
-    const t = parseInt(AndroidApp.serviceLastConnectedAt(), 10) || 0;
-    return t > 0 && Date.now() - t < SERVICE_GRACE_MS;
-  } catch (e) { return false; }
-}
-
 function renderHero(running, enabledInSettings, masterOn) {
   const card = $("#hero-card");
   const mascot = $("#hero-mascot");
@@ -206,15 +196,6 @@ function renderHero(running, enabledInSettings, masterOn) {
     sub.textContent = "系统仍登记，正在/可一键重拉";
     revive.style.display = "";
     tip.textContent = "点「一键恢复」重新拉起（不碰系统设置，无需 10 秒等待）";
-  } else if (serviceGraceActive()) {
-    /* v7.11.0 冷启动宽限期：刚断开不久、登记暂未读到（AMS 重绑慢）——
-     * 显示「服务重连中」而非「未开启」；前台看门狗 3s 复查登记，一回来
-     * 就自动拉活（看门狗与 5s 刷新循环已覆盖，无需额外定时器）。 */
-    card.classList.remove("on", "paused");
-    mascot.innerHTML = mascotImg(88, "off");
-    title.textContent = "服务重连中";
-    sub.textContent = "正在等待系统重绑（通常几秒内）";
-    tip.textContent = "刚断开不久，卫士正在自动恢复——无需重新开启、不用去系统设置";
   } else {
     card.classList.remove("on", "paused");
     mascot.innerHTML = mascotImg(88, "off");
@@ -257,7 +238,7 @@ function doRevive() {
   try {
     AndroidApp.tryAutoReviveDeep("__reviveCb");
   } catch (e) {
-    // 旧版同步兜底（理论上不会走到）
+    // 旧版同步兑底（理论上不会走到）
     try {
       const r = JSON.parse(AndroidApp.tryAutoRevive());
       if (window.__reviveCb) window.__reviveCb(null, r);
@@ -451,146 +432,24 @@ function renderKeepAlive() {
 bindToggle("toggle-popup", "popupShield", "弹窗屏蔽已开启", "弹窗屏蔽已关闭");
 bindToggle("toggle-learning", "learning", "习惯学习已开启", "习惯学习已关闭");
 
-/* ══════════ v7.9.7 自动提交诊断日志授权（独立开关 · 默认关）→ v8.0.0 中转上线真数据 ══════════
- * 与无障碍授权严格分离；授权≠上传——上传仍受服务端 24h 滑窗（最多 3 次）
- * 与 batchId 幂等约束（中转服务 skip-ad-log-relay 已上线）。
- * v8.0.0：状态行真数据（待传批次/24h 已提交（服务端权威，本地仅展示参考）/
- * 失败检视/最近失败原因）+「立即提交」（v7.10.0：本地与服务端均无次数限制——幂等保护保持）
- * +「清理待上传」（只删本地文件，不影响服务端已建 Issue）。 */
-function bridgeCall(fn, fallback) {
-  try {
-    if (HAS_BRIDGE && AndroidApp[fn]) return AndroidApp[fn]();
-  } catch (e) {}
-  return fallback;
-}
-function refreshLogUploadNote() {
-  const note = $("#log-upload-note");
-  if (!note) return;
-  const on = !!bridgeCall("logUploadConsent", false);
-  const actions = $("#log-upload-actions");
-  if (actions) actions.style.display = on ? "" : "none";
-  /* v7.10.0：上传次数限制彻底移除——状态行不再展示 24h 次数额度；自动上传
-   * 仅受心跳间隔（8h 检查一次）与「有新日志才传」约束，无任何次数上限。 */
-  if (!on) {
-    note.textContent = "默认关闭 · 日志采集与手动上传不受影响（自动上传无次数限制）";
-    return;
-  }
-  let st = null;
-  try { st = JSON.parse(bridgeCall("logUploadStatus", null)); } catch (e) {}
-  if (!st) {
-    note.textContent = "自动上传已开启 · 每 8 小时检查一次 · 无次数限制";
-    return;
-  }
-  const agoMin = st.lastAckedAt > 0 ? Math.max(1, Math.round((Date.now() - st.lastAckedAt) / 60000)) : 0;
-  let s = "自动上传已开启 · 每 8 小时检查一次 · 无次数限制"
-    + " · 待传 " + (st.pendingEvents || 0) + " 条";
-  if (agoMin > 0) s += " · 最近成功 " + (agoMin >= 1440 ? Math.round(agoMin / 1440) + " 天前" : agoMin + " 分钟前");
-  if ((st.rejected || 0) > 0) s += " · 拒收检视 " + st.rejected + " 批";
-  note.textContent = s;
-}
-(function bindLogUploadToggle() {
-  const el = $("#toggle-log-upload");
-  if (!el) return;
-  try {
-    el.checked = !!bridgeCall("logUploadConsent", false);
-  } catch (e) {}
-  el.addEventListener("change", () => {
-    try {
-      if (HAS_BRIDGE && AndroidApp.setLogUploadConsent) AndroidApp.setLogUploadConsent(el.checked);
-      else store.set("logUploadConsent", el.checked);
-    } catch (e) {
-      store.set("logUploadConsent", el.checked);
-    }
-    toast(el.checked ? "已开启自动上传（每 8 小时检查一次，无次数限制；采集与手动上传不受影响）" : "自动上传已关闭（日志仍会采集，可随时手动上传）");
-    setTimeout(refreshLogUploadNote, 200);
-  });
-  refreshLogUploadNote();
-})();
-(function bindLogUploadActions() {
-  const nowBtn = $("#btn-log-upload-now");
-  if (nowBtn) nowBtn.addEventListener("click", () => {
-    // v8.1.0：统一走 doUploadLog（真上传 + 强制封批 + 结果回调反馈）——
-    // 旧版 void 调用零反馈（点完只有一句 toast，成败无从知晓）
-    if (HAS_BRIDGE && AndroidApp.logUploadSubmitNow) {
-      doUploadLog(true);
-    } else {
-      toast("当前环境不支持自动上传");
-    }
-  });
-  const clearBtn = $("#btn-log-upload-clear");
-  if (clearBtn) clearBtn.addEventListener("click", () => {
-    if (HAS_BRIDGE && AndroidApp.logUploadClearPending) {
-      let r = null;
-      try { r = JSON.parse(AndroidApp.logUploadClearPending()); } catch (e) {}
-      toast(r && r.ok ? "已清理 " + (r.cleared || 0) + " 条本地待上传日志" : "清理失败");
-      setTimeout(refreshLogUploadNote, 400);
-    } else {
-      toast("当前环境不支持自动上传");
-    }
-  });
-})();
-
-/* ══════════ v4.3.0 应用白名单（v7.12.0 异步加载——卡死根治）══════════
- * 死因（用户实锤：「卫士有时候点击按钮时或者进入时会导致卡死，重新进入
- * 也不行，只能重新安装」）：旧版进入 App/每次切首页 tab/每次勾选白名单都
- * 同步调 whitelistJson 桥——JavaBridge 线程上 300+ PackageManager IPC，慢
- * 设备上以分钟计（v7.11.0 init 注释实测教训），JS 线程全程冻住＝「卡死」；
- * 重进再来一遍＝「重新进入也不行」。v7.12.0 改异步：
- *  · 桥 whitelistJsonAsync(cb)：后台线程枚举 + window[cb](json) 回调（与
- *    同步桥共用 Java 侧 30s 记忆缓存——绝大多数回调即时命中）；
- *  · 首次进入显示「加载中…」骨架，回调后渲染——JS 主线程零阻塞；
- *  · 10s 看门狗 + 自动重试（至多 3 次）——慢设备也绝无「永久加载」；
- *  · 勾选增删后本地更新缓存立即重渲（绝不再全量重拉——同步枚举是死因）；
- *    30s 缓存过期后的下一次进入/切页自然刷新。 */
+/* ══════════ v4.3.0 应用白名单 ══════════ */
 let wlCache = null; // {list:Set, known:[{pkg,label}]}
-let wlCacheAt = 0;  // v7.12.0：本地缓存时刻（30s 新鲜窗——窗内不重拉）
-let wlAsyncSeq = 0;  // v7.12.0：异步请求序号（过期回调丢弃）
-let wlRetries = 0;   // v7.12.0：看门狗/失败自动重试计数（至多 3 次）
 let wlQuery = "";   // v7.1.0：白名单搜索词（中文名/包名实时过滤）
 let wlSearchTimer = null; // v7.2.0：搜索输入 120ms debounce 定时器
 let wlTotalEl = null;     // v7.2.0：列表上方「共 N 款应用」统计行（动态创建，避免改 index.html 结构）
 
-/* v7.12.0：异步拉取白名单 JSON（单飞序号 + 10s 看门狗 + 过期回调丢弃）。 */
-function wlBridgeAsync() {
-  const seq = ++wlAsyncSeq;
-  const cbName = "__wlCb" + seq;
-  return new Promise((resolve) => {
-    let settled = false;
-    const done = (v) => {
-      if (settled || seq !== wlAsyncSeq) return;   // 过期回调丢弃（新请求已发起）
-      settled = true;
-      clearTimeout(timer);
-      try { delete window[cbName]; } catch (e) {}
-      resolve(v);
-    };
-    const timer = setTimeout(() => done(null), 10 * 1000);  // 10s 看门狗（慢机兑底）
-    try {
-      window[cbName] = (json) => {
-        let v = null;
-        if (typeof json === "string") { try { v = JSON.parse(json); } catch (e) { v = null; } }
-        else v = json;
-        done(v && typeof v === "object" ? v : null);
-      };
-      AndroidApp.whitelistJsonAsync(cbName);
-    } catch (e) { done(null); }
-  });
-}
-
-/* v7.12.0：请求白名单数据（异步——绝不阻塞 JS 线程）；失败自动重试至多 3
- * 次（1.5s 间隔），仍失败渲染「未能读取」空态（切回本页/下次进入再试）。 */
-async function requestWhitelist() {
-  if (!HAS_BRIDGE) { wlCache = { list: new Set(), known: [] }; wlCacheAt = Date.now(); return; }
-  const d = await wlBridgeAsync();
-  if (d && Array.isArray(d.list)) {
-    wlCache = { list: new Set(d.list), known: d.known || [] };
-    wlCacheAt = Date.now();
-    wlRetries = 0;
-  } else if (wlRetries < 3) {
-    wlRetries++;
-    setTimeout(() => { void requestWhitelist(); }, 1500);
-    return;
+function loadWhitelist() {
+  if (!HAS_BRIDGE) {
+    wlCache = { list: new Set(), known: [] };
+    return wlCache;
   }
-  renderWhitelist(false);
+  try {
+    const d = JSON.parse(AndroidApp.whitelistJson());
+    wlCache = { list: new Set(d.list || []), known: d.known || [] };
+  } catch (e) {
+    wlCache = { list: new Set(), known: [] };
+  }
+  return wlCache;
 }
 
 /* ═══ v7.1.0 白名单搜索匹配（用户实锤：应用白名单搜索栏实现 app 中文名搜索）═══
@@ -620,21 +479,7 @@ function wlTotalRow() {
 function renderWhitelist(force) {
   const box = $("#wl-list");
   if (!box) return;
-  /* v7.12.0 异步化（卡死根治）：同步桥 whitelistJson 在 JavaBridge 线程上
-   * 枚举全机应用（300+ PackageManager IPC，慢设备分钟级）——进入/切页/
-   * 勾选后重拉全部改异步：无新鲜缓存则后台拉取 + 骨架占位，回调后再渲。
-   * 30s 本地新鲜窗：窗内直接用缓存（绝大多数场景零桥调用）。 */
-  if (force) wlRetries = 0;   // 用户主动进入/切换 → 重试预算重置
-  if (HAS_BRIDGE) {
-    const fresh = wlCache && (Date.now() - wlCacheAt) < 30000;
-    if (!fresh) void requestWhitelist();
-    if (!wlCache) {           // 尚无任何数据：骨架占位（绝不同步枚举）
-      box.innerHTML = '<div class="empty">加载中…</div>';
-      return;
-    }
-  } else if (!wlCache) {
-    wlCache = { list: new Set(), known: [] };
-  }
+  if (!wlCache || force) loadWhitelist();
   const wl = wlCache;
   $("#wl-count").textContent = String(wl.list.size);
   // v7.2.0：列表上方统计行——全量基数（known.length，与搜索过滤无关）
@@ -655,8 +500,7 @@ function renderWhitelist(force) {
       : '<div class="empty">未能读取应用列表</div>';
     return;
   }
-  box.innerHTML = known.length
-    ? known.map(x => {
+  box.innerHTML = known.map(x => {
     const on = wl.list.has(x.pkg);
     return '<div class="wl-row">'
       + '<div class="wl-label"><span class="wl-name">' + esc(x.label) + '</span>'
@@ -664,8 +508,7 @@ function renderWhitelist(force) {
       + '<label class="switch"><input type="checkbox" data-wl="' + esc(x.pkg) + '"'
       + (on ? ' checked' : '') + '><span class="slider"></span></label>'
       + '</div>';
-  }).join("")
-    : '<div class="empty">未能读取应用列表（设备繁忙或权限受限）——可切回本页重试</div>';
+  }).join("");
   box.querySelectorAll('input[data-wl]').forEach(t => {
     t.addEventListener("change", () => {
       const pkg = t.dataset.wl;
@@ -673,13 +516,8 @@ function renderWhitelist(force) {
       try {
         ok = t.checked ? AndroidApp.whitelistAdd(pkg) : AndroidApp.whitelistRemove(pkg);
       } catch (e) {}
-      /* v7.12.0：本地即改即显——绝不再全量重拉（同步枚举是卡死元凶；
-       * Java 侧 30s 缓存已由增删失效，下次自然刷新带回权威列表） */
-      if (ok && wlCache) {
-        if (t.checked) wlCache.list.add(pkg); else wlCache.list.delete(pkg);
-      }
       toast(t.checked ? "已加入白名单：卫士在该应用内完全让路" : "已移出白名单：恢复守护");
-      renderWhitelist(false);
+      renderWhitelist(true);
     });
   });
 }
@@ -704,12 +542,7 @@ $("#btn-wl-add").addEventListener("click", () => {
   if (!HAS_BRIDGE) { toast("仅 APK 内可用"); return; }
   let ok = false;
   try { ok = AndroidApp.whitelistAdd(pkg); } catch (e) {}
-  if (ok) {
-    inp.value = "";
-    if (wlCache) wlCache.list.add(pkg);   // v7.12.0：本地即改（不再全量重拉）
-    toast("已加入白名单：" + pkg);
-    renderWhitelist(false);
-  }
+  if (ok) { inp.value = ""; toast("已加入白名单：" + pkg); renderWhitelist(true); }
   else toast("添加失败：包名格式不正确或已存在");
 });
 
@@ -718,16 +551,119 @@ $("#wl-input").addEventListener("keydown", (e) => {
 });
 
 
-/* ══════════ v7.11.0 订阅模块：页面整体移除（后台自动导入）════
- * 用户指令：去除底栏订阅模块——id667 的 GKD 订阅（Lin-arm ⭐7.4k，
- * 日更社区事实标准）由 SubscriptionManager.maybeDailyAutoImport 在
- * 服务连接 + 心跳时每日后台自动导入一次（八通道镜像链 + APK 内置离线
- * 快照双重兜底，永不硬失败——见 Java 侧）；本页 UI 与全部事件绑定随之
- * 移除（#page-sub DOM 已不在 index.html）。命中与覆盖数据保留在
- * 「我的 → 使用报告」订阅两源命中段（subState 桥仍在）。 */
-function fmtTime(ms) {
-  try { return new Date(ms).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }); }
-  catch (e) { return "--"; }
+/* ══════════ v7.15.0 异步桥调用（卫士卡死根治的 JS 侧）═════════
+ * Java 桥长 IO 一律后台线程执行 + window.__netCb(name, json) 回调
+ * （JavaBridge 线程瞬时返回——同步长 IO 堵塞桥线程把界面「卡死」的
+ *  类别已从 Java 侧根除，这里配套 Promise 包装）。 */
+let netCbSeq = 0;
+function netCall(method, ...args) {
+  return new Promise(resolve => {
+    if (!HAS_BRIDGE) { resolve({ ok: false, error: "仅 APK 内可用" }); return; }
+    const cbName = "__netCb" + (++netCbSeq);
+    window[cbName] = (name, result) => { try { delete window[name]; } catch (e) {} resolve(result); };
+    window.__netCb = (name, result) => {
+      const fn = window[name];
+      if (fn) fn(name, result);
+    };
+    try {
+      AndroidApp[method](...args, cbName);
+    } catch (e) {
+      resolve({ ok: false, error: "调用失败" });
+    }
+  });
+}
+
+/* ══════════ v7.15.0 帮助页动态状态行（进入帮助页刷新）═════════
+ * 帮助正文是静态指引（index.html）；这里只补一行「当前守护状态 +
+ * 订阅自动导入状态」的实时行——用户从帮助页也能一眼知道卫士在不在岗。 */
+function renderHelpDynamic() {
+  const box = $("#help-status");
+  if (!box) return;
+  let running = false, masterOn = true;
+  if (HAS_BRIDGE) {
+    try { running = !!AndroidApp.isServiceRunning(); } catch (e) {}
+    try { masterOn = AndroidApp.isMasterOn() !== false; } catch (e) {}
+  }
+  let subLine = "";
+  if (HAS_BRIDGE) {
+    try {
+      const sub = JSON.parse(AndroidApp.subState());
+      if (sub.remoteOk) subLine = "订阅自动导入中：" + (sub.remoteName || "社区订阅")
+        + "（每日后台自动，" + (sub.snapshot ? "当前离线快照兜底" : "在线最新版") + "）";
+      else subLine = "订阅自动导入：尚未完成首次导入（后台自动重试，内置快照兜底）";
+    } catch (e) {}
+  } else {
+    subLine = "订阅自动导入：每日后台自动（演示环境）";
+  }
+  const state = running && masterOn ? '<b class="hs-ok">守护中</b>'
+    : running ? '<b class="hs-warn">已暂停</b>（首页可一键恢复）'
+    : '<b class="hs-warn">服务待恢复</b>（打开卫士首页自动恢复）';
+  box.innerHTML = '<div class="hs-row">当前状态：' + state + '</div>'
+    + '<div class="hs-row">' + esc(subLine) + '</div>';
+}
+
+/* ══════════ v7.15.0 进入 App 开屏提示弹窗（三按钮）═════════
+ * 用户指令：开屏提示内容不放帮助里，每次进入 App 时弹出提示；
+ * 「24 小时不再提示」当日静音；升级新版本后重新提醒一次（版本钉
+ * tipPinVer——升级后新能力告知，与 v7.6.1 时代「页面资产符号闸」
+ * 同思路的防呆：提示永不过期、也永不骚扰）。
+ * 三按钮：知道了（本次关闭）/ 24 小时不再提示 / 去上传日志（直达
+ * 我的页引擎日志并自动发起上传）。 */
+const TIP_24H_MS = 24 * 60 * 60 * 1000;
+function tipDismissUntil() { return +store.get("tipDismissUntil", 0) || 0; }
+function tipPinVer() { return String(store.get("tipPinVer", "")); }
+function tipDue() {
+  if (tipPinVer() !== appVer()) return true; // 升级到新版本 → 重新提醒一次
+  return Date.now() >= tipDismissUntil();
+}
+function closeSplashTip() {
+  const m = $("#splash-tip-modal");
+  if (m) m.remove();
+}
+function showSplashTip() {
+  if ($("#splash-tip-modal")) return;
+  const wrap = document.createElement("div");
+  wrap.id = "splash-tip-modal";
+  wrap.style.cssText = "position:fixed;inset:0;z-index:120;background:rgba(4,12,8,.62);"
+    + "display:flex;align-items:center;justify-content:center;padding:24px;";
+  wrap.innerHTML =
+    '<div role="dialog" aria-modal="true" aria-label="开屏广告拦截提示" class="tip-card">'
+    + '<div class="tip-badge">开屏广告拦截提示</div>'
+    + '<ul class="tip-list">'
+    + '<li>开屏广告<b>露头即点</b>、软件内弹窗/插屏自动关闭——日常零操作。</li>'
+    + '<li>把卫士<b>固定在后台</b>（最近任务加锁 + 电池白名单）：后台被清理会导致息屏或切应用回来时第一条广告漏拦（帮助页有指引）。</li>'
+    + '<li>引擎日志每 8 小时自动提交一次（一日 3 次），也可点下方「去上传日志」立即上传。</li>'
+    + '</ul>'
+    + '<div class="tip-btns">'
+    + '<button data-act="ok" class="tip-btn">知道了</button>'
+    + '<button data-act="mute" class="tip-btn tip-btn-mute">24 小时不再提示</button>'
+    + '<button data-act="upload" class="tip-btn tip-btn-go">去上传日志</button>'
+    + '</div></div>';
+  document.body.appendChild(wrap);
+  wrap.addEventListener("click", (ev) => {
+    const act = ev.target.getAttribute && ev.target.getAttribute("data-act");
+    if (!act) { if (ev.target === wrap) closeSplashTip(); return; }
+    if (act === "ok") {
+      store.set("tipPinVer", appVer()); // 仅本次关闭，下次进入仍提示
+      closeSplashTip();
+    } else if (act === "mute") {
+      store.set("tipPinVer", appVer());
+      store.set("tipDismissUntil", Date.now() + TIP_24H_MS);
+      toast("24 小时内进入不再提示（升级新版后会再提醒一次）");
+      closeSplashTip();
+    } else if (act === "upload") {
+      store.set("tipPinVer", appVer());
+      closeSplashTip();
+      gotoPage("me");
+      setTimeout(() => { void doUploadLog(); }, 350);
+    }
+  });
+}
+
+/* 切换底栏页（供弹窗「去上传日志」直达我的页） */
+function gotoPage(pg) {
+  const btn = document.querySelector('.tabbtn[data-page="' + pg + '"]');
+  if (btn) btn.click();
 }
 
 /* ══════════ 我的：版本与更新 ══════════ */
@@ -745,330 +681,137 @@ $("#changelog").innerHTML =
       '<div class="log-d">' + (i + 1) + ". " + esc(f) + '</div>').join("")
   + '</div>';
 
-/* GH_API（api.github.com 基址）已于 v7.9.8 移除——更新检查零 GitHub REST API
- * （静态清单见 UPDATE_MANIFEST_URL；根因：匿名 60 次/小时/IP 共享配额限流） */
+const GH_API = "https://api.github.com/repos/xiaobaiba999/Skip-Ad";
+const UM_RAW = "https://raw.githubusercontent.com/xiaobaiba999/Skip-Ad/main/update/latest.json";
+const UM_JSD = "https://cdn.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/update/latest.json";
+const UM_TAG = (t) => "https://cdn.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@" + t + "/update/latest.json";
 let ubTimer = null;
 let latestRelease = null;
 let dl = { channels: [], idx: 0, fileName: "", digest: "", size: 0, prefix: "page", lastBytes: -1, lastMoveAt: 0 };
 
-/* ═══ v7.10.0：cmpVer/versionCodeFromNotes 已删（统一版本规则专项）═══
- * versionName 三段比较函数 cmpVer 与 Release 正文 versionCode 元数据行解析
- * versionCodeFromNotes 连同全部回退链一并移除——全项目统一
- * remoteVersionCode > currentVersionCode；versionName 仅展示。死灰复燃
- * 防线见 test_update_compat.js 源码断言（function cmpVer 不得回场）。 */
-
-/* ═══ v7.9.8 更新检查（静态清单架构——彻底脱离 GitHub 匿名 REST API）════
- * 根因史：v7.9.7 及以前检查更新直连 api.github.com /releases/latest（匿名
- * 60 次/小时/IP 出口配额）——国内共享出口下所有用户同池互耗，进入更新页
- * 即「查询失败：GitHub API 限流（匿名 60 次/小时/IP），请约 1 小时后再试」。
- * 新链路：
- *  APK 内：AndroidApp.updateCheckAsync(manual, cb)（v7.10.0 异步化——JS
- *  主线程零网络等待；旧同步桥 updateCheck 已移除）→ UpdateRepository
- *  （静态清单 raw.githubusercontent.com main 分支 + Fastly CDN 零 REST
- *  配额 + 15min 本地缓存 + 单飞并发合并 + 手动 30s 冷却/自动单次 +
- *  失败指数退避 + ETag 304 + 受控备用源 + 错误十类）→ UpdateManifest
- *  （清单契约校验：包名/版本/APK 地址发布通道/SHA256）。isNewer 权威判定
- *  = versionCode 主判（Net.isNewerRelease——v7.10.0 统一规则：
- *  remoteVersionCode > currentVersionCode，versionName 仅展示）。
- *  浏览器预览：同语义静态清单直连（镜像映射——零 GitHub API）。 */
-
-/* 静态更新清单源链（与 Java UpdateRepository.MANIFEST_SOURCES 同源——
- * v7.9.9 网络专项：raw 主源 + jsDelivr 四接入点备用链。github.io 备用源
- * 已移除：仓库 Pages 未启用（恒 404）且 github.io 域国内被阻断——
- * 小米 15 Pro 真机双源全灭根因之一。jsDelivr 四接入点为订阅通道
- * SubMirrors 同族实战链（国内可达性最佳实践）。 */
-const UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/xiaobaiba999/Skip-Ad/main/update/latest.json";
-const UPDATE_MANIFEST_SOURCES = [
-  UPDATE_MANIFEST_URL,
-  "https://cdn.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/update/latest.json",
-  "https://fastly.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/update/latest.json",
-  "https://gcore.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/update/latest.json",
-  "https://testingcf.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/update/latest.json",
-];
-
-/* ═══ v7.11.0 检查更新失败兜底通道（用户指令：每版本做兜底——查询失败时
- * 直接由 jsDelivr 最新版链接下载）═══
- * 仓库内 APK 归档（android-app/dist/）+ 恒指向最新版的别名副本
- * （adshield-latest.apk，发布时随同归档入库）——检查失败时无需任何
- * 元数据即可直达最新版；下载后手动覆盖安装（浏览器/系统下载器通道）。
- * 成功检查路径的兜底主通道在清单 cdnApkUrl（apkMirrors 镜像切换，
- * SHA-256/大小闸照常——见 UpdateManifest/Downloader）。
- * v7.14.0 接入点 gcore 化：cdn 当日对 APK 文件返回 403（301/403 阻断域
- * 实测定案——与 fastly 同型）；gcore 全日直出且与 Release 资产字节级
- * 一致（本轮 SHA-256 逐字节实测）。 */
-const FALLBACK_CDN_LATEST = "https://gcore.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/android-app/dist/adshield-latest.apk";
-
-/* 更新错误十类 → 人话（Java UpdateManifest 错误码的 UI 侧唯一文案出口；
- * 不再把服务端限流/网络异常混为一谈——每类如实转达） */
-function updateErrText(code) {
-  const m = {
-    UPDATE_NETWORK_ERROR: "网络连接失败，请检查网络后重试",
-    UPDATE_DNS_ERROR: "网络域名解析失败，请检查网络或稍后重试",
-    UPDATE_TIMEOUT: "网络请求超时，请稍后重试",
-    UPDATE_TLS_ERROR: "安全连接失败，请稍后重试",
-    UPDATE_HTTP_ERROR: "更新服务返回异常，请稍后重试",
-    UPDATE_INVALID_MANIFEST: "更新信息格式异常，已忽略本次结果",
-    UPDATE_PACKAGE_MISMATCH: "更新信息与当前应用不匹配，已拒绝",
-    UPDATE_VERSION_INVALID: "更新信息版本号异常，已忽略",
-    UPDATE_NO_CACHE: "暂时无法检查更新，请稍后重试",
-    UPDATE_RATE_LIMITED: "请求过于频繁，请稍后重试",
-    UPDATE_SERVER_ERROR: "更新服务暂时不可用，请稍后重试",
-  };
-  return m[code] || "";
+function cmpVer(a, b) {
+  const pa = String(a).replace(/^v/, "").split("."), pb = String(b).replace(/^v/, "").split(".");
+  for (let i = 0; i < 3; i++) {
+    const x = +pa[i] || 0, y = +pb[i] || 0;
+    if (x !== y) return x - y;
+  }
+  return 0;
 }
 
-/* 缓存数据年龄 → 人话（「网络异常，展示缓存数据 · 3 分钟前」用） */
-function ageText(ms) {
-  const t = parseInt(ms, 10) || 0;
-  if (t <= 0) return "";
-  const min = Math.max(1, Math.round((Date.now() - t) / 60000));
-  if (min < 60) return min + " 分钟前";
-  const hr = Math.round(min / 60);
-  if (hr < 24) return hr + " 小时前";
-  return Math.round(hr / 24) + " 天前";
-}
-
-/* 浏览器预览：静态清单 JSON → 页面可用结构（APK 原生侧 UpdateManifest.parse
- * 的 JS 镜像——字段兼容旧 GitHub Release 通道消费方） */
-function mapManifest(j) {
-  const remoteVc = parseInt(j.versionCode, 10) || 0;
-  const tag = String(j.releaseTag || "");
+/* v7.15.0：静态清单 → 页面结构（与 Java UpdateManifest.pageJson 同形；
+ * headlines 走既有 notesToHeadlines 解析） */
+function manifestToPage(m) {
+  const apkUrl = m.apkUrl || "";
+  const cdn = m.cdnApkUrl || "";
+  const mirrors = [];
+  if (cdn) mirrors.push(cdn);
+  if (apkUrl) {
+    mirrors.push(apkUrl);
+    mirrors.push("https://ghfast.top/" + apkUrl);
+    mirrors.push("https://gh-proxy.com/" + apkUrl);
+  }
   return {
-    ok: true, hasRelease: true, source: "manifest",
-    tag, name: j.releaseName || tag,
-    notes: String(j.releaseNotes || ""),
-    versionName: j.versionName || "", versionCode: remoteVc, remoteVersionCode: remoteVc,
-    apkUrl: j.apkUrl || "", apkFileName: j.apkFileName || "adshield.apk",
-    apkMB: j.apkSize ? Math.round(j.apkSize / 1048576 * 100) / 100 : 0,
-    apkSize: j.apkSize || 0,
-    apkDigest: j.apkSha256 ? "sha256:" + String(j.apkSha256).replace(/^sha256:/i, "").toLowerCase() : "",
-    apkMirrors: j.cdnApkUrl ? [j.cdnApkUrl] : [], // v7.11.0：CDN 兜底镜像（清单携带）
+    ok: true, hasRelease: true,
+    tag: m.releaseTag || "", notes: m.releaseNotes || "",
+    publishedAt: m.publishedAt || "", url: "https://github.com/xiaobaiba999/Skip-Ad/releases/tag/" + (m.releaseTag || ""),
+    versionName: m.versionName || "", versionCode: m.versionCode || 0,
+    apkUrl: apkUrl,
+    apkMirrors: mirrors,
+    apkFileName: m.apkFileName || "adshield.apk",
+    apkMB: Math.round((m.apkSize || 0) / 1048576 * 100) / 100,
+    apkSize: m.apkSize || 0,
+    apkDigest: (m.apkSha256 || "") ? ("sha256:" + m.apkSha256) : "",
   };
 }
 
-/* ═══ v7.10.0 异步更新检查（用户指令：禁止在 JavaScript 主线程同步等待网络）═══
- * 原生桥 updateCheckAsync(manual, cb) 后台线程执行 UpdateRepository.check，
- * 结果经 window[cb](json) 回调（旧同步桥 updateCheck 已移除——JS 调用会
- * 阻塞 JS 线程直至网络返回，五源链预算 40s——弱网下页面冻结 40s 的实锤
- * 根因）。三重防线：
- * ① JS 单飞（updInFlight）：同一时刻至多一个在飞检查，并发调用共享同一
- *   Promise（与原生侧 FlightGate 同族语义——绝不请求风暴）；
- * ② 过期序号（updSeq）：每次发起序号 +1，旧序号的回调一律丢弃——快速
- *   连续触发时只有最后一次的结果生效（阻止过期回调覆盖新状态）；
- * ③ 90s 兜底：桥回调永不抵达（线程丢失/进程竞态）时按超时失败收尾——
- *   按钮与状态必然恢复，手动检查绝不永久卡「检查中…」。 */
-let updInFlight = null;
-let updSeq = 0;
-const UPD_ASYNC_TIMEOUT_MS = 90 * 1000;
-function bridgeUpdateCheck(manual) {
-  const seq = ++updSeq;
-  const cbName = "__updCb" + seq;
-  return new Promise((resolve) => {
-    let settled = false;
-    const done = (v) => {
-      if (settled) return;
-      if (seq !== updSeq) {   // 过期回调丢弃（已有更新一次的检查在飞）
-        try { delete window[cbName]; } catch (e) {}
-        return;
-      }
-      settled = true;
-      clearTimeout(timer);
-      try { delete window[cbName]; } catch (e) {}
-      resolve(v);
-    };
-    const timer = setTimeout(() => {   // ③ 90s 兜底：回调永不抵达也必然收尾
-      if (settled) return;
-      settled = true;
-      try { delete window[cbName]; } catch (e) {}
-      resolve({ ok: false, error: "检查超时", errorCode: "UPDATE_TIMEOUT" });
-    }, UPD_ASYNC_TIMEOUT_MS);
-    try {
-      window[cbName] = (json) => {
-        let v = json;
-        if (typeof v === "string") { try { v = JSON.parse(v); } catch (e) { v = { ok: false, error: "检查失败", errorCode: "UPDATE_NO_CACHE" }; } }
-        done(v && typeof v === "object" ? v : { ok: false, error: "检查失败", errorCode: "UPDATE_NO_CACHE" });
+/* 浏览器预览多源链（与 APK 内 UpdateManifest 同源同形：raw@main →
+ * jsdelivr@main → @tag 探测链（下一补丁 + 下两个 minor）→ GitHub API）*/
+async function fetchJsonTimed(url, ms) {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), ms);
+  try {
+    const r = await fetch(url, { cache: "no-store", signal: ctl.signal });
+    if (!r.ok) return null;
+    return await r.json();
+  } catch (e) { return null; } finally { clearTimeout(t); }
+}
+function tagCandidatesOf(v) {
+  const p = String(v).replace(/^v/, "").split(".");
+  const M = +p[0] || 7, m = +p[1] || 0, q = +p[2] || 0;
+  return ["v" + M + "." + m + "." + (q + 1), "v" + M + "." + (m + 1) + ".0",
+    "v" + M + "." + (m + 1) + ".1", "v" + M + "." + (m + 2) + ".0"];
+}
+async function fetchLatestBrowser() {
+  let best = null;
+  const tryManifest = async (url, ms) => {
+    const m = await fetchJsonTimed(url, ms);
+    if (m && m.versionCode > 0 && (m.versionName || "").length && (m.releaseTag || "").length
+        && (!m.apkUrl || String(m.apkUrl).startsWith("https://"))
+        && (!m.packageName || m.packageName === "com.zai.adshield")) {
+      if (!best || m.versionCode > best.versionCode) best = m;
+    }
+  };
+  await tryManifest(UM_RAW, 6000);
+  await tryManifest(UM_JSD, 6000);
+  if (!best || best.versionCode <= +appCode()) {
+    for (const t of tagCandidatesOf(appVer())) {
+      await tryManifest(UM_TAG(t), 4000);
+    }
+  }
+  if (best) return manifestToPage(best);
+  // GitHub API 兜底
+  try {
+    const r = await fetchJsonTimed(GH_API + "/releases/latest", 8000);
+    if (r && r.tag_name) {
+      const apk = (r.assets || []).filter(a => a && a.name && a.name.endsWith(".apk"))[0];
+      return {
+        ok: true, hasRelease: true, tag: r.tag_name, notes: r.body || "",
+        publishedAt: r.published_at || "", url: r.html_url || "",
+        apkUrl: apk ? apk.browser_download_url : "",
+        apkMirrors: apk ? ["https://ghfast.top/" + apk.browser_download_url, "https://gh-proxy.com/" + apk.browser_download_url] : [],
+        apkFileName: apk ? apk.name : "adshield.apk",
+        apkMB: apk ? Math.round(apk.size / 1048576 * 100) / 100 : 0,
+        apkSize: apk ? (apk.size || 0) : 0,
+        apkDigest: apk ? (apk.digest || "") : "",
       };
-      AndroidApp.updateCheckAsync(!!manual, cbName);
-    } catch (e) {
-      done({ ok: false, error: "检查失败", errorCode: "UPDATE_NO_CACHE" });
     }
-  });
+  } catch (e) {}
+  return { ok: false, error: "多源均不可达——请稍后重试，也可到 GitHub Releases 页手动查看" };
 }
 
-async function fetchLatest(manual) {
+/* 检查更新统一入口：APK 走异步桥（Java 多源链），浏览器走 fetch 链 */
+async function fetchLatest() {
   if (HAS_BRIDGE) {
-    /* ① JS 单飞：在飞期间并发调用共享同一 Promise（首个 manual 语义生效） */
-    if (updInFlight) return updInFlight;
-    updInFlight = bridgeUpdateCheck(manual).finally(() => { updInFlight = null; });
-    return updInFlight;
+    try { return await netCall("netGetUpdateAsync"); } catch (e) { return { ok: false, error: "解析失败" }; }
   }
-  /* 浏览器预览：静态清单源链直连（与 APK 原生通道同源——零 GitHub API；
-   * 每源至多一次，任一源成功即返回；包名不匹配/清单非法也换下一源
-   * （疑似劫持/错源——不采信也不放弃）；全链失败 → 首个错误码如实报告） */
-  let firstErr = null;
-  let mainManifest = null;
-  for (let i = 0; i < UPDATE_MANIFEST_SOURCES.length; i++) {
-    const url = UPDATE_MANIFEST_SOURCES[i];
-    try {
-      const r = await fetch(url, { headers: { Accept: "application/json" } });
-      if (!r.ok) { // 404/5xx 等 → 试下一源
-        if (!firstErr) firstErr = { errorCode: "UPDATE_HTTP_ERROR" };
-        continue;
-      }
-      let j = null;
-      try { j = await r.json(); } catch (e) { j = null; }
-      if (!j || typeof j !== "object") { // 坏 JSON → 试下一源
-        if (!firstErr) firstErr = { errorCode: "UPDATE_INVALID_MANIFEST" };
-        continue;
-      }
-      if (j.draft || j.prerelease) return { ok: true, hasRelease: false };
-      if (j.packageName && j.packageName !== "com.zai.adshield") {
-        if (!firstErr) firstErr = { errorCode: "UPDATE_PACKAGE_MISMATCH" };
-        continue;
-      }
-      mainManifest = mapManifest(j);
-      break;
-    } catch (e) { /* 网络异常 → 试下一源 */
-      if (!firstErr) firstErr = { errorCode: "UPDATE_NETWORK_ERROR" };
-    }
-  }
-  if (mainManifest) {
-    /* ═══ v7.14.0 @tag 探测链（浏览器预览同源镜像——APK 侧在
-     * UpdateRepository.probeTagUpdates）═══
-     * @main 清单未判出新版（陈旧窗口/同版）→ 探测候选 tag 清单
-     * （不可变键零源站缓存，发布即新鲜）。命中 → 采纳；未命中 →
-     * @main 结果照常。当前版本之后的候选集与 Java 侧同公式：
-     * vM.m.p+1 / vM.(m+1).0 / vM.(m+1).1 / vM.(m+2).0。 */
-    const cur = parseInt(appCode(), 10) || 0;
-    if (!(mainManifest.versionCode > cur)) {
-      const tagHit = await probeTagManifests(cur);
-      if (tagHit) return tagHit;
-    }
-    return mainManifest;
-  }
-  const errCode = (firstErr && firstErr.errorCode) || "UPDATE_NETWORK_ERROR";
-  return { ok: false, error: updateErrText(errCode) || "网络连接失败，请检查网络后重试", errorCode: errCode };
+  return fetchLatestBrowser();
 }
 
-/* v7.14.0 浏览器预览 @tag 探测（Java UpdateRepository.tagProbeUrls 镜像）：
- * 候选 tag 依序试 gcore（网络异常才换 cdn）；404 = 干净未发布结论；
- * 命中最高 versionCode 的 tag 清单 → mapManifest 返回。 */
-function probeTagManifests(currentVc) {
-  const v = String(appVer() || "").trim();
-  const seg = v.replace(/^v/, "").split(".");
-  if (seg.length !== 3) return Promise.resolve(null);
-  const maj = parseInt(seg[0], 10), min = parseInt(seg[1], 10), pat = parseInt(seg[2], 10);
-  if (!(maj > 0) || isNaN(min) || isNaN(pat)) return Promise.resolve(null);
-  const tags = ["v" + maj + "." + min + "." + (pat + 1),
-                "v" + maj + "." + (min + 1) + ".0",
-                "v" + maj + "." + (min + 1) + ".1",
-                "v" + maj + "." + (min + 2) + ".0"];
-  const endpoints = ["https://gcore.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@", "https://cdn.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@"];
-  return (async () => {
-    let best = null, bestVc = 0;
-    for (const tag of tags) {
-      let j = null;
-      for (const ep of endpoints) {
-        try {
-          const r = await fetch(ep + tag + "/update/latest.json", { headers: { Accept: "application/json" } });
-          if (!r.ok) break;              /* 404 = 干净未发布（不换点） */
-          try { j = await r.json(); } catch (e) { j = null; }
-          if (j && typeof j === "object") break; /* 命中本 tag → 停止换点 */
-          j = null;                       /* 坏 JSON → 换点再试 */
-        } catch (e) { /* 网络异常 → 换点 */ }
-      }
-      if (!j || j.draft || j.prerelease) continue;
-      if (j.packageName && j.packageName !== "com.zai.adshield") continue;
-      const vc = parseInt(j.versionCode, 10) || 0;
-      if (vc > currentVc && vc > bestVc) {
-        bestVc = vc;
-        best = mapManifest(j);
-      }
-    }
-    return best;
-  })();
-}
-
-/* ═══ v7.10.0：versionCodeFromNotes 已删（统一版本规则专项）═══
- * Release 正文 versionCode 元数据行解析（Java Net.versionCodeOfNotes 镜像）
- * 随回退链一并移除——清单 versionCode 缺失即不判新，绝不从正文回退定码。 */
-
-/* 新版本判定（Java Net.isNewerRelease 镜像——v7.10.0 统一规则）：
- * remoteVersionCode > currentVersionCode 才算新版；任一侧缺失/非法（≤0）
- * → 不提示（versionName 仅展示，绝不作为更新判断依据）。
- * （fetchLatest 已移至上方静态清单版；本函数为浏览器预览 isNewer 兜底保留） */
-function isNewerByCode(remoteVc, localVc) {
-  return remoteVc > 0 && localVc > 0 && remoteVc > localVc;
-}
-
-/* ═══ v7.9.6plus 下载状态机（prefix = page|gate——「我的」页与全屏更新页同一状态机）════
- * 状态全集（用户指令·更新页下载状态）：
- *  connecting 正在连接下载服务器（DownloadManager 入队）· downloading 正在下载
- *  （百分比+已下载/总大小）· source 当前使用的下载源（host）· retrying 下载中断
- *  正在自动重试（系统断点续传——HTTP Range）· switching 正在切换备用下载源 ·
- *  verifying 正在校验 APK（SHA-256+大小）· verify-ok 校验成功准备安装 ·
- *  failed 下载失败可重新尝试 · all-failed 所有下载源均不可用。
- * 多源机制：channels 数组（当前仅 GitHub 官方源——ghproxy 类代理已移除，
- * 无经所有者确认的备用源）；失败/30s 无进展自动切换下一源；单源时切换
- * 直接落入 failed（提供重新下载入口）。切换源不改变 APK 内容——所有源
- * 同一 Release 资产、同一 digest/size 校验（安装闸绝不降级）。 */
 function beginChannel() {
   const url = dl.channels[dl.idx];
   try {
-    /* v7.3.0 安全（v7.9.8 措辞更新）：digest/size（静态清单 HTTPS 元数据）
-     * 随下载任务交给原生侧——安装前 Downloader 会流式计算 SHA-256 比对；
-     * 代理投毒/共享盘换包在安装前被拦下并自动删除。 */
+    /* v7.3.0 安全：digest/size（GitHub API HTTPS 元数据）随下载任务交给原生侧
+     * ——安装前 Downloader 会流式计算 SHA-256 比对；镜像通道投毒/共享盘换包
+     * 在安装前被拦下并自动删除。 */
     const r = JSON.parse(AndroidApp.startUpdateDownload(url, dl.fileName, dl.digest, dl.size));
     if (r.ok) {
+      /* v7.3.0 修复：按钮选择器与真实按钮 id 对齐（#page-dl-btn——旧
+       * prefix+"-btn" 永不命中，下载完成后按钮从不翻转「立即安装」） */
       const btn = $("#" + dl.prefix + "-dl-btn");
       if (btn) { btn.textContent = "下载中…"; btn.disabled = true; }
       const wrap = $("#" + dl.prefix + "-progress-wrap");
       if (wrap) wrap.style.display = "";
-      setDlStateText(dl.prefix, "connecting", 0, 0, 0, hostOfUrl(url));
       dl.lastBytes = -1;
       dl.lastMoveAt = Date.now();
       startProgressPoll(dl.prefix);
-    } else { toast(r.error || "启动下载失败"); onAllChannelsFailed(dl.prefix, r.error || "启动下载失败"); }
-  } catch (e) { toast("启动下载失败"); onAllChannelsFailed(dl.prefix, "启动下载失败"); }
-}
-
-/* URL → host（当前使用的下载源显示） */
-function hostOfUrl(u) {
-  try { return new URL(u).host; } catch (e) { return ""; }
-}
-
-/* 状态文案渲染（状态机的唯一文案出口——两入口一致） */
-function setDlStateText(prefix, state, percent, bytes, total, host) {
-  const txt = $("#" + prefix + "-progress-text");
-  const bar = $("#" + prefix + "-bar");
-  if (!txt) return;
-  const mb = (n) => (n / 1048576).toFixed(1);
-  const src = host ? "（源：" + host + "）" : "";
-  if (state === "connecting") txt.textContent = "正在连接下载服务器…" + src;
-  else if (state === "running") txt.textContent = "正在下载 " + percent + "% · " + mb(bytes) + " / " + (total > 0 ? mb(total) : "?") + " MB" + src;
-  else if (state === "retrying") txt.textContent = "下载中断，正在自动重试（断点续传）…" + src;
-  else if (state === "switching") txt.textContent = "正在切换备用下载源…";
-  else if (state === "verifying") txt.textContent = "正在校验 APK（SHA-256 + 大小）…";
-  else if (state === "verify-ok") txt.textContent = "校验成功，准备安装";
-  else if (state === "failed") txt.textContent = "下载失败，可点击重新下载";
-  else if (state === "all-failed") txt.textContent = "所有下载源均不可用——请检查网络后重试";
-  if (bar && state === "running") bar.style.width = percent + "%";
-}
-
-/* 全部源失败（提供重新下载入口——不要求用户反复手动点击切换） */
-function onAllChannelsFailed(prefix, reason) {
-  setDlStateText(prefix, "all-failed", 0, 0, 0, "");
-  const btn = $("#" + prefix + "-dl-btn");
-  if (btn) { btn.textContent = "重新下载"; btn.disabled = false; btn.dataset.phase = "download"; }
-  const note = $("#" + prefix + "-dl-note");
-  if (note) { note.className = "fb-result err"; note.style.display = ""; note.textContent = "下载失败：" + (reason || "网络异常") + "——日志与数据不受影响，可稍后重试"; }
+    } else toast(r.error || "启动下载失败");
+  } catch (e) { toast("启动下载失败"); }
 }
 
 function switchChannel(reason) {
   if (dl.idx + 1 < dl.channels.length) {
     dl.idx++;
-    setDlStateText(dl.prefix, "switching", 0, 0, 0, "");
-    toast(reason + "，已切换备用下载源");
+    toast(reason + "，已切换备用通道");
     beginChannel();
     return true;
   }
@@ -1078,9 +821,9 @@ function switchChannel(reason) {
 function startPageDownload(d, prefix) {
   if (!d.apkUrl) { toast("该版本没有 APK 附件"); return; }
   if (!HAS_BRIDGE) { window.open(d.apkUrl, "_blank"); return; }
-  dl = { channels: [d.apkUrl].concat(d.apkMirrors || []), idx: 0, fileName: d.apkFileName || "adshield.apk", digest: d.apkDigest || "", size: d.apkSize || 0, prefix, lastBytes: -1, lastMoveAt: Date.now() };
-  const note = $("#" + prefix + "-dl-note");
-  if (note) { note.style.display = "none"; note.textContent = ""; }
+  /* v7.15.0 中国下载兜底：gcore CDN 直链优先（全日可达），GitHub 官方与
+ * ghfast/gh-proxy 镜像随后自动切换（30s 无进展即换通道——既有机制） */
+  dl = { channels: (d.apkMirrors || []).concat(d.apkUrl ? [d.apkUrl] : []), idx: 0, fileName: d.apkFileName || "adshield.apk", digest: d.apkDigest || "", size: d.apkSize || 0, prefix, lastBytes: -1, lastMoveAt: Date.now() };
   beginChannel();
 }
 
@@ -1089,56 +832,30 @@ function startProgressPoll(prefix) {
   ubTimer = setInterval(() => {
     try {
       const d = JSON.parse(AndroidApp.updateProgress());
-      if (d.state === "running") {
-        setDlStateText(prefix, "running", d.percent, d.bytes, d.total, d.sourceHost || "");
+      const bar = $("#" + prefix + "-bar"), txt = $("#" + prefix + "-text");
+      if (d.state === "running" || d.state === "paused") {
+        bar.style.width = d.percent + "%";
+        txt.textContent = d.percent + "% · " + (d.bytes / 1048576).toFixed(1) + " / " + (d.total / 1048576).toFixed(1) + " MB";
         if (d.bytes !== dl.lastBytes) { dl.lastBytes = d.bytes; dl.lastMoveAt = Date.now(); }
         else if (Date.now() - dl.lastMoveAt > 30000) {
           if (switchChannel("下载长时间无进展")) return;
           dl.lastMoveAt = Date.now();
         }
-      } else if (d.state === "connecting") {
-        setDlStateText(prefix, "connecting", 0, d.bytes, d.total, d.sourceHost || "");
-      } else if (d.state === "retrying") {
-        setDlStateText(prefix, "retrying", d.percent, d.bytes, d.total, d.sourceHost || "");
-        if (d.bytes !== dl.lastBytes) { dl.lastBytes = d.bytes; dl.lastMoveAt = Date.now(); }
-        else if (Date.now() - dl.lastMoveAt > 60000) {
-          if (switchChannel("下载长时间无进展")) return;
-          dl.lastMoveAt = Date.now();
-        }
       } else if (d.state === "done") {
         clearInterval(ubTimer); ubTimer = null;
-        const bar = $("#" + prefix + "-bar");
-        if (bar) bar.style.width = "100%";
-        setDlStateText(prefix, "verify-ok", 100, d.bytes, d.total, d.sourceHost || "");
+        bar.style.width = "100%";
+        txt.textContent = "下载完成（已验 SHA-256），点击安装即覆盖升级";
         const btn = $("#" + prefix + "-dl-btn");
         if (btn) { btn.textContent = "立即安装"; btn.disabled = false; btn.dataset.phase = "install"; }
       } else if (d.state === "failed") {
         clearInterval(ubTimer); ubTimer = null;
         if (switchChannel("下载失败")) return;
-        onAllChannelsFailed(prefix, "网络异常或下载中断");
+        txt.textContent = "下载失败，可稍后重试";
+        const btn = $("#" + prefix + "-dl-btn");
+        if (btn) { btn.textContent = "重新下载"; btn.disabled = false; btn.dataset.phase = "download"; }
       }
     } catch (e) { clearInterval(ubTimer); ubTimer = null; }
   }, 800);
-}
-
-/* 安装（校验状态显示——installUpdate 桥内部完成 SHA-256/大小校验后才拉起
- * 系统安装器；校验失败自动删除文件并返回错误，绝不安装不完整/被篡改 APK） */
-function doInstallUpdate(prefix) {
-  setDlStateText(prefix, "verifying", 100, 0, 0, "");
-  setTimeout(() => {
-    try {
-      const r = JSON.parse(AndroidApp.installUpdate());
-      if (r && !r.ok) {
-        setDlStateText(prefix, "failed", 0, 0, 0, "");
-        toast(r.error || "拉起安装失败");
-        const btn = $("#" + prefix + "-dl-btn");
-        if (btn && r.needPermission) { btn.textContent = "已去授权，返回后重试"; btn.disabled = false; btn.dataset.phase = "install"; }
-      }
-    } catch (e) {
-      setDlStateText(prefix, "failed", 0, 0, 0, "");
-      toast("拉起安装失败");
-    }
-  }, 60);
 }
 
 /* v7.0.0：顶部更新横幅已整体移除（用户实锤：每次检查更新出现两个提示——
@@ -1154,41 +871,14 @@ $("#btn-check-update").addEventListener("click", async () => {
   note.style.display = "none";
   if (notesBox) { notesBox.style.display = "none"; notesBox.innerHTML = ""; }
   btn.textContent = "检查中…";
-  /* v7.9.8：手动检查（manual=true）——绕过新鲜缓存强制刷新，但受 30s 冷却/
-   * 单飞合并约束（原生侧保证——绝不重复请求风暴）。 */
-  const d = await fetchLatest(true);
+  const d = await fetchLatest();
   btn.disabled = false;
   btn.textContent = "检查更新";
-  /* v7.9.8 错误如实转达：十类错误码 → 人话（不再一律「稍后再试」；GitHub
-   * API 限流类错误已随架构改造根除——静态清单无 REST 配额）。 */
-  if (!d.ok) {
-    note.className = "fb-result err";
-    note.style.display = "";
-    note.textContent = "查询失败：" + (updateErrText(d.errorCode) || d.error || "未知");
-    /* ═══ v7.11.0 检查失败兜底：直达 jsDelivr CDN 仓库内最新 APK（
-     * adshield-latest.apk 恒指向最新版）——下载后覆盖安装即升级。
-     * 检查失败不再无路可走；直连下载走系统浏览器/下载器通道。 */
-    latestRelease = null;
-    fallbackDirectDl = true;
-    dlBtn.textContent = "直连下载最新版（CDN 兜底）";
-    dlBtn.dataset.phase = "fallback";
-    dlBtn.disabled = false;
-    dlBtn.style.display = "";
-    return;
-  }
-  fallbackDirectDl = false;
+  if (!d.ok) { note.className = "fb-result err"; note.style.display = ""; note.textContent = "查询失败：" + (d.error || "未知"); return; }
   if (!d.hasRelease) { note.className = "fb-result"; note.style.display = ""; note.textContent = "尚未发布版本"; return; }
   latestRelease = d;
   const latest = String(d.tag || "").replace(/^v/, "");
-  /* v7.9.8 数据来源透明化：网络异常回退缓存 → 标注数据更新时间（用户知情） */
-  const cacheNote = d.staleCache
-    ? "（网络异常，以下为缓存数据 · 更新于 " + (ageText(d.cachedAt) || "未知时间") + "）"
-    : (d.fromCache ? "（数据更新于 " + (ageText(d.cachedAt) || "刚刚") + "）" : "");
-  /* v7.10.0 统一版本规则：优先用原生侧权威判定（Net.isNewerRelease——
-   * remoteVersionCode > currentVersionCode；versionName 仅展示），
-   * 浏览器路径回退 isNewerByCode（Java 镜像——同为 versionCode 单一判定） */
-  const isNewer = typeof d.isNewer === "boolean" ? d.isNewer
-    : isNewerByCode(d.remoteVersionCode || 0, parseInt(appCode(), 10) || 0);
+  const isNewer = cmpVer(latest, appVer()) > 0;
   /* v7.0.0：检查更新当场显示新版本 ≤5 条带序号功能描述（就地渲染——
    * 就在点按钮的地方；不只弹版本号） */
   if (isNewer) renderReleaseNotes(d);
@@ -1199,241 +889,36 @@ $("#btn-check-update").addEventListener("click", async () => {
     dlBtn.style.display = "";
     note.className = "fb-result";
     note.style.display = "";
-    note.textContent = (isNewer
-      ? "发现新版本 v" + latest + "（versionCode " + (d.remoteVersionCode || "?") + " · 功能描述如上，下载后覆盖安装即升级）"
-      : "已是最新版本 · " + CURRENT_RELEASE.title) + cacheNote;
-  } else if (cacheNote) {
-    note.className = "fb-result";
-    note.style.display = "";
-    note.textContent = cacheNote.replace(/[（）]/g, "");
+    note.textContent = isNewer
+      ? "发现新版本 v" + latest + "（功能描述如上，下载后覆盖安装即升级）"
+      : "已是最新版本 · " + CURRENT_RELEASE.title;
   }
 });
 
 $("#page-dl-btn").addEventListener("click", () => {
   const btn = $("#page-dl-btn");
-  if (btn.dataset.phase === "fallback") { doFallbackDirectDownload(); return; }
   if (btn.dataset.phase === "install") {
-    if (HAS_BRIDGE) doInstallUpdate("page");
+    if (HAS_BRIDGE) {
+      try {
+        const r = JSON.parse(AndroidApp.installUpdate());
+        if (!r.ok) toast(r.error || "拉起安装失败");
+      } catch (e) { toast("拉起安装失败"); }
+    }
     return;
   }
   if (latestRelease) startPageDownload(latestRelease, "page");
 });
 
-/* ══════════ v7.9.6plus 启动时新版本检测 + 全屏更新页 ══════════
- * 用户每次进入 App：首屏渲染后异步检查 → versionCode 主判（远端 > 本地）
- * → 优先显示全屏更新提示页；无新版本/网络异常/清单暂不可用 → 静默正常
- * 进入 App（绝不因更新检查失败阻塞启动）。v7.9.8 起改读静态清单
- * （fetchLatest(false) 自动路径：优先 15min 新鲜缓存零联网；本进程至多
- * 联网一次；失败指数退避；网络异常回退缓存——versionCode 单调性保证
- * 缓存数据绝不提示降级）。用户选「暂不更新」→ 继续使用当前版本，下次
- * 进入 App 仍会检测。Draft/Pre-release 清单标记不作正式更新。 */
-let gateRelease = null;
-/* v7.11.0：检查失败兜底态（true = 下载按钮走 jsDelivr CDN 直链而非
- * Release 下载状态机）。 */
-let fallbackDirectDl = false;
-
-/* 检查失败兜底直连下载：jsDelivr CDN 仓库内最新 APK（浏览器/系统下载器
- * 通道——无 digest 元数据，不走应用内 SHA-256 安装闸；下载后从通知/文件
- * 管理器点击安装，覆盖安装即升级）。 */
-function doFallbackDirectDownload() {
-  toast("已转系统下载：下载完成后点击安装（覆盖安装即升级）");
-  openUrl(FALLBACK_CDN_LATEST);
-}
-
-async function checkUpdateOnLaunch() {
+/* ══════════ 引擎画像（日志上传正文 · v4.2.0 更具体） ══════════ */
+function fmtTs(t) {
   try {
-    const d = await fetchLatest(false);
-    if (!d || !d.ok || !d.hasRelease) return; // 检查失败静默——App 正常可用
-    const isNewer = typeof d.isNewer === "boolean" ? d.isNewer
-      : isNewerByCode(d.remoteVersionCode || 0, parseInt(appCode(), 10) || 0);
-    if (isNewer) showUpdateGate(d);
-  } catch (e) { /* 启动检查绝不阻塞 App */ }
+    const d = new Date(t);
+    const p = (n) => String(n).padStart(2, "0");
+    return p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds());
+  } catch (e) { return "--:--:--"; }
 }
 
-/* 全屏更新页渲染（fixed 覆盖全屏 · z-index 最高 · 不影响原页面布局——
- * 关闭即回到原状；移动端优先适配无横向溢出） */
-function showUpdateGate(d) {
-  gateRelease = d;
-  /* v7.11.0 更新优先于提醒：全屏更新页即将在场——先收起已展示的开屏
-   * 提醒卡（两卡叠弹打扰面；用户确认过的 24h 节流时间戳不受影响） */
-  const tip = $("#pin-tip");
-  if (tip) tip.remove();
-  let gate = $("#update-gate");
-  if (gate) gate.remove();
-  gate = document.createElement("div");
-  gate.id = "update-gate";
-  const latest = String(d.tag || "").replace(/^v/, "");
-  const heads = notesToHeadlines(d, 5);
-  const sizeLine = d.apkMB ? "安装包 " + d.apkMB + " MB" : "";
-  const digestLine = d.apkDigest ? " · SHA-256 已公布" : "";
-  gate.innerHTML =
-    '<div class="ug-card" role="dialog" aria-modal="true" aria-label="发现新版本">'
-    + '<img class="ug-logo" src="mascot-head.png" width="64" height="64" alt="开屏卫士图标">'
-    + '<div class="ug-app-name">开屏卫士</div>'
-    + '<div class="ug-badge">发现新版本</div>'
-    + '<div class="ug-versions">当前 v' + esc(appVer()) + ' → 最新 <b>v' + esc(latest) + '</b>'
-    + (d.remoteVersionCode ? '（versionCode ' + d.remoteVersionCode + '）' : '') + '</div>'
-    + (heads.length
-        ? '<div class="ug-notes">' + heads.map((h, i) =>
-            '<div class="ug-note-item"><span class="ug-note-n">' + (i + 1) + '</span>' + esc(h) + '</div>').join("") + '</div>'
-        : '')
-    + (sizeLine ? '<div class="ug-size">' + sizeLine + digestLine + ' · 官方源 GitHub Releases</div>' : '')
-    + '<div class="ug-progress-wrap" id="gate-progress-wrap" style="display:none">'
-    + '<div class="progress"><div class="progress-bar" id="gate-bar"></div></div>'
-    + '<div class="progress-text" id="gate-progress-text">准备中</div></div>'
-    + '<button class="ug-btn-primary" id="gate-dl-btn">立即更新</button>'
-    + '<button class="ug-btn-ghost" id="gate-later-btn">暂不更新</button>'
-    + '<div class="fb-result" id="gate-dl-note" style="display:none"></div>'
-    + '</div>';
-  document.body.appendChild(gate);
-  const dlBtn = $("#gate-dl-btn");
-  dlBtn.dataset.phase = "download";
-  dlBtn.addEventListener("click", () => {
-    const b = $("#gate-dl-btn");
-    if (b.dataset.phase === "install") { if (HAS_BRIDGE) doInstallUpdate("gate"); return; }
-    if (gateRelease) startPageDownload(gateRelease, "gate");
-  });
-  $("#gate-later-btn").addEventListener("click", hideUpdateGate);
-  /* 恢复未完成的下载任务（用户上次退出时下载中/已完成未安装——系统
-   * DownloadManager 任务持久，进度查询天然恢复；已完成直接给安装入口） */
-  if (HAS_BRIDGE) {
-    try {
-      const p = JSON.parse(AndroidApp.updateProgress());
-      if (p.state === "done") {
-        dlBtn.textContent = "立即安装"; dlBtn.dataset.phase = "install";
-        $("#gate-progress-wrap").style.display = "";
-        setDlStateText("gate", "verify-ok", 100, p.bytes || 0, p.total || 0, p.sourceHost || "");
-      } else if (p.state === "running" || p.state === "connecting" || p.state === "retrying") {
-        dlBtn.textContent = "下载中…"; dlBtn.disabled = true;
-        $("#gate-progress-wrap").style.display = "";
-        dl = { channels: [gateRelease.apkUrl].concat(gateRelease.apkMirrors || []), idx: 0,
-          fileName: gateRelease.apkFileName || "adshield.apk", digest: gateRelease.apkDigest || "",
-          size: gateRelease.apkSize || 0, prefix: "gate", lastBytes: -1, lastMoveAt: Date.now() };
-        startProgressPoll("gate");
-      }
-    } catch (e) {}
-  }
-}
-
-function hideUpdateGate() {
-  const gate = $("#update-gate");
-  if (gate) gate.remove();
-}
-
-/* ══════════ v7.12.0 开屏提醒：三按钮弹窗（知道了 / 24h 不再提示 / 去上传日志）══════════
- * 用户指令：「开屏提示内容（24 小时可以不显示）不要放在帮助里，每次进入 app
- * 时弹出提示，有三个按钮，知道了，24小时不再提示，去上传日志」。
- *  · 进入 App 即显示（init 直调——0ms；内容与帮助页彻底分离，帮助页不再
- *    重复开屏提示文案）；
- *  · 「知道了」= 仅本轮收起（不记 24h——下次进入仍会提醒）；
- *  · 「24 小时内不再提示」= 记 pin_tip_confirmed_at（epoch 毫秒，kvSet
- *    白名单键 / 浏览器 localStorage 兜底），24h 内不再显示；
- *  · 「去上传日志」= 收起提醒 → 直达「我的 → 引擎日志」卡（滚动 + 高亮）
- *    ——绝不自动上传（隐私红线：仅在你主动点「一键上传」时才上传）；
- *  · 每次进入语义：v7.11.0 的 5min 防重建窗会把「退出后 1~5 分钟内再进入」
- *    也吞掉——v7.12.0 收紧为 60s 短窗（仅防 Activity 重建/旋转连弹），
- *    真实的「再次进入」一律照常提醒；
- *  · 切回前台也评估（v7.13.0：「进入就提醒」完整语义——冷启动与切回
- *    双场景；60s 短窗 + 24h 节流双闸防连弹/防骚扰）；
- *  · 更新提示优先：#update-gate 在场不弹；更新页后到 → showUpdateGate
- *    主动收起提醒卡（24h 时间戳不受影响）。 */
-const PIN_TIP_THROTTLE_MS = 24 * 60 * 60 * 1000;  /* 「24h 不再提示」节流 */
-const PIN_TIP_RESHOW_GUARD_MS = 60 * 1000;       /* 展示后 60s 防旋转/重建/切回连弹 */
-function pinTipThrottled() {
-  try {
-    const t = parseInt(store.get("pin_tip_confirmed_at", "0"), 10) || 0;
-    if (!(t > 0) || (Date.now() - t) >= PIN_TIP_THROTTLE_MS) return false;
-    /* v7.13.0 跨升级残留根治（用户实锤「进入 app 没有弹出提醒」根因）：
-     * 24h 节流时间戳可能是【旧版本】点「不再提示」记下的——覆盖升级
-     * 到新版本后，旧时间戳继续吞掉升级后的首次提醒（prefs 跨升级保留）。
-     * 提醒卡记 pin_tip_ver（点按钮时的版本）；版本已变 → 节流视为过期，
-     * 升级后第一次进入必弹（新版本的「进入就提醒」语义重新生效）。 */
-    const ver = String(store.get("pin_tip_ver", "") || "");
-    if (ver && ver !== appVer()) return false;
-    return true;
-  } catch (e) { return true; }
-}
-function pinTipRecentlyShown() {
-  try {
-    const t = parseInt(store.get("pin_tip_shown_at", "0"), 10) || 0;
-    return t > 0 && (Date.now() - t) < PIN_TIP_RESHOW_GUARD_MS;
-  } catch (e) { return true; }
-}
-function showPinTip() {
-  /* v7.13.0：移除 pinTipShownThisSession 会话闸（旧实现挡住「切回前台
-   * 再弹」——会话变量跨切回保持 true，切回场景永远进不来）。防连弹统一
-   * 收口到 60s 持久短窗（旋转/重建/切回同防，60s 后真实进入照常弹）。 */
-  try { store.set("pin_tip_shown_at", String(Date.now())); } catch (e) {}
-  let tip = $("#pin-tip");
-  if (tip) tip.remove();
-  tip = document.createElement("div");
-  tip.id = "pin-tip";
-  tip.innerHTML =
-    '<div class="ug-card" role="dialog" aria-modal="true" aria-label="固定后台提醒">'
-    + '<img class="ug-logo" src="mascot-head.png" width="56" height="56" alt="开屏卫士图标">'
-    + '<div class="ug-app-name">把开屏卫士固定在后台</div>'
-    + '<div class="ug-badge">守护不中断</div>'
-    + '<div class="ug-notes">'
-    + '<div class="ug-note-item"><span class="ug-note-n">1</span>打开「最近任务」，找到卫士卡片</div>'
-    + '<div class="ug-note-item"><span class="ug-note-n">2</span>点卡片上的「固定 / 图钉 / 锁定」（MIUI：长按卡片选「锁定」）</div>'
-    + '<div class="ug-note-item"><span class="ug-note-n">3</span>固定后清理后台不影响卫士——下次进入无需重新开启</div>'
-    + '</div>'
-    + '<div class="ug-size">不固定的后果：清理后台时卫士被一起杀掉，下次进入会被要求重新开启（并再看一次系统 10 秒确认）。'
-    + '若遇开屏广告未跳过等问题，点下方「去上传日志」可帮助定位。</div>'
-    + '<button class="ug-btn-primary" id="pin-tip-ok">知道了</button>'
-    + '<button class="ug-btn-ghost" id="pin-tip-snooze">24 小时内不再提示</button>'
-    + '<button class="ug-btn-link" id="pin-tip-upload">去上传日志</button>'
-    + '</div>';
-  document.body.appendChild(tip);
-  const close = () => { const t = $("#pin-tip"); if (t) t.remove(); };
-  /* 「知道了」：仅本轮收起（下次进入仍提醒——进入 app 就显示语义保持） */
-  $("#pin-tip-ok").addEventListener("click", close);
-  /* 「24 小时内不再提示」：记确认时间戳（24h 节流主闸）+ 当前版本
-   * （v7.13.0：版本变化时节流失效——升级后重新提醒，见 pinTipThrottled） */
-  $("#pin-tip-snooze").addEventListener("click", () => {
-    try {
-      store.set("pin_tip_confirmed_at", String(Date.now()));
-      store.set("pin_tip_ver", appVer());
-    } catch (e) {}
-    close();
-    toast("24 小时内不再提示（固定后台后守护更稳）");
-  });
-  /* 「去上传日志」：收起提醒 → 直达引擎日志卡（跳转不等于上传——上传
-   * 永远只在你主动点「一键上传」时发生） */
-  $("#pin-tip-upload").addEventListener("click", goUploadLogFromTip);
-}
-/* v7.12.0 「去上传日志」跳转：切「我的」页 → 滚动到引擎日志卡并高亮 →
- * 指引点「一键上传」（隐私红线保持：零自动上传）。 */
-function goUploadLogFromTip() {
-  const close = () => { const t = $("#pin-tip"); if (t) t.remove(); };
-  close();
-  try {
-    const meBtn = document.querySelector('.tabbtn[data-page="me"]');
-    if (meBtn && meBtn.click) meBtn.click();
-    setTimeout(() => {
-      try {
-        const card = document.getElementById("card-engine-log");
-        if (card && card.scrollIntoView) card.scrollIntoView({ behavior: "smooth", block: "center" });
-        if (card && card.classList) {
-          card.classList.remove("flash");
-          void card.offsetWidth;
-          card.classList.add("flash");
-        }
-      } catch (e) {}
-    }, 160);
-    toast("在「引擎日志」点「一键上传」——仅在你主动点击时才上传");
-  } catch (e) {}
-}
-function maybeShowPinTip() {
-  try {
-    if (pinTipThrottled()) return;         // 24h 内已选「不再提示」——节流
-    if (pinTipRecentlyShown()) return;     // 60s 内已展示过——防旋转/重建重复弹
-    if ($("#update-gate")) return;         // 更新页在场——升级优先，本轮不打扰
-    showPinTip();
-  } catch (e) { /* 提示失败静默——绝不影响正常使用 */ }
-}
-
-/* ═══ v4.5.0 包名缩写（修「android」歧义；v7.9.8：报告页在用——保留）═══
+/* ═══ v4.5.0 包名缩写（修「android」歧义）═══
  * 末段是通用词（android/app/main/ui/...）时取两段——否则 me.ele.android
  * （饿了么）等应用在日志/战绩里全部显示为「android」，误导排查方向。 */
 const GENERIC_TAILS = new Set(["android", "app", "main", "ui", "mobile", "phone", "client", "core", "sdk", "online", "lite"]);
@@ -1443,6 +928,54 @@ function shortPkgName(pkg) {
   const last = parts[parts.length - 1];
   if (GENERIC_TAILS.has(last) && parts.length >= 3) return parts[parts.length - 2] + "." + last;
   return last;
+}
+
+function engineProfile() {
+  const st = getRealState();
+  const s = st.stats || {};
+  let rules = 0, pkgs = 0;
+  try { Object.keys(st.rules || {}).forEach(k => { const n = (st.rules[k] || []).length; rules += n; if (n) pkgs++; }); } catch (e) {}
+  const lines = [];
+  lines.push("- 版本：v" + appVer() + " · 环境：" + (HAS_BRIDGE ? "Android APK" : "浏览器预览") + " · 手动上传");
+  lines.push("- 真实引擎：秒跳 " + (s.auto || 0) + " · 弹窗关闭 " + (s.popup || 0) + " · 返回键 " + (s.back || 0)
+    + " · 反馈面板收起 " + (s.feedback || 0) + " · 手动样本 " + (s.manual || 0) + " · 学习规则 " + rules + " 条（" + pkgs + " 个应用）");
+  // Top5 应用战绩（秒跳/弹窗/手动）——v4.5.0：shortPkgName 修「android」歧义
+  try {
+    const byApp = s.byApp || {};
+    const top = Object.keys(byApp).map(k => {
+      const a = byApp[k] || {};
+      return { k, score: (a.auto || 0) + (a.popup || 0) + (a.manual || 0), a };
+    }).filter(x => x.score > 0).sort((x, y) => y.score - x.score).slice(0, 5);
+    if (top.length) {
+      lines.push("- 应用战绩 Top5：" + top.map(x => {
+        return shortPkgName(x.k) + "(" + (x.a.auto || 0) + "/" + (x.a.popup || 0) + "/" + (x.a.manual || 0) + ")";
+      }).join(" · "));
+    }
+  } catch (e) {}
+  // 订阅命中（内置 + 远程）
+  let subLine = "- 订阅：";
+  try {
+    const sub = JSON.parse(AndroidApp.subState());
+    subLine += "内置 " + (sub.builtinApps || 0) + " 款/" + (sub.builtinRules || 0) + " 条（命中 " + (sub.builtinHits || 0) + "）";
+    if (sub.remoteOk) subLine += " · 远程「" + (sub.remoteName || "") + "」" + (sub.remoteApps || 0) + " 款/" + (sub.remoteRules || 0) + " 条（命中 " + (sub.remoteHits || 0) + "）";
+  } catch (e) { subLine += "内置"; }
+  lines.push(subLine);
+  // 能耗画像（v5.3.0：探针/省电档案/位置学习拦截维度）
+  try {
+    const en = JSON.parse(AndroidApp.energyStats());
+    if (en && en.ok) {
+      let el = "- 能耗画像（本次开机）：事件 " + en.events + " · 探针 " + (en.probes || 0) + " · 扫描 " + en.scans;
+      if (en.profileSkips) el += "（省电档案跳过 " + en.profileSkips + " 窗）";
+      el += " · 手势估算 " + en.microWh + "µWh";
+      lines.push(el);
+      if (en.posDropped) lines.push("- 位置学习验证：拦截误学 " + en.posDropped + " 次（点击后 1.5s 窗口未关 = 普通点击）");
+    }
+  } catch (e) {}
+  // 引擎日志：最近 16 条（带时间戳）
+  const log = (st.log || []).slice(-16).map(l => "  - [" + fmtTs(l.t || 0) + "] " + (l.msg || ""));
+  lines.push("- 引擎日志（最近 16 条）：");
+  lines.push(log.length ? log.join("\n") : "  - （暂无）");
+  return lines.join("\n");
 }
 
 /* ══════════ 我的：日志 ══════════ */
@@ -1460,12 +993,23 @@ $("#btn-refresh-log").addEventListener("click", () => {
   toast("日志已刷新");
 });
 
-/* ══════════ v7.9.8 日志上传（导出功能已下线——用户指令）═════════
- * v7.9.7 曾上线的本地导出（导出按钮/收集→脱敏→写文件/分享面板/确认弹窗）
- * 整链下线；保留：日志采集（服务侧常开）/ 查看能力（renderLog+刷新按钮）/
- * 一键上传（doUploadLog）+ 自动上传规则（24h 最多成功 3 次·只记自动账本）
- * 全部零改动。上传错误按真实分类码（errKind）八类人话呈现——绝不把所有
- * 失败统一成「稍后再试」。 */
+/* ══════════ v5.5.0 日志上传强反馈 ══════════
+ * 三重成功反馈（避免用户不确定是否提交成功）：
+ *  ① 全屏弹窗确认（含 Issue 编号 + 「上传成功，感谢反馈」+ 查看链接）
+ *  ② 顶部醒目横幅（绿色，滑入动画，8s 自动收起 / 手动关闭）
+ *  ③ 系统通知（AndroidApp.postNotify，独立 upload 通道）
+ * 上传全程阶段化 loading（收集 → 脱敏 → 提交）；失败给明确原因 + 一键重试。
+ * 日志四类内容：应用版本 / 设备信息 / 拦截日志 / 异常堆栈，提交前
+ * maskText 正则脱敏（Java 侧 Net.maskSensitive 再脱敏一次，双端双层）。 */
+
+/* 脱敏（第一层，与 Net.maskSensitive 同规则）：手机号 / 身份证 / 邮箱 / IP */
+function maskText(s) {
+  return String(s == null ? "" : s)
+    .replace(/(?<![0-9])(1[3-9]\d)\d{4}(\d{4})(?![0-9])/g, "$1****$2")
+    .replace(/(?<![0-9A-Za-z])(\d{3})\d{12}(\d{3}[\dXx])(?![0-9A-Za-z])/g, "$1************$2")
+    .replace(/[A-Za-z0-9._%+-]+@([A-Za-z0-9.-]+\.[A-Za-z]{2,})/g, "***@$1")
+    .replace(/(?<![0-9])(\d{1,3}\.\d{1,3})\.\d{1,3}\.\d{1,3}(?![0-9])/g, "$1.*.*");
+}
 
 /* 上传阶段化 loading：按钮转圈 + 阶段文案 */
 function setUploadPhase(btn, phase) {
@@ -1473,174 +1017,127 @@ function setUploadPhase(btn, phase) {
   btn.innerHTML = SPIN + esc(phase);
   btn.disabled = true;
 }
-
-/* v7.9.8 错误分类码 → 人话提示（用户八类表；基于 LogUploader.classifyError
- * 的真实 HTTP 状态码/服务端码/网络异常类型——绝不猜测原因）。
- * v7.9.8b：裸 401（AUTH_FAILED·认证失败）与裸 403（FORBIDDEN·权限不足）
- * 分家提示——服务端 JSON 码 UNAUTHORIZED 仍按契约透出原码。
- * v7.9.9：超时阶段分家——连接超时（NET_CONNECT_TIMEOUT·请求几乎必然
- * 未送达，可换网络）与读取超时（NET_READ_TIMEOUT·请求可能已送达甚至
- * 已处理——幂等重试语义如实告知）；TLS 干扰独立分类（NET_TLS）。 */
-function uploadErrText(res) {
-  const k = String((res && res.errKind) || "");
-  const raw = String((res && res.lastError) || "");
-  /* v7.13.0：连接阶段失败文案注明「已自动多次重试 + 网络恢复自动补试」——
-   * Java 侧 RealHttp 连接阶段（连接失败/连接超时/TLS）已自动四试
-   * （0/500/1200/2400ms 退避 + 单次 6s 超时快失败）；切网/网络恢复时
-   * AdSkipService NetworkCallback 自动补传待传日志（用户无需手动重试）。 */
-  if (k === "NET_CONNECT_FAIL") return "网络连接失败，请检查网络——已自动多次重试仍不通；日志已保留（不会丢失）。切换 Wi-Fi/移动网络后无需手动重试：网络恢复时 App 会自动补试上传";
-  if (k === "NET_CONNECT_TIMEOUT") return "连接上传服务超时——当前网络可能无法访问上传服务；已自动多次重试仍不通，日志已保留（不会丢失）。切换 Wi-Fi/移动网络后无需手动重试：网络恢复时 App 会自动补试上传";
-  if (k === "NET_READ_TIMEOUT") return "上传超时，结果暂时无法确认——若服务端已收到，重试将使用原批次，不会重复创建 Issue";
-  if (k === "NET_TLS") return "安全连接失败（网络传输可能被干扰）——可尝试切换网络后重试；日志已保留（不会丢失）";
-  if (k === "NET_TIMEOUT") return "上传超时，请稍后重试——若服务端已收到，重试会自动复用原 Issue，不会重复提交";
-  if (k === "RATE_LIMITED") return "服务端繁忙，请稍后重试——日志已保留（不会丢失），可立即再次上传";
-  if (k === "INVALID_REQUEST" || k === "HTTP_400") return "上传数据格式异常（" + (raw || "400") + "）——该情况请反馈给开发者";
-  if (k === "AUTH_FAILED") return "认证失败：服务端未接受本次上传（401），请稍后重试——日志已保留";
-  if (k === "FORBIDDEN") return "权限不足：服务端拒绝了本次上传（403），请稍后重试——日志已保留";
-  if (k === "UNAUTHORIZED") return "服务端拒绝了本次上传（UNAUTHORIZED），请查看诊断信息";
-  if (k === "PRIVACY_REJECTED" || k === "IDEMPOTENCY_CONFLICT" || k === "PAYLOAD_TOO_LARGE"
-      || k === "MANUAL_RECONCILIATION_REQUIRED") {
-    return "服务端拒绝了本次上传（" + k + "），请查看诊断信息——该批已隔离保留本地检视";
-  }
-  if (k === "RELAY_SERVER_ERROR" || k === "RELAY_TEMP_ERROR") return "日志接收服务暂时不可用，请稍后重试——日志已保留";
-  if (k === "PROTOCOL_UNEXPECTED_BODY") return "上传服务响应异常，请稍后重试";
-  if (k === "NET_IO") return "网络传输异常，请稍后重试——日志已保留";
-  return "上传失败，请查看错误详情（" + (raw || k || "未知") + "）——日志已保留，可随时再次上传";
+function resetUploadBtn(btn) {
+  btn.innerHTML = "上传日志";
+  btn.disabled = false;
 }
 
-/* 失败提示（含重试按钮；文案已人话化） */
-function showUploadFail(box, text, retryFn) {
+/* v5.8.0：顶部成功横幅已移除（用户实锤：上传成功后顶部不要再出弹窗——
+ * 只要一个确认弹窗就够用了，防呆单一反馈通道）。 */
+
+/* 三重反馈之一：全屏弹窗确认 */
+/* v5.8.0 唯一确认弹窗：一个 ✓、一行结果、一个「好的」——零跳转零其他反馈 */
+function showUploadDoneModal(number) {
+  closeModal();
+  const wrap = document.createElement("div");
+  wrap.id = "upload-done-modal";
+  wrap.style.cssText = "position:fixed;inset:0;z-index:130;background:rgba(4,12,8,.6);"
+    + "display:flex;align-items:center;justify-content:center;padding:24px;";
+  wrap.innerHTML =
+    '<div role="dialog" aria-modal="true" aria-label="上传成功" style="background:#fff;border-radius:16px;'
+    + 'max-width:320px;width:100%;padding:22px 20px 16px;text-align:center;box-shadow:0 18px 50px rgba(0,0,0,.28)">'
+    + '<div style="width:56px;height:56px;margin:0 auto 12px;border-radius:50%;background:#10B981;'
+    + 'display:flex;align-items:center;justify-content:center;font-size:28px;color:#fff;font-weight:700">✓</div>'
+    + '<div style="font-size:17px;font-weight:700;color:#0c2015">上传成功，感谢反馈</div>'
+    + '<div style="font-size:13px;color:#5b6b60;margin:8px 0 14px">日志已提交 GitHub Issue #' + esc(number) + '</div>'
+    + '<button data-act="close" style="width:100%;border:0;border-radius:10px;background:#10B981;'
+    + 'color:#fff;font-size:14px;font-weight:600;padding:11px 0">好的</button></div>';
+  document.body.appendChild(wrap);
+  wrap.addEventListener("click", (ev) => {
+    const act = ev.target.getAttribute && ev.target.getAttribute("data-act");
+    if (act === "close" || ev.target === wrap) closeModal();
+  });
+}
+function closeModal() {
+  const m = $("#upload-done-modal");
+  if (m) m.remove();
+}
+
+/* v5.8.0：系统通知仅保留失败路径（成功已有唯一确认弹窗——单一反馈通道防呆；
+ * 失败通知在用户离开 App 时仍可召回，是罕见场景兜底） */
+function notifyUploadResult(ok, number) {
+  if (!HAS_BRIDGE || ok) return;
+  try {
+    AndroidApp.postNotify(
+      "日志上传失败",
+      "本次上传未完成，可回到「我的 → 引擎日志」重试",
+      false);
+  } catch (e) {}
+}
+
+/* 失败原因 → 人话提示 */
+function humanizeUploadError(err) {
+  const e = String(err || "");
+  if (e.includes("401")) return "内置令牌无效（401）——请到 GitHub 仓库 Issues 手动反馈";
+  if (e.includes("403")) return "触发 GitHub 限流（403）——请稍后重试";
+  if (e.includes("网络")) return "网络异常——请检查网络后重试";
+  if (e.includes("令牌")) return e;
+  return e || "上传失败（未知原因）";
+}
+
+/* 失败提示（含重试按钮） */
+function showUploadFail(box, err) {
   box.className = "fb-result err";
-  box.innerHTML = esc(text)
+  box.innerHTML = esc(humanizeUploadError(err))
     + ' <button id="btn-upload-retry" style="border:0;border-radius:999px;background:#fff;color:#b91c1c;'
     + 'font-size:12px;font-weight:700;padding:4px 12px;margin-left:6px">重试</button>';
   const rb = $("#btn-upload-retry");
-  if (rb) rb.addEventListener("click", () => (retryFn || doUploadLog)());
+  if (rb) rb.addEventListener("click", () => doUploadLog());
 }
 
-/* ══════ 一键上传主流程（v8.2.2 简化版 · v7.9.8 冻结幂等）══════
- * 用户点一次 → LogUploader.submitNow（分块 ≤48 逐块上传 Worker）→ 回调：
- * 成功显示 Issue 编号与【经 GitHub 匿名 API 核实的真实链接】；失败显示
- * 原因并保留可重试。v7.10.0：上传次数限制彻底移除——手动上传零次数/
- * 额度/冷却门槛，随时可传、短时间连传多批全部放行（同 batchId 幂等保持）；
- * 服务端瞬时限流如实告知（无等待分钟数呈现）。
- * 空队列四态如实区分（未产生/已传完/采集异常/读取异常）。
- * 双入口：「我的」页主按钮 / 设置页「立即提交」——结果统一渲染。 */
-function doUploadLog(fromSettings) {
+/* 上传主流程：收集（四类内容）→ 脱敏 → 提交 → 三重反馈 */
+async function doUploadLog() {
   const box = $("#upload-log-result");
-  const btn = fromSettings ? $("#btn-log-upload-now") : $("#btn-upload-log");
-  if (!btn) return;
-  if (!HAS_BRIDGE || !AndroidApp.logUploadSubmitNow) {
-    toast("仅 APK 内可上传（浏览器预览无上传通道）");
-    return;
-  }
-  if (!fromSettings) {
-    box.className = "fb-result";
-    box.textContent = "";
-  }
-  setUploadPhase(btn, "上传中…");
-  try {
-    AndroidApp.logUploadSubmitNow("__logUploadCb");
-  } catch (e) {
-    resetUploadButtons();
-    showUploadFail(box, "上传调用失败", doUploadLog);
-  }
-}
+  const btn = $("#btn-upload-log");
+  if (!HAS_BRIDGE) { box.className = "fb-result err"; box.textContent = "仅 APK 内可上传（浏览器预览请用 Web 端学习中心）"; return; }
 
-/* v8.1.0 复位双入口按钮（回调时两个都复位——触发者不确定） */
-function resetUploadButtons() {
-  const main = $("#btn-upload-log");
-  if (main) { main.innerHTML = "一键上传"; main.disabled = false; }
-  const now = $("#btn-log-upload-now");
-  if (now) { now.innerHTML = "立即提交"; now.disabled = false; }
-}
+  closeModal();
+  box.className = "fb-result";
+  box.textContent = "";
+  setUploadPhase(btn, "收集日志…");
 
-/* v8.2.2 一键上传结果回调（MainActivity evaluateJavascript 回调）——
- * 成功显示 Issue 编号与【经验证的真实链接】（服务端返回 issueNumber 后经
- * GitHub 匿名 API 核实 html_url 才可点击——绝不拼接未经确认的仓库地址）；
- * 无日志时四态如实区分；v7.9.8 失败按 errKind 八类人话呈现（分类依据
- * 真实 HTTP 状态码/服务端码/网络异常类型——绝不统一「稍后再试」）；
- * v7.10.0：次数限制彻底移除——不再展示 24h 成功批数额度行与等待分钟数。 */
-window.__logUploadCb = function (res) {
-  resetUploadButtons();
-  const box = $("#upload-log-result");
-  res = res || {};
-  if (res.busy) {
-    toast("后台正在上传中，请稍候再试");
-    showUploadFail(box, "后台正在上传中，请稍候再试（上传中重复点击不会重复提交）", doUploadLog);
-    return;
-  }
-  if ((res.acked || 0) > 0) {
-    const nums = String(res.issueNumbers || "").split(",");
-    const urls = String(res.issueUrls || "").split(",");
-    let anyUrl = false;
-    const links = nums.map((n, i) => {
-      const num = parseInt(n, 10);
-      if (!(num > 0)) return null;
-      const u = (urls[i] || "").trim();
-      if (u) {
-        anyUrl = true;
-        return '<a data-issue-url="' + esc(u) + '" href="javascript:void(0)" style="color:#047857;font-weight:700;text-decoration:underline">#' + num + "</a>";
-      }
-      return "<b>#" + num + "</b>";
-    }).filter(Boolean).join("、");
-    box.className = "fb-result ok";
-    box.innerHTML = "日志上传成功" + (links ? "（Issue " + links + (anyUrl ? "，点击可查看）" : "——编号由服务端确认）") : "");
-    const anchors = box.querySelectorAll("a[data-issue-url]");
-    for (const a of anchors) {
-      a.addEventListener("click", () => openUrl(a.getAttribute("data-issue-url")));
-    }
-    toast("日志上传成功");
-  } else if ((res.waited || 0) > 0) {
-    /* v7.10.0：上传次数限制已移除——本分支仅服务服务端瞬时限流
-     * （per-minute 防滥用层）；不再呈现「等待 N 分钟」类人为时长，
-     * 日志保留、可立即重试。 */
-    toast("服务端繁忙，请稍后重试");
-    showUploadFail(box, "服务端繁忙，请稍后重试——日志已保留（不会丢失），可立即再次上传", doUploadLog);
-  } else if ((res.rejected || 0) > 0) {
-    toast("服务端拒收本批日志");
-    showUploadFail(box, "服务端拒绝了本次上传（" + (res.lastError || "未知原因")
-      + "），请查看诊断信息——该批已隔离保留本地检视，不影响后续新日志上传", doUploadLog);
-  } else if (res.lastError) {
-    toast("日志上传失败");
-    showUploadFail(box, uploadErrText(res), doUploadLog);
-  } else if (res.emptyReason === "never-collected") {
-    box.className = "fb-result";
-    box.textContent = "暂无可上传的新日志——应用运行与跳过广告时会自动记录，产生后即可上传";
-    toast("暂无已产生的日志");
-  } else if (res.emptyReason === "all-uploaded") {
-    box.className = "fb-result ok";
-    box.textContent = "已产生的日志均已全部上传——新日志产生后可再次上传";
-    toast("所有日志均已上传");
-  } else if (res.emptyReason === "append-failed") {
-    box.className = "fb-result";
-    box.textContent = "日志采集写入异常（本地存储故障）——请重启应用后重试";
-    toast("日志采集异常");
-  } else if (res.emptyReason === "read-failed") {
-    box.className = "fb-result";
-    box.textContent = "本地日志文件暂时无法读取——请重启应用后重试";
-    toast("日志读取失败");
-  } else if (res.emptyReason === "rejected-only") {
-    box.className = "fb-result";
-    box.textContent = "已采集日志均被服务端拒收（已保留本地检视）——新日志产生后可再次上传";
-    toast("日志被服务端拒收");
-  } else if (res.emptyReason === "cleared") {
-    box.className = "fb-result";
-    box.textContent = "本地待上传日志已被清理——新日志产生后可再次上传";
-    toast("暂无可上传日志");
-  } else if (res.emptyReason === "relay-offline") {
-    box.className = "fb-result";
-    box.textContent = "上传服务未配置（本版本不可用）";
-    toast("上传服务未配置");
+  // ① 四类内容收集（应用版本 / 设备信息 / 拦截日志 / 异常堆栈）
+  let dev = {}, crash = "";
+  try { dev = JSON.parse(AndroidApp.deviceInfo()); } catch (e) {}
+  await new Promise(r => setTimeout(r, 250)); // 阶段可感知（收集<->脱敏间隔）
+  try { crash = AndroidApp.crashDump() || ""; } catch (e) { crash = ""; }
+  setUploadPhase(btn, "本地脱敏…");
+
+  const title = "[引擎日志][v" + appVer() + "] " + (dev.brand || "") + " " + (dev.model || "设备") + "（手动上传）";
+  const bodyLines = [
+    "## 设备",
+    "- " + (dev.brand || "") + " " + (dev.model || "") + " · " + (dev.os || "") + " · SDK " + (dev.sdk || "?"),
+    "- 应用版本：v" + appVer() + "（build " + appCode() + "） · 环境：Android APK · 手动上传",
+    "",
+    "## 状态",
+    engineProfile(),
+  ];
+  if (crash) {
+    bodyLines.push("", "## 上次崩溃堆栈（自动附带，已读后即删）", "```", crash.trim(), "```");
   } else {
-    toast("日志上传失败");
-    showUploadFail(box, uploadErrText(res), doUploadLog);
+    bodyLines.push("", "## 上次崩溃堆栈", "（无——本次开机周期内进程未崩溃）");
   }
-  refreshLogUploadNote();
-};
+  // ② 本地脱敏（第一层；Java Net.postIssue 提交前还会再脱敏一次）
+  const body = maskText(bodyLines.join("\n"));
+
+  setUploadPhase(btn, "提交中…");
+  /* v7.15.0：异步桥（后台线程直发 GitHub Issue——卡死根治 + 超时快失败） */
+  let res = null;
+  try { res = await netCall("netPostIssueAsync", title, body); } catch (e) { res = { ok: false, error: "上传异常" }; }
+  if (!res || typeof res !== "object") { try { res = JSON.parse(res); } catch (e) { res = { ok: false, error: "上传异常" }; } }
+  resetUploadBtn(btn);
+
+  if (res && res.ok) {
+    box.className = "fb-result ok";
+    box.textContent = "已上传 Issue #" + res.number;
+    showUploadDoneModal(res.number);               // 唯一反馈：一个确认弹窗（v5.8.0）
+  } else {
+    showUploadFail(box, res && res.error);          // 明确原因 + 重试按钮
+    notifyUploadResult(false, 0);                  // 失败通知保留（罕见场景兜底）
+  }
+}
 
 $("#btn-upload-log").addEventListener("click", () => { void doUploadLog(); });
-/* v7.9.8：导出按钮 #btn-export-log 已随导出功能下线（index.html 同步移除） */
 
 /* ══════════ v7.1.0 卫士使用报告 · v7.2.0 饼图常驻 + 明细折叠 ══════════
  * （用户实锤：报告生成后太长看着难受——顶部拦截分布饼图常驻 + 五段明细
@@ -1801,52 +1298,26 @@ function openUrl(u) {
 }
 $("#link-repo").addEventListener("click", () => openUrl("https://github.com/xiaobaiba999/Skip-Ad"));
 
-/* ══════════ Toast ══════════
- * v7.7.0 常驻根治（用户实锤：点击开启弹窗广告屏蔽后「弹窗屏蔽已开启」
- * 一直停留在底部）。旧实现两个失败面：
- *   ① 收尾纯靠 JS setTimeout——真机上同步桥调用（setStateBool/kvGet 走
- *     JavaBridge）卡住 JS 线程时，2200ms 计时不触发 → 永不收尾；
- *   ② 内联 cssText transition + inline opacity 的组合在部分 OEM WebView
- *     上渲染失灵 → opacity:0 改了不重绘 → 永久可见。
- * 新实现三重保险：
- *   ① CSS 关键帧动画（toastFade，animation-fill-mode:forwards）——动画
- *     跑在合成器线程，JS 线程被卡住也照常走完，终态 opacity:0 + visibility:
- *     hidden 双保险（opacity 合成怪癖也不可见）；
- *   ② .show 类与基础态都直接声明样式（不支持动画的远古 WebView 也退化
- *     正常：.show=可见，兜底计时器摘类即隐藏）；
- *   ③ JS 兜底计时器（2600ms 摘 .show）保持——动画与计时器双通道任一
- *     活着都能收尾。 */
+/* ══════════ Toast ══════════ */
 let toastTimer = null;
 function toast(msg) {
   let t = $("#toast");
   if (!t) {
     t = document.createElement("div");
     t.id = "toast";
+    t.style.cssText = "position:fixed;left:50%;bottom:96px;transform:translateX(-50%);background:#0c2015;color:#fff;padding:9px 20px;border-radius:999px;font-size:13.5px;z-index:99;opacity:0;transition:opacity .2s;pointer-events:none;max-width:80vw;";
     document.body.appendChild(t);
   }
   t.textContent = msg;
-  t.classList.remove("show");
-  void t.offsetWidth; // 强制回流：同一条 toast 连发时关键帧动画从头重放
-  t.classList.add("show");
+  t.style.opacity = "1";
   if (toastTimer) clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { t.classList.remove("show"); }, 2600);
+  toastTimer = setTimeout(() => { t.style.opacity = "0"; }, 2200);
 }
 
 /* ══════════ 启动 ══════════ */
 (async function init() {
-  /* ═══ v7.11.0 开屏提醒提速（用户指令：提醒速度一定要快——进入 app 就显示）═══
-   * 提醒评估提到 init 第一步：先于 refreshHome/renderWhitelist/keepAlive
-   * 一切桥调用。实测教训（模拟器 TCG 慢环境实锤）：renderWhitelist 的
-   * whitelistJson 枚举全机应用（300+ PackageManager IPC）在慢设备上以
-   * 分钟计——同步桥阻塞 JS 线程时排在后面的 maybeShowPinTip 迟迟不执行
-   * ——「进入即显」被打折扣。现在第一步就评估（纯本地零桥调用——
-   * pinTipThrottled/pinTipRecentlyShown 读 kv 时间戳 + DOM 判定，毫秒级），
-   * 白名单等慢操作后置，提醒在任何设备上都是首帧即出。
-   * v7.12.0：白名单已整体异步化（whitelistJsonAsync 桥——卡死根治），
-   * 同步阻塞源已消除；评估仍保持在第一步（首帧即出的语义不变）。 */
-  try { maybeShowPinTip(); } catch (e) {}
   refreshHome();
-  renderWhitelist(true);   // v7.12.0：异步化——骨架即时出，回调后渲（零阻塞）
+  renderWhitelist(true);
   renderKeepAlive();
   // v4.4.0 零触摸自愈：打开 App 即发现服务掉线（设置仍登记）→ 自动深度拉活，
   // 用户连「一键恢复」都不用点（点按钮跳系统设置看 10 秒警告的历史遗留痛点
@@ -1860,30 +1331,17 @@ function toast(msg) {
   }, 600);
   // v5.2.0：从系统设置返回（开完开关/配完自启动）即刻刷新——
   // 用户回 App 的瞬间就能看到「守护中」，不用等 5s 轮询
+  // v7.15.0：切回 App（进入）时也重新评估开屏提示弹窗（24h 窗/版本钉）
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") {
       refreshHome();
       renderKeepAlive();
-      /* v7.13.0 切回即提醒：从后台切回前台也是「进入 App」（用户语义
-       * 实锤——「进入就提醒」包含切回场景）。提醒评估跑一次：24h 节流
-       * （含跨升级重置）+ 60s 短窗双闸保护——点过「不再提示」的用户
-       * 不被打扰，60s 内反复切回不连弹。 */
-      try { maybeShowPinTip(); } catch (e) {}
+      if (tipDue()) showSplashTip();
     }
   });
   // 通知权限（Android 13+，保活提醒需要）
-  // v7.9.6plus：启动时新版本检测（用户指令——首屏渲染后异步检查，
-  // versionCode 主判，发现新版本优先显示全屏更新页；检查失败静默
-  // 进入 App，绝不阻塞启动。v7.0.0「启动零网络」决策由本指令取代）。
-  // v7.10.0 异步化：fetchLatest 走 updateCheckAsync 桥——JS 主线程零网络
-  // 等待；结果到达后新版展示全屏更新页（旧版照常进入）。
-  setTimeout(() => {
-    void checkUpdateOnLaunch();
-  }, 800);
-  /* v7.11.0 开屏提醒已在 init 第一步评估（见头部——先于一切慢桥调用，
-   * 纯本地毫秒级）；此处不再重复调用（pin_tip_shown_at 60s 持久短窗
-   * 保证幂等，省一次冗余评估）。更新页先到（800ms 异步检查先回）
-   * 则本轮不打扰，更新页后到则主动收起提醒卡（见 showUpdateGate）。 */
+  // v7.0.0：启动静默更新检查已移除（顶部更新横幅整体取消——只有手动
+  // 点击「检查更新」才查询/下载，启动零网络零提示）。
   // 每 5s 刷新首页状态（首次进入最关心）
   setInterval(() => {
     if ($("#page-home").classList.contains("active")) {
@@ -1891,6 +1349,8 @@ function toast(msg) {
       renderKeepAlive();
     }
   }, 5000);
+  // v7.15.0：进入 App 即弹开屏提示（三按钮——24 小时窗口 + 升级重新提醒）
+  setTimeout(() => { if (tipDue()) showSplashTip(); }, 450);
   // v7.0.0：初始化完成哨兵（index.html 内联保险丝在 5s 后检查——
   // app.js 早期崩溃时不再「检查中/加载中」永久占位，给出可操作指引）
   window.__appBootOk = true;

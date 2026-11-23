@@ -38,8 +38,8 @@ package com.zai.adshield.core;
  *  ── 状态机（全部纯函数，JVM 可单测）─────────────────────────
  *  宿主窗档案 HostWindowProfile（持久化，per pkg|cls）：
  *    ACTIVE  ──连续 CLEAN_STREAK_MIN 次零候选──▶  CLEAN（省电态）
- *    CLEAN   ──探针命中/关闭线索/出现候选/订阅命中/SDK 指纹/Dialog/学习规则/
- *              手动教学/复查期到（v8.1.0：72h→24h）──▶ ACTIVE（全量恢复）
+ *    CLEAN   ──探针命中/出现候选/订阅命中/SDK 指纹/Dialog/学习规则/
+ *              手动教学/72h 复查期到──▶ ACTIVE（全量恢复）
  *  突发预算 BurstBudget（per pkg，内存）：
  *    10 分钟窗内突发识别窗 ≤ BURST_BUDGET；空手突发后阈值指数
  *    递增（3→6→12 事件）——聊天流式内容一次都别再开窗。
@@ -57,12 +57,8 @@ public final class PowerGovernor {
     /** 连续零候选实例数 → 窗档案 CLEAN（#57/#58：主窗类误扫 3 次即够） */
     public static final int CLEAN_STREAK_MIN = 3;
 
-    /** CLEAN 档案复查周期：v8.1.0 由 72h 收紧到 24h——真机反馈「很多 App
-     *  跳不过」根因之二配套：CLEAN 档案（跨重启持久）期间无订阅覆盖的窗只
-     *  剩 5 词文本探针，「关闭/×」类词典外关闭键整窗失明。复查期收紧 +
-     *  v8.1.0 关闭线索探测（nativeCloseCueProbe）双管齐下，把 CLEAN 失明的
-     *  最坏持续时间从 72h 压到 24h。防广告改版永久漏拦的语义不变。 */
-    public static final long PROFILE_RECHECK_MS = 24L * 3600 * 1000;
+    /** CLEAN 档案复查周期：72h 后放行一次全量扫描（防止广告改版永久漏拦） */
+    public static final long PROFILE_RECHECK_MS = 72L * 3600 * 1000;
 
     /** CLEAN 但订阅覆盖的应用保留的低频梯子（vid 类规则探针够不到） */
     public static final long[] LADDER_CLEAN_SUB = {0L, 700L};

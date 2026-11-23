@@ -95,19 +95,6 @@ public final class ReleaseNotesTest {
         TestHost.checkEq(5, ReleaseNotes.MAX_HEADLINES, "MAX_HEADLINES = 5");
         TestHost.checkEq(44, ReleaseNotes.MAX_LEN, "MAX_LEN = 44（言简意赅）");
 
-        /* ══ 七、更新链路限流判定（v8.0.3 · Net.rateLimited 纯函数）══
-         * 背景：latestRelease 两通道对 403/429 旧行为是「800ms 后重试一次再
-         * 报 GitHub 返回 403」——限流窗口小时级，重试纯浪费同一配额两次，
-         * 且用户无从知道是限流、何时能重试。v8.0.3 改为即时报明确错误。 */
-        TestHost.suite("更新链路限流判定（403/429 即时报错不重试）");
-        TestHost.check(com.zai.adshield.UpdateManifest.isRateLimitCode(403), "403 = 配额耗尽（静态 CDN 少见但如实分类）→ 限流");
-        TestHost.check(com.zai.adshield.UpdateManifest.isRateLimitCode(429), "429 = 次级限流（Retry-After 类）→ 限流");
-        TestHost.check(!com.zai.adshield.UpdateManifest.isRateLimitCode(404), "404 ≠ 限流（备用源未启用/清单暂缺——降级路径处理）");
-        TestHost.check(!com.zai.adshield.UpdateManifest.isRateLimitCode(200), "200 ≠ 限流（正常响应）");
-        TestHost.check(!com.zai.adshield.UpdateManifest.isRateLimitCode(301), "3xx ≠ 限流（静态源跟随重定向另一类）");
-        TestHost.check(!com.zai.adshield.UpdateManifest.isRateLimitCode(500), "5xx ≠ 限流（服务端错误——UPDATE_SERVER_ERROR）");
-        TestHost.check(!com.zai.adshield.UpdateManifest.isRateLimitCode(0), "0/异常码 ≠ 限流（网络层失败交 catch 路径）");
-
         TestHost.done();
     }
 }

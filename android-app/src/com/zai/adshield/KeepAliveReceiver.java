@@ -61,42 +61,39 @@ public class KeepAliveReceiver extends BroadcastReceiver {
         boolean replaced = Intent.ACTION_MY_PACKAGE_REPLACED.equals(act);
         boolean selfCheck = ACTION_SELF_CHECK.equals(act);
         if (!boot && !replaced && !selfCheck) return;
+        if (!ctx.getSharedPreferences("adshield", Context.MODE_PRIVATE)
+                .getBoolean("keepOn", false)) {
+            return; // 用户已手动关闭保活提醒
+        }
 
-        /* ═══ v8.1.0 keepOn 连坐修复（真机反馈「日志不能自动上传」根因之一）═══
-         * 旧版 keepOn（保活提醒开关）门在 selfCheck 之前——用户一旦关闭
-         * 「保活提醒」（通知打扰），心跳续期/订阅静默更新/自动日志上传三个
-         * 【静默系统功能】被连坐静默死亡（心跳链断 → 之后连 SELF_CHECK 都
-         * 不再触发，用户无从知晓）。语义切分：「保活提醒」= 通知打扰部分
-         * （SmartRevive 踢链 + 两态通知），keepOn 只管这部分；心跳续期/
-         * 订阅更新/自动上传是零打扰系统功能，移到门之前永不被连坐。 */
         if (selfCheck) {
             // v3.8.0：先续期心跳（无论服务死活，心跳链永不中断），再自检
             // v3.13.0：nightDeferrable=true——息屏时改 30~45 分钟窗口式非精确
             // 闹钟（绝不把设备从 Doze 中唤醒，待机功耗治理）；亮屏仍 5 分钟精确
             AdSkipService.scheduleNextHeartbeat(ctx, System.currentTimeMillis() + AdSkipService.HEARTBEAT_MS, true);
             // v4.0.0：心跳顺带触发订阅 24h 静默更新（无订阅/未到期秒回，零开销）
-            // v7.11.0：ID667 订阅每日后台自动导入前置（无订阅时自动设默认源——
-            // 服务连接时已试过一次的，这里按 1h 冷却闸秒回，绝不风暴）
             Thread subThread = new Thread(() -> {
                 try {
-                    SubscriptionManager.maybeDailyAutoImport(ctx);
                     SubscriptionManager.maybeSilentUpdate(ctx);
                 } catch (Throwable ignored) {
                 }
             }, "sub-update");
             subThread.setDaemon(true);
             subThread.start();
-            // v4.2.0：心跳顺带检查自动日志上传（v6.1.0：8h 一日 3 次；未到期/无新日志秒回零开销）
-            // v8.2.2：间隔 × 新日志 × 24h/3 成功配额三重闸（LogUploader.autoEligible——只记服务端确认）
+            // v7.15.0：心跳顺带触发 id667 每日后台自动导入（未到期/已有源秒回，零开销）
+            Thread subImportThread = new Thread(() -> {
+                try {
+                    SubscriptionManager.maybeAutoImport(ctx);
+                } catch (Throwable ignored) {
+                }
+            }, "sub-auto-import");
+            subImportThread.setDaemon(true);
+            subImportThread.start();
+            // v4.2.0：心跳顺带检查自动日志提交（v6.1.0：8h 一日 3 次；未到期/服务未运行/息屏秒回零开销）
             try {
                 AdSkipService.maybeAutoUploadLog(ctx);
             } catch (Throwable ignored) {
             }
-        }
-
-        if (!ctx.getSharedPreferences("adshield", Context.MODE_PRIVATE)
-                .getBoolean("keepOn", false)) {
-            return; // 用户已手动关闭保活提醒（仅通知/踢链部分——系统功能已在上方执行）
         }
 
         /* ═══ v5.2.0 统一智能判定 ═══

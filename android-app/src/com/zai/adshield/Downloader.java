@@ -113,22 +113,12 @@ public final class Downloader {
 
     /**
      * 查询当前下载状态。
-     * v7.9.6plus 更新页下载状态机（用户指令：全屏更新页需区分
-     * 正在连接/下载中/等待重试等状态并显示当前下载源）：
-     *  · pending → connecting（已入队，正在连接下载服务器）
-     *  · running → running（下载中——percent/bytes/total 实时）
-     *  · paused  → retrying（网络中断等——系统 DownloadManager 自动
-     *    恢复续传（HTTP Range），无需用户干预；UI 提示「下载中断，正在重试」）
-     *  · successful → done / 其余 → failed
-     * sourceHost = 当前下载任务 URL 的 host（当前使用的下载源）。
-     * @return {ok:true, state, percent, bytes, total, fileName, sourceHost}
+     * @return {ok:true, state: idle|running|paused|done|failed, percent, bytes, total, fileName}
      */
     public static String progress(Context ctx) {
         try {
-            android.content.SharedPreferences sp = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-            long id = sp.getLong(KEY_DL_ID, -1);
+            long id = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong(KEY_DL_ID, -1);
             JSONObject out = ok();
-            out.put("sourceHost", hostOf(sp.getString(KEY_DL_URL, "")));
             if (id <= 0) {
                 out.put("state", "idle");
                 out.put("percent", 0);
@@ -151,14 +141,14 @@ public final class Downloader {
             String state;
             if (status == DownloadManager.STATUS_SUCCESSFUL) state = "done";
             else if (status == DownloadManager.STATUS_RUNNING) state = "running";
-            else if (status == DownloadManager.STATUS_PAUSED) state = "retrying";
-            else if (status == DownloadManager.STATUS_PENDING) state = "connecting";
+            else if (status == DownloadManager.STATUS_PAUSED) state = "paused";
+            else if (status == DownloadManager.STATUS_PENDING) state = "running";
             else state = "failed";
             out.put("state", state);
             out.put("percent", total > 0 ? (int) (soFar * 100 / total) : 0);
             out.put("bytes", soFar);
             out.put("total", total);
-            out.put("fileName", sp.getString(KEY_DL_FILE, ""));
+            out.put("fileName", ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_DL_FILE, ""));
             return out.toString();
         } catch (Exception e) {
             return err("查询失败：" + safe(e));
@@ -256,51 +246,14 @@ public final class Downloader {
         }
     }
 
-    /** v7.9.6plus：取消当前下载（用户操作——移除系统任务与已下载部分文件，
-     *  清理任务元数据；不删已成功完成且待安装的文件取消无效返回 ok）。 */
-    public static String cancel(Context ctx) {
-        try {
-            android.content.SharedPreferences sp = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-            long id = sp.getLong(KEY_DL_ID, -1);
-            if (id <= 0) return ok().toString();
-            DownloadManager dm = (DownloadManager) ctx.getSystemService(Context.DOWNLOAD_SERVICE);
-            if (dm != null) {
-                try { dm.remove(id); } catch (Exception ignored) { }
-            }
-            sp.edit().remove(KEY_DL_ID).remove(KEY_DL_URL).remove(KEY_DL_FILE)
-                    .remove(KEY_DL_SHA).remove(KEY_DL_SIZE).apply();
-            return ok().toString();
-        } catch (Exception e) {
-            return err("取消失败：" + safe(e));
-        }
-    }
-
-    /** v7.9.6plus：URL → host（进度显示「当前使用的下载源」；解析失败返回空串）。 */
-    static String hostOf(String u) {
-        try {
-            if (u == null || u.length() == 0) return "";
-            String host = new java.net.URL(u).getHost();
-            return host == null ? "" : host;
-        } catch (Throwable t) {
-            return "";
-        }
-    }
-
     /* ═══ v6.3.0 安全工具 ═══ */
 
     /**
      * 发布通道 host 白名单（URL 解析后的 host 精确/后缀匹配）。
-     * v7.9.6plus：允许 GitHub 官方域（github.com · *.github.com ·
-     * githubusercontent.com 及子域）——ghfast.top/gh-proxy.com 等 ghproxy
-     * 类第三方代理已移除（用户指令：来源不明/不稳定，不作正式下载源）。
-     * v7.11.0 CDN 兜底通道（用户指令「每个版本做兜底操作——检查更新失败时
-     * 直连 jsDelivr 仓库内 APK」）：追加 jsDelivr 四接入点（cdn/fastly/
-     * gcore/testingcf——与 UpdateRepository 备用链 / SubMirrors 订阅链同族
-     * 的国内可达通道）。jsDelivr 服务【本仓库 GitHub 提交内容】，与 GitHub
-     * Releases 同字节同源——下载完成后 SHA-256+大小闸照常比对（安全强度
-     * 不降，代理投毒在安装前被拦下）。拒绝一切构造绕过：userinfo 混淆、
-     * 子串注入、尾点 FQDN。 */
-    public static boolean hostAllowed(String u) {
+     * 允许：github.com · *.github.com · githubusercontent.com 及子域 ·
+     * ghfast.top · gh-proxy.com（v3.3.0 镜像通道）。
+     * 拒绝一切构造绕过：userinfo 混淆、子串注入、尾点 FQDN。 */
+    static boolean hostAllowed(String u) {
         try {
             java.net.URL url = new java.net.URL(u);
             String scheme = url.getProtocol();
@@ -311,8 +264,8 @@ public final class Downloader {
             if (h.endsWith(".")) h = h.substring(0, h.length() - 1); // 尾点 FQDN 混淆
             return h.equals("github.com") || h.endsWith(".github.com")
                     || h.equals("githubusercontent.com") || h.endsWith(".githubusercontent.com")
-                    || h.equals("cdn.jsdelivr.net") || h.equals("fastly.jsdelivr.net")
-                    || h.equals("gcore.jsdelivr.net") || h.equals("testingcf.jsdelivr.net");
+                    || h.equals("ghfast.top") || h.endsWith(".ghfast.top")
+                    || h.equals("gh-proxy.com") || h.endsWith(".gh-proxy.com");
         } catch (Throwable t) {
             return false;
         }
@@ -322,9 +275,7 @@ public final class Downloader {
      * 下载文件完整性校验：返回 null = 通过；非 null = 失败原因。
      * expectSha 为 "sha256:hex"（GitHub API 官方格式）或空；expectSize 为
      * 期望字节数（0 = 未知）。流式读取（8KB 缓冲）同时计数字节——
-     * SHA-256 与字节数双比对（digest 缺失时字节数比对兜底）。
-     * v8.2.0：比对判定提取为纯函数 verifyDigest（JVM 可测——逻辑与 v6.3.0
-     * 逐字一致，安全闸零变化；本方法只负责读流与摘要计算）。 */
+     * SHA-256 与字节数双比对（digest 缺失时字节数比对兜底）。 */
     static String verifyDownloadedFile(Context ctx, Uri uri, String expectSha, long expectSize) {
         InputStream in = null;
         try {
@@ -339,44 +290,30 @@ public final class Downloader {
                 if (md != null) md.update(buf, 0, n);
                 total += n;
             }
-            return verifyDigest(total, md != null ? hex(md.digest()) : "", expectSha, expectSize);
+            if (expectSize > 0 && total != expectSize) {
+                return "大小不符（实际 " + total + " ≠ 发布 " + expectSize + " 字节）";
+            }
+            if (md != null) {
+                byte[] d = md.digest();
+                StringBuilder sb = new StringBuilder(d.length * 2);
+                for (int i = 0; i < d.length; i++) {
+                    String hx = Integer.toHexString(d[i] & 0xFF);
+                    if (hx.length() < 2) sb.append('0');
+                    sb.append(hx);
+                }
+                String actual = "sha256:" + sb.toString();
+                if (!actual.equalsIgnoreCase(expectSha)) {
+                    return "SHA-256 不符";
+                }
+            } else if (expectSize <= 0) {
+                return "缺少校验元数据"; // digest 与 size 双缺：拒绝（正常 Release 必有 digest）
+            }
+            return null; // 校验通过
         } catch (Exception e) {
             return "读取失败：" + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
         } finally {
             if (in != null) try { in.close(); } catch (Exception ignored) { }
         }
-    }
-
-    /** v8.2.0：完整性比对判定（纯函数，JVM 可测）——检查次序与文案与 v6.3.0
-     *  原实现逐字一致：① size 不符优先（即使有 digest）；② digest 在场 →
-     *  SHA-256 全量比对（大小写不敏感）；③ digest 缺失 → 字节数比对兜底；
-     *  ④ 双缺拒绝（正常 Release 必有 digest）。安全闸零降低（提取重构非改行为）。 */
-    public static String verifyDigest(long totalBytes, String actualShaHex, String expectSha, long expectSize) {
-        if (expectSize > 0 && totalBytes != expectSize) {
-            return "大小不符（实际 " + totalBytes + " ≠ 发布 " + expectSize + " 字节）";
-        }
-        if (expectSha != null && expectSha.startsWith("sha256:")) {
-            if (actualShaHex == null || actualShaHex.length() == 0) return "无法计算文件摘要";
-            if (!("sha256:" + actualShaHex).equalsIgnoreCase(expectSha)) {
-                return "SHA-256 不符";
-            }
-            return null;
-        }
-        if (expectSize <= 0) {
-            return "缺少校验元数据"; // digest 与 size 双缺：拒绝（正常 Release 必有 digest）
-        }
-        return null; // digest 缺失但 size 在场：字节数比对兜底通过（弱校验兜底语义保持）
-    }
-
-    /** v8.2.0：字节数组 → 小写十六进制（v6.3.0 内联逻辑提取——补零语义不变）。 */
-    public static String hex(byte[] d) {
-        StringBuilder sb = new StringBuilder(d.length * 2);
-        for (int i = 0; i < d.length; i++) {
-            String hx = Integer.toHexString(d[i] & 0xFF);
-            if (hx.length() < 2) sb.append('0');
-            sb.append(hx);
-        }
-        return sb.toString();
     }
 
     /* ───────── 工具 ───────── */

@@ -7,6 +7,7 @@ import com.zai.adshield.core.AdDecisionCore.Ctx;
 import com.zai.adshield.core.AdDecisionCore.NodeView;
 import com.zai.adshield.core.RuleEngine;
 import com.zai.adshield.core.Subscription;
+
 /**
  * 订阅管理器（v4.0.0 GKD 订阅融合 · v4.2.0 优先级与限流重构 · v7.0.0 离线快照）。
  * ─────────────────────────────────────────
@@ -87,115 +88,6 @@ public final class SubscriptionManager {
     };
 
     static boolean loaded = false;
-
-    /* ═══ v7.9.1 订阅匹配七分类统计（用户实锤：v7.9.0 内置 124 款 124 条命中 0、
-     * 远程 932 款 2880 条命中 0——「不得把所有未命中都统计为订阅未命中」）═══
-     * 口径：
-     *  · notLoaded   订阅未加载（两源全空——BUILTIN_JSON5 解析失败 + 无远程缓存）；
-     *  · noCover     应用不匹配（两源都无该包专属规则——匹配器已咨询）；
-     *  · noMatch     页面选择器不匹配（有覆盖但本轮无命中：activityIds 限定/
-     *                选择器链/形态闸/限流记账任一拦截——上传日志可区分「未覆盖」与「覆盖但不中」）；
-     *  · ruleHit     规则匹配成功（候选进入点击轮换）；
-     *  · blocked     被安全机制拦截（终闸 boundaryCheck 拒点——宁漏勿误闸在岗证据）；
-     *  · clickFail   点击执行失败（双通道派发全失败）；
-     *  · clickOk     点击执行成功（派发完成——已出手）。 */
-    static final java.util.concurrent.atomic.AtomicInteger subNotLoaded =
-            new java.util.concurrent.atomic.AtomicInteger();
-    static final java.util.concurrent.atomic.AtomicInteger subNoCover =
-            new java.util.concurrent.atomic.AtomicInteger();
-    static final java.util.concurrent.atomic.AtomicInteger subNoMatch =
-            new java.util.concurrent.atomic.AtomicInteger();
-    static final java.util.concurrent.atomic.AtomicInteger subRuleHit =
-            new java.util.concurrent.atomic.AtomicInteger();
-    static final java.util.concurrent.atomic.AtomicInteger subBlocked =
-            new java.util.concurrent.atomic.AtomicInteger();
-    static final java.util.concurrent.atomic.AtomicInteger subClickFail =
-            new java.util.concurrent.atomic.AtomicInteger();
-    static final java.util.concurrent.atomic.AtomicInteger subClickOk =
-            new java.util.concurrent.atomic.AtomicInteger();
-
-    /* ══ v7.9.5 GKD 订阅证据链扩展（用户指令七：不追求规则加载条数——统计
-     *  consulted / matched / candidateAccepted / clicked / verifiedSuccess /
-     *  clickFail / falseClick / blocked 八格证据链；内置探针命中不得导致订阅
-     * 不再参与——consulted 独立计数即「每窗首轮无条件咨询」的反饥饿证据）══
-     * 口径：
-     *  · consulted       matchSources 被咨询次数（含未加载/无覆盖——被咨询
-     *                   本身就是参与证据）；
-     *  · candidateAccepted 候选被 SafetyGuard 终闸接受（过闸进入派发尝试）；
-     *  · verifiedSuccess 点击后任务 VERIFIED_SUCCESS 且本任务出手 reason 为
-     *                   订阅规则（点击→广告真关闭的证据链闭环）；
-     *  · falseClick      误触（真机样本回传唯一来源——自动化环境恒 0，
-     *                   绝不虚报）。 */
-    static final java.util.concurrent.atomic.AtomicInteger subConsulted =
-            new java.util.concurrent.atomic.AtomicInteger();
-    static final java.util.concurrent.atomic.AtomicInteger subCandAccepted =
-            new java.util.concurrent.atomic.AtomicInteger();
-    static final java.util.concurrent.atomic.AtomicInteger subVerifiedSuccess =
-            new java.util.concurrent.atomic.AtomicInteger();
-    static final java.util.concurrent.atomic.AtomicInteger subFalseClick =
-            new java.util.concurrent.atomic.AtomicInteger();
-
-    /** v7.9.1：订阅出手结果计数（AdSkipService.execute 回报——reason 为
-     *  rule_sub_gkd* 时才计；1=点击执行成功 / 0=双通道全失败 / -1=被安全闸拦截）。 */
-    public static void countClickOutcome(String reason, int outcome) {
-        if (reason == null || !reason.startsWith("rule_sub_gkd")) return;
-        if (outcome > 0) subClickOk.incrementAndGet();
-        else if (outcome == 0) subClickFail.incrementAndGet();
-        else subBlocked.incrementAndGet();
-    }
-
-    /** v7.9.5：候选被安全闸接受（execute 出手前置门全过——进入派发尝试的
-     *  订阅候选。matched→candidateAccepted→clicked→verifiedSuccess 链上
-     *  的第二格；非订阅 reason 不计）。 */
-    public static void countCandAccepted(String reason) {
-        if (reason == null || !reason.startsWith("rule_sub_gkd")) return;
-        subCandAccepted.incrementAndGet();
-    }
-
-    /** v7.9.5：订阅出手的任务 VERIFIED_SUCCESS（AdSkipService.markTaskSuccess
-     *  回报——本任务出手 reason 为订阅规则的点击确实关闭了广告的证据链闭环格）。 */
-    public static void countVerifiedSuccess(String reason) {
-        if (reason == null || !reason.startsWith("rule_sub_gkd")) return;
-        subVerifiedSuccess.incrementAndGet();
-    }
-
-    /* ═══ v7.9.3 JVM 测试钩子（纯静态 · 零 Android 依赖 · 生产永不调用）══
-     * 七分类统计的 L1 断言面（PageScenarioTest S8 段）：
-     *  primeForJvm()      —— 只加载内置订阅（与 ensureLoaded 第一段完全相同：
-     *                        BUILTIN_JSON5 → builtinSub；remote 保持 null——
-     *                        SharedPreferences/Context 一概不碰）；
-     *  subStatSnapshot()  —— 七计数器快照（stateJson 的 subStat 段同源数据）。
-     * 服务侧行为零影响：ensureLoaded 的幂等闸由 loaded 控制，本钩子不动它；
-     * remoteSub/remoteEnabled 只显式置「无远程」基线（matchSources 的
-     * notLoaded/noCover 分类面由此驱动）。 */
-    public static void primeForJvm() {
-        try {
-            builtinSub = Subscription.parse(Subscription.BUILTIN_JSON5, 0, 0);
-        } catch (Throwable e) {
-            builtinSub = null;
-        }
-        remoteSub = null;
-        remoteEnabled = false;
-    }
-
-    /** 七分类快照：[notLoaded, noCover, noMatch, hit, blocked, clickFail, clickOk]。
-     *  v7.9.5 保持七格不变（既有 S8 断言的位置索引零破坏），扩展面走 subStatV2Snapshot。 */
-    public static int[] subStatSnapshot() {
-        return new int[]{
-                subNotLoaded.get(), subNoCover.get(), subNoMatch.get(),
-                subRuleHit.get(), subBlocked.get(), subClickFail.get(), subClickOk.get(),
-        };
-    }
-
-    /** v7.9.5 扩展快照：[consulted, matched, candidateAccepted, clicked,
-     *  verifiedSuccess, clickFail, falseClick, blocked]——GKD 证据链八格。 */
-    public static int[] subStatV2Snapshot() {
-        return new int[]{
-                subConsulted.get(), subRuleHit.get(), subCandAccepted.get(),
-                subClickOk.get(), subVerifiedSuccess.get(), subClickFail.get(),
-                subFalseClick.get(), subBlocked.get(),
-        };
-    }
 
     /* ═══ v5.6.0 订阅市场：活跃维护的第三方订阅注册表 ═══
      * v5.8.0 防呆版：只留 gkd-subscription 话题星数前三且当日活跃的源；
@@ -284,7 +176,7 @@ public final class SubscriptionManager {
     /** v7.1.0 两源候选收集（RuleRouter 裁决使用顺序）——用户实锤「内置规则库
      *  和订阅市场规则的使用顺序和命中问题」根治：
      *  · 市场源（用户主动导入·日更）在该应用有专属规则时【优先】；
-     *  · 内置源（APK 静态快照·21 款 vid 规则）兜底接力；
+     *  · 内置源（APK 静态快照·21 款 vid 规则）兑底接力；
      *  · 两源各贡献一个候选进点击轮换（文本候选用尽 → 市场候选 → 内置候选
      *    → …）——单源候选失效不再拖死整轮；
      *  · 源命中计数分别记账（订阅页「命中」+ 使用报告可见）；hit.src 带
@@ -293,22 +185,10 @@ public final class SubscriptionManager {
         java.util.ArrayList<RuleEngine.Hit> out = new java.util.ArrayList<RuleEngine.Hit>(2);
         Subscription builtin = builtinSub;
         Subscription remote = remoteEnabled ? remoteSub : null;
-        /* v7.9.5 consulted：被咨询即计数（含未加载/无覆盖——订阅参与的
-         *  前置证据，与命中与否解耦）。 */
-        subConsulted.incrementAndGet();
-        /* v7.9.1 七分类统计入口：未加载 / 应用不匹配 / 页面不匹配 / 命中。 */
-        if (builtin == null && remote == null) {
-            subNotLoaded.incrementAndGet();
-            return out;
-        }
         boolean remoteCovers = remote != null && remote.covers(pkg);
-        boolean builtinCovers = builtin != null && builtin.covers(pkg);
-        if (!remoteCovers && !builtinCovers) {
-            subNoCover.incrementAndGet();
-        }
         String[] order = com.zai.adshield.core.RuleRouter.sourceOrder(
                 remoteEnabled, remote != null, remoteCovers,
-                builtin != null, builtinCovers);
+                builtin != null, builtin != null && builtin.covers(pkg));
         for (int i = 0; i < order.length; i++) {
             try {
                 boolean isRemote = com.zai.adshield.core.RuleRouter.SRC_REMOTE.equals(order[i]);
@@ -316,7 +196,6 @@ public final class SubscriptionManager {
                 if (sub == null) continue;
                 RuleEngine.Hit h = sub.match(pkg, root, ctx, 400, RUNTIME, isRemote ? "r|" : "b|");
                 if (h != null) {
-                    subRuleHit.incrementAndGet();
                     if (isRemote) remoteHits++;
                     else builtinHits++;
                     h.src = com.zai.adshield.core.RuleRouter.zh(order[i]) + "·" + (h.src == null ? "" : h.src);
@@ -324,11 +203,6 @@ public final class SubscriptionManager {
                 }
             } catch (Throwable ignored) {
             }
-        }
-        /* v7.9.1：有覆盖但本轮无命中（activityIds 限定/选择器链/形态闸/限流）——
-         * 与 noCover（两源都无该包规则）分开统计。 */
-        if (out.isEmpty() && (remoteCovers || builtinCovers)) {
-            subNoMatch.incrementAndGet();
         }
         return out;
     }
@@ -422,46 +296,62 @@ public final class SubscriptionManager {
         }
     }
 
-    /* ═══ v7.11.0 ID667 订阅每日后台自动导入（用户指令：底栏订阅模块移除——
-     * id667 的 7.4k 星社区事实标准源改为后台自动导入，App 内不再展示订阅页）═══
-     * 语义：
-     *  · subUrl 为空（从未导入过订阅/全新安装）→ 自动设为 ID667（Lin-arm
-     *    ⭐7.4k · 日更——订阅市场三源之首）并立即拉取：八通道镜像链
-     *    （SubMirrors）+ APK 内置离线快照兜底（subsnap/linarm.json5）——
-     *    导入路径【永不硬失败】；
-     *  · subUrl 非空（用户此前已导入任意源，含 ID667）→ 尊重既有选择，
-     *    静默刷新由 maybeSilentUpdate 的 24h 闸继续负责（本方法秒回）；
-     *  · 调用点：服务连接时（onServiceConnected 立即覆盖首次）+ 心跳 5 分钟
-     *    一跳（KeepAliveReceiver selfCheck——保底覆盖「首跳网络还没好」）；
-     *  · 失败重试闸 subAutoImportNextAt（1h 冷却）——极端态（连 APK 内置
-     *    快照都不可读——正常不可能）下个心跳不再硬撞八通道网络链，
-     *    1 小时后自然重试；成功后 subUrl 已非空，本路径不再进入。 */
-    public static final String AUTO_SUB_URL =
-            "https://cdn.jsdelivr.net/gh/Lin-arm/GKD_subscription@main/dist/gkd.json5";
-    static final long AUTO_IMPORT_RETRY_MS = 60 * 60 * 1000L;
+    /* ═══ v7.15.0 id667 订阅每日后台自动导入（用户指令：底栏订阅模块移除——
+     * id667 的 Lin-arm ⭐7.4k 社区事实标准源改为后台自动导入，App 内不再展示
+     * 订阅页；导入要有兜底操作防止失败）═══
+     *  · subUrl 为空（全新安装/从未导入过）→ 自动设默认源 id667 并立即导入：
+     *    setUrl 内部自带八通道镜像链 + 离线快照兜底（assets/subsnap/linarm
+     *    与 APK 同包内置）——导入路径【永不硬失败】；失败不推进成功时间戳，
+     *    下一轮服务心跳自动重试（30 分钟退避，防止 5 分钟心跳高频空转）；
+     *  · subUrl 非空（用户此前已导入任意源，含此前自动导入的 id667）→
+     *    尊重既有选择，零动作（既有 24h 静默更新照常走 maybeSilentUpdate）；
+     *  · 周期 24h（每日自动导入一次）+ 服务启动即查（首启秒级导入，不等心跳）。 */
+    static final long AUTO_IMPORT_INTERVAL_MS = 24 * 60 * 60 * 1000L;
+    static final long AUTO_IMPORT_RETRY_MS = 30 * 60 * 1000L;
 
-    public static void maybeDailyAutoImport(Context ctx) {
+    /** id667 默认源（与 RECOMMENDED_SUBS 第一行同源——社区事实标准） */
+    static final String DEFAULT_SUB_URL =
+            "https://cdn.jsdelivr.net/gh/Lin-arm/GKD_subscription@main/dist/gkd.json5";
+
+    /** id667 每日后台自动导入（服务启动 + 心跳顺带调用；未到期/已有源秒回零开销） */
+    public static void maybeAutoImport(Context ctx) {
         try {
             ensureLoaded(ctx);
-            if (!remoteEnabled) return; // 远程订阅被显式停用——尊重既有选择（零打扰）
-            SharedPreferences sp = ctx.getSharedPreferences("adshield", Context.MODE_PRIVATE);
-            if (subUrl != null && subUrl.length() > 0) return; // 已有订阅——交 24h 静默更新
+            if (subUrl == null) subUrl = "";
+            if (subUrl.length() > 0) return; // 已有源（含此前自动导入的 id667）
+            final SharedPreferences sp = ctx.getSharedPreferences("adshield", Context.MODE_PRIVATE);
+            long last = sp.getLong("autoSubImportAt", 0);
             long now = System.currentTimeMillis();
-            if (now < sp.getLong("subAutoImportNextAt", 0L)) return; // 失败重试冷却中
-            subUrl = AUTO_SUB_URL;
-            sp.edit().putString("subUrl", AUTO_SUB_URL).apply();
-            String r = fetch(ctx, AUTO_SUB_URL, sp, null);
-            boolean ok = false;
-            try {
-                ok = new org.json.JSONObject(r).optBoolean("ok", false);
-            } catch (Throwable ignored) {
-            }
-            if (ok) return; // 成功（网络或快照兜底）——subUrl 已持久化
-            /* 失败：清空回「无订阅」态，下个心跳重走本路径（1h 冷却防风暴）。 */
-            subUrl = "";
-            sp.edit().remove("subUrl")
-                    .putLong("subAutoImportNextAt", now + AUTO_IMPORT_RETRY_MS)
-                    .apply();
+            if (now - last < AUTO_IMPORT_INTERVAL_MS) return;
+            Thread t = new Thread(() -> {
+                try {
+                    String r = setUrl(ctx, DEFAULT_SUB_URL, null);
+                    org.json.JSONObject o = new org.json.JSONObject(r);
+                    AdSkipService sv = AdSkipService.instance;
+                    if (o.optBoolean("ok")) {
+                        sp.edit().putLong("autoSubImportAt", System.currentTimeMillis()).apply();
+                        if (sv != null) {
+                            sv.appendLog("🧩 订阅自动导入" + (o.optBoolean("snapshot") ? "（离线快照兜底）" : "")
+                                    + "：id667「Lin-arm」" + o.optInt("apps", 0) + " 款应用 · "
+                                    + o.optInt("rules", 0) + " 条规则（每日后台自动，无需手动操作）");
+                        }
+                    } else {
+                        /* 失败兜底：30 分钟后再试（快照兜底已保证引擎有规则可用，
+                         * 心跳期高频重试无意义）——autoSubImportAt 推进至
+                         * 「24h 周期 − 30min」位置 */
+                        sp.edit().putLong("autoSubImportAt",
+                                System.currentTimeMillis() - AUTO_IMPORT_INTERVAL_MS
+                                        + AUTO_IMPORT_RETRY_MS).apply();
+                        if (sv != null) {
+                            sv.appendLog("🧩 订阅自动导入失败（" + o.optString("error", "网络失败")
+                                    + "）——内置快照已兜底可用，稍后自动重试");
+                        }
+                    }
+                } catch (Throwable ignored) {
+                }
+            }, "sub-auto-import");
+            t.setDaemon(true);
+            t.start();
         } catch (Throwable ignored) {
         }
     }
@@ -504,14 +394,6 @@ public final class SubscriptionManager {
         }
         String raw = lastEx == null ? "网络失败" : safeMsg(lastEx);
         lastError = raw;
-        /* v8.0.0 上传事件埋点：GKD 订阅拉取异常（errClass = 异常类名——八通道
-         *  镜像链 + 快照兜底全失败；仅类名不带消息正文；采集门未授权零行为）。 */
-        try {
-            com.zai.adshield.core.LogStore.get(ctx).appendEvent(
-                    com.zai.adshield.core.LogEvents.gkdError(
-                            lastEx == null ? "unknown" : lastEx.getClass().getName()));
-        } catch (Throwable ignored) {
-        }
         String msg = humanizeNetError(raw);
         String hint = variants.size() > 1
                 ? "（已自动重试并切换 " + variants.size() + " 个镜像通道仍失败——多为当前网络对海外源全阻断，可稍后重试或换 Wi-Fi/流量后重试一次）"
@@ -633,29 +515,6 @@ public final class SubscriptionManager {
         b.append(",\"updatedAt\":").append(lastUpdateAt);
         b.append(",\"remoteHits\":").append(remoteHits);
         b.append(",\"builtinHits\":").append(builtinHits);
-        /* v7.9.1 七分类统计（用户指令：订阅未命中必须分列——未加载/应用不
-         * 匹配/页面选择器不匹配/命中/被安全闸拦截/点击失败/点击成功）。 */
-        b.append(",\"subStat\":{\"notLoaded\":").append(subNotLoaded.get())
-                .append(",\"noCover\":").append(subNoCover.get())
-                .append(",\"noMatch\":").append(subNoMatch.get())
-                .append(",\"hit\":").append(subRuleHit.get())
-                .append(",\"blocked\":").append(subBlocked.get())
-                .append(",\"clickFail\":").append(subClickFail.get())
-                .append(",\"clickOk\":").append(subClickOk.get())
-                .append("}");
-        /* v7.9.5 GKD 证据链八格（用户指令七：consulted/matched/candidateAccepted/
-         *  clicked/verifiedSuccess/clickFail/falseClick/blocked——订阅参与度
-         *  与出手-关闭闭环的证据链；falseClick 恒 0 即「自动化环境无真机误触
-         *  样本」的诚实表达）。 */
-        b.append(",\"subStatV2\":{\"consulted\":").append(subConsulted.get())
-                .append(",\"matched\":").append(subRuleHit.get())
-                .append(",\"candidateAccepted\":").append(subCandAccepted.get())
-                .append(",\"clicked\":").append(subClickOk.get())
-                .append(",\"verifiedSuccess\":").append(subVerifiedSuccess.get())
-                .append(",\"clickFail\":").append(subClickFail.get())
-                .append(",\"falseClick\":").append(subFalseClick.get())
-                .append(",\"blocked\":").append(subBlocked.get())
-                .append("}");
         b.append(",\"error\":").append(jsonStr(lastError == null ? "" : lastError));
         try {
             boolean snapPending = ctx.getSharedPreferences("adshield", Context.MODE_PRIVATE)
