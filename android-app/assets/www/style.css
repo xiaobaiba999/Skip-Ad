@@ -508,5 +508,19 @@ body {
 .tip-btn { width: 100%; border: 0; border-radius: 10px; font-size: 14px; font-weight: 600;
   padding: 10px 0; background: var(--brand); color: #fff; }
 .tip-btn:active { opacity: .88; }
+.tip-btn:disabled { opacity: .45; cursor: not-allowed; }
 .tip-btn-mute { background: #eef4f0; color: #5b6b60; }
 .tip-btn-go { background: #fff; color: var(--brand-deep); box-shadow: inset 0 0 0 1.5px var(--brand); }
+/* v7.15.7 用户指令：亮字承诺——每周根据日志问题至少迭代版本一次（品牌绿高亮行） */
+.tip-weekly { margin: 0 0 10px; padding: 9px 12px; border-radius: 10px;
+  background: var(--brand-soft); border: 1px solid #a7e3c3;
+  font-size: 13px; font-weight: 700; color: var(--brand-deep); line-height: 1.5;
+  text-align: center; }
+.tip-weekly b { color: #065f46; }
+/* v7.15.7 3 秒观闸倒计时行（到点自动移除） */
+.tip-hold { margin: 0 0 10px; font-size: 12px; font-weight: 600; color: #8ba293;
+  text-align: center; }
+/* v7.15.7 版本页「迭代节奏」亮字卡 */
+.iter-promise { font-size: 13px; font-weight: 600; color: var(--brand-deep);
+  line-height: 1.6; }
+.iter-promise b { color: #065f46; }

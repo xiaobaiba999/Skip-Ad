@@ -29,6 +29,10 @@
 #  本地合成与路径穿越拒绝——v7.15.1/v7.15.3 点下载报「下载链接不在允许的
 #  发布通道内」死局根治）+ SubscriptionBuiltinTest 新增规则组名贯穿断言
 #  （Rule.group/Hit.group——开屏/插屏日志严格分域）。
+# v7.15.7：新增 ImageKeyBoundaryTest（图片跳过键专用终闸——CSDN 动态图
+#  开屏「角落图片跳过键：语义断言→放弃」误杀根治：纯图键零文本零 vid
+#  证据时场景+严格形态双重门替代语义断言；形态真值表/零扫描场景全拒/
+#  与通用闸对照三节 18 断言）。
 set -e
 set -o pipefail
 
@@ -65,7 +69,7 @@ echo "    编译产出: $OUT/classes"
 echo "==> [2/3] 运行测试套件"
 TOTAL_PASS=0
 TOTAL_FAIL=0
-for SUITE in MiniProgramGuardTest DecisionGuardTest SubscriptionBuiltinTest RegressionCoreTest MultiDeviceMatrixTest NonMainstreamAppTest RestoreGuardTest PowerGovernorTest RuleGovernorTest ComplianceGuardTest TapPointMatrixTest HumanTapMatrixTest BrandFocus308Test ReleaseNotesTest SubMirrorTest FeedAdGuardTest RuleOrderTest InterstitialGuardTest SplashCountdownTest RandGraphicSkipTest AggressiveModeTest RearmPlannerTest UpdateHostsTest SubPruneTest; do
+for SUITE in MiniProgramGuardTest DecisionGuardTest SubscriptionBuiltinTest RegressionCoreTest MultiDeviceMatrixTest NonMainstreamAppTest RestoreGuardTest PowerGovernorTest RuleGovernorTest ComplianceGuardTest TapPointMatrixTest HumanTapMatrixTest BrandFocus308Test ReleaseNotesTest SubMirrorTest FeedAdGuardTest RuleOrderTest InterstitialGuardTest SplashCountdownTest RandGraphicSkipTest AggressiveModeTest RearmPlannerTest UpdateHostsTest SubPruneTest ImageKeyBoundaryTest; do
   echo ""
   echo "══ $SUITE ══"
   if java -cp "$OUT/classes" "com.zai.adshield.test.$SUITE" | tee "$OUT/$SUITE.log"; then

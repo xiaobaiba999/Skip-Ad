@@ -128,7 +128,15 @@ public final class NonMainstreamAppTest {
             Decision scD = AdDecisionCore.decide(scF, scCtx);
             TestHost.check(scF.nodeCount > AdDecisionCore.CORNER_CONFIRM_NODES,
                     "校徽页树规模 >60（实际 " + scF.nodeCount + "）");
-            TestHost.check(!scF.corners.isEmpty(), "fl_scan 扫码键被收为角落候选（形态）");
+            /* v7.15.7 收集门加固（审核轮）：fl_scan 的 vid 含诱导 token scan →
+ * 拒收（不再入候选）；中性 vid 的角落图标仍被收为候选（保留「L4 广告
+             * 形态门拒点 + 零候选退避联动」的既有覆盖路径）。 */
+            boolean scanVetoed = true;
+            for (AdDecisionCore.CornerCand c : scF.corners) {
+                if (c.tapBounds[0] >= (int) (w * 0.85)) scanVetoed = false; // fl_scan x≈0.89w
+            }
+            TestHost.check(scanVetoed, "fl_scan 扫码键被 vid 否决拒收（v7.15.7 收集门加固）");
+            TestHost.check(!scF.corners.isEmpty(), "中性 vid 角落图标被收为角落候选（L4 门拒点路径保留）");
             TestHost.check(scD.action.equals(AdDecisionCore.A_NONE),
                     "校徽页零动作（无广告信号绝不点扫码键，" + scD.action + "）");
             TestHost.check(!AdDecisionCore.hasActionableCand(scF, scCtx),
@@ -321,6 +329,11 @@ public final class NonMainstreamAppTest {
                 (int) (w * 0.99), (int) (h * 0.13));
         scan.vid = "cn.school.app:id/fl_scan";
         scan.clickable = true; // 扫码键：角落形态但非跳过键——绝不能点
+        // v7.15.7：中性 vid 角落图标（对照组）——收集门放行，L4 广告形态门拒点
+        SimNode cornerNeutral = node("", (int) (w * 0.01), (int) (h * 0.08),
+                (int) (w * 0.11), (int) (h * 0.13));
+        cornerNeutral.vid = "cn.school.app:id/iv_school_badge_corner";
+        cornerNeutral.clickable = true;
         SimNode top1 = node("", (int) (w * 0.16), (int) (h * 0.16),
                 (int) (w * 0.26), (int) (h * 0.20));
         top1.vid = "cn.school.app:id/iv_top_menu_1";
@@ -329,6 +342,7 @@ public final class NonMainstreamAppTest {
         top2.vid = "cn.school.app:id/iv_top_menu_2";
         root.add(title);
         root.add(scan);
+        root.add(cornerNeutral);
         root.add(top1);
         root.add(top2);
         // 校园通知流（把树规模堆到日志实锤的 135 节点量级）

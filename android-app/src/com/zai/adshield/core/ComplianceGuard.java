@@ -311,6 +311,46 @@ public final class ComplianceGuard {
         return BND_OK;
     }
 
+    /* ───────── v7.15.7 图片跳过键专用终闸（CSDN 语义误杀根治） ───────── */
+
+    /** 图片键形态上限（与 AdDecisionCore 泛位置候选同源——服务侧终闸复验用） */
+    private static final double IMG_KEY_AREA_MAX = AdDecisionCore.RAND_AREA_MAX;
+    private static final double IMG_KEY_W_MAX = AdDecisionCore.RAND_W_MAX;
+    private static final double IMG_KEY_H_MAX = AdDecisionCore.RAND_H_MAX;
+
+    /**
+     * v7.15.7 图片跳过键专用边界终闸（execute 的 corner_image_skip /
+     * rand_graphic_skip 分支——通用 boundaryCheck 语义断言误杀根治）。
+     * 死因（真机日志实锤 #98/#101：CSDN 动态图开屏「角落图片跳过键：
+     * 语义断言（非跳过/关闭方向）→ 放弃」反复出现）：这类开屏的跳过键是
+     * 【纯图片】（无文本、viewId 无 skip/close token）——通用终闸的语义
+     * 断言要求 label/vid 含跳过/关闭字面，纯图键永远凑不齐 = 收得到候选
+     * 却永远出不了手（决策层 L4/L4.7 收集+出手门全过，最后一步被杀）。
+     * 语义安全换源：决策上游已过「强广告形态（热区/角标/SDK窗/学习窗）
+     * 或微树兕底 + 无滚动/无输入框 + vid 诱导 token 否决 + 时窗 300~6500ms」
+     * 多重门——此处终闸只复验【场景 + 形态】（零文本语义可查时，形态即
+     * 语义：真跳过键是钮不是横幅，面积 ≤6% 屏、宽 ≤30%、高 ≤12% 三重
+     * 尺寸门与泛位置候选同源），绝不新增任何非图片键放行面：
+     *  · 场景断言：与 boundaryCheck 同源（零扫描/短信/相机/守护全拒）；
+     *  · 形态断言：比通用闸（≤35% 屏）严格一档（≤6% 屏 + per-dimension）。
+     */
+    public static int imageKeyBoundaryCheck(int[] bounds, int screenW, int screenH,
+                                            String pkg, String cls) {
+        if (isZeroScanScenario(pkg, cls)) return BND_FAIL_SCENARIO;
+        if (AdDecisionCore.isSmsOverlayPkg(pkg) || AdDecisionCore.isCameraPkg(pkg)) return BND_FAIL_SCENARIO;
+        if (AdDecisionCore.isCameraClass(cls)) return BND_FAIL_SCENARIO;
+        if (AdDecisionCore.isGuardPkg(pkg)) return BND_FAIL_SCENARIO;
+        if (bounds == null || bounds.length < 4) return BND_FAIL_FORM;
+        if (screenW <= 0 || screenH <= 0) return BND_FAIL_FORM;
+        int w = bounds[2] - bounds[0];
+        int h = bounds[3] - bounds[1];
+        if (w <= 0 || h <= 0) return BND_FAIL_FORM;
+        if (w > screenW * IMG_KEY_W_MAX || h > screenH * IMG_KEY_H_MAX) return BND_FAIL_FORM;
+        double area = areaRatioAdaptive(bounds, screenW, screenH);
+        if (area <= 0 || area > IMG_KEY_AREA_MAX) return BND_FAIL_FORM;
+        return BND_OK;
+    }
+
     /**
      * 权限使用审计（模块四）：7 项权限 → 用途/触发时机全量映射。
      * App 内「关于 → 权限使用审计」展示 + 日志上传自动附带。

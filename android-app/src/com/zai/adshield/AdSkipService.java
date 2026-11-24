@@ -2404,8 +2404,13 @@ public class AdSkipService extends AccessibilityService {
             if (cur == null || cur.intValue() != gen) return;
         }
         try {
-            AccessibilityNodeInfo root = getRootInActiveWindow();
-            if (root == null) return;
+            /* v7.15.7：探针也走多窗口（仅开屏窗内）——Keep 型动态图开屏的跳过
+             * 键住在同包覆盖层窗口，只探 rootInActiveWindow 会漏（CLEAN 档案复活
+             * 机会被活动窗微树挡死）。文本/图形双探针逐根探测，任一命中即复活；
+             * 非开屏窗维持单根口径（IPC 零增量——多窗枚举只在开屏观察窗花）。 */
+            boolean splashProbe = System.currentTimeMillis() - winStart <= splashDeadlineMs(winClassOf(pkg));
+            AccessibilityNodeInfo[] roots = collectRoots(pkg, splashProbe);
+            if (roots.length == 0) return;
             energyProbes++;
             Ctx ctx = new Ctx();
             ctx.screenW = screenWidth;
@@ -2418,16 +2423,11 @@ public class AdSkipService extends AccessibilityService {
              * 只对普通内容窗成立，SDK 广告窗豁免 CLEAN，实际行为零变化） */
             ctx.splashLive = ctx.elapsedMs <= splashDeadlineMs(winClassOf(pkg));
             ctx.guard = AdDecisionCore.isGuardPkg(pkg);
-            Hit h = nativeTextProbe(root, ctx);
-            if (h != null) {
-                profileReset(pkg, winClassOf(pkg));
-                appendLog("⚡ 探针哨兵命中（" + shortPkg(pkg) + "）：CLEAN 档案窗出现真「跳过」→ 档案复活，全量出手");
-                tryScan(pkg, winStart, 0); // 复用全量路径（含规则/订阅/复验/执行）
-                return;
-            }
             /* v7.15.6 图形探针：文本探针盲区（纯图片跳过键/全屏热区——
              * Keep/CSDN 动态图开屏「识别不到且无日志」头号根因）。仅开屏
-             * 窗内跑，1.5s/窗一档（屏闪高频事件不重复扫）；命中即档案复活。 */
+             * 窗内跑，1.5s/窗一档（屏闪高频事件不重复扫；一档覆盖全部根）；
+             * 命中即档案复活。 */
+            boolean gProbeAllowed = false;
             if (ctx.splashLive) {
                 String gKey = pkg + "|" + winStart;
                 Long gLast = graphicProbeAt.get(gKey);
@@ -2435,11 +2435,22 @@ public class AdSkipService extends AccessibilityService {
                 if (gLast == null || nowMs - gLast.longValue() >= 1500) {
                     graphicProbeAt.put(gKey, Long.valueOf(nowMs));
                     if (graphicProbeAt.size() > 48) graphicProbeAt.clear(); // 防膨胀
-                    if (graphicProbe(root, ctx)) {
-                        profileReset(pkg, winClassOf(pkg));
-                        appendLog("⚡ 图形探针命中（" + shortPkg(pkg) + "）：CLEAN 档案窗出现图片跳过键/全屏热区（动态图开屏）→ 档案复活，全量出手");
-                        tryScan(pkg, winStart, 0);
-                    }
+                    gProbeAllowed = true;
+                }
+            }
+            for (int ri = 0; ri < roots.length; ri++) {
+                Hit h = nativeTextProbe(roots[ri], ctx);
+                if (h != null) {
+                    profileReset(pkg, winClassOf(pkg));
+                    appendLog("⚡ 探针哨兵命中（" + shortPkg(pkg) + (roots.length > 1 ? " · 窗口" + (ri + 1) : "") + "）：CLEAN 档案窗出现真「跳过」→ 档案复活，全量出手");
+                    tryScan(pkg, winStart, 0); // 复用全量路径（含规则/订阅/复验/执行）
+                    return;
+                }
+                if (gProbeAllowed && graphicProbe(roots[ri], ctx)) {
+                    profileReset(pkg, winClassOf(pkg));
+                    appendLog("⚡ 图形探针命中（" + shortPkg(pkg) + (roots.length > 1 ? " · 窗口" + (ri + 1) : "") + "）：CLEAN 档案窗出现图片跳过键/全屏热区（动态图开屏）→ 档案复活，全量出手");
+                    tryScan(pkg, winStart, 0);
+                    return;
                 }
             }
         } catch (Throwable ignored) {
@@ -2461,8 +2472,9 @@ public class AdSkipService extends AccessibilityService {
      * 头号根因——(pkg|cls) 连续 3 次零候选判 CLEAN 后只剩文本探针，而动态
      * 图开屏的跳过键是【纯图片】（无文本可探）+ 全屏可点热区 → 探不到 →
      * 不扫不点不记（72h 才复查一次）。本探针在开屏窗内补一次浅 DFS
-     * （预算 120 ≈ 全量扫描 1/5 成本，1.5s 节流）：vid 键/角落键/泛位置
-     * 键/热区/角标任一在场 = 强广告信号 → 档案复活全量出手。 */
+     * （预算 120/根 ≈ 全量扫描 1/5 成本，多窗一档最多 3 根共 360；
+     * 1.5s 节流一档覆盖全部根）：vid 键/角落键/泛位置键/热区/角标
+     * 任一在场 = 强广告信号 → 档案复活全量出手。 */
     private boolean graphicProbe(AccessibilityNodeInfo root, Ctx ctx) {
         try {
             ctx.budgetNodes = 120;
@@ -3226,8 +3238,10 @@ public class AdSkipService extends AccessibilityService {
         if (chainDead && atMs >= 0) return;
 
         try {
-            /* 多窗口扫描：活动窗口优先，其次 getWindows() 同包窗口（弹窗/覆盖层） */
-            AccessibilityNodeInfo[] roots = collectRoots(pkg);
+            /* 多窗口扫描：活动窗口优先，其次 getWindows() 同包窗口（弹窗/覆盖层）
+             * v7.15.7：开屏窗内 allWins=true——Keep 型动态图开屏的跳过键住在
+             * 同包覆盖层窗口（活动窗只有 8 节点微树），必须枚举补齐才能扫到。 */
+            AccessibilityNodeInfo[] roots = collectRoots(pkg, splashLive);
             if (roots.length == 0) return;
 
             Long lastClick = lastClickAt.get(pkg);
@@ -3239,6 +3253,7 @@ public class AdSkipService extends AccessibilityService {
             boolean acted = false;           // v4.3.0：本轮是否出手/等待（未命中日志用）
             ScanFind lastFind = null;        // v4.3.0：最后一个根的扫描画像（同上）
             Ctx lastCtx = null;              // v5.1.0：最后一个根的决策上下文（零候选退避用）
+            int nodesSum = 0;                // v7.15.7：多根节点总数（未命中日志「树 8+42 节点」）
 
             /* ═══ v3.14.0 跳过后反馈弹窗（issue#21 实锤：喜马拉雅跳过后 10 次
              * 有 8 次弹「不喜欢/反馈投诉」底部面板）——反馈面板在场 = 广告
@@ -3420,6 +3435,7 @@ public class AdSkipService extends AccessibilityService {
                 ScanFind f = AdDecisionCore.walk(new NodeAdapter(roots[ri]), ctx);
                 lastFind = f;
                 lastCtx = ctx;
+                nodesSum += f.nodeCount; // v7.15.7：多根合计（覆盖层窗口的树规模可见）
                 /* v7.15.6 热区记账：本窗确认过全屏可点广告图 → nudgeScan
                  * 的 4s 后停扫豁免依据（动态图开屏的晚到跳过键 5~12s
                  * 仍可救回；窗口一切换 key 变化自动失效）。 */
@@ -3492,8 +3508,8 @@ public class AdSkipService extends AccessibilityService {
              * issue#38「许多第三方 App 无法跳过，日志也没记录」根治：开屏窗
              * 扫完零命中零出手时，记一条带窗口类名/树规模/可点控件样本的诊断
              * 日志——用户上传日志即可定位缺哪种规则（此前静默失败无从查起）。 */
-            if (!acted && splashLive) logScanMiss(pkg, roots, lastFind, now, winStart, false);
-            else if (!acted && popupLive) logScanMiss(pkg, roots, lastFind, now, winStart, true);
+            if (!acted && splashLive) logScanMiss(pkg, roots, lastFind, nodesSum, now, winStart, false);
+            else if (!acted && popupLive) logScanMiss(pkg, roots, lastFind, nodesSum, now, winStart, true);
 
             /* ═══ v5.3.0 宿主窗档案记账（每窗实例一次，CLEAN 判定依据）═══
              * 零候选（无可出手信号）→ 连续计数 +1；出现候选/已出手 → 归零
@@ -3533,14 +3549,17 @@ public class AdSkipService extends AccessibilityService {
      *  语义没丢——首条样本已足够补规则），其余静默。 */
     private final java.util.HashMap<String, Long> missThrottleAt = new java.util.HashMap<String, Long>();
 
-    private void logScanMiss(String pkg, AccessibilityNodeInfo[] roots, ScanFind f,
+    private void logScanMiss(String pkg, AccessibilityNodeInfo[] roots, ScanFind f, int nodesSum,
                              long now, long winStart, boolean popup) {
         try {
             // v5.1.0 静默期：广告刚关，首页内容还在落定——不记噪声
             Long closedAt = adClosedAt.get(pkg);
             if (AdDecisionCore.postSkipQuiet(closedAt == null ? 0 : closedAt.longValue(), now)) return;
             // v5.1.0 微树过滤：加载占位窗（≤5 节点）无诊断价值
-            if (f != null && f.nodeCount <= 5) return;
+            //（v7.15.7：多根时看合计——Keep 型活动窗 8 节点 + 覆盖层 42 节点
+            // 合计 50，不再是「微树」；单根口径不变）
+            int missNodes = nodesSum > 0 ? nodesSum : (f != null ? f.nodeCount : 0);
+            if (f != null && roots.length <= 1 && f.nodeCount <= 5) return;
             /* v7.15.6 强广告形态豁免（Keep/CSDN「识别不到且日志没记录」根治）：
              * 热区/角标在场 = 大概率广告窗（动态图开屏全屏可点是常态）——
              * 此前同包 8s 节流（logo 窗先记一条把真广告窗的吞掉）与 H5 大树
@@ -3566,10 +3585,20 @@ public class AdSkipService extends AccessibilityService {
             if (f != null && (f.scrollPresent || f.editPresent) && f.nodeCount > 150 && !strongAdForm) return;
             StringBuilder sb = new StringBuilder(160);
             sb.append(popup ? "❓ 弹窗未命中（" : "❓ 开屏未命中（").append(shortPkg(pkg)).append("）");
-            sb.append(f != null ? "树 " + f.nodeCount + " 节点" : "树 ?");
+            /* v7.15.7 多根可见化：活动窗+覆盖层窗双根时「树 50 节点 · 根 2」
+             * （单根维持旧口径「树 N 节点」）——Keep 型动态图开屏的覆盖层树
+             * 规模从此在日志里直接可见，补规则不再盲猜。 */
+            if (roots.length > 1) {
+                sb.append(missNodes > 0 ? "树 " + missNodes + " 节点" : "树 ?")
+                        .append(" · 根 ").append(roots.length);
+            } else {
+                sb.append(f != null ? "树 " + f.nodeCount + " 节点" : "树 ?");
+            }
             String cls = winClassOf(pkg);
             if (cls.length() > 0) sb.append(" · 窗口 ").append(shortCls(cls));
-            String samples = collectNodeSamples(roots.length > 0 ? roots[0] : null);
+            /* v7.15.7：候选样本覆盖全部根（旧版只看 roots[0]——覆盖层窗口里
+             * 的真跳过键样本全被吞掉）；总额共享（预算 120·样本 4 条不变）。 */
+            String samples = collectNodeSamples(roots);
             if (samples.length() > 0) sb.append(" · 候选样本：").append(samples);
             /* v7.1.0 订阅两源覆盖诊断（使用顺序问题可见化：该应用市场/内置
              * 谁在岗谁缺席——上传日志即可定位「导入了怎么还是不跳」类问题） */
@@ -3590,13 +3619,17 @@ public class AdSkipService extends AccessibilityService {
      *    「播放列表@(16%,150%)」「vid:checkbox@(187%,17%)」类越界点位
      *    是弹窗 bounds 被裁剪/坐标系差异的误导产物，补规则点位不在屏上；
      *  ② label+坐标签名去重——支付宝日志「关闭@(93%,9%) / 关闭@(93%,9%)」
-     *    双胞胎占掉 1/4 样本额度，去重后同额度覆盖更多不同控件。 */
-    private String collectNodeSamples(AccessibilityNodeInfo root) {
-        if (root == null || screenWidth <= 0 || screenHeight <= 0) return "";
+     *    双胞胎占掉 1/4 样本额度，去重后同额度覆盖更多不同控件。
+     *  v7.15.7：多根版（活动窗+覆盖层窗全覆盖，预算共享 120·样本 4 条）。 */
+    private String collectNodeSamples(AccessibilityNodeInfo[] roots) {
+        if (roots == null || roots.length == 0 || screenWidth <= 0 || screenHeight <= 0) return "";
         StringBuilder sb = new StringBuilder(96);
         int[] budget = {120};
         java.util.HashSet<String> seen = new java.util.HashSet<String>();
-        collectSamples(new NodeAdapter(root), budget, sb, seen);
+        for (AccessibilityNodeInfo r : roots) {
+            if (r == null || budget[0] <= 0 || countSep(sb) >= 4) break;
+            collectSamples(new NodeAdapter(r), budget, sb, seen);
+        }
         return sb.toString();
     }
 
@@ -3824,13 +3857,33 @@ public class AdSkipService extends AccessibilityService {
 
     /** 收集同包可扫描窗口根节点（活动窗口优先，最多 3 个） */
     private AccessibilityNodeInfo[] collectRoots(String pkg) {
+        return collectRoots(pkg, false);
+    }
+
+    /* ═══ v7.15.7 多窗口开屏扫描（Keep 动态图开屏根治）═══
+     * 真机日志实锤（#98/#101）：Keep 难拦型开屏的「跳过 4」按钮住在【同包
+     * 覆盖层窗口】（广告 SDK 自建 Window）里，而 rootInActiveWindow 指向的
+     * SplashActivity 只有 8 节点——旧版 collectRoots 只要活动窗口属于本包就
+     * 短路返回，覆盖层窗口永远不被扫 = 按钮在场却零识别零记录（用户手动点
+     * 「跳过 4」被学习观察到，证明节点真实存在）。allWins=true 时枚举
+     * getWindows() 补齐同包其它窗口（活动窗口去重：getWindowId 对比）；
+     * 仅开屏窗传入（每轮一次 getWindows binder 调用，与既有回退路径同量级）
+     * ——弹窗/信息流/插屏路径维持旧口径零变化。 */
+    private AccessibilityNodeInfo[] collectRoots(String pkg, boolean allWins) {
         java.util.ArrayList<AccessibilityNodeInfo> out = new java.util.ArrayList<>();
+        int activeWinId = Integer.MIN_VALUE;
         AccessibilityNodeInfo active = getRootInActiveWindow();
         if (active != null) {
             CharSequence rp = active.getPackageName();
-            if (rp != null && pkg.contentEquals(rp)) out.add(active);
+            if (rp != null && pkg.contentEquals(rp)) {
+                out.add(active);
+                try {
+                    activeWinId = active.getWindowId();
+                } catch (Throwable ignored) {
+                }
+            }
         }
-        if (out.isEmpty()) {
+        if (out.isEmpty() || allWins) {
             try {
                 List<AccessibilityWindowInfo> wins = getWindows();
                 if (wins != null) {
@@ -3841,6 +3894,11 @@ public class AdSkipService extends AccessibilityService {
                         AccessibilityNodeInfo r0 = w == null ? null : w.getRoot();
                         CharSequence wp = r0 == null ? null : r0.getPackageName();
                         if (wp != null && pkg.contentEquals(wp)) {
+                            // v7.15.7：活动窗口去重（getWindowId 同窗即同 id）
+                            try {
+                                if (r0.getWindowId() == activeWinId) continue;
+                            } catch (Throwable ignored) {
+                            }
                             out.add(r0);
                         }
                     }
@@ -3926,6 +3984,23 @@ public class AdSkipService extends AccessibilityService {
                     ? com.zai.adshield.core.ComplianceGuard.interBoundaryCheck(bl, bb2, screenWidth, screenHeight, pkg, winClassOf(pkg))
                     : com.zai.adshield.core.ComplianceGuard.boundaryCheck(
                     bl, bv, bb2, screenWidth, screenHeight, pkg, winClassOf(pkg), userTaught));
+            /* ═══ v7.15.7 图片跳过键语义换源（CSDN 动态图开屏根治）═══
+             * 真机日志实锤（#98/#101）：角落/泛位置图片键被通用终闸的语义断言
+             * 一票否决（「角落图片跳过键：语义断言（非跳过/关闭方向）→ 放弃」
+             * 反复出现）——纯图键无文本无 vid 语义，永远凑不齐证据。仅当
+             * 【零文本零 vid 证据】（bl/bv 双空）且 reason 是图片键路径时，
+             * 换源 imageKeyBoundaryCheck（场景+严格形态 ≤6% 屏三重尺寸门）；
+             * 有文本/vid 证据但非跳过语义 = 真诱饵，照旧一票否决零放行。 */
+            if (bnd == com.zai.adshield.core.ComplianceGuard.BND_FAIL_SEMANTIC
+                    && bl.length() == 0 && bv.length() == 0
+                    && ("corner_image_skip".equals(d.reason) || "rand_graphic_skip".equals(d.reason))) {
+                bnd = com.zai.adshield.core.ComplianceGuard.imageKeyBoundaryCheck(
+                        bb2, screenWidth, screenHeight, pkg, winClassOf(pkg));
+                if (bnd == com.zai.adshield.core.ComplianceGuard.BND_OK) {
+                    appendLog("🎯 图片跳过键边界放行（" + shortPkg(pkg) + " · " + reasonZh(d.reason)
+                            + "）：纯图键零文案语义——场景+形态双重门替代（面积 ≤6% 屏）");
+                }
+            }
             if (bnd != com.zai.adshield.core.ComplianceGuard.BND_OK) {
                 boundaryGuardLog(pkg, d.reason, bnd, bl.length() > 0 ? bl : bv);
                 return false;

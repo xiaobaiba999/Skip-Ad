@@ -1,4 +1,4 @@
-/* 开屏卫士 v7.15.4 · 激进模式重构版（基于 v7.6.0 激进模式基线 · 7.6 之后版本整体召回后的重制版；v7.15.4 开屏提示 12 小时窗 + 检查更新失败 GitHub 加速器指引三处落地） */
+/* 开屏卫士 v7.15.7 · 激进模式重构版（基于 v7.6.0 激进模式基线 · 7.6 之后版本整体召回后的重制版；v7.15.7 Keep/CSDN 动态图开屏二重根治：同包覆盖层窗口多窗扫描 + 图片键边界闸语义换源 + 底栏新增「版本」页 + 开屏提示 3 秒观闸与亮字承诺） */
 "use strict";
 
 /* ══════════ 环境 ══════════ */
@@ -23,8 +23,8 @@ const store = {
 };
 
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "7.15.4"; }
-function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "85400"; }
+function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "7.15.7"; }
+function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "85700"; }
 
 /* ══════════ 吉祥物（v4.1.0 全新形象：白机器人小侠 + 绿披风跳跃） ══════════
  * 与启动器图标同源；state: on（跳跃浮动）/ off（灰度待命） */
@@ -35,21 +35,22 @@ function mascotImg(size, state, head) {
 
 $("#brand-logo").innerHTML = mascotImg(30, "on", true);
 
-/* ═══ v7.15.6 版本记录（动态图开屏泛位置识别根治 + 首页白名单精简）═══ */
+/* ═══ v7.15.7 版本记录（Keep/CSDN 动态图开屏二重根治 + 底栏「版本」页）═══ */
 const CURRENT_RELEASE = {
-  date: "2026-11-24",
-  title: "动态图开屏泛位置识别根治（Keep/CSDN）+ 首页白名单精简",
+  date: "2026-11-25",
+  title: "Keep/CSDN 动态图开屏二重根治（多窗扫描+图片键边界闸）+ 底栏新增「版本」页",
   features: [
-    "泛位置图片跳过键：Keep/CSDN 动态图开屏（跳过按钮每次在不同地方、无倒计时、纯图片）旧版识别不到——现在任意位置的小图键都能收（仅强广告形态下出手，绝不乱点）",
-    "CLEAN 档案盲区根治：连续零候选的省电静默窗新增图形探针——纯图片跳过键/全屏热区一出现立即复活全量出手，不再「识别不到且日志没记录」",
-    "未命中日志豁免：热区/角标在场的广告窗必记录（不再被节流与 H5 大树过滤吞掉）；热区开屏窗 4s 后保持低频补扫——晚到的跳过键也能救回",
-    "首页白名单精简：去掉搜索框与添加按钮，默认只显示 5 款应用，「展开全部」按需查看——首页更短更清爽",
-    "代码冗余清理：诱导词双表合一、预算降级修复、7 个孤儿桥与约 90 行死样式移除、上传按钮转圈动画修复（全部经测试验证）",
+    "同包覆盖层窗口多窗扫描（Keep 根治）：Keep 难拦型开屏的「跳过」键住在同包覆盖层窗口里，旧版只扫活动窗（8 节点微树）永远看不见——现在开屏窗内扫描/探针全量枚举同包窗口，覆盖层里的跳过键直接可见可点",
+    "图片跳过键边界闸语义换源（CSDN 根治）：角落/泛位置纯图键不再被「语义断言（非跳过/关闭方向）」一票否决——零文案零 vid 证据时换场景+严格形态双重门（面积 ≤6% 屏三重尺寸门），有文案但非跳过语义的真诱饵照旧一票否决",
+    "底栏新增「版本」页：当前版本与版本记录从「我的」抽出独立成页（四底栏：首页/帮助/版本/我的），「我的」页专注卫士使用报告与引擎日志",
+    "开屏提示双升级：亮字承诺「每周根据日志问题至少迭代版本一次」；至少观看 3 秒才可操作「知道了/去上传日志/12 小时不再提示」（按钮禁用+倒计时，到点自动解锁）",
+    "未命中日志多根可见化：双根时显示「树 N 节点 · 根 2」，候选样本覆盖全部窗口（覆盖层里的真跳过键样本不再被吞）——补规则不再盲猜",
   ],
-  summary: "v7.15.6 动态图开屏（跳过键位置随机·无倒计时·纯图片）识别不到且无日志三重根治 + 首页白名单精简（去搜索框/添加行，默认 5 款+展开全部）+ 冗余清理",
+  summary: "v7.15.7 Keep/CSDN 动态图开屏二重根治（覆盖层多窗扫描 + 图片键语义换源）+ 底栏「版本」页 + 开屏提示 3 秒观闸与亮字承诺",
 };
 
-/* v7.0.0 新版功能描述（规范：≤5 个标题、带序号；检查更新发现新版本时就地渲染）。
+/* v7.0.0 新版功能描述（规范：≤5 个标题、带序号；检查更新发现新版本时就地渲染
+ * ——v7.15.7 起检查更新在「版本」页）。
  * 优先用 Java 桥预解析的 headlines[]（Net.parseRelease → core.ReleaseNotes
  * 纯函数，格式四代兼容：1. 序号 / ① / #- / - *）；桥字段缺失时回落 JS 解析。 */
 function notesToHeadlines(d, maxN) {
@@ -107,7 +108,7 @@ $$(".tabbtn").forEach(b => b.addEventListener("click", () => {
   const pg = b.dataset.page;
   if (pg === "home") { refreshHome(); renderWhitelist(true); }
   if (pg === "help") renderHelpDynamic();
-  if (pg === "me") { renderLog(); renderReport(); } // v7.2.0：进入我的页静默刷新使用报告（饼图常驻，零 toast）
+  if (pg === "me") { renderLog(); renderReport(); } // v7.2.0：进入我的页静默刷新使用报告（饼图常驻，零 toast）；v7.15.7：版本相关已迁「版本」页
 }));
 
 /* ══════════ 首页：守护状态 ══════════ */
@@ -586,8 +587,14 @@ function renderHelpDynamic() {
  * 与 v7.6.1 时代「页面资产符号闸」同思路的防呆：提示永不过期、
  * 也永不骚扰）。
  * 三按钮：知道了（本次关闭）/ 12 小时不再提示 / 去上传日志（直达
- * 我的页引擎日志并自动发起上传）。 */
+ * 我的页引擎日志并自动发起上传）。
+ * v7.15.7 用户指令双落地：
+ *  · 亮字承诺——「每周根据日志问题至少迭代版本一次」（tip-weekly
+ *   品牌绿高亮行：用户日志驱动迭代节奏的公开承诺）；
+ *  · 3 秒观闸——至少观看 3 秒才可操作三按钮（按钮禁用 + 倒计时行，
+ *   遮罩点击同期让路；到点自动解锁，绝不永久卡死）。 */
 const TIP_12H_MS = 12 * 60 * 60 * 1000;
+const TIP_HOLD_MS = 3000; // v7.15.7：至少观看 3 秒才可操作
 function tipDismissUntil() { return +store.get("tipDismissUntil", 0) || 0; }
 function tipPinVer() { return String(store.get("tipPinVer", "")); }
 function tipDue() {
@@ -612,13 +619,36 @@ function showSplashTip() {
     + '<li>把卫士<b>固定在后台</b>（最近任务加锁 + 电池白名单）：后台被清理会导致息屏或切应用回来时第一条广告漏拦（帮助页有指引）。</li>'
     + '<li>引擎日志每 8 小时自动提交一次（一日 3 次），也可点下方「去上传日志」立即上传。</li>'
     + '</ul>'
+    /* v7.15.7 用户指令：亮字描述——每周根据日志问题至少迭代版本一次 */
+    + '<div class="tip-weekly">每周根据日志问题<b>至少迭代版本一次</b>——你的日志直接驱动下一版</div>'
+    + '<div class="tip-hold" id="tip-hold" aria-live="polite">请阅读提示（3s）</div>'
     + '<div class="tip-btns">'
-    + '<button data-act="ok" class="tip-btn">知道了</button>'
-    + '<button data-act="mute" class="tip-btn tip-btn-mute">12 小时不再提示</button>'
-    + '<button data-act="upload" class="tip-btn tip-btn-go">去上传日志</button>'
+    + '<button data-act="ok" class="tip-btn" disabled>知道了</button>'
+    + '<button data-act="mute" class="tip-btn tip-btn-mute" disabled>12 小时不再提示</button>'
+    + '<button data-act="upload" class="tip-btn tip-btn-go" disabled>去上传日志</button>'
     + '</div></div>';
   document.body.appendChild(wrap);
+  /* ═══ v7.15.7 3 秒观闸：三按钮禁用 + 倒计时行，到点解锁 ═══
+   * 计时器自清（到点 clearInterval），节点移除后回调零副作用
+   * （detached 节点上 remove/disable 均无害）；观闸期内遮罩点击
+   * 同样让路（所有关闭通道封 3 秒——「至少观看」语义）。 */
+  const holdEl = wrap.querySelector("#tip-hold");
+  const btns = wrap.querySelectorAll(".tip-btn");
+  let holdDone = false;
+  let holdLeft = Math.ceil(TIP_HOLD_MS / 1000);
+  const holdTimer = setInterval(() => {
+    holdLeft--;
+    if (holdLeft > 0) {
+      if (holdEl) holdEl.textContent = "请阅读提示（" + holdLeft + "s）";
+      return;
+    }
+    clearInterval(holdTimer);
+    holdDone = true;
+    if (holdEl) holdEl.remove();
+    btns.forEach(b => { b.disabled = false; });
+  }, 1000);
   wrap.addEventListener("click", (ev) => {
+    if (!holdDone) return; // 观闸期（原生 disabled 已挡按钮，此为遮罩/双保险）
     const act = ev.target.getAttribute && ev.target.getAttribute("data-act");
     if (!act) { if (ev.target === wrap) closeSplashTip(); return; }
     if (act === "ok") {
@@ -644,8 +674,8 @@ function gotoPage(pg) {
   if (btn) btn.click();
 }
 
-/* ══════════ 我的：版本与更新 ══════════ */
-$("#me-ver").textContent = "v" + appVer();
+/* ══════════ 版本页（v7.15.7：底栏新增——当前版本/版本记录从我的页抽出）══════════ */
+$("#ver-cur").textContent = "v" + appVer();
 $("#ver-chip").textContent = "v" + appVer();
 
 /* v7.2.0：版本记录按序号 1. 2. 3. 4. 描述功能（用户实锤）——1 个标题 +

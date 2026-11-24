@@ -6,8 +6,8 @@
 
 [![Releases](https://img.shields.io/github/v/release/xiaobaiba999/Skip-Ad?style=flat-square&label=%E6%9C%80%E6%96%B0%E5%8F%91%E5%B8%83)](https://github.com/xiaobaiba999/Skip-Ad/releases/latest)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](#许可)
-[![APK](https://img.shields.io/badge/APK-862KB-orange?style=flat-square)](https://github.com/xiaobaiba999/Skip-Ad/releases/latest)
-[![Tests](https://img.shields.io/badge/JVM%E6%96%AD%E8%A8%80-4493%20%E2%9C%85-brightgreen?style=flat-square)](docs/CHANGELOG.md)
+[![APK](https://img.shields.io/badge/APK-866KB-orange?style=flat-square)](https://github.com/xiaobaiba999/Skip-Ad/releases/latest)
+[![Tests](https://img.shields.io/badge/JVM%E6%96%AD%E8%A8%80-4515%20%E2%9C%85-brightgreen?style=flat-square)](docs/CHANGELOG.md)
 [![Matrix](https://img.shields.io/badge/%E6%9C%BA%E5%9E%8B%E7%9F%A9%E9%98%B5-9%E5%93%81%E7%89%8C%E5%8F%8A%E5%AD%90%E5%93%81%E7%89%8C36%E6%9C%BA%E5%9E%8B-396-blue?style=flat-square)](android-app/tests/com/zai/adshield/test/BrandFocus396Test.java)
 [![HumanTap](https://img.shields.io/badge/1%3A1%E4%BA%BA%E6%89%8B%E6%A8%A1%E6%8B%9F-%E8%AF%AF%E7%82%B9%E5%A4%9A%E7%82%B9%E6%A0%B9%E6%B2%BB-ff7043?style=flat-square)](android-app/tests/com/zai/adshield/test/HumanTapMatrixTest.java)
 [![Topic](https://img.shields.io/badge/topic-gkd--subscription-8e8e8e?style=flat-square)](https://github.com/topics/gkd-subscription)
@@ -26,23 +26,24 @@ Java 引擎 · GKD 订阅生态兼容 · [Releases](https://github.com/xiaobaiba
 | **拦截范围** | 开屏广告（含**视频开屏**——静默画像归一 v7.9.1）· 插屏/激励弹窗 · 摇一摇诱导 · 悬浮广告球 · 视频前贴 · **App 内广告主动关闭（信息流三路 20 款名单 + 插屏卫士：语境三路并集 + 图标关闭钮路径 + 订阅反饥饿 v7.9.1——远程 GKD 订阅重新参与匹配）**（134 款内置 + 自动订阅扩展：id667 每日后台导入覆盖 600+ 款）· **应用生态兼容性目录（v7.9.2：compatibility/apps_catalog.json 233 款常用应用——包名三层来源严格区分，12 分类配额，每轮迭代 L1 回归）** |
 | **不碰什么** | 小程序/支付/团购容器零扫描零点击；银行/政务/相机零干预；只点应用自带「跳过」键（合规红线） |
 | **隐私与安全** | 数据仅存本机；联网仅日志上传（脱敏）与更新检查；零定位/通讯录/存储权限；更新包安装前 SHA-256 逐字节校验（镜像投毒/换包自动拦截）；订阅规则支付/诱导词双否决（注入防线） |
-| **体积** | APK 862KB（含三源离线订阅快照 ~520KB）· 冷启动毫秒级 · 典型日功耗 0.05mWh 级 |
+| **体积** | APK 866KB（含三源离线订阅快照 ~520KB）· 冷启动毫秒级 · 典型日功耗 0.05mWh 级 |
 
-## 当前版本 v7.15.6（2026-11-24）· 动态图开屏泛位置识别根治（Keep/CSDN）+ 首页白名单精简 + 冗余清理
+## 当前版本 v7.15.7（2026-11-25）· Keep/CSDN 动态图开屏二重根治 + 底栏「版本」页 + 开屏提示 3 秒观闸
 
-**v7.15.6（用户实锤修复：Keep/CSDN 动态图开屏——跳过按钮每次在不同地方、没有倒计时、纯图片，识别不到且日志没记录 + 首页白名单模块太长 + 代码冗余清理）**：
+**v7.15.7（用户实锤续修：v7.15.6 后 Keep/CSDN 动态图开屏依旧未命中——扫描最新引擎日志（#98/#101）定位两个更深层死因并根治 + 底栏新增「版本」页 + 开屏提示亮字承诺与 3 秒观闸）**：
 
-1. **泛位置图片跳过键（Keep/CSDN 动态图开屏根治）**：旧几何带只认「顶 14%/底 18% + 左右缘」，居中随机位的纯图片键零收集 = 识别不到。新增泛位置候选：任意位置小可点无字图键（面积 ≤6% 屏 + vid 诱导 token 否决），仅强广告形态（全屏热区/角标/SDK 窗/学习窗）下出手，排在角落候选之后复验轮换——不乱点红线不破
-2. **CLEAN 档案盲区根治（「识别不到且无日志」头号根因）**：连续 3 次零候选判省电静默后只剩文本探针——纯图片键探不到 = 不扫不点不记。新增图形探针（开屏窗内浅 DFS · 1.5s 一档）：图片键/热区/角标任一在场 → 档案立即复活全量出手
-3. **未命中日志三重豁免 + 晚到键救回**：热区/角标在场的广告窗 miss 必记录（不再被同包 8s 节流与 H5 大树过滤双杀）；热区开屏窗 4s 后 500ms 低频补扫持续到窗口截止——晚到跳过键（5~12s）也能救回
-4. **首页白名单精简**：去掉搜索框与手动添加行，默认只显示 5 款应用（白名单内置顶）+「展开全部 N 款」按需展开——首页更短更清爽
-5. **代码冗余清理（判断 + 测试先行）**：诱导词双表合一、低端机预算降级死存储修复、7 个孤儿桥 + 订阅市场死代码（约 130 行）+ 约 90 行死样式移除、热区观察窗口径统一、下载进度文本 id 错配修复（v7.3.0 遗留死因）、上传按钮 spinner 动画修复
+1. **同包覆盖层窗口多窗扫描（Keep 根治）**：真机日志实锤——Keep 难拦型开屏的「跳过」键住在同包覆盖层窗口（广告 SDK 自建 Window），旧版只扫活动窗（8 节点微树）永远看不见。现在开屏窗内全量扫描/文本探针/图形探针枚举 getWindows() 同包窗口——覆盖层里的跳过键直接可见可点
+2. **图片跳过键边界闸语义换源（CSDN 根治）**：纯图键无文本无 vid 语义，通用终闸语义断言永远凑不齐证据 = 收得到候选却出不了手。新增 imageKeyBoundaryCheck：零文本零 vid 证据时换场景+严格形态双重门（面积 ≤6% 屏三重尺寸门）；有文案但非跳过语义的真诱饵照旧一票否决
+3. **底栏新增「版本」页**：当前版本 + 检查更新 + 版本记录独立成页（四底栏：首页/帮助/版本/我的），新增「迭代节奏」亮字承诺卡（每周根据日志问题至少迭代版本一次）；「我的」页专注卫士使用报告与引擎日志
+4. **开屏提示双升级**：亮字承诺「每周根据日志问题至少迭代版本一次」；至少观看 3 秒才可操作「知道了/去上传日志/12 小时不再提示」（按钮禁用+倒计时，到点自动解锁）
+5. **未命中日志多根可见化**：双根时显示「树 N 节点 · 根 2」+ 候选样本覆盖全部窗口——覆盖层里的真跳过键样本不再被吞，补规则不再盲猜
 
 
 ## 近期版本速览
 
 | 版本 | 日期 | versionCode | 一句话 |
 | --- | --- | --- | --- |
+| **v7.15.7** | 2026-11-25 | 85700 | Keep/CSDN 动态图开屏二重根治（同包覆盖层多窗扫描 + 图片键边界闸语义换源）+ 底栏「版本」页 + 开屏提示 3 秒观闸与亮字承诺 + miss 日志多根可见化 |
 | **v7.15.6** | 2026-11-24 | 85600 | 动态图开屏泛位置识别根治（Keep/CSDN：随机位·无倒计时·纯图片键）+ CLEAN 档案图形探针 + 广告窗 miss 必记录 + 首页白名单精简（默认 5 款+展开全部）+ 冗余清理 |
 | v7.15.5 | 2026-11-24 | 85500 | 下载通道死局根治（白名单收编 jsdelivr + 拒绝自动换道 + 清单撤 cdnApkUrl）+ 开屏扫描误门控解除（开屏/插屏严格分域 + 日志分域）+ 订阅零命中规则自动瘦身 |
 | v7.15.4 | 2026-11-24 | 85400 | 开屏提示 12 小时窗（24h→12h）+ 检查更新失败 GitHub 加速器指引三处落地 + version.ts 注释未闭合修复 |
@@ -119,9 +120,9 @@ android-app/
 
 ## 安装
 
-1. [Releases](https://github.com/xiaobaiba999/Skip-Ad/releases/latest) 下载 APK（862KB）直接安装（v7.x 任何正式版覆盖安装即升级 v7.15.6——versionCode 85600，动态图开屏泛位置识别 + 首页白名单精简即刻生效；已装 v7.9.6plus/82300 的历史用户见 CHANGELOG v7.9.7 节过渡口径）；
+1. [Releases](https://github.com/xiaobaiba999/Skip-Ad/releases/latest) 下载 APK（865KB）直接安装（v7.x 任何正式版覆盖安装即升级 v7.15.7——versionCode 85700，动态图开屏多窗扫描 + 图片键边界闸即刻生效；已装 v7.9.6plus/82300 的历史用户见 CHANGELOG v7.9.7 节过渡口径）；
    - **v7.15.0~v7.15.4 用户应用内点下载报「下载链接不在允许的发布通道内」**：本轮清单已撤 cdnApkUrl 字段——旧版「检查更新」拉到新清单后点下载即恢复正常（首渠道回到 ghfast.top 镜像）；仍失败时用下方 gcore 直链手动安装即可；
-   - GitHub 下载慢/不可达时用 jsDelivr 官方直链（同一 APK · SHA-256 见 Releases 页）——**优先 gcore 接入点**（实测直出稳定）：`https://gcore.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/android-app/dist/adshield-v7.15.6.apk` 或「最新版」别名 `…/android-app/dist/adshield-latest.apk`（cdn/testingcf 同路径可换用，但 cdn 偶发对 APK 301→raw 阻断域——见 CHANGELOG 2026-11-23 发布管线热修复节；fastly 对 APK 恒 301→raw 勿用）——App 内「检查更新」失败时也会引导此兜底通道（v7.11.0 新增；v7.15.5 起该 CDN 直链已进应用内下载白名单——渠道启动被拒也会自动换道，不再死局）；
+   - GitHub 下载慢/不可达时用 jsDelivr 官方直链（同一 APK · SHA-256 见 Releases 页）——**优先 gcore 接入点**（实测直出稳定）：`https://gcore.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/android-app/dist/adshield-v7.15.7.apk` 或「最新版」别名 `…/android-app/dist/adshield-latest.apk`（cdn/testingcf 同路径可换用，但 cdn 偶发对 APK 301→raw 阻断域——见 CHANGELOG 2026-11-23 发布管线热修复节；fastly 对 APK 恒 301→raw 勿用）——App 内「检查更新」失败时也会引导此兜底通道（v7.11.0 新增；v7.15.5 起该 CDN 直链已进应用内下载白名单——渠道启动被拒也会自动换道，不再死局）；
    - **不开梯子「检查更新」报多源均不可达**：开启 GitHub 加速器（如 Watt Toolkit）后重试即可——v7.15.3 起检查更新四域梯度 + API 匿名优先，配合加速器基本必通（v7.15.4 起 App 内失败文案/帮助页/版本下方三处都有此指引）；也可直接用上面的 gcore 版本化直链手动安装；
    - **应用内「检查更新」提示「已是最新」但 GitHub 已发新版**：jsDelivr 对 `@main` 分支有源站级缓存（最长 12h）——发布后半天内国内备用链可能仍在旧清单（raw 主源已即时生效但国内不可达）。此窗口内请直接用上面的 gcore 版本化直链手动安装；不操作也无损——≤12h 后四接入点自愈，检查更新即看到新版本；
    - **v7.9.5/v7.9.6 用户应用内「检查更新」报「查询失败：GitHub 返回 401」**：这两个版本检查更新携带的内置令牌已被吊销（安全整改后旧版无法从服务侧修复）——请直接用上述任一链接下载安装（82000 > 79600 同签名覆盖安装，无障碍授权/学习数据/订阅全保留），详见 [CHANGELOG v7.10.0 节](docs/CHANGELOG.md)；

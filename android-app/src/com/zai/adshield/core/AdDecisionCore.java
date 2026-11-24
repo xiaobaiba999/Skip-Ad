@@ -631,12 +631,16 @@ public final class AdDecisionCore {
                 if (cd > f.countdownN) f.countdownN = cd;
             } else if (b != null && vis && f.corners.size() < MAX_CORNERS
                     && (isCornerControl(b, ctx) || isMidEdgeControl(b, ctx))
+                    && !randVidDenied(node.viewId())
                     && !hasCornerChild(node, ctx)) {
                 // 【v3.5.0】角落无字小可点控件（多候选）：疑似图片跳过键
                 //（微博/喜马拉雅第一方开屏）；自身不可点时向上找可点祖先；
                 // 若还有更小的角落子控件则让位（子控件坐标点得更准）
                 //【v7.5.0】中部边带候选（strongOnly）：左/右缘任意高度的
                 // 无字小可点控件——仅强广告形态下出手（L4 逐候选门控）
+                //【v7.15.7】vid 诱导 token 否决与泛位置路径同源（审核轮加固：
+                // 角落/边带的头像·下载·红包类图标不再入候选——图片键边界闸
+                // 复活后该路径首次真正可达，收集门补齐与 randCands 同款防线）
                 NodeView click = clickable ? node : resolveClickable(node, 4);
                 if (click != null) {
                     CornerCand c = new CornerCand();
