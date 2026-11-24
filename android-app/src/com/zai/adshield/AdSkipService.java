@@ -347,6 +347,20 @@ public class AdSkipService extends AccessibilityService {
     private static final long BURST_WIN_MS = 1500;
     /* 多窗口扫描上限（能耗） */
     private static final int MAX_WINDOWS_SCAN = 3;
+    /* ═══ v7.15.8【事故修复】多窗扫描节流与微树门 ═══
+     * v7.15.7 事故复盘（用户实锤：升级后日志零记录、开屏全不跳——服务级
+     * 瘫痪）：旧实现在每个开屏窗的【每轮扫描】里无条件枚举 getWindows()
+     * 并对列表里【每个窗口】调 getRoot()——MIUI/HyperOS 窗口列表常 20+ 窗
+     * （状态栏/导航条/灵动岛/系统覆盖层全在列）= 每轮 20+ 次 binder 调用；
+     * 屏闪型开屏的内容事件经 80ms 节流补扫 → 12.5 轮/秒 × 20+ binder
+     * = 每秒 250+ 次跨进程往返打满服务主线程与 AccessibilityManagerService
+     * → 无障碍事件派发超时 → 系统杀服务 → 无日志零跳过整体瘫痪。
+     * 三重收敛：① 微树门（活动窗 ≤48 节点且零候选——Keep 型「跳过键住在
+     * 覆盖层、活动窗只剩 8 节点空壳」铁签名才枚举补窗）；② 400ms 枚举
+     * 节流（探针/扫描共用一本账）；③ 类型前置过滤（TYPE_APPLICATION 才
+     * getRoot——parcel 本地字段零 binder，状态栏/输入法/系统层全免）。 */
+    private static final long MULTI_WIN_ENUM_THROTTLE_MS = 400;
+    private static final int MULTI_WIN_MICRO_TREE_MAX = 48;
 
     /* 能耗治理：内存聚合 + 延迟落盘 */
     private static final long FLUSH_DELAY_MS = 15000;
@@ -2404,10 +2418,13 @@ public class AdSkipService extends AccessibilityService {
             if (cur == null || cur.intValue() != gen) return;
         }
         try {
-            /* v7.15.7：探针也走多窗口（仅开屏窗内）——Keep 型动态图开屏的跳过
-             * 键住在同包覆盖层窗口，只探 rootInActiveWindow 会漏（CLEAN 档案复活
-             * 机会被活动窗微树挡死）。文本/图形双探针逐根探测，任一命中即复活；
-             * 非开屏窗维持单根口径（IPC 零增量——多窗枚举只在开屏观察窗花）。 */
+            /* v7.15.7→v7.15.8【事故修复后口径】：探针多窗化保留（Keep 覆盖层
+             * 复活通道——CLEAN 档案窗只有探针在跑，不枚举就永远看不见覆盖层
+             * 里的跳过键），但 v7.15.7 的【无节流全量 getRoot】已收敛：
+             * collectRoots(allWins) 内部 400ms 枚举节流 + TYPE_APPLICATION
+             * 前置过滤（每窗最多 2.5 次枚举、每次只对同包应用窗 getRoot
+             * ——与 v7.3.0 回退路径同量级；文本/图形双探针逐根探测，任一
+             * 命中即复活；非开屏窗维持单根口径零增量）。 */
             boolean splashProbe = System.currentTimeMillis() - winStart <= splashDeadlineMs(winClassOf(pkg));
             AccessibilityNodeInfo[] roots = collectRoots(pkg, splashProbe);
             if (roots.length == 0) return;
@@ -3239,10 +3256,19 @@ public class AdSkipService extends AccessibilityService {
 
         try {
             /* 多窗口扫描：活动窗口优先，其次 getWindows() 同包窗口（弹窗/覆盖层）
-             * v7.15.7：开屏窗内 allWins=true——Keep 型动态图开屏的跳过键住在
-             * 同包覆盖层窗口（活动窗只有 8 节点微树），必须枚举补齐才能扫到。 */
-            AccessibilityNodeInfo[] roots = collectRoots(pkg, splashLive);
+             * ═══ v7.15.8【事故修复】两段式多窗扫描（v7.15.7 服务级瘫痪根治）═══
+             * v7.15.7 死因：此处曾无条件传 splashLive=true 枚举全部窗口并对每个
+             * 窗口 getRoot()——MIUI 20+ 窗 × 屏闪事件 80ms 节流补扫（12.5 轮/秒）
+             * + 18 档梯子 = 每秒 250+ 次 binder 往返 → 事件派发超时 → 系统杀
+             * 服务 → 「日志零记录、开屏全不跳」整体瘫痪（真机实锤）。
+             * 现在首段只扫活动窗（与 v7.15.6 byte-for-byte 同路径，普通应用
+             * 零增量零回归）；循环尾部微树门（活动窗 ≤48 节点且零候选——
+             * Keep 型「跳过键住覆盖层、活动窗只剩 8 节点空壳」铁签名）才
+             * collectExtraRoots 补窗（400ms 节流 + 类型过滤，见常量区复盘）。 */
+            AccessibilityNodeInfo[] roots = collectRoots(pkg, false);
             if (roots.length == 0) return;
+            java.util.ArrayList<AccessibilityNodeInfo> rootsL =
+                    new java.util.ArrayList<>(java.util.Arrays.asList(roots));
 
             Long lastClick = lastClickAt.get(pkg);
             boolean clickCoolOK = lastClick == null || now - lastClick >= COOLDOWN_MS;
@@ -3254,6 +3280,7 @@ public class AdSkipService extends AccessibilityService {
             ScanFind lastFind = null;        // v4.3.0：最后一个根的扫描画像（同上）
             Ctx lastCtx = null;              // v5.1.0：最后一个根的决策上下文（零候选退避用）
             int nodesSum = 0;                // v7.15.7：多根节点总数（未命中日志「树 8+42 节点」）
+            StringBuilder nodesDetail = new StringBuilder(12); // v7.15.8：每根节点明细（多根时「8+42」）
 
             /* ═══ v3.14.0 跳过后反馈弹窗（issue#21 实锤：喜马拉雅跳过后 10 次
              * 有 8 次弹「不喜欢/反馈投诉」底部面板）——反馈面板在场 = 广告
@@ -3262,19 +3289,19 @@ public class AdSkipService extends AccessibilityService {
              * 菜单绝不碰）；命中即接管本轮，绝不透过面板点广告残留跳过键 ═══ */
             if (handleFeedbackSheet(pkg, roots, clickAttempts, now)) return;
 
-            for (int ri = 0; ri < roots.length; ri++) {
+            for (int ri = 0; ri < rootsL.size(); ri++) {
                 // v3.13.0 验证码横幅防护②：树内任一节点带「验证码/校验码/
                 // 动态码/动态密码」文案（SystemUI 横幅窗/应用内自绘提示条/
                 // 银行登录页）——本窗口绝不扫描、绝不点击、绝不学习。
                 // 预算 60：横幅窗树极浅，零性能顾虑
-                if (AdDecisionCore.treeHasCodeBannerMarker(new NodeAdapter(roots[ri]), 60)) {
+                if (AdDecisionCore.treeHasCodeBannerMarker(new NodeAdapter(rootsL.get(ri)), 60)) {
                     codeBannerGuardLog(pkg, now);
                     continue;
                 }
                 /* v5.0.0 小程序容器保护（树标识兜底）：类名未知的漏网容器
                  * （树内 miniapp/appbrand/nebula vid 或「小程序」标题）
                  * 同样保护——只跳过本根的决策，不影响其他窗口。 */
-                if (MiniProgramGuard.treeHasMiniProgramMarker(new NodeAdapter(roots[ri]), 80)) {
+                if (MiniProgramGuard.treeHasMiniProgramMarker(new NodeAdapter(rootsL.get(ri)), 80)) {
                     miniGuardLog(pkg, now);
                     continue;
                 }
@@ -3311,14 +3338,14 @@ public class AdSkipService extends AccessibilityService {
                 ctx.videoApp = com.zai.adshield.core.RuleEngine.isVideoApp(pkg);
                 try {
                     android.graphics.Rect rootR = new android.graphics.Rect();
-                    roots[ri].getBoundsInScreen(rootR);
+                    rootsL.get(ri).getBoundsInScreen(rootR);
                     ctx.halfScreenAd = rootR.height() > 0 && screenHeight > 0
                             && rootR.height() <= screenHeight * 6 / 10
                             && rootR.bottom >= screenHeight * 9 / 10;
                 } catch (Throwable ignored) {
                 }
                 if (splashLive || popupLive || ctx.halfScreenAd) {
-                    ctx.updateDialog = detectUpdateDialogSigns(roots[ri]);
+                    ctx.updateDialog = detectUpdateDialogSigns(rootsL.get(ri));
                 }
                 /* ═══ v5.5.0 模块三：设备分级 + 电量联动动态降级 ═══
                  * 低端机低电量 → 扫描预算 ×0.6、突发检测关闭；仅作用于
@@ -3368,10 +3395,10 @@ public class AdSkipService extends AccessibilityService {
                      * 上的重复 DFS）；探针不中再走五层规则 DFS（能力不减）。 */
                     java.util.ArrayList<Hit> hits = new java.util.ArrayList<Hit>();
                     energyProbes++;
-                    Hit probeHit = nativeTextProbe(roots[ri], ctx);
+                    Hit probeHit = nativeTextProbe(rootsL.get(ri), ctx);
                     if (probeHit != null) hits.add(probeHit);
                     if (hits.isEmpty() && splashLive) {
-                        hits = RuleEngine.matchAll(new NodeAdapter(roots[ri]), ctx, 4);
+                        hits = RuleEngine.matchAll(new NodeAdapter(rootsL.get(ri)), ctx, 4);
                     }
                     boolean needSub = hits.isEmpty() || clickAttempts >= hits.size();
                     if (needSub) {
@@ -3380,7 +3407,7 @@ public class AdSkipService extends AccessibilityService {
                              * 内置兑底；各贡献一个候选进点击轮换——单源候选失效
                              * 不再拖死整轮，市场规则不再被内置静态快照短路饿死） */
                             java.util.ArrayList<Hit> sh = SubscriptionManager.matchSources(
-                                    pkg, new NodeAdapter(roots[ri]), ctx);
+                                    pkg, new NodeAdapter(rootsL.get(ri)), ctx);
                             if (!sh.isEmpty()) hits.addAll(sh);
                         } catch (Throwable ignored) {
                         }
@@ -3400,7 +3427,7 @@ public class AdSkipService extends AccessibilityService {
                          * 门控（出手时机=倒计时将尽，出手即命中）。═══ */
                         if (cdHit == 0 && !"sub_gkd".equals(hit.appId)) {
                             cdHit = com.zai.adshield.core.RuleEngine.windowCountdownHint(
-                                    new NodeAdapter(roots[ri]), ctx, hit.tapBounds);
+                                    new NodeAdapter(rootsL.get(ri)), ctx, hit.tapBounds);
                         }
                         if (!countdownWait(pkg, cdHit, clickAttempts, now)) {
                             Decision rd = new Decision();
@@ -3432,10 +3459,12 @@ public class AdSkipService extends AccessibilityService {
                 }
 
                 /* ═══ 兜底路径：决策核心（复杂信号）═══ */
-                ScanFind f = AdDecisionCore.walk(new NodeAdapter(roots[ri]), ctx);
+                ScanFind f = AdDecisionCore.walk(new NodeAdapter(rootsL.get(ri)), ctx);
                 lastFind = f;
                 lastCtx = ctx;
                 nodesSum += f.nodeCount; // v7.15.7：多根合计（覆盖层窗口的树规模可见）
+                if (nodesDetail.length() > 0) nodesDetail.append('+'); // v7.15.8：每根明细
+                nodesDetail.append(f.nodeCount);
                 /* v7.15.6 热区记账：本窗确认过全屏可点广告图 → nudgeScan
                  * 的 4s 后停扫豁免依据（动态图开屏的晚到跳过键 5~12s
                  * 仍可救回；窗口一切换 key 变化自动失效）。 */
@@ -3467,6 +3496,36 @@ public class AdSkipService extends AccessibilityService {
                      *  · 广告窗/学习窗/Dialog 窗绝不杀（窗口本身就是广告）；
                      *  · 杀链后内容事件由 900ms 救回通道降频放行（nudgeScan）。 */
                     chainKilledAt.put(pkg, winStart);
+                }
+                /* ═══ v7.15.8【事故修复后保留】微树多窗补扫（两段式第二段）═══
+                 * 门控五重全过才补窗：① 开屏窗内（splashLive）；② 本轮零
+                 * 出手（acted=false）；③ 当前根是【最后一根】且树 ≤48 节点
+                 * （MULTI_WIN_MICRO_TREE_MAX——Keep 型「活动窗只剩 8 节点
+                 * 空壳、跳过键住覆盖层」铁签名；正常窗 100+ 节点永不触发）；
+                 * ④ 五类候选全空（真零信号，有候选已在上方正常出手）；
+                 * ⑤ 400ms 枚举节流（multiWinEnumOk——探针/扫描共用账）。
+                 * 补窗后循环继续（ri 递增自然扫到新根：规则探针/DFS/执行
+                 * 全路径复用）；补窗成功打点 multiWinLog（每窗一条，
+                 * Keep 型覆盖层问题日志直接可诊断）。 */
+                if (ri == rootsL.size() - 1 && rootsL.size() < MAX_WINDOWS_SCAN
+                        && splashLive && !acted
+                        && f.nodeCount > 0 && f.nodeCount <= MULTI_WIN_MICRO_TREE_MAX
+                        && f.skipCands.isEmpty() && f.fakeCands.isEmpty()
+                        && f.corners.isEmpty() && f.randCands.isEmpty() && !f.foundClose
+                        && multiWinEnumOk(pkg)) {
+                    AccessibilityNodeInfo[] extra = collectExtraRoots(pkg, rootsL);
+                    if (extra.length > 0) {
+                        /* 审核轮加固：补窗根也要过 v3.14.0 反馈面板终门（喜马拉雅式
+                         * 「跳过后反馈面板」若住在覆盖层窗，不重验就会绕过防线）。
+                         * 命中即接管本轮返回，绝不透过面板点广告残留跳过键。 */
+                        if (handleFeedbackSheet(pkg, extra, clickAttempts, now)) return;
+                        int before = rootsL.size();
+                        for (AccessibilityNodeInfo e : extra) {
+                            if (rootsL.size() >= MAX_WINDOWS_SCAN) break;
+                            rootsL.add(e);
+                        }
+                        multiWinLog(pkg, winStart, f.nodeCount, rootsL.size() - before);
+                    }
                 }
             }
 
@@ -3508,8 +3567,9 @@ public class AdSkipService extends AccessibilityService {
              * issue#38「许多第三方 App 无法跳过，日志也没记录」根治：开屏窗
              * 扫完零命中零出手时，记一条带窗口类名/树规模/可点控件样本的诊断
              * 日志——用户上传日志即可定位缺哪种规则（此前静默失败无从查起）。 */
-            if (!acted && splashLive) logScanMiss(pkg, roots, lastFind, nodesSum, now, winStart, false);
-            else if (!acted && popupLive) logScanMiss(pkg, roots, lastFind, nodesSum, now, winStart, true);
+            AccessibilityNodeInfo[] rootsFinal = rootsL.toArray(new AccessibilityNodeInfo[0]);
+            if (!acted && splashLive) logScanMiss(pkg, rootsFinal, lastFind, nodesSum, nodesDetail.toString(), now, winStart, false);
+            else if (!acted && popupLive) logScanMiss(pkg, rootsFinal, lastFind, nodesSum, nodesDetail.toString(), now, winStart, true);
 
             /* ═══ v5.3.0 宿主窗档案记账（每窗实例一次，CLEAN 判定依据）═══
              * 零候选（无可出手信号）→ 连续计数 +1；出现候选/已出手 → 归零
@@ -3549,7 +3609,7 @@ public class AdSkipService extends AccessibilityService {
      *  语义没丢——首条样本已足够补规则），其余静默。 */
     private final java.util.HashMap<String, Long> missThrottleAt = new java.util.HashMap<String, Long>();
 
-    private void logScanMiss(String pkg, AccessibilityNodeInfo[] roots, ScanFind f, int nodesSum,
+    private void logScanMiss(String pkg, AccessibilityNodeInfo[] roots, ScanFind f, int nodesSum, String nodesDetail,
                              long now, long winStart, boolean popup) {
         try {
             // v5.1.0 静默期：广告刚关，首页内容还在落定——不记噪声
@@ -3585,15 +3645,18 @@ public class AdSkipService extends AccessibilityService {
             if (f != null && (f.scrollPresent || f.editPresent) && f.nodeCount > 150 && !strongAdForm) return;
             StringBuilder sb = new StringBuilder(160);
             sb.append(popup ? "❓ 弹窗未命中（" : "❓ 开屏未命中（").append(shortPkg(pkg)).append("）");
-            /* v7.15.7 多根可见化：活动窗+覆盖层窗双根时「树 50 节点 · 根 2」
-             * （单根维持旧口径「树 N 节点」）——Keep 型动态图开屏的覆盖层树
-             * 规模从此在日志里直接可见，补规则不再盲猜。 */
+            /* v7.15.7 多根可见化 + v7.15.8 更详细（用户指令）：双根时
+             * 「树 8+42 节点 · 根 2」（每根明细直接可见——哪扇窗是空壳、
+             * 哪扇是广告窗不再盲猜）；单根维持旧口径「树 N 节点」；
+             * 附入窗时长（晚到跳过键的时序诊断——「入窗 3.2s」意味着
+             * 按钮可能更晚才出现）。 */
             if (roots.length > 1) {
-                sb.append(missNodes > 0 ? "树 " + missNodes + " 节点" : "树 ?")
-                        .append(" · 根 ").append(roots.length);
+                sb.append("树 ").append(nodesDetail != null && nodesDetail.length() > 0 ? nodesDetail : (missNodes > 0 ? String.valueOf(missNodes) : "?"))
+                        .append(" 节点 · 根 ").append(roots.length);
             } else {
                 sb.append(f != null ? "树 " + f.nodeCount + " 节点" : "树 ?");
             }
+            sb.append(" · 入窗 ").append(Math.max(0, (now - winStart) / 100L) / 10.0).append("s");
             String cls = winClassOf(pkg);
             if (cls.length() > 0) sb.append(" · 窗口 ").append(shortCls(cls));
             /* v7.15.7：候选样本覆盖全部根（旧版只看 roots[0]——覆盖层窗口里
@@ -3865,10 +3928,15 @@ public class AdSkipService extends AccessibilityService {
      * 覆盖层窗口】（广告 SDK 自建 Window）里，而 rootInActiveWindow 指向的
      * SplashActivity 只有 8 节点——旧版 collectRoots 只要活动窗口属于本包就
      * 短路返回，覆盖层窗口永远不被扫 = 按钮在场却零识别零记录（用户手动点
-     * 「跳过 4」被学习观察到，证明节点真实存在）。allWins=true 时枚举
-     * getWindows() 补齐同包其它窗口（活动窗口去重：getWindowId 对比）；
-     * 仅开屏窗传入（每轮一次 getWindows binder 调用，与既有回退路径同量级）
-     * ——弹窗/信息流/插屏路径维持旧口径零变化。 */
+     * 「跳过 4」被学习观察到，证明节点真实存在）。
+     * v7.15.8【事故修复】口径（v7.15.7 无条件全量枚举是服务级瘫痪元凶）
+     * ——见常量区事故复盘注释：
+     *  · allWins=true 仅由探针路径传入（CLEAN 档案窗的复活通道），且受
+     *   400ms 枚举节流 + TYPE_APPLICATION 前置过滤双闸（每窗最多 2.5 次
+     *   枚举，每次只对同包应用窗 getRoot——与 v7.3.0 回退路径同量级）；
+     *  · 全量扫描路径（tryScan）不再传 allWins：改为两段式——首段只扫
+     *   活动窗（与 v7.15.6 byte-for-byte 同路径零增量），微树零候选铁签名
+     *   （Keep 型）才由 collectExtraRoots 补窗（见 tryScan 循环尾部门控）。 */
     private AccessibilityNodeInfo[] collectRoots(String pkg, boolean allWins) {
         java.util.ArrayList<AccessibilityNodeInfo> out = new java.util.ArrayList<>();
         int activeWinId = Integer.MIN_VALUE;
@@ -3883,15 +3951,24 @@ public class AdSkipService extends AccessibilityService {
                 }
             }
         }
-        if (out.isEmpty() || allWins) {
+        /* v7.3.0 回退路径（活动窗不属于本包时全量枚举）保持原口径不变；
+         * v7.15.8 多窗枚举（allWins）才走节流闸——两路径互不影响。 */
+        boolean fallback = out.isEmpty();
+        if (fallback || (allWins && multiWinEnumOk(pkg))) {
             try {
                 List<AccessibilityWindowInfo> wins = getWindows();
                 if (wins != null) {
                     for (AccessibilityWindowInfo w : wins) {
                         if (out.size() >= MAX_WINDOWS_SCAN) break;
+                        if (w == null) continue;
+                        /* v7.15.8 类型前置过滤（仅多窗路径）：非应用窗
+                         * （状态栏/导航条/输入法/系统覆盖层）一律免 getRoot
+                         * ——parcel 本地字段零 binder，MIUI 20+ 窗列表的
+                         * binder 大头直接归零；回退路径保持旧口径不过滤 */
+                        if (!fallback && w.getType() != AccessibilityWindowInfo.TYPE_APPLICATION) continue;
                         // v7.3.0 算法：getRoot 单次缓存（旧版判空+取包名+再取 root
                         // 共三次跨进程序调用——窗口收集是每轮扫描的 binder 大户）
-                        AccessibilityNodeInfo r0 = w == null ? null : w.getRoot();
+                        AccessibilityNodeInfo r0 = w.getRoot();
                         CharSequence wp = r0 == null ? null : r0.getPackageName();
                         if (wp != null && pkg.contentEquals(wp)) {
                             // v7.15.7：活动窗口去重（getWindowId 同窗即同 id）
@@ -3908,6 +3985,75 @@ public class AdSkipService extends AccessibilityService {
         }
         return out.toArray(new AccessibilityNodeInfo[0]);
     }
+
+    /* ═══ v7.15.8 两段式第二段：微树门触发后的同包补窗枚举 ═══
+     * 只在 tryScan 尾部门控（微树 ≤48 节点 + 零候选 + 开屏窗 + 400ms 节流
+     * 全过）时调用；类型前置过滤同 collectRoots 多窗路径。返回【不含】
+     * 当前已在扫描列表里的窗口（审核轮加固：cur 全员 getWindowId 建集
+     * 去重——fallback 已带回 2 根时第 2 根不再被重复计入）。 */
+    private AccessibilityNodeInfo[] collectExtraRoots(String pkg, java.util.ArrayList<AccessibilityNodeInfo> cur) {
+        java.util.ArrayList<AccessibilityNodeInfo> out = new java.util.ArrayList<>();
+        try {
+            java.util.HashSet<Integer> seenIds = new java.util.HashSet<>();
+            if (cur != null) {
+                for (AccessibilityNodeInfo c : cur) {
+                    try {
+                        if (c != null) seenIds.add(Integer.valueOf(c.getWindowId()));
+                    } catch (Throwable ignored) {
+                    }
+                }
+            }
+            List<AccessibilityWindowInfo> wins = getWindows();
+            if (wins == null) return out.toArray(new AccessibilityNodeInfo[0]);
+            for (AccessibilityWindowInfo w : wins) {
+                int curN = (cur == null ? 0 : cur.size()) + out.size();
+                if (curN >= MAX_WINDOWS_SCAN) break;
+                if (w == null || w.getType() != AccessibilityWindowInfo.TYPE_APPLICATION) continue;
+                AccessibilityNodeInfo r0 = w.getRoot();
+                CharSequence wp = r0 == null ? null : r0.getPackageName();
+                if (wp != null && pkg.contentEquals(wp)) {
+                    try {
+                        if (!seenIds.add(Integer.valueOf(r0.getWindowId()))) continue; // cur 全员 + 本轮已收双重去重
+                    } catch (Throwable ignored) {
+                    }
+                    out.add(r0);
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return out.toArray(new AccessibilityNodeInfo[0]);
+    }
+
+    /** v7.15.8 多窗枚举节流（探针 collectRoots(allWins) 与 tryScan 微树门共用一本账） */
+    private final java.util.HashMap<String, Long> multiWinEnumAt = new java.util.HashMap<String, Long>();
+
+    private boolean multiWinEnumOk(String pkg) {
+        long now = System.currentTimeMillis();
+        Long last = multiWinEnumAt.get(pkg);
+        if (last != null && now - last.longValue() < MULTI_WIN_ENUM_THROTTLE_MS) return false;
+        multiWinEnumAt.put(pkg, Long.valueOf(now));
+        if (multiWinEnumAt.size() > 24) multiWinEnumAt.clear(); // 防膨胀
+        return true;
+    }
+
+    /* ═══ v7.15.8 多窗补扫启用日志（用户指令：日志更详细）═══
+     * 每窗实例仅一条：活动窗微树规模 + 补窗数直接可见——Keep 型覆盖层
+     * 问题从「识别不到且无日志」变为日志里直接可诊断。 */
+    private final java.util.HashMap<String, Long> multiWinLogFor = new java.util.HashMap<String, Long>();
+
+    private void multiWinLog(String pkg, long winStart, int activeNodes, int extraN) {
+        try {
+            Long logged = multiWinLogFor.get(pkg);
+            if (logged != null && logged.longValue() == winStart) return;
+            multiWinLogFor.put(pkg, Long.valueOf(winStart));
+            if (multiWinLogFor.size() > 24) multiWinLogFor.clear(); // 防膨胀
+            appendLog("🪟 多窗补扫启用（" + shortPkg(pkg) + "）：活动窗仅 " + activeNodes
+                    + " 节点且零候选（Keep 型：跳过键疑似在覆盖层窗口）→ 本窗补扫同包窗口 "
+                    + extraN + " 个");
+        } catch (Throwable ignored) {
+        }
+    }
+
 
     /** 执行决策；返回 true = 已出手（熔断扫描链） */
     private boolean execute(String pkg, Decision d, ScanFind f, Ctx ctx, boolean clickCoolOK, long now) {

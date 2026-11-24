@@ -1,4 +1,4 @@
-/* 开屏卫士 v7.15.7 · 激进模式重构版（基于 v7.6.0 激进模式基线 · 7.6 之后版本整体召回后的重制版；v7.15.7 Keep/CSDN 动态图开屏二重根治：同包覆盖层窗口多窗扫描 + 图片键边界闸语义换源 + 底栏新增「版本」页 + 开屏提示 3 秒观闸与亮字承诺） */
+/* 开屏卫士 v7.15.8 · 激进模式重构版（基于 v7.6.0 激进模式基线 · 7.6 之后版本整体召回后的重制版；v7.15.8 事故修复轮：v7.15.7 多窗扫描 binder 风暴致服务被杀（日志零记录/开屏全不跳）根治——两段式微树门控+节流+类型过滤 + 日志更详细 + 开屏提示强制观看 5 秒） */
 "use strict";
 
 /* ══════════ 环境 ══════════ */
@@ -23,8 +23,8 @@ const store = {
 };
 
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "7.15.7"; }
-function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "85700"; }
+function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "7.15.8"; }
+function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "85800"; }
 
 /* ══════════ 吉祥物（v4.1.0 全新形象：白机器人小侠 + 绿披风跳跃） ══════════
  * 与启动器图标同源；state: on（跳跃浮动）/ off（灰度待命） */
@@ -35,18 +35,17 @@ function mascotImg(size, state, head) {
 
 $("#brand-logo").innerHTML = mascotImg(30, "on", true);
 
-/* ═══ v7.15.7 版本记录（Keep/CSDN 动态图开屏二重根治 + 底栏「版本」页）═══ */
+/* ═══ v7.15.8 版本记录（事故修复轮：v7.15.7 服务级瘫痪根治）═══ */
 const CURRENT_RELEASE = {
   date: "2026-11-25",
-  title: "Keep/CSDN 动态图开屏二重根治（多窗扫描+图片键边界闸）+ 底栏新增「版本」页",
+  title: "v7.15.7 升级后日志零记录/开屏全不跳事故修复（多窗扫描性能风暴收敛）+ 开屏提示强制观看 5 秒",
   features: [
-    "同包覆盖层窗口多窗扫描（Keep 根治）：Keep 难拦型开屏的「跳过」键住在同包覆盖层窗口里，旧版只扫活动窗（8 节点微树）永远看不见——现在开屏窗内扫描/探针全量枚举同包窗口，覆盖层里的跳过键直接可见可点",
-    "图片跳过键边界闸语义换源（CSDN 根治）：角落/泛位置纯图键不再被「语义断言（非跳过/关闭方向）」一票否决——零文案零 vid 证据时换场景+严格形态双重门（面积 ≤6% 屏三重尺寸门），有文案但非跳过语义的真诱饵照旧一票否决",
-    "底栏新增「版本」页：当前版本与版本记录从「我的」抽出独立成页（四底栏：首页/帮助/版本/我的），「我的」页专注卫士使用报告与引擎日志",
-    "开屏提示双升级：亮字承诺「每周根据日志问题至少迭代版本一次」；至少观看 3 秒才可操作「知道了/去上传日志/12 小时不再提示」（按钮禁用+倒计时，到点自动解锁）",
-    "未命中日志多根可见化：双根时显示「树 N 节点 · 根 2」，候选样本覆盖全部窗口（覆盖层里的真跳过键样本不再被吞）——补规则不再盲猜",
+    "事故根治（v7.15.7 回归）：v7.15.7 的多窗扫描在每轮扫描里无条件枚举全部窗口并对每个窗口跨进程取根——屏闪型开屏每秒 250+ 次 binder 往返打满服务与系统无障碍管道，事件派发超时被系统杀服务（=日志零记录、开屏全不跳的元凶）。现在改为两段式：普通窗与 v7.15.6 完全同路径零增量；仅 Keep 型铁签名（活动窗 ≤48 节点微树且零候选）才补扫同包覆盖层窗口（400ms 节流 + 应用窗类型过滤）",
+    "Keep/CSDN 修复能力全保留：覆盖层窗口里的「跳过」键照常可扫可点（探针复活通道 + 微树补扫双保险）；图片跳过键边界闸（零文案纯图键不再被语义断言误杀）原样保留",
+    "日志记录更详细（用户指令）：未命中日志新增每根节点明细（「树 8+42 节点 · 根 2」——哪扇窗是空壳哪扇是广告窗直接可见）与入窗时长；多窗补扫启用时打点「🪟 多窗补扫启用（活动窗仅 N 节点 → 补扫同包窗口 M 个）」——Keep 型覆盖层问题日志直接可诊断",
+    "开屏提示强制观看 5 秒（用户指令）：至少观看 5 秒才可操作「知道了/去上传日志/12 小时不再提示」（v7.15.7 为 3 秒；三按钮禁用 + 倒计时行 + 遮罩同期让路，到点自动解锁）",
   ],
-  summary: "v7.15.7 Keep/CSDN 动态图开屏二重根治（覆盖层多窗扫描 + 图片键语义换源）+ 底栏「版本」页 + 开屏提示 3 秒观闸与亮字承诺",
+  summary: "v7.15.8 事故修复轮：v7.15.7 多窗扫描 binder 风暴杀服务（日志零记录/开屏全不跳）根治 + Keep/CSDN 修复能力保留 + 日志更详细 + 开屏提示强制观看 5 秒",
 };
 
 /* v7.0.0 新版功能描述（规范：≤5 个标题、带序号；检查更新发现新版本时就地渲染
@@ -591,10 +590,11 @@ function renderHelpDynamic() {
  * v7.15.7 用户指令双落地：
  *  · 亮字承诺——「每周根据日志问题至少迭代版本一次」（tip-weekly
  *   品牌绿高亮行：用户日志驱动迭代节奏的公开承诺）；
- *  · 3 秒观闸——至少观看 3 秒才可操作三按钮（按钮禁用 + 倒计时行，
- *   遮罩点击同期让路；到点自动解锁，绝不永久卡死）。 */
+ *  · 观闸（v7.15.8 用户指令升级：3 秒 → 强制观看 5 秒）——至少观看
+ *   5 秒才可操作三按钮（按钮禁用 + 倒计时行，遮罩点击同期让路；
+ *   到点自动解锁，绝不永久卡死）。 */
 const TIP_12H_MS = 12 * 60 * 60 * 1000;
-const TIP_HOLD_MS = 3000; // v7.15.7：至少观看 3 秒才可操作
+const TIP_HOLD_MS = 5000; // v7.15.8（用户指令）：强制观看 5 秒才可操作（v7.15.7 为 3 秒）
 function tipDismissUntil() { return +store.get("tipDismissUntil", 0) || 0; }
 function tipPinVer() { return String(store.get("tipPinVer", "")); }
 function tipDue() {
@@ -621,17 +621,17 @@ function showSplashTip() {
     + '</ul>'
     /* v7.15.7 用户指令：亮字描述——每周根据日志问题至少迭代版本一次 */
     + '<div class="tip-weekly">每周根据日志问题<b>至少迭代版本一次</b>——你的日志直接驱动下一版</div>'
-    + '<div class="tip-hold" id="tip-hold" aria-live="polite">请阅读提示（3s）</div>'
+    + '<div class="tip-hold" id="tip-hold" aria-live="polite">请阅读提示（5s）</div>'
     + '<div class="tip-btns">'
     + '<button data-act="ok" class="tip-btn" disabled>知道了</button>'
     + '<button data-act="mute" class="tip-btn tip-btn-mute" disabled>12 小时不再提示</button>'
     + '<button data-act="upload" class="tip-btn tip-btn-go" disabled>去上传日志</button>'
     + '</div></div>';
   document.body.appendChild(wrap);
-  /* ═══ v7.15.7 3 秒观闸：三按钮禁用 + 倒计时行，到点解锁 ═══
+  /* ═══ v7.15.7 观闸 / v7.15.8 强制 5 秒：三按钮禁用 + 倒计时行，到点解锁 ═══
    * 计时器自清（到点 clearInterval），节点移除后回调零副作用
    * （detached 节点上 remove/disable 均无害）；观闸期内遮罩点击
-   * 同样让路（所有关闭通道封 3 秒——「至少观看」语义）。 */
+   * 同样让路（所有关闭通道封 5 秒——「强制观看」语义）。 */
   const holdEl = wrap.querySelector("#tip-hold");
   const btns = wrap.querySelectorAll(".tip-btn");
   let holdDone = false;
