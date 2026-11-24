@@ -101,7 +101,24 @@ if (certSha !== "05ada6e3f7a4fc6bf77449611c24f51e1ef4caa0a91a5cdd02c4d877738e6f7
 }
 
 /* ── 硬闸 3：main 已推送（HEAD == origin/main）── */
-execSync("git fetch origin main --quiet", { cwd: REPO_ROOT });
+/* fetch 带重试退避（沙箱到 github.com:443 间歇抖动——GnuTLS -110/连接超时
+ * 实测；api.github.com 与 github.com 路由不同步，不能因网关抽风误判未推送） */
+function fetchOriginMain() {
+  for (let i = 1; i <= 5; i++) {
+    try {
+      execSync("git fetch origin main --quiet", { cwd: REPO_ROOT, timeout: 60000 });
+      return true;
+    } catch (e) {
+      console.log(`[硬闸3] fetch 第 ${i}/5 次失败（网络抖动）——${e.message.split("\n")[1] || e.message}，5s 后重试`);
+      if (i < 5) execSync("sleep 5");
+    }
+  }
+  return false;
+}
+if (!fetchOriginMain()) {
+  console.error("✗ 拒绝发布：git fetch 连续 5 次失败（网络不可达——恢复后重试；管道幂等，未创建任何 tag/Release）");
+  process.exit(1);
+}
 const head = execSync("git rev-parse HEAD", { cwd: REPO_ROOT }).toString().trim();
 const originMain = execSync("git rev-parse origin/main", { cwd: REPO_ROOT }).toString().trim();
 console.log(`[硬闸3] HEAD=${head.slice(0, 10)} origin/main=${originMain.slice(0, 10)}`);
