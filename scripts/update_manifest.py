@@ -191,23 +191,14 @@ def main(argv):
     # 客户端下载后过同一 SHA-256/大小闸）。仓库 slug 从 Release 资产
     # browser_download_url（github.com/OWNER/REPO/releases/...）解析——
     # 与本脚本其余字段同源零虚构。
-    repo_slug = ""
-    try:
-        dl = apk_asset.get("browser_download_url") or ""
-        m = re.match(r"https://github\.com/([^/]+/[^/]+)/releases/", dl)
-        if m:
-            repo_slug = m.group(1)
-    except Exception:
-        repo_slug = ""
-    cdn_apk_url = ""
-    if repo_slug:
-        # v7.12.0 发布管线热修复（2026-11-23 实测）：cdn 接入点当日对 APK
-        # 文件返回 301→raw.githubusercontent.com（大陆阻断域——与 fastly 历史
-        # 行为同型，旧「cdn 直出可用」结论过时）；gcore 全日直出稳定
-        # （版本化 APK 直出 200 字节级一致、latest 别名陈旧但自愈）。镜像
-        # 字段改用 gcore——清单侧自动下载镜像链大陆可靠化的最小改动。
-        cdn_apk_url = "https://gcore.jsdelivr.net/gh/%s@main/android-app/dist/adshield-v%s.apk" % (
-            repo_slug, vn)
+    # v7.15.5：cdnApkUrl 字段整体撤除（不再生成）。死因（用户实锤：
+    # v7.15.1/v7.15.3 检测到新版本后点下载报「下载链接不在允许的发布
+    # 通道内」）：该字段（gcore.jsdelivr.net）被旧版客户端排进下载渠道链
+    # 首位，而其 Downloader 白名单不认 jsdelivr 域 → 首渠道被拒且 JS 侧
+    # 不换渠道 = 死局。清单撤字段后场端旧版首渠道回到 ghfast.top（白名单
+    # 内）即恢复；v7.15.5+ 客户端在本地由 apkFileName 合成 gcore 直链
+    # （UpdateManifest.pageJson + UpdateHosts.cdnApkUrl）——CDN 优先的
+    # 可达性保持，渠道面不进清单契约。
     manifest = {
         "schemaVersion": SCHEMA_VERSION,
         "versionName": vn,
@@ -217,7 +208,6 @@ def main(argv):
         "releaseNotes": rel.get("body") or "",
         "publishedAt": rel.get("published_at") or "",
         "apkUrl": apk_asset.get("browser_download_url") or "",
-        "cdnApkUrl": cdn_apk_url,
         "apkFileName": apk_asset.get("name") or "adshield.apk",
         "apkSha256": actual_sha,
         "apkSize": actual_size,

@@ -278,9 +278,18 @@ public final class UpdateManifest {
             out.put("apkDigest", c.apkSha256.length() > 0
                     ? ("sha256:" + c.apkSha256) : "");
             /* 中国大陆下载兜底镜像链：gcore CDN（仓库 dist 直出，全日可达）→
-             * ghfast.top 代理 → gh-proxy.com 代理（Release 资产加速） */
+             * ghfast.top 代理 → gh-proxy.com 代理（Release 资产加速）。
+             * v7.15.5：清单 cdnApkUrl 字段已撤（v7.15.0~v7.15.4 场端旧版
+             * 白名单拒 gcore → 渠道链首位死局的清单侧根治——旧版首渠道回到
+             * ghfast.top 即恢复）；本版起在此由 apkFileName 现场合成 gcore
+             * 直链（仓库 dist 归档与 Release 资产同字节同源），CDN 优先的
+             * 可达性保持。 */
+            String cdn = c.cdnApkUrl;
+            if (cdn == null || cdn.length() == 0) {
+                cdn = com.zai.adshield.core.UpdateHosts.cdnApkUrl(Net.REPO, c.apkFileName);
+            }
             JSONArray mirrors = new JSONArray();
-            if (c.cdnApkUrl.startsWith("https://")) mirrors.put(c.cdnApkUrl);
+            if (cdn.startsWith("https://")) mirrors.put(cdn);
             if (c.apkUrl.startsWith("https://")) {
                 mirrors.put("https://ghfast.top/" + c.apkUrl);
                 mirrors.put("https://gh-proxy.com/" + c.apkUrl);

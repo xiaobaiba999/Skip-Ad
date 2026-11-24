@@ -255,6 +255,14 @@ public class AdSkipService extends AccessibilityService {
     public static final int NOTIF_ALERT = 2;   // 服务断开提醒（KeepAliveReceiver 发，服务连上即撤）
 
     private static final long WINDOW_MS = 12000;       // 开屏时间窗
+    /* ═══ v7.15.5 开屏观察窗分域：SDK 广告窗 20s ═══
+     * 视频开屏（激励视频式开屏）的跳过键常在视频末 5~15s 才露头——12s 硬
+     * 封顶 = 字面意义的「不再扫」（旧时间线 v7.8.0 视频开屏卫士的核心
+     * 结论，版本线重制时随基线丢失，本轮最小恢复）。只对 SDK 广告窗
+     * （isAdActivityClass——窗口本身就是广告，零候选退避本就豁免）放宽；
+     * 普通窗 12s 不变（内容页早退/零候选退避防线原样在岗）。梯子侧
+     * bumpScanChain 对 SDK 广告窗同步补 14/16.5/19s 三档兜底针。 */
+    private static final long VIDEO_SPLASH_WINDOW_MS = 20000;
     /* v7.2.0 feed 窗闸：朋友圈等信息流窗不是开屏窗——旧 12s 保守闸把头几屏
      * feed 扫描全饿死；2.5s 即开扫（开屏链与 feed 同窗时由点击冷却互斥）。 */
     private static final long FEED_START_MS = 2500;
@@ -321,6 +329,9 @@ public class AdSkipService extends AccessibilityService {
     private static final long[] SCAN_AT =
             {0, 60, 150, 320, 520, 780, 1100, 1500, 1980, 2550, 3220, 4000,
                     4900, 5950, 7150, 8550, 10200, 12000};
+    /* v7.15.5：SDK 广告窗专用补档（配合 VIDEO_SPLASH_WINDOW_MS=20s——
+     * 视频开屏的跳过键常在视频末 5~15s 才露头；仅 isAdActivityClass 窗排）。 */
+    private static final long[] VIDEO_SPLASH_SCAN_AT = {14000, 16500, 19000};
     /* 返回键重试：每个窗口最多直断次数（个别广告拦截第一次返回键） */
     private static final int BACK_RETRY_MAX = 2;
     /* 弹窗窗期与冷却（v5.6.0：弹窗冷却 2500→2000ms——弹窗广告复验更快；
@@ -1971,7 +1982,7 @@ public class AdSkipService extends AccessibilityService {
                  * 不重置）；名单门 + 微信 sns 窗门 + 1.2s 节流 + 300 节点预算
                  * 双闸（功耗红线）；开屏窗期内让路（开屏路径优先）。 ═══ */
                 maybeFeedScan(pkg, now);
-                if (now - winAt(pkg) < WINDOW_MS) {
+                if (now - winAt(pkg) < splashDeadlineMs(winClassOf(pkg))) {
                     nudgeScan(pkg, now);
                     break;
                 }
@@ -2296,6 +2307,23 @@ public class AdSkipService extends AccessibilityService {
                 tryScan(pkg, winStart, at);
             }, at);
         }
+        /* ═══ v7.15.5 SDK 广告窗梯子补档（14/16.5/19s）═══
+         * 视频开屏观察窗 12s→20s（splashDeadlineMs）的梯子侧配套：骨架档
+         * 只到 12s，SurfaceView 视频窗零内容事件（树静默）时 12~20s 段
+         * 无人扫。只对 SDK 广告窗补三档（普通窗的功耗红线零变动；广告窗
+         * 本就全量梯子 + 零候选退避豁免，三档轻扫的代价可忽略）。 */
+        if (AdDecisionCore.isAdActivityClass(pCls)) {
+            for (int i = 0; i < VIDEO_SPLASH_SCAN_AT.length; i++) {
+                final long at = VIDEO_SPLASH_SCAN_AT[i];
+                handler.postDelayed(() -> {
+                    Integer cur = scanGen.get(pkg);
+                    if (cur == null || cur.intValue() != gen) return;
+                    Long killed = chainKilledAt.get(pkg);
+                    if (killed != null && killed.longValue() == winStart) return;
+                    tryScan(pkg, winStart, at);
+                }, at);
+            }
+        }
     }
 
     /* ═══ v5.5.0 模块三：设备分级 + 电量缓存（60s sticky 广播查询，热路径零成本）═══ */
@@ -2380,7 +2408,10 @@ public class AdSkipService extends AccessibilityService {
             ctx.pkg = pkg;
             ctx.activityId = winClassOf(pkg);
             ctx.elapsedMs = Math.max(0, System.currentTimeMillis() - winStart);
-            ctx.splashLive = ctx.elapsedMs <= WINDOW_MS;
+            /* v7.15.5：与 splashLive/让路同口径（splashDeadlineMs 唯一口径——
+             * 旧硬编码 WINDOW_MS 是散落第四处，统一收编；CLEAN 档案窗本身
+             * 只对普通内容窗成立，SDK 广告窗豁免 CLEAN，实际行为零变化） */
+            ctx.splashLive = ctx.elapsedMs <= splashDeadlineMs(winClassOf(pkg));
             ctx.guard = AdDecisionCore.isGuardPkg(pkg);
             Hit h = nativeTextProbe(root, ctx);
             if (h != null) {
@@ -2965,6 +2996,20 @@ public class AdSkipService extends AccessibilityService {
      *  就扫（旧设计新窗被旧窗的 2.5s 节流卡住，插层快进快出的场景全错过）。 */
     private void maybeInterstitialScan(String pkg, long now) {
         if (!masterOn) return;
+        /* ═══ v7.15.5 开屏窗让路（开屏/插屏严格分域）═══
+         * 前台应用的开屏观察窗内插屏卫士零出手——开屏窗归开屏路径独占
+         * （主引擎五层规则 + 订阅 + SDK 直断兜底链）；窗落定（观察窗过）
+         * 后插屏扫描接管。旧版在开屏窗第一帧就跑插屏扫描：① 插屏闸面
+         * （语境词/形态/近旁）对开屏窗并不适配——与开屏路径抢出手；
+         * ② 开屏窗的未命中被记成「插屏未命中」——日志归因错位（用户
+         * 指令：规则和日志严格区分开屏广告和插屏广告）。与 feed 让路
+         * （下方名单门）、content-changed 路径的开屏让路（既有语义）对齐。
+         * 例外——Dialog 窗不是开屏窗（开屏广告住 Activity 不住 Dialog）：
+         * 中途弹出的 Dialog 插层（v7.15.2 强窗形免语境的主场）不受让路
+         * 门影响，插屏卫士照常即时扫描（弹窗路径 10s + 插屏兜底双在岗）。 */
+        String wCls0 = winClassOf(pkg);
+        if (pkg.equals(lastFgPkg) && !isDialogClass(wCls0)
+                && now - winAt(pkg) < splashDeadlineMs(wCls0)) return;
         // 聊天主界面/小程序容器零扫描红线（与 feed 同源门）
         if (AdDecisionCore.isChatMainUi(pkg, winClassOf(pkg))) return;
         if (MiniProgramGuard.isMiniProgramWindow(pkg, winClassOf(pkg))) return;
@@ -3102,7 +3147,19 @@ public class AdSkipService extends AccessibilityService {
         long elapsed = now - winStart;
         // v4.1.0 前台门：开屏扫描链只对前台应用生效（非前台包的扫描
         // 请求一律降级为弹窗路径——绝不拿灵岛/悬浮窗树走开屏决策阶梯）
-        boolean splashLive = learningEnabled() && elapsed <= WINDOW_MS && pkg.equals(lastFgPkg);
+        /* ═══ v7.15.5【头号回归根治】解除「习惯学习」开关对 splashLive 的
+         * 误门控（用户实锤：很多 App 开屏的广告跳不了，日志也没有记录）═══
+         * 死因：v7.15.0 版本线重制基于 v7.6.0 基线重构时，把旧时间线
+         * v8.1.0 的本项修复丢了——learningEnabled() 又回来门控整个开屏扫描。
+         * 用户关掉「习惯学习」（设置页文案只说学习，无从知晓它管着全部
+         * 跳过）= 所有 App 开屏零扫描、零点击、零日志（logScanMiss 也住在
+         * splashLive 分支里——「日志也没有记录」与「跳不了」同源同灭）；
+         * 而学习写入 learnFromManualClick 反而没人管（名实完全颠倒）。
+         * 现在恢复 v8.1.0 语义：开关只管学习写入路径（本方法下方的
+         * learnFromManualClick 入口门控），开屏扫描由 masterOn 全局开关管。
+         * 观察窗同期分域：普通窗 12s；SDK 广告窗 20s（splashDeadlineMs
+         * ——视频开屏的跳过键常在视频末 5~15s 才露头）。 */
+        boolean splashLive = elapsed <= splashDeadlineMs(winClassOf(pkg)) && pkg.equals(lastFgPkg);
         boolean popupLive = popupShieldEnabled() && now < popupUntilGet(pkg) && popupCooldownOK(pkg, now);
         if (!splashLive && !popupLive) return;
         // v4.3.0 功耗：内容页早退后本窗固定扫描链已取消（nudge 补扫同步让路；
@@ -3275,9 +3332,12 @@ public class AdSkipService extends AccessibilityService {
                             rd.node = hit.gestureOnly ? null : hit.clickNode;
                             rd.bounds = hit.tapBounds;
                             /* v7.1.0：订阅命中带源标注（市场优先/内置兑底）——
-                             * 日志与 reasonZh 可诊断（订阅页两源命中也分别记账） */
+                             * 日志与 reasonZh 可诊断（订阅页两源命中也分别记账）。
+                             * v7.15.5：再携组名（GKD 组「开屏广告」「插屏广告」
+                             * 等——reasonZh 解析后日志严格区分广告类型）。 */
                             rd.reason = "sub_gkd".equals(hit.appId)
-                                    ? ("rule_sub_gkd_" + (String.valueOf(hit.src).startsWith("市场") ? "remote" : "builtin"))
+                                    ? ("rule_sub_gkd_" + (String.valueOf(hit.src).startsWith("市场") ? "remote" : "builtin")
+                                        + (hit.group != null && hit.group.length() > 0 ? "·" + hit.group : ""))
                                     : "rule_" + hit.appId;
                             /* v5.5.1（issue#64 微博误杀根治）：命中文案随 Decision
                              * 传递——gestureOnly（无可点祖先，微博图片跳过键常态）
@@ -3952,9 +4012,24 @@ public class AdSkipService extends AccessibilityService {
                             + (f.adBadge ? "「" + f.badgeLabel + "」角标" : "Dialog+营销话术")
                             + " + 关闭键「" + f.closeLabel + "」");
                     bumpStat(pkg, "popup");
+                } else if (d.reason != null
+                        && (d.reason.equals(com.zai.adshield.core.InterstitialGuard.ACTION_CLOSE)
+                            || d.reason.startsWith("feed_"))) {
+                    /* ═══ v7.15.5 专属路径日志/统计独占（开屏/插屏/信息流分域）═══
+                     * 旧版此处一律再打一条 ⚡ + auto 档，而插屏路径
+                     * （executeInterstitial 的 🛡 插屏广告 + feed 档）与信息流
+                     * 路径（executeFeed 的 🛡 信息流广告 P0/P1/P1X/P2 + feed
+                     * 档）各自还要再记一次 = 同一次出手双日志双计数（口径
+                     * 混流）。现在这两类路径的日志与统计全部由各自的执行器
+                     * 独占，本处零动作（复验链 scheduleVerifyScan 照排）。 */
                 } else {
+                    /* v7.15.5 场景标注（开屏/插屏严格区分）：开屏观察窗内的
+                     * 出手记「⚡ 开屏跳过」——与 🛡 插屏广告 / 🪟 弹窗广告 /
+                     * feed 三类日志各自成域，用户看日志即知是哪类广告。 */
+                    String sceneTag = (ctx != null && ctx.splashLive)
+                            ? "⚡ 开屏跳过（" : "⚡ 已点击跳过（";
                     if (attempts == 0) {
-                        appendLog("⚡ 已点击跳过（" + shortPkg(pkg) + "）：" + reasonZh(d.reason)
+                        appendLog(sceneTag + shortPkg(pkg) + "）：" + reasonZh(d.reason)
                                 + "（" + (lastGesture ? "真实触点·1:1 人手" : "无障碍代点兜底") + "）→ " + HumanTap.verifyDelayMs(attempts) + "ms 后复验，未关将换候选重试");
                     } else {
                         appendLog("🔁 复验未关闭 → 第 " + (attempts + 1) + " 次出手（" + shortPkg(pkg) + "）："
@@ -3962,7 +4037,9 @@ public class AdSkipService extends AccessibilityService {
                     }
                     if (d.reason != null && d.reason.startsWith("feed_")) {
                         /* v7.2.0：feed 路径不计 auto——信息流关闭由 executeFeed
-                         * P2 完成时单独记 feed（P1 拉菜单是中间动作，不虚增战绩） */
+                         * P2 完成时单独记 feed（P1 拉菜单是中间动作，不虚增战绩）。
+                         * v7.15.5：本分支为防御性保留（上方 else-if 已拦截 feed
+                         * 前缀与 inter_close——到这里的 reason 必非两者） */
                     } else {
                         bumpStat(pkg, "auto");
                     }
@@ -4309,6 +4386,16 @@ public class AdSkipService extends AccessibilityService {
     private volatile String lastGesturePkg = "";
 
     private static String reasonZh(String r) {
+        if (r == null) return "";
+        /* v7.15.5：订阅规则 reason 可能携带「·组名」尾（rule_sub_gkd_remote·开屏广告）
+         * ——startsWith 匹配 + 尾部组名解析（组名进日志：开屏/插屏严格分域）。 */
+        if (r.startsWith("rule_sub_gkd_remote") || r.startsWith("rule_sub_gkd_builtin")) {
+            int dot = r.indexOf('·');
+            String g = dot >= 0 ? r.substring(dot + 1) : "";
+            return "GKD 订阅规则命中（" + (r.startsWith("rule_sub_gkd_remote") ? "市场源优先" : "内置源兑底")
+                    + (g.length() > 0 ? "·组「" + g + "」" : "")
+                    + "——选择器定位控件）";
+        }
         if (r.equals("rule_global_exact")) return "内嵌规则·文案精确命中（0ms 即点）";
         if (r.equals("rule_app_exact")) return "内嵌规则·分应用文案命中";
         if (r.equals("rule_global_pattern")) return "内嵌规则·倒计时形态命中（门控后出手）";
@@ -4316,8 +4403,6 @@ public class AdSkipService extends AccessibilityService {
         if (r.equals("rule_global_vid")) return "内嵌规则·vid 跳过键（零文本图片键）";
         if (r.equals("rule_sdk_close_vid")) return "内嵌规则·SDK 窗图片关闭键";
         if (r.equals("rule_sub_gkd")) return "GKD 订阅规则命中（选择器定位控件）";
-        if (r.equals("rule_sub_gkd_remote")) return "GKD 订阅规则命中（市场源优先——选择器定位控件）";
-        if (r.equals("rule_sub_gkd_builtin")) return "GKD 订阅规则命中（内置源兑底——选择器定位控件）";
         if (r.equals("feed_p1_badge")) return "信息流广告披露角标（v7.1.0·自 v6.2.0 已验证实现移植）"; // feed 决策专用
         if (r.equals("feed_p2_close")) return "信息流广告关闭菜单中性项（v7.1.0·自 v6.2.0 已验证实现移植）";
         if (r.equals("skip_text")) return "文本跳过键";
@@ -4355,6 +4440,11 @@ public class AdSkipService extends AccessibilityService {
     /* ───────── 智能学习：观察手动点击 + className 指纹 ───────── */
 
     private void learnFromManualClick(String pkg, AccessibilityEvent event, long now) {
+        /* v7.15.5：「习惯学习」开关的唯一管辖点（v8.1.0 语义恢复）——只管
+         * 学习写入（文本规则 + 位置学习都从本入口进），绝不管扫描/出手。
+         * 旧版（v7.15.0~v7.15.4）开关反而在 tryScan 里门控整个开屏扫描、
+         * 这里却没人管——名实完全颠倒（见 splashLive 处注释）。 */
+        if (!learningEnabled()) return;
         if (now - winAt(pkg) > LEARN_WINDOW_MS) return;
         // v4.1.0：相机/拍摄窗里的手动操作绝不当「跳过键」学习
         //（issue#30：快门/翻转镜头/相册按钮被学成位置 → 下次进相机乱点）
@@ -4550,6 +4640,17 @@ public class AdSkipService extends AccessibilityService {
 
     /* ───────── 开关 ───────── */
 
+    /** v7.15.5：开屏观察窗截止（普通窗 12s；SDK 广告窗 20s——视频开屏的
+     *  跳过键常在视频末 5~15s 才露头；广告窗本身就是广告，放宽只是多等
+     *  不是多扫普通窗）。开屏窗判定（splashLive/nudge 让路/插屏让路）的
+     *  唯一口径——三处必须同函数，绝不散落。 */
+    private static long splashDeadlineMs(String winClass) {
+        return AdDecisionCore.isAdActivityClass(winClass) ? VIDEO_SPLASH_WINDOW_MS : WINDOW_MS;
+    }
+
+    /** 「习惯学习」开关（v8.1.0/v7.15.5 语义：只管 learnFromManualClick
+     *  学习写入路径，绝不门控开屏扫描——误门控即「关学习 = 全 App 开屏
+     *  零扫描零点击零日志」回归）。 */
     private boolean learningEnabled() {
         try {
             JSONObject st = loadState();

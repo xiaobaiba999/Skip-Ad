@@ -95,6 +95,16 @@ public class KeepAliveReceiver extends BroadcastReceiver {
             }, "sub-auto-import");
             subImportThread.setDaemon(true);
             subImportThread.start();
+            // v7.15.5：心跳顺带订阅瘦身评估（市场源零命中规则停用/复评——
+            // 纯内存计数 + 统一持久化，30 分钟一档零 prefs 热路径开销）
+            Thread subPruneThread = new Thread(() -> {
+                try {
+                    SubscriptionManager.maybePruneRemoteRules(ctx);
+                } catch (Throwable ignored) {
+                }
+            }, "sub-prune");
+            subPruneThread.setDaemon(true);
+            subPruneThread.start();
             // v4.2.0：心跳顺带检查自动日志提交（v6.1.0：8h 一日 3 次；v7.15.2
             // 维护前置：未到期/服务未运行/息屏秒回零开销；成功才计时——失败
             // 网络异常下一轮 30 分钟心跳自然重试，绝不夜间耗电）

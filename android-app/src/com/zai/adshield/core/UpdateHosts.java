@@ -82,4 +82,41 @@ public final class UpdateHosts {
         }
         return out;
     }
+
+    /* ═══ v7.15.5 下载通道白名单 + CDN 直链合成（用户实锤：v7.15.1/v7.15.3
+     * 检测到新版本后点下载报「下载链接不在允许的发布通道内」）═══
+     * 死因：latest.json 的 cdnApkUrl（gcore.jsdelivr.net）是渠道链首位，
+     * 而 Downloader.hostAllowed 白名单只认 github/githubusercontent/
+     * ghfast/gh-proxy——jsdelivr 四域全被拒，且 JS 侧渠道启动被拒不换
+     * 通道（死局）。修复三件套：
+     *  ① 本纯函数（isJsdelivrHost）：白名单收编 jsdelivr 四域——它们是
+     *     本仓库官方 CDN 发布通道（@main dist APK 直出，与 Release 资产
+     *     同字节同源），安装前 SHA-256 全量闸（v6.3.0）保持——通道扩张
+     *     不扩投毒面；JVM 可测（UpdateHostsTest）。
+     *  ② 清单侧撤 cdnApkUrl 字段（update_manifest.py + update/latest.json）
+     *     ——v7.15.0~v7.15.4 场端旧版看不到 gcore 渠道，首渠道回到
+     *     ghfast.top（白名单内），不升级也能恢复正常下载。
+     *  ③ 新版客户端（本版起）在 UpdateManifest.pageJson 无该字段时用
+     *     cdnApkUrl() 合成 gcore 直链——CDN 优先的可达性保持。 */
+
+    /** host 是否 jsdelivr 官方四域之一（精确等值；尾点 FQDN/大小写混淆收敛）。 */
+    public static boolean isJsdelivrHost(String host) {
+        if (host == null) return false;
+        String h = host.trim().toLowerCase(java.util.Locale.ROOT);
+        if (h.endsWith(".")) h = h.substring(0, h.length() - 1); // 尾点 FQDN 混淆
+        for (int i = 0; i < JSDELIVR_HOSTS.length; i++) {
+            if (JSDELIVR_HOSTS[i].equals(h)) return true;
+        }
+        return false;
+    }
+
+    /** 仓库 dist APK 的 gcore CDN 直链（清单 cdnApkUrl 撤除后的客户端合成；
+     *  fileName 非 .apk / 空仓库名 → 空串由调用方跳过）。 */
+    public static String cdnApkUrl(String repo, String apkFileName) {
+        if (repo == null || repo.length() == 0) return "";
+        if (apkFileName == null || apkFileName.length() == 0) return "";
+        String fn = apkFileName.trim();
+        if (!fn.endsWith(".apk") || fn.contains("/") || fn.contains("\\")) return ""; // 路径穿越收敛
+        return "https://gcore.jsdelivr.net/gh/" + repo + "@main/android-app/dist/" + fn;
+    }
 }

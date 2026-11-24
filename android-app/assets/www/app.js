@@ -696,10 +696,18 @@ function cmpVer(a, b) {
 }
 
 /* v7.15.0：静态清单 → 页面结构（与 Java UpdateManifest.pageJson 同形；
- * headlines 走既有 notesToHeadlines 解析） */
+ * headlines 走既有 notesToHeadlines 解析）
+ * v7.15.5：清单 cdnApkUrl 已撤（旧版客户端白名单拒 gcore → 渠道链首位
+ * 死局根治）；CDN 兜底直链由 apkFileName 现场合成（仓库 dist 归档直出，
+ * 与 Release 资产同字节同源——与 Java 侧 UpdateHosts.cdnApkUrl 同语义）。 */
 function manifestToPage(m) {
   const apkUrl = m.apkUrl || "";
-  const cdn = m.cdnApkUrl || "";
+  const apkFileName = m.apkFileName || "adshield.apk";
+  /* v7.15.5 审核对齐：与 Java 侧 UpdateHosts.cdnApkUrl 同款路径穿越收敛
+   * （只收纯 .apk 文件名——含 /\\ 的构造值不合成直链） */
+  const cdn = m.cdnApkUrl || (String(apkFileName).endsWith(".apk") && !/[\\/]/.test(apkFileName)
+    ? "https://gcore.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/android-app/dist/" + apkFileName
+    : "");
   const mirrors = [];
   if (cdn) mirrors.push(cdn);
   if (apkUrl) {
@@ -801,8 +809,20 @@ function beginChannel() {
       dl.lastBytes = -1;
       dl.lastMoveAt = Date.now();
       startProgressPoll(dl.prefix);
-    } else toast(r.error || "启动下载失败");
-  } catch (e) { toast("启动下载失败"); }
+    } else {
+      /* ═══ v7.15.5 渠道启动被拒自动换道（死局根治）═══
+       * 死因（用户实锤：v7.15.1/v7.15.3 点下载报「下载链接不在允许的
+       * 发布通道内」）：旧版此处只 toast 不换道——首渠道被白名单拒/
+       * 系统下载器拒后整条链直接死局，后面的 ghfast/gh-proxy/github
+       * 全部没机会上场。现在与「下载失败/无进展」同一换道语义：
+       * 启动被拒 → 自动切下一渠道；全部渠道都拒才如实报错。 */
+      if (!switchChannel("渠道启动被拒（" + (r.error || "未知") + "）")) {
+        toast(r.error || "启动下载失败");
+      }
+    }
+  } catch (e) {
+    if (!switchChannel("渠道启动失败")) toast("启动下载失败");
+  }
 }
 
 function switchChannel(reason) {
@@ -1245,6 +1265,11 @@ function renderReport(refresh) {
   secSub.push(reportLine("使用顺序", "市场规则优先 → 内置兜底 → 全局组垫底"));
   secSub.push(reportLine("市场源（导入·日更）", (sub.remoteHits || 0) + " 次命中" + (sub.remoteOk ? " ·「" + (sub.remoteName || "订阅") + "」" + (sub.remoteApps || 0) + " 款/" + (sub.remoteRules || 0) + " 条" : " · 未导入（订阅市场一键导入）")));
   secSub.push(reportLine("内置源（APK 快照）", (sub.builtinHits || 0) + " 次命中 · " + (sub.builtinApps || 0) + " 款/" + (sub.builtinRules || 0) + " 条"));
+  /* v7.15.5 订阅瘦身：市场源零命中规则自动停用（使用报告可见——命中过
+   * 的永不自动停用；30 天复评给日更规则二次机会） */
+  secSub.push(reportLine("订阅瘦身（自动）", (sub.prunedApps || 0) > 0
+    ? "已自动停用 " + (sub.prunedApps || 0) + " 款零命中应用的市场规则（内置规则不受影响；30 天后自动复评）"
+    : "未触发（市场规则评估 ≥300 次仍零命中才停用；命中过的不停）"));
   lines.push(reportFold("订阅两源命中", secSub));
   // ③ 应用战绩 Top5（秒跳/弹窗/手动合计）
   try {

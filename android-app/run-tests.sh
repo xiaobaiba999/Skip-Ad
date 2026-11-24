@@ -23,6 +23,12 @@
 #  关闭」被闸①精确等值全拒的真机死因根治；强窗形免语境——SDK 广告窗/Dialog
 #  形态本身即广告铁证，无角标插屏不再被「无语境词」一票否决；播放器「定时
 #  关闭」功能钮误触红线反例钉死）。
+# v7.15.5：新增 SubPruneTest（订阅规则瘦身——用户指令「命中很少的订阅规则
+#  去除掉」：零命中停用真值表/命中豁免/观察窗与评估量双门/30 天复评到期）
+#  + UpdateHostsTest 扩充 S5/S5b（下载白名单收编 jsdelivr 四域 + CDN 直链
+#  本地合成与路径穿越拒绝——v7.15.1/v7.15.3 点下载报「下载链接不在允许的
+#  发布通道内」死局根治）+ SubscriptionBuiltinTest 新增规则组名贯穿断言
+#  （Rule.group/Hit.group——开屏/插屏日志严格分域）。
 set -e
 set -o pipefail
 
@@ -59,7 +65,7 @@ echo "    编译产出: $OUT/classes"
 echo "==> [2/3] 运行测试套件"
 TOTAL_PASS=0
 TOTAL_FAIL=0
-for SUITE in MiniProgramGuardTest DecisionGuardTest SubscriptionBuiltinTest RegressionCoreTest MultiDeviceMatrixTest NonMainstreamAppTest RestoreGuardTest PowerGovernorTest RuleGovernorTest ComplianceGuardTest TapPointMatrixTest HumanTapMatrixTest BrandFocus308Test ReleaseNotesTest SubMirrorTest FeedAdGuardTest RuleOrderTest InterstitialGuardTest SplashCountdownTest AggressiveModeTest RearmPlannerTest UpdateHostsTest; do
+for SUITE in MiniProgramGuardTest DecisionGuardTest SubscriptionBuiltinTest RegressionCoreTest MultiDeviceMatrixTest NonMainstreamAppTest RestoreGuardTest PowerGovernorTest RuleGovernorTest ComplianceGuardTest TapPointMatrixTest HumanTapMatrixTest BrandFocus308Test ReleaseNotesTest SubMirrorTest FeedAdGuardTest RuleOrderTest InterstitialGuardTest SplashCountdownTest AggressiveModeTest RearmPlannerTest UpdateHostsTest SubPruneTest; do
   echo ""
   echo "══ $SUITE ══"
   if java -cp "$OUT/classes" "com.zai.adshield.test.$SUITE" | tee "$OUT/$SUITE.log"; then

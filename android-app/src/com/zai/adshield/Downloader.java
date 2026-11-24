@@ -251,8 +251,13 @@ public final class Downloader {
     /**
      * 发布通道 host 白名单（URL 解析后的 host 精确/后缀匹配）。
      * 允许：github.com · *.github.com · githubusercontent.com 及子域 ·
-     * ghfast.top · gh-proxy.com（v3.3.0 镜像通道）。
-     * 拒绝一切构造绕过：userinfo 混淆、子串注入、尾点 FQDN。 */
+     * ghfast.top · gh-proxy.com（v3.3.0 镜像通道）· jsdelivr 四域
+     * （gcore/cdn/fastly/testingcf——v7.15.5：仓库 dist APK 的官方 CDN
+     * 直出通道；安装前 SHA-256 全量闸保持，通道扩张不扩投毒面）。
+     * 拒绝一切构造绕过：userinfo 混淆、子串注入、尾点 FQDN。
+     * v7.15.5 死因根治（用户实锤：v7.15.1/v7.15.3 点下载报「下载链接
+     * 不在允许的发布通道内」）：渠道链首位的 gcore CDN 直链被旧白名单
+     * 拒之门外，且 JS 侧渠道启动被拒不换通道 = 死局。 */
     static boolean hostAllowed(String u) {
         try {
             java.net.URL url = new java.net.URL(u);
@@ -265,7 +270,8 @@ public final class Downloader {
             return h.equals("github.com") || h.endsWith(".github.com")
                     || h.equals("githubusercontent.com") || h.endsWith(".githubusercontent.com")
                     || h.equals("ghfast.top") || h.endsWith(".ghfast.top")
-                    || h.equals("gh-proxy.com") || h.endsWith(".gh-proxy.com");
+                    || h.equals("gh-proxy.com") || h.endsWith(".gh-proxy.com")
+                    || com.zai.adshield.core.UpdateHosts.isJsdelivrHost(h);
         } catch (Throwable t) {
             return false;
         }

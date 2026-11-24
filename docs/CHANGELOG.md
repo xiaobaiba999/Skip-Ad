@@ -1,5 +1,28 @@
 # 变更记录
 
+## v7.15.5 · 2026-11-24 · 下载通道死局根治 + 开屏扫描误门控解除（开屏/插屏严格分域）+ 订阅规则自动瘦身
+
+**用户实锤三合一**：① v7.15.1/v7.15.3 检测到新版本后点下载报「下载链接不在允许的发布通道内」；② 很多 App 开屏的广告跳不了、日志也没有记录（规则和日志须严格区分开屏广告和插屏广告）；③ 订阅的规则命中很少的去除掉。
+
+**死因链（三案各自闭合）**：
+
+1. **下载死局**：v7.15.0 起清单 `cdnApkUrl`（gcore.jsdelivr.net）被排进下载渠道链首位，而 `Downloader.hostAllowed` 白名单只认 github/githubusercontent/ghfast/gh-proxy——jsdelivr 四域全被拒；更致命的是 app.js `beginChannel` 对「渠道启动被拒」只 toast 不换道（下载失败/无进展有换道，启动被拒没有）→ 首渠道被拒 = 整条链死局，报错文案正是白名单的拒绝语
+2. **开屏全灭 + 零日志**：v7.15.0 版本线重制基于 v7.6.0 基线时，把旧时间线 v8.1.0 的修复丢了——`learningEnabled()`（「习惯学习」开关）又回来门控 `splashLive`。用户关掉该开关 = 所有 App 开屏零扫描、零点击、零日志（`logScanMiss` 也住在 splashLive 分支里，「日志没记录」与「跳不了」同源同灭）；而学习写入 `learnFromManualClick` 反而没人管（名实完全颠倒）
+3. **开屏/插屏归因错位**：`maybeInterstitialScan` 在开屏窗第一帧（TYPE_WINDOW_STATE_CHANGED 路径）就跑——插屏闸面对开屏窗不适配（与开屏路径抢出手），开屏窗未命中被记成「插屏未命中」（content-changed 路径有开屏让路，state-changed 路径没有——同语义两处不一致）
+
+**本轮交付**：
+
+1. **下载死局三件套根治**：① 白名单收编 jsdelivr 四域（`UpdateHosts.isJsdelivrHost` 纯函数——gcore/cdn/fastly/testingcf 是仓库 dist APK 官方 CDN 直出通道，与 Release 资产同字节同源；安装前 SHA-256 全量闸保持，通道扩张不扩投毒面）；② `beginChannel` 渠道启动被拒自动换道（与「下载失败/无进展」同一换道语义——全部渠道都拒才如实报错）；③ 清单撤 `cdnApkUrl` 字段（update_manifest.py + update/latest.json 同步）——v7.15.0~v7.15.4 场端旧版**不升级也能恢复**（首渠道回到 ghfast.top 白名单内）；v7.15.5+ 客户端在 `UpdateManifest.pageJson`/`manifestToPage` 由 apkFileName 现场合成 gcore 直链（`UpdateHosts.cdnApkUrl`——路径穿越收敛），CDN 优先的可达性保持
+2. **开屏误门控解除**：`splashLive = elapsed <= splashDeadlineMs(…) && pkg.equals(lastFgPkg)`（v8.1.0 语义恢复）；「习惯学习」开关回归只管 `learnFromManualClick` 入口（学习写入路径）；设置页开关文案同步澄清（「只管学习新跳过键——关闭不影响已有跳过能力」）
+3. **开屏/插屏严格分域**：`maybeInterstitialScan` 入口开屏观察窗让路（前台应用的开屏窗归开屏路径独占——主引擎五层规则 + 订阅 + SDK 直断兜底链；窗落定后插屏接管；非前台包不受此门影响）；开屏观察窗分域 12s/20s（`splashDeadlineMs`——SDK 广告窗 20s，视频开屏的跳过键常在视频末 5~15s 才露头；旧时间线 v7.8.0 视频开屏卫士结论的最小恢复）+ `bumpScanChain` 对 SDK 广告窗补 14/16.5/19s 三档兜底针（普通窗功耗红线零变动）+ content-changed 让路口径同步
+4. **日志严格区分广告类型**：开屏观察窗内出手记「⚡ 开屏跳过（应用）」（`ctx.splashLive` 场景标注）；插屏（inter_close）与信息流（feed_*）路径取消 execute() 的同次出手 ⚡ 日志 + auto 双计数（各自执行器 🛡 日志 + feed 档独占）；订阅命中 reason 携带 GKD 组名（`Rule.group`/`Hit.group` 新字段——「开屏广告」「插屏广告」等组名进 reasonZh 与日志，规则类型可归因）
+5. **订阅规则自动瘦身（SubPrune 纯策略 + SubscriptionManager 接线）**：市场源某应用规则评估 ≥300 次（跨 ≥3 天）仍零命中 → 自动停用该应用的市场规则匹配（`isSubPruned` 热路径跳过；内置源不受影响）；命中过的一律不停（「命中很少」的最安全边界是零——广告低频 ≠ 规则无效）；停用满 30 天自动复评 + 计数重置（订阅日更的规则有二次机会）；计数内存态 + 30 分钟维护心跳统一持久化（KeepAliveReceiver 挂点——prefs 零热路径 I/O）；停用打点「🧹 订阅瘦身」日志 + 使用报告「订阅瘦身（自动）」行
+6. **测试与验证**：新增 SubPruneTest（零命中停用真值表/命中豁免/观察窗/复评到期）+ UpdateHostsTest 扩充（isJsdelivrHost 四域与混淆收敛/cdnApkUrl 合成与路径穿越拒绝）+ SubscriptionBuiltinTest 组名断言（Rule.group 解析贯穿）；JVM 23 套件全绿（见 round 报告）；ECJ 全源码编译零错误；页面资产符号闸全过
+
+**版本口径**：versionCode 85500（> 85400 覆盖升级）；签名证书 SHA-256 05ada6e3…（与历史正式版本一致）。
+
+---
+
 ## v7.15.1 · 2026-11-24 · 息屏/解锁重入根治（真机日志实锤：锁屏污染前台追踪 → 补扫走偏 + 引擎致盲）
 
 **用户实锤**：扫描日志后确认 v7.15.0 的「亮屏/解锁视作重新进入」仍未生效——issue#94（Xiaomi 2410DPN6CC · Android 17 · v7.15.0 build 85000）真机引擎日志定案死因链：

@@ -193,6 +193,69 @@ public final class SubscriptionBuiltinTest {
         Hit bannerHit = sub.match("com.smile.gifmaker", bannerTree, bannerCtx, 400);
         TestHost.check(bannerHit == null, "满宽巨横幅绝不命中");
 
+        /* ════ v7.15.5 规则组名贯穿（开屏/插屏严格分域——日志可归因）════
+         * Rule.group 解析贯穿 + Hit.group 命中携带：自定义订阅里「开屏广告」
+         * 「插屏广告」两组各命中一次，断言组名分别随 Hit 交出（服务侧
+         * reasonZh/日志据此区分广告类型）。 */
+        TestHost.suite("内置订阅 · v7.15.5 规则组名贯穿（开屏/插屏分域）");
+        String dualJson5 = "{ name: '组名测试订阅', version: 1, apps: ["
+                + "{ id: 'com.example.splashapp', name: '组名测试', groups: ["
+                + "{ key: 0, name: '开屏广告', rules: [ { name: '开屏', matches: '@[text=\"跳过\"]' } ] },"
+                + "{ key: 1, name: '插屏广告', rules: [ { name: '插屏', matches: '@[text=\"关闭广告\"]' } ] }"
+                + "] } ] }";
+        Subscription dual = null;
+        try {
+            dual = Subscription.parse(dualJson5, 0, 0);
+        } catch (Exception e) {
+            System.out.println("  ❌ 组名测试订阅解析异常: " + e);
+        }
+        TestHost.check(dual != null, "双组订阅可解析");
+        if (dual != null) {
+            Subscription.App sa = null;
+            for (Subscription.App a : dual.apps) {
+                if ("com.example.splashapp".equals(a.id)) sa = a;
+            }
+            TestHost.check(sa != null && sa.rules.size() == 2, "两组各一条规则编译在库");
+            String g0 = sa != null && sa.rules.size() > 0 ? sa.rules.get(0).group : null;
+            String g1 = sa != null && sa.rules.size() > 1 ? sa.rules.get(1).group : null;
+            TestHost.checkEq("开屏广告", g0, "Rule.group 解析贯穿（组0=开屏广告）");
+            TestHost.checkEq("插屏广告", g1, "Rule.group 解析贯穿（组1=插屏广告）");
+            TestHost.checkEq("开屏广告-1", sa != null && sa.rules.size() > 0 ? sa.rules.get(0).name : null,
+                    "规则名保持「组名-序号」约定");
+            // 命中链：开屏组跳过键命中 → Hit.group=开屏广告
+            SimNode gSkipTree = new SimNode();
+            gSkipTree.boundsArr = new int[]{0, 0, 1080, 2400};
+            SimNode gSkipBtn = TestHost.skipButton("跳过");
+            gSkipBtn.clickable = true;
+            gSkipTree.add(gSkipBtn);
+            Hit sh = dual.match("com.example.splashapp", gSkipTree,
+                    ctx("com.example.splashapp", "com.example.splashapp.MainActivity"), 400);
+            TestHost.check(sh != null, "开屏组跳过键命中");
+            TestHost.checkEq("开屏广告", sh != null ? sh.group : null, "Hit.group 携带开屏广告组名（日志分域）");
+            // 命中链：插屏组关闭键命中 → Hit.group=插屏广告
+            SimNode gInterTree = new SimNode();
+            gInterTree.boundsArr = new int[]{0, 0, 1080, 2400};
+            SimNode gCloseBtn = new SimNode("关闭广告", 880, 90, 1010, 200);
+            gCloseBtn.clickable = true;
+            gInterTree.add(gCloseBtn);
+            Hit ih = dual.match("com.example.splashapp", gInterTree,
+                    ctx("com.example.splashapp", "com.example.splashapp.MainActivity"), 400);
+            TestHost.check(ih != null, "插屏组关闭键命中");
+            TestHost.checkEq("插屏广告", ih != null ? ih.group : null, "Hit.group 携带插屏广告组名（日志分域）");
+        }
+        // 内置订阅的组名也贯穿（appSplash 生成「开屏广告」组）
+        boolean builtinSplashGroup = false;
+        for (Subscription.App a : sub.apps) {
+            for (Subscription.Rule r : a.rules) {
+                if ("开屏广告".equals(r.group)) {
+                    builtinSplashGroup = true;
+                    break;
+                }
+            }
+            if (builtinSplashGroup) break;
+        }
+        TestHost.check(builtinSplashGroup, "内置订阅 appSplash 组名「开屏广告」贯穿");
+
         TestHost.done();
     }
 

@@ -66,6 +66,7 @@ public final class Subscription {
         public List<GkdSelector> excludes = new ArrayList<GkdSelector>();
         public boolean clickNode;      // true=performAction 点击控件本身
         public String name;            // 日志标识（group 名 + 序号）
+        public String group;           // v7.15.5：组名（「开屏广告」「插屏广告」等——命中日志严格区分广告类型）
         /* v4.2.0 GKD 规范字段 */
         public String[] activityIds = EMPTY_STRS;         // 空 = 任意 Activity
         public String[] excludeActivityIds = EMPTY_STRS;
@@ -220,6 +221,7 @@ public final class Subscription {
             Rule compiled = compileRule(Json5.asMap(rules.get(r)),
                     gname + "-" + (r + 1), defMax, defInterval, defMatchTime);
             if (compiled != null) {
+                compiled.group = gname; // v7.15.5：组名随规则携带（命中日志区分开屏/插屏）
                 app.rules.add(compiled);
                 total[0]++;
             }
@@ -451,6 +453,7 @@ public final class Subscription {
             h.label = "gkd:" + c.app.name + "/" + c.rule.name;
             h.clickNodeAction = c.rule.clickNode;
             h.src = c.app.name;
+            h.group = c.rule.group; // v7.15.5：组名（开屏广告/插屏广告/…——日志分域）
             h.tapBounds = t.bounds();
             NodeView click = AdDecisionCore.resolveClickable(t, 4);
             h.clickNode = click;

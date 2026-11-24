@@ -59,6 +59,23 @@ public final class SubscriptionManager {
     private static final java.util.HashMap<String, Long> ruleLastFireAt = new java.util.HashMap<>();
     private static final java.util.HashMap<String, Integer> ruleFireCount = new java.util.HashMap<>();
 
+    /* ═══ v7.15.5 订阅规则瘦身（用户指令：命中很少的订阅规则去除掉）═══
+     * 市场源（id667 · 610+ 款）里大量应用规则对该用户零命中——每 30 分钟
+     * 维护心跳评估（SubPrune 纯策略）：某应用市场规则评估 ≥300 次（跨
+     * ≥3 天）仍零命中 → 停用该应用的市场规则匹配（内置源不受影响；
+     * 30 天后自动复评——订阅日更有二次机会）。命中过的一律不停。
+     * 计数在内存（matchSources 热路径零 prefs I/O），维护心跳统一持久化。 */
+    /** pkg → {evals, hits, firstAt}（仅市场源；跨线程：扫描线程记数/维护线程评估——
+     *  ConcurrentHashMap 防结构并发；防膨胀上限与清理见 evictOldestEvalStats） */
+    private static final java.util.concurrent.ConcurrentHashMap<String, long[]> subEvalStats =
+            new java.util.concurrent.ConcurrentHashMap<>();
+    /** 已停用 pkg → 停用时刻（复评到期解封；扫描线程读/维护线程写——CHM） */
+    private static final java.util.concurrent.ConcurrentHashMap<String, Long> subPrunedAt =
+            new java.util.concurrent.ConcurrentHashMap<>();
+    private static boolean pruneStateLoaded = false;
+    /** 计数表防膨胀上限（超限按首评估时间淘汰最旧——活跃应用自然常驻） */
+    private static final int EVAL_STATS_MAX = 512;
+
     static final Subscription.Runtime RUNTIME = new Subscription.Runtime() {
         @Override
         public boolean allowFire(String key, int actionMaximum, long actionInterval) {
@@ -157,6 +174,8 @@ public final class SubscriptionManager {
             if (cached != null && cached.length() > 0) {
                 remoteSub = Subscription.parse(cached, 1, 1000);
             }
+            // v7.15.5：瘦身状态（停用表 + 计数）随装载恢复——服务启动即生效
+            loadPruneState(sp);
         } catch (Throwable e) { // v7.3.0：同上（旧 catch(Exception) 接不住 Error——坏缓存丢弃，绝不影响服务启动）
             remoteSub = null;
             lastError = "load: " + safeMsg(e);
@@ -184,20 +203,29 @@ public final class SubscriptionManager {
     public static java.util.ArrayList<RuleEngine.Hit> matchSources(String pkg, NodeView root, Ctx ctx) {
         java.util.ArrayList<RuleEngine.Hit> out = new java.util.ArrayList<RuleEngine.Hit>(2);
         Subscription builtin = builtinSub;
-        Subscription remote = remoteEnabled ? remoteSub : null;
+        /* v7.15.5 订阅瘦身：零命中停用的应用不再跑市场源匹配（内置源
+         * 不受影响——自家维护面永不自动停用）；评估/命中计数同步记账。 */
+        Subscription remote = remoteEnabled && !isSubPruned(pkg) ? remoteSub : null;
         boolean remoteCovers = remote != null && remote.covers(pkg);
         String[] order = com.zai.adshield.core.RuleRouter.sourceOrder(
                 remoteEnabled, remote != null, remoteCovers,
                 builtin != null, builtin != null && builtin.covers(pkg));
+        boolean remoteEvaluated = false;
         for (int i = 0; i < order.length; i++) {
             try {
                 boolean isRemote = com.zai.adshield.core.RuleRouter.SRC_REMOTE.equals(order[i]);
                 Subscription sub = isRemote ? remote : builtin;
                 if (sub == null) continue;
+                if (isRemote && !remoteEvaluated) {
+                    remoteEvaluated = true;
+                    noteRemoteEval(pkg); // v7.15.5：市场源真实参与匹配一次记一次（瘦身评估口径）
+                }
                 RuleEngine.Hit h = sub.match(pkg, root, ctx, 400, RUNTIME, isRemote ? "r|" : "b|");
                 if (h != null) {
-                    if (isRemote) remoteHits++;
-                    else builtinHits++;
+                    if (isRemote) {
+                        remoteHits++;
+                        noteRemoteHit(pkg); // v7.15.5：命中即永久免停（「命中很少」的零红线）
+                    } else builtinHits++;
                     h.src = com.zai.adshield.core.RuleRouter.zh(order[i]) + "·" + (h.src == null ? "" : h.src);
                     out.add(h);
                 }
@@ -205,6 +233,155 @@ public final class SubscriptionManager {
             }
         }
         return out;
+    }
+
+    /* ═══ v7.15.5 订阅瘦身：计数/停用/持久化（Android 侧接线）═══ */
+
+    /** 该应用的市场源规则是否已被瘦身停用 */
+    static boolean isSubPruned(String pkg) {
+        if (pkg == null || pkg.length() == 0) return false;
+        Long at = subPrunedAt.get(pkg);
+        return at != null;
+    }
+
+    /** 市场源评估计数 +1（首评锚 firstAt；防膨胀淘汰）*/
+    private static void noteRemoteEval(String pkg) {
+        long now = System.currentTimeMillis();
+        long[] st = subEvalStats.get(pkg);
+        if (st == null) {
+            if (subEvalStats.size() >= EVAL_STATS_MAX) evictOldestEvalStats();
+            subEvalStats.putIfAbsent(pkg, new long[]{1, 0, now});
+            return;
+        }
+        synchronized (st) { st[0]++; } // 同包并发计数安全（数组元素级锁）
+    }
+
+    /** 市场源命中计数 +1 */
+    private static void noteRemoteHit(String pkg) {
+        long[] st = subEvalStats.get(pkg);
+        if (st != null) synchronized (st) { st[1]++; }
+    }
+
+    /** 计数表膨胀淘汰：按 firstAt 淘汰最旧的 1/4（活跃应用自然常驻） */
+    private static void evictOldestEvalStats() {
+        try {
+            java.util.ArrayList<String> keys = new java.util.ArrayList<>(subEvalStats.keySet());
+            keys.sort((a, b) -> Long.compare(subEvalStats.get(a)[2], subEvalStats.get(b)[2]));
+            int drop = Math.max(1, keys.size() / 4);
+            for (int i = 0; i < drop && i < keys.size(); i++) subEvalStats.remove(keys.get(i));
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /**
+     * v7.15.5 订阅瘦身评估 + 持久化（KeepAliveReceiver 30 分钟维护心跳调用；
+     * 无 Context 场景秒回）。流程：装载持久化状态 → 复评到期解封（计数
+     * 重置）→ 零命中达标停用（日志告知）→ 全量落盘。
+     */
+    public static void maybePruneRemoteRules(Context ctx) {
+        if (ctx == null) return;
+        try {
+            ensureLoaded(ctx);
+            SharedPreferences sp = ctx.getSharedPreferences("adshield", Context.MODE_PRIVATE);
+            loadPruneState(sp);
+            long now = System.currentTimeMillis();
+            java.util.ArrayList<String> newlyPruned = new java.util.ArrayList<>();
+            /* ① 复评到期：解封 + 计数重置（订阅日更的规则获得二次机会）。
+             * ② 零命中达标停用（SubPrune 纯策略唯一裁决）。CHM 弱一致迭代
+             * 与结构变更天然安全（扫描线程照常记数，互不阻塞）。 */
+            java.util.Iterator<java.util.Map.Entry<String, Long>> it = subPrunedAt.entrySet().iterator();
+            java.util.ArrayList<String> expired = new java.util.ArrayList<>();
+            while (it.hasNext()) {
+                java.util.Map.Entry<String, Long> e = it.next();
+                if (com.zai.adshield.core.SubPrune.pruneExpired(e.getValue(), now)) {
+                    expired.add(e.getKey());
+                    it.remove();
+                }
+            }
+            for (int i = 0; i < expired.size(); i++) {
+                subEvalStats.remove(expired.get(i)); // 计数重置：从零再观察
+            }
+            for (java.util.Map.Entry<String, long[]> e : subEvalStats.entrySet()) {
+                long[] st = e.getValue();
+                synchronized (st) {
+                    if (com.zai.adshield.core.SubPrune.shouldPrune(st[0], st[1], st[2], now)) {
+                        subPrunedAt.put(e.getKey(), now);
+                        newlyPruned.add(e.getKey());
+                    }
+                }
+            }
+            savePruneState(sp);
+            /* ③ 停用告知（首批一次性——复评解封不刷屏） */
+            AdSkipService sv = AdSkipService.instance;
+            if (sv != null && !newlyPruned.isEmpty()) {
+                StringBuilder names = new StringBuilder();
+                for (int i = 0; i < newlyPruned.size() && i < 5; i++) {
+                    if (i > 0) names.append("、");
+                    names.append(shortPkgOf(newlyPruned.get(i)));
+                }
+                if (newlyPruned.size() > 5) names.append(" 等 ").append(newlyPruned.size()).append(" 款");
+                sv.appendLog("🧹 订阅瘦身（市场源）：" + newlyPruned.size() + " 款应用规则长期零命中已自动停用（"
+                        + names + "）——" + com.zai.adshield.core.SubPrune.policyLine());
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** 持久化装载："pkg=evals,hits,firstAt;…" + "pkg=at;…"（进程重启计数不丢） */
+    private static void loadPruneState(SharedPreferences sp) {
+        if (pruneStateLoaded) return;
+        pruneStateLoaded = true;
+        try {
+            String stats = sp.getString("subEvalStats", "");
+            if (stats != null && stats.length() > 0) {
+                for (String entry : stats.split(";")) {
+                    int eq = entry.indexOf('=');
+                    if (eq <= 0) continue;
+                    String[] nums = entry.substring(eq + 1).split(",");
+                    if (nums.length != 3) continue;
+                    subEvalStats.put(entry.substring(0, eq),
+                            new long[]{Long.parseLong(nums[0]), Long.parseLong(nums[1]), Long.parseLong(nums[2])});
+                }
+            }
+            String pruned = sp.getString("subPruned", "");
+            if (pruned != null && pruned.length() > 0) {
+                for (String entry : pruned.split(";")) {
+                    int eq = entry.indexOf('=');
+                    if (eq <= 0) continue;
+                    subPrunedAt.put(entry.substring(0, eq), Long.parseLong(entry.substring(eq + 1)));
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** 持久化落盘（CHM 弱一致迭代——元素 long[] 的读为单向递增计数，
+     * 64 位平台 long 读原子、偏差方向保守（最多少记一次），无功能危害） */
+    private static void savePruneState(SharedPreferences sp) {
+        try {
+            StringBuilder stats = new StringBuilder();
+            for (java.util.Map.Entry<String, long[]> e : subEvalStats.entrySet()) {
+                if (stats.length() > 0) stats.append(';');
+                stats.append(e.getKey()).append('=')
+                        .append(e.getValue()[0]).append(',')
+                        .append(e.getValue()[1]).append(',')
+                        .append(e.getValue()[2]);
+            }
+            StringBuilder pruned = new StringBuilder();
+            for (java.util.Map.Entry<String, Long> e : subPrunedAt.entrySet()) {
+                if (pruned.length() > 0) pruned.append(';');
+                pruned.append(e.getKey()).append('=').append(e.getValue());
+            }
+            sp.edit().putString("subEvalStats", stats.toString())
+                    .putString("subPruned", pruned.toString()).apply();
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** 包名缩短（v7.15.5 审核修正：直接复用 AdSkipService.shortPkgSt——
+     * 同包包级静态，语义同源零漂移，不再维护复制实现） */
+    static String shortPkgOf(String pkg) {
+        return AdSkipService.shortPkgSt(pkg);
     }
 
     /** v7.1.0：该应用的订阅两源覆盖一行诊断（扫描未命中日志用——
@@ -515,6 +692,9 @@ public final class SubscriptionManager {
         b.append(",\"updatedAt\":").append(lastUpdateAt);
         b.append(",\"remoteHits\":").append(remoteHits);
         b.append(",\"builtinHits\":").append(builtinHits);
+        /* v7.15.5 订阅瘦身：停用款数 + 策略一行（使用报告展示） */
+        b.append(",\"prunedApps\":").append(subPrunedAt.size());
+        b.append(",\"prunePolicy\":").append(jsonStr(com.zai.adshield.core.SubPrune.policyLine()));
         b.append(",\"error\":").append(jsonStr(lastError == null ? "" : lastError));
         try {
             boolean snapPending = ctx.getSharedPreferences("adshield", Context.MODE_PRIVATE)
