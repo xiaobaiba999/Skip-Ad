@@ -178,10 +178,13 @@ public final class NonMainstreamAppTest {
             ScanFind phF = AdDecisionCore.walk(ph, phCtx);
             Decision phD = AdDecisionCore.decide(phF, phCtx);
             TestHost.check(phD.action.equals(AdDecisionCore.A_NONE), "占位窗零动作");
-            TestHost.check(AdDecisionCore.zeroCandBackoff(2, 1300, phF.nodeCount),
-                    "微树 2 次扫描即退避（school.app 实锤连环占位窗）");
-            TestHost.check(!AdDecisionCore.zeroCandBackoff(1, 1300, phF.nodeCount),
-                    "微树 1 次不退（留一次确认机会）");
+            /* v7.15.9：微树空壳绝不退避（netdisk 实锤——晚到跳过键 2~3s
+             * 出现时 1.2s 快退已把救命档全砍，用户被迫手动点「跳过 4」）。
+             * 占位窗本就秒级消失，窗口一切换扫描链自动作废，不退避无功耗代价。 */
+            TestHost.check(!AdDecisionCore.zeroCandBackoff(2, 1300, phF.nodeCount),
+                    "微树空壳不退避（v7.15.9 晚到键救回——netdisk 实锤）");
+            TestHost.check(!AdDecisionCore.zeroCandBackoff(5, 5000, phF.nodeCount),
+                    "微树空壳多轮晚时也不退（时间梯子是静默窗唯一希望）");
             // 阶段 2：16 节点 + 倒计时跳过键「跳过 3」→ 形态命中
             SimNode mid = waimaiMidTree(w, h);
             Ctx midCtx = ctx("com.waimai.app", "com.waimai.app.MainActivity", w, h, 1500);
@@ -212,8 +215,15 @@ public final class NonMainstreamAppTest {
         TestHost.check(!AdDecisionCore.zeroCandBackoff(2, 2700, 135), "常规树 2 次不退");
         TestHost.check(AdDecisionCore.zeroCandBackoff(3, 2700, 135), "常规树 3 次/2.7s 退");
         TestHost.check(!AdDecisionCore.zeroCandBackoff(3, 2000, 135), "常规树 3 次但 2.0s 不退");
-        TestHost.check(AdDecisionCore.zeroCandBackoff(2, 1300, 4), "微树 2 次/1.3s 退");
-        TestHost.check(!AdDecisionCore.zeroCandBackoff(2, 1100, 4), "微树 1.1s 不退");
+        /* v7.15.9：微树空壳（≤ SHELL_TREE_NODES=48）绝不退避 */
+        TestHost.check(!AdDecisionCore.zeroCandBackoff(2, 1300, 4),
+                "微树空壳 2 次/1.3s 不退（v7.15.9 晚到键救回）");
+        TestHost.check(!AdDecisionCore.zeroCandBackoff(9, 11000, 8),
+                "微树空壳到窗口末期也不退（静默窗救命档全保留）");
+        TestHost.check(!AdDecisionCore.zeroCandBackoff(4, 3200, 48),
+                "48 节点空壳（Keep/weibo 型）不退");
+        TestHost.check(AdDecisionCore.zeroCandBackoff(3, 2700, 49),
+                "49 节点起恢复常规退避（空壳豁免边界）");
 
         TestHost.suite("跳过后静默期（纯逻辑）");
         long t0 = 1000000L;

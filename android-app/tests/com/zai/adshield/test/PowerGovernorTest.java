@@ -73,13 +73,15 @@ public final class PowerGovernorTest {
         TestHost.checkEq(3, PowerGovernor.nextStreak(3, false, false),
                 "非零候选未出手 → streak 保持（不奖不罚）");
 
-        // 梯子档位
-        TestHost.check(PowerGovernor.ladderFor(true, false) != null
-                        && PowerGovernor.ladderFor(true, false).length == 0,
-                "CLEAN 无订阅 → 空梯子（纯探针哨兵，零 DFS）");
+        // 梯子档位（v7.15.9：CLEAN 窗晚到键救回——netdisk 实锤「跳过 4」被手动点）
+        long[] noSub = PowerGovernor.ladderFor(true, false);
+        TestHost.check(noSub != null && noSub.length == 3
+                        && noSub[0] == 700 && noSub[1] == 1600 && noSub[2] == 3200,
+                "CLEAN 无订阅 → 晚档轻扫 {700,1600,3200}（0ms 由探针哨兵覆盖）");
         long[] sub = PowerGovernor.ladderFor(true, true);
-        TestHost.check(sub != null && sub.length == 2 && sub[0] == 0 && sub[1] == 700,
-                "CLEAN 有订阅 → 低频档 {0,700}（vid 规则保留 DFS 机会）");
+        TestHost.check(sub != null && sub.length == 4
+                        && sub[0] == 0 && sub[1] == 700 && sub[2] == 1600 && sub[3] == 3200,
+                "CLEAN 有订阅 → {0,700,1600,3200}（vid 规则 DFS + 晚到键救回档）");
         TestHost.check(PowerGovernor.ladderFor(false, false) == null,
                 "ACTIVE → null（服务侧原 13 档全量）");
 
@@ -286,6 +288,8 @@ public final class PowerGovernorTest {
                 streaks.put(key, PowerGovernor.nextStreak(streak, !zeroCand, zeroCand));
             } else {
                 probes530 += 1; // 探针哨兵（1 次/窗）
+                // 注：v7.15.9 起 CLEAN 窗实为「探针 + 晚档轻扫 3 档」——本模型断言的是
+                // v5.2.0/v5.3.0 历史策略口径（探针前置省电），档位扩张见 LADDER_CLEAN_* 断言
                 events530 += 2;
             }
             boolean chatLike = w[0].startsWith("nova.") || w[0].startsWith("mm.");

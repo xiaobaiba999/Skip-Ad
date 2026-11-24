@@ -357,10 +357,16 @@ public class AdSkipService extends AccessibilityService {
      * → 无障碍事件派发超时 → 系统杀服务 → 无日志零跳过整体瘫痪。
      * 三重收敛：① 微树门（活动窗 ≤48 节点且零候选——Keep 型「跳过键住在
      * 覆盖层、活动窗只剩 8 节点空壳」铁签名才枚举补窗）；② 400ms 枚举
-     * 节流（探针/扫描共用一本账）；③ 类型前置过滤（TYPE_APPLICATION 才
-     * getRoot——parcel 本地字段零 binder，状态栏/输入法/系统层全免）。 */
+     * 节流（v7.15.9 起探针/扫描【分账】——共用账时探针前置每 ~400ms 消耗
+     * 预算，扫描微树门在真机上永远拿不到枚举机会：#102 实锤 v7.15.8 全程
+     * 零🪟，两账各自 400ms 最坏双枚举仍比 v7.15.7 风暴低一个量级）；
+     * ③ 类型前置过滤（TYPE_APPLICATION 才 getRoot——parcel 本地字段零
+     * binder，状态栏/输入法/系统层全免）。 */
     private static final long MULTI_WIN_ENUM_THROTTLE_MS = 400;
-    private static final int MULTI_WIN_MICRO_TREE_MAX = 48;
+    /* v7.15.9：常量委托核心（SHELL_TREE_NODES）——微树空壳口径与
+     * zeroCandBackoff 豁免/多窗补扫门/未命中日志标记四处同源。 */
+    private static final int MULTI_WIN_MICRO_TREE_MAX =
+            com.zai.adshield.core.AdDecisionCore.SHELL_TREE_NODES;
 
     /* 能耗治理：内存聚合 + 延迟落盘 */
     private static final long FLUSH_DELAY_MS = 15000;
@@ -2279,9 +2285,9 @@ public class AdSkipService extends AccessibilityService {
         final long winStart = winAt(pkg);
         /* ═══ v5.3.0 宿主窗档案（李跳跳式三零治理 · #57/#58 功耗根治）═══
          * 连续 3 次零候选的 (pkg|cls) 判 CLEAN：
-         *  · 无订阅覆盖 → 纯探针哨兵（0ms 一次系统原生 findAccessibilityNode
-         *    文本搜索，命中即档案复活转全量路径），零 DFS 零调度零日志；
-         *  · 订阅覆盖（vid 规则探针够不到）→ 低频档 {0, 700}；
+         *  · 探针哨兵 0ms 统一排（多窗口径——覆盖层复活通道）；
+         *  · 晚档轻扫梯子：无订阅 {700,1600,3200} · 有订阅 {0,700,1600,3200}
+         *    （v7.15.9：netdisk 晚到键救回——见下方 v7.15.9 注释块）；
          *  · Dialog/SDK 广告窗/学习指纹/学习位置/72h 复查期到 → 全量梯子。 */
         final String pCls = winClassOf(pkg);
         if (profileSuppressScan(pkg, pCls)) {
@@ -2291,16 +2297,23 @@ public class AdSkipService extends AccessibilityService {
             energyProfileSkips++;
             boolean subCovered = SubscriptionManager.coversPkg(pkg);
             long[] ladder = PowerGovernor.ladderFor(true, subCovered);
-            if (ladder.length == 0) {
-                Long lastLog = profileLogAt.get(pkg);
-                long nowMs = System.currentTimeMillis();
-                if (lastLog == null || nowMs - lastLog > 60000) {
-                    profileLogAt.put(pkg, nowMs);
-                    appendLog("🔋 省电档案生效（" + shortPkg(pkg) + " · " + shortCls(pCls)
-                            + "）：连续 " + PowerGovernor.CLEAN_STREAK_MIN + " 次零候选，本窗只跑探针哨兵（零扫描零日志）");
-                }
-                handler.post(() -> probeSentinel(pkg, winStart, gen0));
-                return;
+            /* ═══ v7.15.9【netdisk 实锤根治】CLEAN 窗晚到键救回 ═══
+             * #102 实锤：netdisk「跳过 4」被用户手动点（手动样本 9→14）——
+             * SurfaceView 视频开屏零内容事件（「树静默」）时时间梯子是唯一
+             * 希望，而 v7.15.8 的 CLEAN 窗：无订阅 = 纯探针（0ms 一次），
+             * 有订阅 = {0,700}——晚到跳过键（1~3s 出现）无人再扫。
+             * 对策：① 探针哨兵 0ms 统一排（v7.15.8 只有无订阅窗才排——
+             * 订阅窗的 0ms 只有单活动窗口径，多窗探针复活通道缺席）；
+             * ② 晚档轻扫梯子（700/1600/3200，PowerGovernor.LADDER_CLEAN_*）
+             * ——微树/小树整树 walk ~1ms/档，典型日功耗模型红线不变。 */
+            handler.post(() -> probeSentinel(pkg, winStart, gen0));
+            Long lastLog = profileLogAt.get(pkg);
+            long nowMs = System.currentTimeMillis();
+            if (lastLog == null || nowMs - lastLog > 60000) {
+                profileLogAt.put(pkg, nowMs);
+                appendLog("🔋 省电档案生效（" + shortPkg(pkg) + " · " + shortCls(pCls)
+                        + "）：连续 " + PowerGovernor.CLEAN_STREAK_MIN
+                        + " 次零候选 → 探针哨兵 + 晚档轻扫（0.7/1.6/3.2s），不再全量梯子");
             }
             for (int i = 0; i < ladder.length; i++) {
                 final long at = ladder[i];
@@ -3224,7 +3237,8 @@ public class AdSkipService extends AccessibilityService {
         if (MiniProgramGuard.isMiniProgramWindow(pkg, winClassOf(pkg))) return;
         /* ═══ v5.3.0 档案省电：CLEAN 窗的任何补扫/救回/弹窗补扫请求（atMs<0）
          * 降级为探针哨兵（250ms 节流）——零 DFS；固定梯子档（atMs≥0）只在
-         * 非抑制窗或低频档 {0,700} 里排到（bumpScanChain 已保证）。 ═══ */
+         * 非抑制窗或晚档轻扫梯子 {0,700,1600,3200}/{700,1600,3200} 里排到
+         * （bumpScanChain 已保证）。 ═══ */
         if (atMs < 0 && profileSuppressScan(pkg, winClassOf(pkg))) {
             probeSentinelThrottled(pkg, winStart);
             return;
@@ -3503,16 +3517,19 @@ public class AdSkipService extends AccessibilityService {
                  * （MULTI_WIN_MICRO_TREE_MAX——Keep 型「活动窗只剩 8 节点
                  * 空壳、跳过键住覆盖层」铁签名；正常窗 100+ 节点永不触发）；
                  * ④ 五类候选全空（真零信号，有候选已在上方正常出手）；
-                 * ⑤ 400ms 枚举节流（multiWinEnumOk——探针/扫描共用账）。
+                 * ⑤ 400ms 枚举节流（v7.15.9 起扫描门专用账 microScanEnumOk
+                 * ——与探针账分账：v7.15.8 共用账被探针前置饿死，#102 实锤
+                 * 全程零🪟，weibo 6 节点/keep 8 节点空壳都没触发补扫）。
                  * 补窗后循环继续（ri 递增自然扫到新根：规则探针/DFS/执行
                  * 全路径复用）；补窗成功打点 multiWinLog（每窗一条，
-                 * Keep 型覆盖层问题日志直接可诊断）。 */
+                 * Keep 型覆盖层问题日志直接可诊断）；无窗可补也打点
+                 * microScanEmptyLog（区分「门被饿死」与「无同包覆盖层」）。 */
                 if (ri == rootsL.size() - 1 && rootsL.size() < MAX_WINDOWS_SCAN
                         && splashLive && !acted
                         && f.nodeCount > 0 && f.nodeCount <= MULTI_WIN_MICRO_TREE_MAX
                         && f.skipCands.isEmpty() && f.fakeCands.isEmpty()
                         && f.corners.isEmpty() && f.randCands.isEmpty() && !f.foundClose
-                        && multiWinEnumOk(pkg)) {
+                        && microScanEnumOk(pkg)) {
                     AccessibilityNodeInfo[] extra = collectExtraRoots(pkg, rootsL);
                     if (extra.length > 0) {
                         /* 审核轮加固：补窗根也要过 v3.14.0 反馈面板终门（喜马拉雅式
@@ -3525,6 +3542,11 @@ public class AdSkipService extends AccessibilityService {
                             rootsL.add(e);
                         }
                         multiWinLog(pkg, winStart, f.nodeCount, rootsL.size() - before);
+                    } else {
+                        /* v7.15.9：门开了但无窗可补也要留痕（每窗一条）——否则
+                         * 「饿死」与「无覆盖层」在日志里无从区分，下次排障
+                         * 还是盲猜。 */
+                        microScanEmptyLog(pkg, winStart, f.nodeCount);
                     }
                 }
             }
@@ -3655,6 +3677,14 @@ public class AdSkipService extends AccessibilityService {
                         .append(" 节点 · 根 ").append(roots.length);
             } else {
                 sb.append(f != null ? "树 " + f.nodeCount + " 节点" : "树 ?");
+                /* v7.15.9 微树空壳标记：单根 6~48 节点且五类候选全空——
+                 * Keep/weibo 型「跳过键住覆盖层或晚到」铁签名，上传日志
+                 * 直接可诊断（不再需要反推树规模）。 */
+                if (f != null && f.nodeCount > 5 && f.nodeCount <= MULTI_WIN_MICRO_TREE_MAX
+                        && f.skipCands.isEmpty() && f.fakeCands.isEmpty()
+                        && f.corners.isEmpty() && f.randCands.isEmpty() && !f.foundClose) {
+                    sb.append(" · 微树空壳（跳过键或在覆盖层/晚到）");
+                }
             }
             sb.append(" · 入窗 ").append(Math.max(0, (now - winStart) / 100L) / 10.0).append("s");
             String cls = winClassOf(pkg);
@@ -4024,7 +4054,7 @@ public class AdSkipService extends AccessibilityService {
         return out.toArray(new AccessibilityNodeInfo[0]);
     }
 
-    /** v7.15.8 多窗枚举节流（探针 collectRoots(allWins) 与 tryScan 微树门共用一本账） */
+    /** v7.15.8 多窗枚举节流（探针 collectRoots(allWins) 专用账——v7.15.9 分账） */
     private final java.util.HashMap<String, Long> multiWinEnumAt = new java.util.HashMap<String, Long>();
 
     private boolean multiWinEnumOk(String pkg) {
@@ -4033,6 +4063,26 @@ public class AdSkipService extends AccessibilityService {
         if (last != null && now - last.longValue() < MULTI_WIN_ENUM_THROTTLE_MS) return false;
         multiWinEnumAt.put(pkg, Long.valueOf(now));
         if (multiWinEnumAt.size() > 24) multiWinEnumAt.clear(); // 防膨胀
+        return true;
+    }
+
+    /* ═══ v7.15.9【分账根治】tryScan 微树门专用枚举账 ═══
+     * v7.15.8 的「探针/扫描共用一本账」（multiWinEnumOk）在真机上被探针
+     * 前置饿死：CLEAN 档案窗的内容事件 → nudge → tryScan(atMs<0) →
+     * probeSentinelThrottled → probeSentinel → collectRoots(allWins=true)
+     * 每 ~400ms 消耗一次预算；扫描链梯子档（atMs≥0）的微树门检查时预算
+     * 永远是「刚被探针用掉」→ 补扫死代码（#102 实锤：v7.15.8 整份日志
+     * 零🪟，weibo 6 节点 / keep 8 节点空壳都没触发）。分账后两路径各自
+     * 400ms 节流，最坏同窗双枚举 = 每秒 ~10 次 binder，仍比 v7.15.7
+     * 风暴（250+/秒）低一个量级以上。 */
+    private final java.util.HashMap<String, Long> microScanEnumAt = new java.util.HashMap<String, Long>();
+
+    private boolean microScanEnumOk(String pkg) {
+        long now = System.currentTimeMillis();
+        Long last = microScanEnumAt.get(pkg);
+        if (last != null && now - last.longValue() < MULTI_WIN_ENUM_THROTTLE_MS) return false;
+        microScanEnumAt.put(pkg, Long.valueOf(now));
+        if (microScanEnumAt.size() > 24) microScanEnumAt.clear(); // 防膨胀
         return true;
     }
 
@@ -4050,6 +4100,23 @@ public class AdSkipService extends AccessibilityService {
             appendLog("🪟 多窗补扫启用（" + shortPkg(pkg) + "）：活动窗仅 " + activeNodes
                     + " 节点且零候选（Keep 型：跳过键疑似在覆盖层窗口）→ 本窗补扫同包窗口 "
                     + extraN + " 个");
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /* ═══ v7.15.9 微树门「无窗可补」打点（每窗实例一条）═══
+     * 门开了但 collectExtraRoots 空手而归时留痕——否则「门被饿死」（v7.15.8
+     * 分账前常态）与「无同包覆盖层」在日志里无从区分，排障只能盲猜。 */
+    private final java.util.HashMap<String, Long> microScanEmptyFor = new java.util.HashMap<String, Long>();
+
+    private void microScanEmptyLog(String pkg, long winStart, int activeNodes) {
+        try {
+            Long logged = microScanEmptyFor.get(pkg);
+            if (logged != null && logged.longValue() == winStart) return;
+            microScanEmptyFor.put(pkg, Long.valueOf(winStart));
+            if (microScanEmptyFor.size() > 24) microScanEmptyFor.clear(); // 防膨胀
+            appendLog("🪟 微树补扫（" + shortPkg(pkg) + "）：无同包覆盖层可补（活动窗 "
+                    + activeNodes + " 节点空壳——跳过键若晚到由晚档梯子/探针救回）");
         } catch (Throwable ignored) {
         }
     }

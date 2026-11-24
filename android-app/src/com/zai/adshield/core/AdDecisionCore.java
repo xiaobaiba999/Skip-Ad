@@ -1116,18 +1116,30 @@ public final class AdDecisionCore {
      * 跳过键出现即触发内容事件，照点不误。服务侧调用，纯逻辑 JVM 可单测。 */
     public static final int ZERO_CAND_SCANS_KILL = 3;   // 常规窗：连续零候选扫描次数门槛
     public static final long ZERO_CAND_KILL_MS = 2600;  // 且窗口已过 2.6s（真广告按钮最晚 1~2s 渲染）
-    public static final int TINY_TREE_NODES = 6;        // 微树（加载占位窗：FrameLayout 4 节点类）
-    public static final int TINY_TREE_SCANS_KILL = 2;   // 微树 2 次即退（占位窗本就秒级消失）
-    public static final long TINY_TREE_KILL_MS = 1200;  // 微树退避最早时机
+    /* v7.15.9【netdisk 实锤根治】：微树快退常量（TINY_TREE_*）退役——
+     * #102 实锤 netdisk「跳过 4」被用户手动点击：微树空壳窗（活动窗只剩
+     * 6~8 节点）+ SurfaceView 视频开屏零内容事件（树静默）时，1.2s 快退把
+     * 1500ms+ 的救命档全砍了——晚到跳过键（2~3s 出现）永远等不到扫描。
+     * 微树整树 walk ~0.1ms/档，18 档全跑也不及一次常规树扫描——为省这点
+     * 电砍掉救命档得不偿失（保留常量防引用断裂，语义见 SHELL_TREE_NODES）。 */
+    public static final int TINY_TREE_NODES = 6;        // （v7.15.9 退役——见 SHELL_TREE_NODES）
+    public static final int TINY_TREE_SCANS_KILL = 2;   // （v7.15.9 退役）
+    public static final long TINY_TREE_KILL_MS = 1200;  // （v7.15.9 退役）
+    /** v7.15.9：微树空壳上限——≤此节点数的零候选空壳窗【绝不退避】。
+     * 与 AdSkipService.MULTI_WIN_MICRO_TREE_MAX 同源（服务侧常量委托本处），
+     * 「Keep/weibo 型活动窗空壳、跳过键晚到或住覆盖层」铁签名统一口径。 */
+    public static final int SHELL_TREE_NODES = 48;
     public static final long POST_SKIP_QUIET_MS = 2200; // 跳过成功后静默期（首页内容落定）
 
     /** 零候选退避判定：是否取消本窗剩余固定扫描档（nudge 救回通道不受影响）。
      *  供服务侧在每个根扫描后调用；广告窗/学习窗/Dialog 窗由服务侧先行豁免
-     *  （窗口本身就是广告，按钮可能晚到——绝不退避）。微树（≤6 节点）是
-     *  加载占位窗，退得更快（school.app 实锤 4 节点 FrameLayout 连环窗）。 */
+     *  （窗口本身就是广告，按钮可能晚到——绝不退避）。
+     *  v7.15.9：微树空壳（≤48 节点）同样绝不退避——空壳窗要么是秒级消失的
+     *  加载占位（窗口一切换扫描链自动作废），要么是「跳过键晚到/住覆盖层」
+     *  的广告壳（v5.1.0 的 1.2s 快退把 netdisk 实锤的晚到键救命档全砍了）。 */
     public static boolean zeroCandBackoff(int zeroCandScans, long elapsedMs, int nodeCount) {
-        if (nodeCount > 0 && nodeCount <= TINY_TREE_NODES) {
-            return zeroCandScans >= TINY_TREE_SCANS_KILL && elapsedMs >= TINY_TREE_KILL_MS;
+        if (nodeCount > 0 && nodeCount <= SHELL_TREE_NODES) {
+            return false; // 微树空壳：扫描成本可忽略，救命档全保留
         }
         return zeroCandScans >= ZERO_CAND_SCANS_KILL && elapsedMs >= ZERO_CAND_KILL_MS;
     }

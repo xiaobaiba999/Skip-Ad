@@ -31,8 +31,9 @@ package com.zai.adshield.core;
  *
  *    【探针前置】每个窗口 0ms 先跑原生文本探针（成本≈1 次系统调用）：
  *      · 探针命中 → 立即出手（文本类广告全流程零 DFS）；
- *      · 探针不中 + 窗档案 CLEAN → 本窗【零扫描零调度零日志】，
- *        仅保留内容事件探针哨兵（真跳过键一出现立即复活）；
+ *      · 探针不中 + 窗档案 CLEAN → 全量梯子取消，改排「探针哨兵 +
+ *        晚档轻扫 {700,1600,3200}」（v7.15.9：晚到跳过键救回——
+ *        SurfaceView 视频开屏零内容事件，时间梯子是唯一希望）；
  *      · 探针不中 + 窗档案 ACTIVE → 走原 13 档梯子（能力不减）。
  *
  *  ── 状态机（全部纯函数，JVM 可单测）─────────────────────────
@@ -60,8 +61,18 @@ public final class PowerGovernor {
     /** CLEAN 档案复查周期：72h 后放行一次全量扫描（防止广告改版永久漏拦） */
     public static final long PROFILE_RECHECK_MS = 72L * 3600 * 1000;
 
-    /** CLEAN 但订阅覆盖的应用保留的低频梯子（vid 类规则探针够不到） */
-    public static final long[] LADDER_CLEAN_SUB = {0L, 700L};
+    /** CLEAN 但订阅覆盖的应用保留的低频梯子（vid 类规则探针够不到）。
+     *  v7.15.9【netdisk 实锤根治】：{0,700} → {0,700,1600,3200}——晚到跳过键
+     *  （1~3s 出现，SurfaceView 视频开屏零内容事件「树静默」时时间梯子是
+     *  唯一希望）在 700ms 档后无人再扫 = 用户被迫手动点「跳过 4」（#102
+     *  手动样本 9→14 实锤）。加两档晚扫：微树/小树整树 walk ~1ms/档，
+     *  典型日功耗模型红线不变。 */
+    public static final long[] LADDER_CLEAN_SUB = {0L, 700L, 1600L, 3200L};
+
+    /** v7.15.9：CLEAN 无订阅窗的晚档轻扫梯子（0ms 由服务侧统一排的探针
+     *  哨兵覆盖——文本/图形双探针先行，晚档梯子只救「探针检测面之外的
+     *  晚到键」：分应用文案规则/订阅 vid/决策核心复杂信号需要整树 DFS）。 */
+    public static final long[] LADDER_CLEAN_NOSUB = {700L, 1600L, 3200L};
 
     /** 每应用 10 分钟窗内的突发识别窗预算（超了绝不再开） */
     public static final int BURST_BUDGET_PER_10MIN = 2;
@@ -86,7 +97,8 @@ public final class PowerGovernor {
      *   Dialog/PopupWindow 窗（弹窗识别本就独立门控）· SDK 广告窗指纹 ·
      *   className 学习指纹命中 · 学习位置在场（手动教过）·
      *   72h 复查期到（放行一次全量）。
-     * 订阅覆盖 → 抑制但降级为低频档 {0,700}（ladderFor 消费）。
+     * 订阅覆盖 → 抑制但降级为晚档轻扫梯子 {0,700,1600,3200}（ladderFor 消费；
+     * v7.15.9——晚到跳过键救回档，无订阅为 {700,1600,3200}）。
      *
      * @param cleanStreak   该 (pkg|cls) 连续零候选次数（持久化档案）
      * @param dialog        当前窗口是否 Dialog/Popup 形态
@@ -106,12 +118,15 @@ public final class PowerGovernor {
     /**
      * 本窗实际使用的梯子档位。
      * 未抑制 → null（服务侧原 13 档全量）；
-     * CLEAN + 订阅覆盖 → {0, 700} 低频档（探针 + 一次 vid DFS）；
-     * CLEAN 无订阅 → 空数组（纯探针哨兵，零 DFS）。
+     * CLEAN + 订阅覆盖 → {0,700,1600,3200}（vid 规则 DFS + 晚到键救回档）；
+     * CLEAN 无订阅 → {700,1600,3200}（0ms 探针哨兵由服务侧统一排——
+     * v7.15.8 只有本路径才排探针，v7.15.9 起两类 CLEAN 窗都排）。
      */
     public static long[] ladderFor(boolean suppress, boolean subCovered) {
         if (!suppress) return null;                 // null = 用服务侧原 13 档
-        return subCovered ? LADDER_CLEAN_SUB : new long[0];
+        /* 返回共享静态梯子（零分配）——【只读契约】调用方绝不改写元素；
+         * 需要可变副本的场景请自行 clone（历史调用点 bumpScanChain 仅遍历）。 */
+        return subCovered ? LADDER_CLEAN_SUB : LADDER_CLEAN_NOSUB;
     }
 
     /**

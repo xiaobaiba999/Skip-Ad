@@ -64,3 +64,4 @@ tool-results/
 # v5.5.0: Android 构建/测试编译中间产物
 android-app/build/
 android-app/build-tests/
+android-app/build-service-tests/

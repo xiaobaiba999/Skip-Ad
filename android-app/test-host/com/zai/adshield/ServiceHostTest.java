@@ -1,0 +1,497 @@
+package com.zai.adshield;
+
+import android.accessibilityservice.AccessibilityService;
+import android.view.accessibility.AccessibilityEvent;
+import android.view.accessibility.AccessibilityNodeInfo;
+import android.view.accessibility.AccessibilityWindowInfo;
+
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.List;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+/**
+ * 服务级 JVM 回归套件（v7.15.8 回归基建 · 首役：v7.15.7「开屏不跳+日志不记录」
+ * 全面失效事故定位）。
+ * ─────────────────────────────────────────────────────────────
+ * 通过桩 Android API 直接执行【真实 AdSkipService】（非核心类代理）：
+ *  · 窗口环境按真实系统语义装配（activeRoot + getWindows 全窗列表，
+ *    含异包窗口；同窗节点 windowId 一致——collectRoots 去重可验）；
+ *  · 事件经真实 onAccessibilityEvent 入口（全部防线在岗）；
+ *  · 扫描链经队列式 Handler 泵 drain() 全档执行；
+ *  · 断言：手势点击落点 + 引擎日志原文（appendLog 落 state.log）。
+ *
+ * 场景（v7.15.7 用户实锤复刻 + 回归红线）：
+ *  S1 Keep 覆盖层开屏：活动窗 8 节点微树 + 同包覆盖层 42 节点
+ *     「跳过 4」文本键（动态图开屏）→ 必须跳过 + 必须有日志
+ *  S2 CSDN 角落图片键：热区+角标在场，角落纯图键零文案零 vid →
+ *     图片键边界闸放行 → 必须出手
+ *  S3 普通文本倒计时开屏（回归红线）：「跳过 4」在活动窗 → 必须跳过
+ *  S4 零候选 CLEAN 档案 + 探针哨兵：三窗零候选后第四窗纯图键 →
+ *     探针复活 → 必须跳过
+ *  S5 零候选开屏未命中日志（日志红线）：无广告信号窗 → 必须记
+ *     「开屏未命中」诊断（issue#38「无法跳过日志也没记录」防线）
+ *  S6 启动横幅（服务活着的最小证据）：onServiceConnected 后
+ *     引擎日志非空
+ */
+public class ServiceHostTest {
+
+    static int pass = 0, fail = 0;
+    static final List<String> failures = new ArrayList<String>();
+
+    // ── 反射工具（private 字段/方法触达）──
+    static Field f(String name) throws Exception {
+        Field x = AdSkipService.class.getDeclaredField(name);
+        x.setAccessible(true);
+        return x;
+    }
+
+    static Object get(String name, Object target) throws Exception {
+        return f(name).get(target);
+    }
+
+    static void set(String name, Object target, Object v) throws Exception {
+        f(name).set(target, v);
+    }
+
+    /** 引擎日志快照（appendLog 落 state.log——真实链路） */
+    static List<String> logs(AdSkipService svc) {
+        List<String> out = new ArrayList<String>();
+        try {
+            Method load = AdSkipService.class.getDeclaredMethod("loadState");
+            load.setAccessible(true);
+            JSONObject st = (JSONObject) load.invoke(svc);
+            JSONArray arr = st.optJSONArray("log");
+            if (arr != null) {
+                for (int i = 0; i < arr.length(); i++) {
+                    JSONObject e = arr.optJSONObject(i);
+                    if (e != null) out.add(e.optString("msg"));
+                }
+            }
+        } catch (Throwable t) {
+            out.add("<读日志失败: " + t + ">");
+        }
+        return out;
+    }
+
+    static boolean hasLog(List<String> logs, String needle) {
+        for (String l : logs) if (l.contains(needle)) return true;
+        return false;
+    }
+
+    /** 泵扫描链（真实 handler 队列全档执行） */
+    static void drain(AdSkipService svc) throws Exception {
+        Object h = get("handler", svc);
+        Method d = h.getClass().getDeclaredMethod("drain");
+        d.setAccessible(true);
+        d.invoke(h);
+    }
+
+    // ── 节点构造 DSL ──
+    static AccessibilityNodeInfo root(String pkg, int winId, String cls) {
+        AccessibilityNodeInfo r = new AccessibilityNodeInfo();
+        r.packageName = pkg;
+        r.className = cls;
+        r.windowId = winId;
+        r.boundsInScreen = new android.graphics.Rect(0, 0, 1080, 2400);
+        return r;
+    }
+
+    static AccessibilityNodeInfo node(String cls, int l, int t, int r, int b) {
+        AccessibilityNodeInfo n = new AccessibilityNodeInfo();
+        n.className = cls;
+        n.boundsInScreen = new android.graphics.Rect(l, t, r, b);
+        return n;
+    }
+
+    static AccessibilityNodeInfo txt(String s, int l, int t, int r, int b) {
+        AccessibilityNodeInfo n = node("android.widget.TextView", l, t, r, b);
+        n.text = s;
+        n.clickable = true;
+        return n;
+    }
+
+    static AccessibilityWindowInfo win(int id, AccessibilityNodeInfo r, boolean active) {
+        AccessibilityWindowInfo w = new AccessibilityWindowInfo();
+        w.id = id;
+        w.root = r;
+        w.active = active;
+        w.focused = active;
+        if (r != null) {
+            r.windowId = id;
+            r.window = w;
+        }
+        return w;
+    }
+
+    /** 发事件 + 泵链 */
+    static void fire(AdSkipService svc, int type, String pkg, String cls) throws Exception {
+        fire(svc, type, pkg, cls, 0);
+    }
+
+    /**
+     * 发事件后先等 settleMs 真实毫秒再泵链（时间窗逻辑保真）：
+     * 角落/泛位置键 CORNER_MIN_MS=300ms 门槛、探针 250ms 节流等依赖
+     * 真实流逝时间——同步泵在 0ms 跑完会全部踩空（真实设备有时间自然过）。
+     */
+    static void fire(AdSkipService svc, int type, String pkg, String cls, long settleMs) throws Exception {
+        AccessibilityEvent e = AccessibilityEvent.obtain();
+        e.eventType = type;
+        e.packageName = pkg;
+        e.className = cls;
+        e.eventTime = System.currentTimeMillis();
+        svc.onAccessibilityEvent(e);
+        if (settleMs > 0) Thread.sleep(settleMs);
+        drain(svc);
+    }
+
+    /** 最小服务装配（不跑 onServiceConnected 全链——聚焦扫描/执行/日志） */
+    static AdSkipService boot() throws Exception {
+        AdSkipService svc = new AdSkipService();
+        AdSkipService.instance = svc;
+        set("screenWidth", svc, 1080);
+        set("screenHeight", svc, 2400);
+        return svc;
+    }
+
+    static List<String> lastLogs = new ArrayList<String>();
+
+    static void check(String name, boolean ok, String detail) {
+        if (ok) {
+            pass++;
+            System.out.println("  ✓ " + name);
+        } else {
+            fail++;
+            failures.add(name + (detail == null || detail.isEmpty() ? "" : (" —— " + detail)));
+            System.out.println("  ✗ " + name + (detail == null || detail.isEmpty() ? "" : (" —— " + detail)));
+            if (Boolean.getBoolean("svc.debug")) {
+                System.out.println("  ── 全部日志（" + lastLogs.size() + " 条）──");
+                for (String l : lastLogs) System.out.println("  │ " + l);
+            }
+        }
+    }
+
+    public static void main(String[] args) throws Exception {
+        System.out.println("═══ 服务级回归套件（真实 AdSkipService + 桩 Android）═══");
+        s1_keepOverlay();
+        s2_csdnCornerImageKey();
+        s3_textCountdownRegression();
+        s4_cleanProfileProbe();
+        s5_zeroCandidateMissLog();
+        s6_startupBanner();
+        s7_probeStarvedCleanWindow();
+        System.out.println();
+        System.out.println("通过 " + pass + " · 失败 " + fail);
+        if (!failures.isEmpty()) {
+            System.out.println("失败清单：");
+            for (String s : failures) System.out.println("  - " + s);
+            System.exit(1);
+        }
+    }
+
+    /* ═══ S1 Keep 覆盖层开屏（v7.15.7 头号特性 + 用户实锤场景）═══ */
+    static void s1_keepOverlay() throws Exception {
+        System.out.println("[S1] Keep 动态图开屏：覆盖层窗口「跳过 4」");
+        AdSkipService svc = boot();
+        String keep = "com.gotokeep.keep";
+
+        // 活动窗：SplashActivity 8 节点微树（logo + 文案）
+        AccessibilityNodeInfo active = root(keep, 10, "android.widget.FrameLayout");
+        for (int i = 0; i < 6; i++) {
+            active.add(node("android.view.View", 100 + i * 40, 200, 140 + i * 40, 240));
+        }
+        AccessibilityNodeInfo logo = node("android.widget.ImageView", 400, 900, 680, 1180);
+        active.add(logo);
+
+        // 覆盖层窗（同包）：广告图全屏热区 + 「跳过 4」文本键（位置随机中部）
+        AccessibilityNodeInfo overlay = root(keep, 20, "android.widget.FrameLayout");
+        AccessibilityNodeInfo adImg = node("android.widget.ImageView", 0, 0, 1080, 2200);
+        adImg.clickable = true;
+        overlay.add(adImg);
+        for (int i = 0; i < 35; i++) {
+            overlay.add(node("android.view.View", 50 + i * 10, 300 + i * 20, 90 + i * 10, 320 + i * 20));
+        }
+        AccessibilityNodeInfo skip = txt("跳过 4", 830, 1250, 1010, 1310);
+        overlay.add(skip);
+
+        // 异包窗口（launcher 在场——真实系统常态）
+        AccessibilityNodeInfo launcherRoot = root("com.miui.home", 5, "android.widget.FrameLayout");
+        for (int i = 0; i < 30; i++) launcherRoot.add(node("android.view.View", i * 30, 2000, i * 30 + 28, 2028));
+        AccessibilityWindowInfo wLauncher = win(5, launcherRoot, false);
+        AccessibilityWindowInfo wActive = win(10, active, true);
+        AccessibilityWindowInfo wOverlay = win(20, overlay, false);
+        List<AccessibilityWindowInfo> wins = new ArrayList<AccessibilityWindowInfo>();
+        wins.add(wLauncher);
+        wins.add(wActive);
+        wins.add(wOverlay);
+        svc.windows = wins;
+        svc.activeRoot = active;
+
+        fire(svc, AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED, keep,
+                "com.gotokeep.keep.splash.SplashActivity");
+
+        List<String> lg = logs(svc);
+        boolean skipped = svc.gestureCount > 0 || skip.clicked
+                || (hasLog(lg, "开屏跳过") && !hasLog(lg, "放弃"));
+        check("S1a 覆盖层「跳过 4」被跳过（点击/手势落地）", svc.gestureCount > 0 || skip.clicked,
+                "gestureCount=" + svc.gestureCount + " skipClicked=" + skip.clicked);
+        check("S1b 引擎日志有记录（开屏跳过或门控）", hasLog(lg, "开屏跳过") || hasLog(lg, "倒计时门控"),
+                "logs=" + lg.size());
+        check("S1c 日志非空（服务活着）", !lg.isEmpty(), "logs=0");
+        if (skipped && svc.gestureCount > 0) {
+            check("S1d 手势落点在跳过键区域", svc.lastGestureX >= 800 && svc.lastGestureX <= 1040
+                    && svc.lastGestureY >= 1200 && svc.lastGestureY <= 1360,
+                    "tap=(" + svc.lastGestureX + "," + svc.lastGestureY + ")");
+        }
+    }
+
+    /* ═══ S2 CSDN 角落图片键（v7.15.7 图片键边界闸）═══ */
+    static void s2_csdnCornerImageKey() throws Exception {
+        System.out.println("[S2] CSDN 动态图开屏：角落纯图键（零文案零 vid）");
+        AdSkipService svc = boot();
+        String csdn = "net.csdn.csdb";
+
+        AccessibilityNodeInfo active = root(csdn, 30, "android.widget.FrameLayout");
+        // 全屏可点广告图（热区）
+        AccessibilityNodeInfo adImg = node("android.widget.ImageView", 0, 0, 1080, 2200);
+        adImg.clickable = true;
+        active.add(adImg);
+        // 角标「广告」
+        AccessibilityNodeInfo badge = txt("广告", 20, 120, 120, 200);
+        active.add(badge);
+        // 角落纯图跳过键：无文本无 desc，vid 中性，小尺寸右上角
+        AccessibilityNodeInfo corner = node("android.widget.ImageView", 960, 130, 1040, 210);
+        corner.clickable = true;
+        corner.viewIdResourceName = "net.csdn.csdb:id/iv_close_area";
+        active.add(corner);
+        for (int i = 0; i < 20; i++) {
+            active.add(node("android.view.View", 60 + i * 15, 260 + i * 30, 100 + i * 15, 290 + i * 30));
+        }
+
+        List<AccessibilityWindowInfo> wins = new ArrayList<AccessibilityWindowInfo>();
+        wins.add(win(30, active, true));
+        svc.windows = wins;
+        svc.activeRoot = active;
+
+        fire(svc, AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED, csdn,
+                "net.csdn.csdb.activity.SplashActivity", 400);
+
+        lastLogs = logs(svc);
+        List<String> lg = lastLogs;
+        boolean acted = svc.gestureCount > 0 || corner.clicked;
+        check("S2a 角落图片键出手（图片键边界闸放行）", acted,
+                "gestureCount=" + svc.gestureCount + " cornerClicked=" + corner.clicked
+                        + " · 拦截日志在场=" + hasLog(lg, "动作边界自检拦截"));
+        check("S2b 出手目标是角落键区域", !acted || (svc.lastGestureX >= 930 && svc.lastGestureX <= 1070
+                && svc.lastGestureY >= 100 && svc.lastGestureY <= 240),
+                "tap=(" + svc.lastGestureX + "," + svc.lastGestureY + ")");
+    }
+
+    /* ═══ S3 普通文本倒计时开屏（回归红线）═══ */
+    static void s3_textCountdownRegression() throws Exception {
+        System.out.println("[S3] 普通文本倒计时开屏（回归红线）");
+        AdSkipService svc = boot();
+        String market = "com.xiaomi.market";
+
+        AccessibilityNodeInfo active = root(market, 40, "android.widget.FrameLayout");
+        AccessibilityNodeInfo adImg = node("android.widget.ImageView", 0, 0, 1080, 2200);
+        adImg.clickable = true;
+        active.add(adImg);
+        AccessibilityNodeInfo skip = txt("跳过 4", 840, 150, 1030, 210);
+        active.add(skip);
+        for (int i = 0; i < 15; i++) {
+            active.add(node("android.view.View", 80 + i * 20, 300 + i * 40, 120 + i * 20, 330 + i * 40));
+        }
+
+        List<AccessibilityWindowInfo> wins = new ArrayList<AccessibilityWindowInfo>();
+        wins.add(win(40, active, true));
+        svc.windows = wins;
+        svc.activeRoot = active;
+
+        fire(svc, AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED, market,
+                "com.xiaomi.market.activity.SplashActivity");
+
+        List<String> lg = logs(svc);
+        check("S3a 文本倒计时开屏照常跳过", svc.gestureCount > 0 || skip.clicked,
+                "gestureCount=" + svc.gestureCount);
+        check("S3b 日志有跳过/门控记录", hasLog(lg, "开屏跳过") || hasLog(lg, "倒计时门控"),
+                "logs=" + lg.size());
+    }
+
+    /* ═══ S4 CLEAN 档案 + 探针哨兵（多窗图形探针复活链）═══ */
+    static void s4_cleanProfileProbe() throws Exception {
+        System.out.println("[S4] CLEAN 档案省电 + 探针哨兵复活（纯图键第四窗）");
+        AdSkipService svc = boot();
+        String school = "com.daxue.school";
+
+        // 三窗零候选 → CLEAN（微树 logo 页，窗实例需不同 winStart → 间隔 3ms）
+        for (int w = 0; w < 3; w++) {
+            AccessibilityNodeInfo active = root(school, 50 + w, "android.widget.FrameLayout");
+            for (int i = 0; i < 10; i++) {
+                active.add(node("android.view.View", 100 + i * 30, 400 + i * 50, 140 + i * 30, 440 + i * 50));
+            }
+            List<AccessibilityWindowInfo> wins = new ArrayList<AccessibilityWindowInfo>();
+            wins.add(win(50 + w, active, true));
+            svc.windows = wins;
+            svc.activeRoot = active;
+            fire(svc, AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED, school,
+                    "com.daxue.school.SplashActivity");
+            Thread.sleep(3);
+        }
+
+        // 第四窗：CLEAN 已生效 → 探针哨兵路径；树内出现纯图跳过键 + 热区
+        AccessibilityNodeInfo active = root(school, 60, "android.widget.FrameLayout");
+        AccessibilityNodeInfo adImg = node("android.widget.ImageView", 0, 0, 1080, 2200);
+        adImg.clickable = true;
+        active.add(adImg);
+        AccessibilityNodeInfo imgKey = node("android.widget.ImageView", 950, 140, 1030, 220);
+        imgKey.clickable = true;
+        active.add(imgKey);
+
+        List<AccessibilityWindowInfo> wins = new ArrayList<AccessibilityWindowInfo>();
+        wins.add(win(60, active, true));
+        svc.windows = wins;
+        svc.activeRoot = active;
+
+        // 触发方式：窗口事件（CLEAN → bumpScanChain 只排探针）+ settle 后内容事件再探
+        fire(svc, AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED, school,
+                "com.daxue.school.SplashActivity2", 400);
+        fire(svc, AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED, school,
+                "com.daxue.school.SplashActivity2", 300);
+
+        lastLogs = logs(svc);
+        List<String> lg = lastLogs;
+        check("S4a 探针复活后出手", svc.gestureCount > 0 || imgKey.clicked,
+                "gestureCount=" + svc.gestureCount + " · 探针日志=" + hasLog(lg, "探针"));
+    }
+
+    /* ═══ S5 零候选未命中日志（日志红线 · issue#38）═══ */
+    static void s5_zeroCandidateMissLog() throws Exception {
+        System.out.println("[S5] 零候选开屏未命中诊断日志");
+        AdSkipService svc = boot();
+        String tool = "com.some.tool";
+
+        AccessibilityNodeInfo active = root(tool, 70, "android.widget.FrameLayout");
+        AccessibilityNodeInfo label = txt("某某工具", 340, 700, 740, 800);
+        label.clickable = false;
+        active.add(label);
+        for (int i = 0; i < 25; i++) {
+            active.add(node("android.view.View", 100 + i * 25, 900 + i * 30, 140 + i * 25, 930 + i * 30));
+        }
+
+        List<AccessibilityWindowInfo> wins = new ArrayList<AccessibilityWindowInfo>();
+        wins.add(win(70, active, true));
+        svc.windows = wins;
+        svc.activeRoot = active;
+
+        fire(svc, AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED, tool,
+                "com.some.tool.MainActivity");
+
+        List<String> lg = logs(svc);
+        check("S5a 零候选窗记「开屏未命中」诊断", hasLog(lg, "开屏未命中"),
+                "logs=" + lg.size() + (lg.isEmpty() ? "（日志完全为空——事故形态！）" : ""));
+    }
+
+    /* ═══ S6 启动横幅（服务活着的最小证据）═══ */
+    static void s6_startupBanner() throws Exception {
+        System.out.println("[S6] 服务连接启动横幅");
+        AdSkipService svc = boot();
+        try {
+            Method m = AdSkipService.class.getDeclaredMethod("onServiceConnected");
+            m.setAccessible(true);
+            m.invoke(svc);
+        } catch (Throwable t) {
+            check("S6a onServiceConnected 不炸", false, String.valueOf(t));
+            return;
+        }
+        List<String> lg = logs(svc);
+        check("S6a onServiceConnected 不炸", true, null);
+        check("S6b 启动横幅在场（订阅引擎就绪）", hasLog(lg, "订阅引擎就绪"),
+                "logs=" + lg.size());
+    }
+
+    /* ═══ S7 CLEAN 窗探针饿死复刻（v7.15.9 分账 + 晚档梯子回归红线）═══
+     * #102 真机实锤死链复刻：CLEAN 档案窗（连续 3 次零候选）的内容事件先让
+     * 探针消耗掉枚举账 → v7.15.8「探针/扫描共用一本账」下扫描微树门永远
+     * 拿不到预算（整份日志零🪟，weibo 6 节点/keep 8 节点空壳都没触发补扫）
+     * + CLEAN 无订阅窗纯探针零梯子 → 覆盖层跳过键永远扫不到。
+     * v7.15.9 对策三件套的回归验证：
+     *  ① 微树门分账（microScanEnumOk——探针账被占用时门照样开）；
+     *  ② 晚档轻扫梯子 {700,1600,3200}（CLEAN 无订阅窗不再只有 0ms 探针）；
+     *  ③ 探针哨兵 0ms 统一排。
+     * 场景时序严格复刻真机：探针刚消耗枚举账（<400ms）时新窗打开——
+     * 0ms 探针必然被节流（只见活动窗空壳），唯一的救回通道是晚档梯子
+     * 扫描的门控补窗。v7.15.8 在本场景下是全盲（红），v7.15.9 必须跳过。 */
+    static void s7_probeStarvedCleanWindow() throws Exception {
+        System.out.println("[S7] CLEAN 窗探针饿死复刻：分账 + 晚档梯子救回");
+        AdSkipService svc = boot();
+        String nb = "com.netdisk.app";
+        String cls = "com.netdisk.app.SplashActivity";
+
+        // 三窗零候选（同 pkg|cls，微树空壳）→ 档案 CLEAN
+        for (int w = 0; w < 3; w++) {
+            AccessibilityNodeInfo active = root(nb, 80 + w, "android.widget.FrameLayout");
+            for (int i = 0; i < 5; i++) {
+                active.add(node("android.view.View", 100 + i * 30, 400 + i * 50, 140 + i * 30, 440 + i * 50));
+            }
+            List<AccessibilityWindowInfo> wins = new ArrayList<AccessibilityWindowInfo>();
+            wins.add(win(80 + w, active, true));
+            svc.windows = wins;
+            svc.activeRoot = active;
+            fire(svc, AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED, nb, cls);
+            Thread.sleep(3);
+        }
+        lastLogs = logs(svc);
+        @SuppressWarnings("unchecked")
+        java.util.HashMap<String, Integer> ws =
+                (java.util.HashMap<String, Integer>) get("winStreak", svc);
+        Integer streak = ws.get(nb + "|" + cls);
+        check("S7a 三窗零候选后档案 CLEAN（streak≥3）",
+                streak != null && streak.intValue() >= 3,
+                "streak=" + streak + " · logs=" + lastLogs.size());
+
+        // 探针账消耗：等窗 1 的扫描门账过期后，内容事件让探针枚举一次全窗
+        //（此后 <400ms 内开新窗 = 0ms 探针被节流只见活动窗——真机饿死形态）
+        Thread.sleep(450);
+        fire(svc, AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED, nb, cls);
+
+        // 第四窗（同 pkg|cls，CLEAN）：活动窗 6 节点微树空壳 + 同包覆盖层
+        // 广告窗（全屏热区 +「跳过 4」文本键）——覆盖层是唯一的跳过键所在
+        AccessibilityNodeInfo shell = root(nb, 90, "android.widget.FrameLayout");
+        for (int i = 0; i < 5; i++) {
+            shell.add(node("android.view.View", 100 + i * 40, 200, 140 + i * 40, 240));
+        }
+        AccessibilityNodeInfo overlay = root(nb, 91, "android.widget.FrameLayout");
+        AccessibilityNodeInfo adImg = node("android.widget.ImageView", 0, 0, 1080, 2200);
+        adImg.clickable = true;
+        overlay.add(adImg);
+        for (int i = 0; i < 35; i++) {
+            overlay.add(node("android.view.View", 50 + i * 10, 300 + i * 20, 90 + i * 10, 320 + i * 20));
+        }
+        AccessibilityNodeInfo skip = txt("跳过 4", 830, 1250, 1010, 1310);
+        overlay.add(skip);
+
+        List<AccessibilityWindowInfo> wins4 = new ArrayList<AccessibilityWindowInfo>();
+        wins4.add(win(90, shell, true));
+        wins4.add(win(91, overlay, false));
+        svc.windows = wins4;
+        svc.activeRoot = shell;
+
+        // 开窗即泵（真实 <400ms 窗口竞速）：0ms 探针被节流，晚档梯子的
+        // 微树门（分账后预算独立）必须补扫覆盖层并出手
+        fire(svc, AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED, nb, cls);
+
+        lastLogs = logs(svc);
+        List<String> lg = lastLogs;
+        check("S7b 探针账被占用时覆盖层「跳过 4」仍被跳过（分账+晚档梯子）",
+                svc.gestureCount > 0 || skip.clicked,
+                "gestureCount=" + svc.gestureCount + " skipClicked=" + skip.clicked
+                        + " · 🪟日志=" + hasLog(lg, "多窗补扫启用"));
+        check("S7c 微树补扫启用日志在场（门不再被饿死的铁证）",
+                hasLog(lg, "多窗补扫启用"),
+                "logs=" + lg.size());
+    }
+}
