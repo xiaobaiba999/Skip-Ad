@@ -329,6 +329,167 @@ public final class SplashCountdownTest {
         TestHost.check("corner_image_skip".equals(di.reason),
                 "右缘中部图片键+SDK 窗指纹 → 强形态出手");
 
+        /* ════ S8 v7.15.10 开屏×强广告形态豁免带（三图类型死洞根治真值表）════
+         * 用户实锤三图（与 #103 日志同期）：①CSDN 视频开屏左下圆形图片键
+         * ②商店推广页晚到键 ③上滑互动 H5「跳过 2」胶囊（canvas 渲染时零
+         * 文本）。公共死洞：H5/视频树 300+ 节点 > corner 点击门 150 上限；
+         * 泛位候选排除角落几何 → 无处可点；上滑容器 scrollable 硬挡；
+         * 晚到键 >6.5s 截断。豁免带仅限【开屏窗 × 强广告形态】同真。 */
+        TestHost.suite("SplashCountdown · S8 豁免带真值表（开屏×强形态）");
+        // 树J：300+ 节点 H5 大树 + 开屏 + 角标「广告」+ 左下角图片键（Type ①③几何）
+        SimNode tj = new SimNode();
+        tj.boundsArr = new int[]{0, 0, 1080, 2400};
+        tj.cls = "android.widget.FrameLayout";
+        tj.add(new SimNode("广告", 60, 100, 190, 180));
+        SimNode keyJ = new SimNode("", 30, 2200, 150, 2320); // 左下角落带
+        keyJ.clickable = true;
+        tj.add(keyJ);
+        for (int i = 0; i < 300; i++) { // H5 深树（>150 旧上限）
+            tj.add(new SimNode("", 100 + (i % 20) * 40, 300 + (i / 20) * 60, 130 + (i % 20) * 40, 330 + (i / 20) * 60));
+        }
+        Ctx cj = new Ctx();
+        cj.screenW = 1080;
+        cj.screenH = 2400;
+        cj.splashLive = true;
+        cj.elapsedMs = 1000;
+        cj.budgetNodes = 600;
+        ScanFind fj = AdDecisionCore.walk(tj, cj);
+        TestHost.check(fj.nodeCount > 150, "树J 规模 >150（死洞复刻前提）——实到 " + fj.nodeCount);
+        Decision dj = AdDecisionCore.decide(fj, cj);
+        TestHost.check("corner_image_skip".equals(dj.reason),
+                "开屏×角标×大树(>150)×左下图片键 → 豁免带出手（Type ①③死洞根治）");
+        // 树K：同大树 + 上滑互动容器（scrollable）+ 开屏 + 角标 → 豁免带出手（Type ③）
+        SimNode tk = new SimNode();
+        tk.boundsArr = new int[]{0, 0, 1080, 2400};
+        tk.cls = "android.widget.FrameLayout";
+        tk.add(new SimNode("广告", 60, 100, 190, 180));
+        SimNode keyK = new SimNode("", 30, 2200, 150, 2320);
+        keyK.clickable = true;
+        tk.add(keyK);
+        SimNode swiper = new SimNode("", 0, 200, 1080, 2200);
+        swiper.scrollable = true;
+        for (int i = 0; i < 200; i++) {
+            swiper.add(new SimNode("", 100 + (i % 20) * 40, 300 + (i / 20) * 60, 130 + (i % 20) * 40, 330 + (i / 20) * 60));
+        }
+        tk.add(swiper);
+        Ctx ck = new Ctx();
+        ck.screenW = 1080;
+        ck.screenH = 2400;
+        ck.splashLive = true;
+        ck.elapsedMs = 1000;
+        ck.budgetNodes = 600;
+        ScanFind fkr = AdDecisionCore.walk(tk, ck);
+        Decision dk = AdDecisionCore.decide(fkr, ck);
+        TestHost.check("corner_image_skip".equals(dk.reason),
+                "开屏×角标×滚动容器（上滑互动）×左下图片键 → 豁免带出手（Type ③滚动死洞根治）");
+        // 树L：视频广告晚到键 7s（>6.5s 旧时窗）+ 开屏 + 角标 → 出手；无强形态 → 不出手
+        Ctx cl = new Ctx();
+        cl.screenW = 1080;
+        cl.screenH = 2400;
+        cl.splashLive = true;
+        cl.elapsedMs = 7000;
+        cl.budgetNodes = 600;
+        ScanFind fl2 = AdDecisionCore.walk(tj, cl); // 复用树J（角标在场）
+        Decision dl = AdDecisionCore.decide(fl2, cl);
+        TestHost.check("corner_image_skip".equals(dl.reason),
+                "开屏×角标×7s 晚到键 → 8s 时窗内出手（Type ①②晚到兜底）");
+        // 树M：非开屏窗（splashLive=false）×大树×角标×左下图片键 → 零出手（信息流误点红线）
+        Ctx cm = new Ctx();
+        cm.screenW = 1080;
+        cm.screenH = 2400;
+        cm.splashLive = false;
+        cm.elapsedMs = 1000;
+        cm.budgetNodes = 600;
+        ScanFind fm = AdDecisionCore.walk(tj, cm);
+        Decision dm = AdDecisionCore.decide(fm, cm);
+        TestHost.check(AdDecisionCore.A_NONE.equals(dm.action),
+                "非开屏×大树×角标×左下图片键 → 零出手（>150 树上限照旧——feed 页底部导航图标保护）");
+        // 树N：非开屏窗×滚动×角标×右下图片键 → 零出手（滚动硬挡照旧）
+        Ctx cn = new Ctx();
+        cn.screenW = 1080;
+        cn.screenH = 2400;
+        cn.splashLive = false;
+        cn.elapsedMs = 1000;
+        cn.budgetNodes = 600;
+        SimNode tn = new SimNode();
+        tn.boundsArr = new int[]{0, 0, 1080, 2400};
+        tn.cls = "android.widget.FrameLayout";
+        tn.add(new SimNode("广告", 60, 100, 190, 180));
+        SimNode keyN = new SimNode("", 940, 2200, 1060, 2320); // 右下（底部导航位）
+        keyN.clickable = true;
+        tn.add(keyN);
+        SimNode scrollN = new SimNode("", 0, 200, 1080, 2200);
+        scrollN.scrollable = true;
+        for (int i = 0; i < 100; i++) {
+            scrollN.add(new SimNode("", 100 + (i % 20) * 40, 300 + (i / 20) * 60, 130 + (i % 20) * 40, 330 + (i / 20) * 60));
+        }
+        tn.add(scrollN);
+        ScanFind fn = AdDecisionCore.walk(tn, cn);
+        Decision dn = AdDecisionCore.decide(fn, cn);
+        TestHost.check(AdDecisionCore.A_NONE.equals(dn.action),
+                "非开屏×滚动×角标×右下图片键 → 零出手（scrollPresent 硬挡照旧——「我的」Tab 红线）");
+        // 树O：开屏×大树×无强形态（零角标零热区零SDK）×左下图片键 → 不出手（150 上限照旧）
+        SimNode to = new SimNode();
+        to.boundsArr = new int[]{0, 0, 1080, 2400};
+        to.cls = "android.widget.FrameLayout";
+        SimNode keyO = new SimNode("", 30, 2200, 150, 2320);
+        keyO.clickable = true;
+        to.add(keyO);
+        for (int i = 0; i < 300; i++) {
+            to.add(new SimNode("", 100 + (i % 20) * 40, 300 + (i / 20) * 60, 130 + (i % 20) * 40, 330 + (i / 20) * 60));
+        }
+        Ctx co = new Ctx();
+        co.screenW = 1080;
+        co.screenH = 2400;
+        co.splashLive = true;
+        co.elapsedMs = 1000;
+        co.budgetNodes = 600;
+        ScanFind fo = AdDecisionCore.walk(to, co);
+        Decision dO = AdDecisionCore.decide(fo, co);
+        TestHost.check(AdDecisionCore.A_NONE.equals(dO.action),
+                "开屏×大树×零强形态×左下图片键 → 零出手（无角标大树不豁免——普通页角落图标保护）");
+        // 树P：开屏×大树×无强形态×7s → 零出手（6.5s 旧时窗照旧）
+        Ctx cp = new Ctx();
+        cp.screenW = 1080;
+        cp.screenH = 2400;
+        cp.splashLive = true;
+        cp.elapsedMs = 7000;
+        cp.budgetNodes = 600;
+        ScanFind fp = AdDecisionCore.walk(to, cp); // 树O 无强形态
+        Decision dp = AdDecisionCore.decide(fp, cp);
+        TestHost.check(AdDecisionCore.A_NONE.equals(dp.action),
+                "开屏×零强形态×7s → 零出手（6.5s 旧时窗照旧——晚到兜底仅限强形态）");
+        // 树Q【审核轮 P1 收口负例】：冷启动 feed 首页（splashLive=true 时间窗内）
+        // + 首屏广告卡片角标 + 滚动 + 底部导航 Tab 图标（vid 含 tab token）
+        // ——豁免带全激活（splash×强形态×滚动×大树），Tab 图标必须零误点
+        SimNode tq = new SimNode();
+        tq.boundsArr = new int[]{0, 0, 1080, 2400};
+        tq.cls = "android.widget.FrameLayout";
+        tq.add(new SimNode("广告", 60, 300, 190, 380)); // feed 广告卡片角标
+        SimNode tabMine = new SimNode("", 950, 2210, 1050, 2330); // 右下「我的」Tab
+        tabMine.clickable = true;
+        tabMine.vid = "com.feed.app:id/tab_mine";
+        tq.add(tabMine);
+        SimNode feedScroll = new SimNode("", 0, 200, 1080, 2160);
+        feedScroll.scrollable = true;
+        for (int i = 0; i < 300; i++) {
+            feedScroll.add(new SimNode("", 60 + (i % 12) * 80, 300 + (i / 12) * 60,
+                    90 + (i % 12) * 80, 330 + (i / 12) * 60));
+        }
+        tq.add(feedScroll);
+        Ctx cq = new Ctx();
+        cq.screenW = 1080;
+        cq.screenH = 2400;
+        cq.splashLive = true;
+        cq.elapsedMs = 1000;
+        cq.budgetNodes = 600;
+        ScanFind fq = AdDecisionCore.walk(tq, cq);
+        TestHost.check(fq.corners.isEmpty() && fq.randCands.isEmpty(),
+                "树Q Tab 图标被 vid 否决表拒收（tab token——豁免带激活也不入候选）");
+        Decision dq2 = AdDecisionCore.decide(fq, cq);
+        TestHost.check(AdDecisionCore.A_NONE.equals(dq2.action),
+                "冷启动 feed 首页×角标×滚动×Tab 图标 → 零出手（审核轮 P1 误点红线收口）");
+
         TestHost.done();
     }
 

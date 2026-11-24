@@ -405,6 +405,8 @@ public class AdSkipService extends AccessibilityService {
     private final java.util.HashMap<String, Long> burstBasePopup = new java.util.HashMap<>();
     /** 探针哨兵补扫节流：pkg → 上次哨兵时刻（CLEAN 窗 250ms 节流） */
     private final java.util.HashMap<String, Long> probeNudgeAt = new java.util.HashMap<>();
+    /** v7.15.10 探针去重：pkg → 上次探针执行时刻（200ms——0ms 排针与内容事件探针双跑收敛） */
+    private final java.util.HashMap<String, Long> probeLastAt = new java.util.HashMap<>();
     /* v7.15.6 图形探针节流：pkg|winStart → 上次图形探针时刻（1.5s 一档
      * ——CLEAN 档案窗的动态图开屏（屏闪高频内容事件）不能每次都跑浅 DFS） */
     private final java.util.HashMap<String, Long> graphicProbeAt = new java.util.HashMap<>();
@@ -2047,7 +2049,15 @@ public class AdSkipService extends AccessibilityService {
                 // v3.12.0（issue#14 日志实锤）：connectivity 连接检查窗被循环
                 // 误点（2 分钟内「已点击跳过」×10）——系统连接诊断页绝非广告宿主
                 || pkg.contains("connectivity") || pkg.contains("captiveportal")
-                || pkg.equals("com.android.settings");
+                || pkg.equals("com.android.settings")
+                /* v7.15.10【#103 日志实锤】系统权限弹窗（permissioncontroller）
+                 * 被当开屏扫描 + 弹窗识别双路径白扫：「开屏未命中
+                 * （permissioncontroller）……候选样本：拒绝/始终允许」+
+                 * 「弹窗未命中 · 入窗 1.79E9s」（winAt=0 疯值）双日志刷屏。
+                 * GrantPermissionsActivity 的「拒绝」按钮是全 app 误触代价
+                 * 最高的控件之一（拒绝权限=功能残废）——虽然决策层没点它，
+                 * 但扫描面就不该进来：零扫描零点击零学习，同 systemui 口径。 */
+                || pkg.contains("permissioncontroller");
     }
 
     /** v3.6.0：厂商系统工具包（安全中心/系统管家类）——弹窗突发检测不适用
@@ -2430,6 +2440,19 @@ public class AdSkipService extends AccessibilityService {
             Integer cur = scanGen.get(pkg);
             if (cur == null || cur.intValue() != gen) return;
         }
+        /* v7.15.10【功耗】探针去重（200ms/包）：bumpScanChain CLEAN 分支的
+         * 0ms 探针与首个内容事件探针（probeSentinelThrottled 只记自己的账）
+         * 双跑重叠——并窗 0~250ms 内两轮全窗枚举+文本搜索是纯浪费。
+         * 入口统一记账（含直连/节流两路）：200ms 内同包直接跳过（探针幂等
+         * 零副作用，晚 200ms 不影响命中率——内容事件源持续到达）。 */
+        try {
+            long pn = System.currentTimeMillis();
+            Long lastProbe = probeLastAt.get(pkg);
+            if (lastProbe != null && pn - lastProbe.longValue() < 200) return;
+            probeLastAt.put(pkg, Long.valueOf(pn));
+            if (probeLastAt.size() > 24) probeLastAt.clear(); // 防膨胀
+        } catch (Throwable ignored) {
+        }
         try {
             /* v7.15.7→v7.15.8【事故修复后口径】：探针多窗化保留（Keep 覆盖层
              * 复活通道——CLEAN 档案窗只有探针在跑，不枚举就永远看不见覆盖层
@@ -2507,7 +2530,11 @@ public class AdSkipService extends AccessibilityService {
      * 任一在场 = 强广告信号 → 档案复活全量出手。 */
     private boolean graphicProbe(AccessibilityNodeInfo root, Ctx ctx) {
         try {
-            ctx.budgetNodes = 120;
+            /* v7.15.10：预算 120→180——H5/视频广告树 300+ 节点时图片键在
+             * 深层，120 预算够不到 → CLEAN 窗图形探针盲区（复活不了）。
+             * 180 仍远低于全量扫描（340~600），深两层的覆盖面 vs ~0.2ms
+             * 增量，功耗红线不动。 */
+            ctx.budgetNodes = 180;
             ScanFind f = AdDecisionCore.walk(new NodeAdapter(root), ctx);
             return AdDecisionCore.hasActionableCand(f, ctx) || f.hotZone || f.adBadge;
         } catch (Throwable t) {
@@ -3686,7 +3713,16 @@ public class AdSkipService extends AccessibilityService {
                     sb.append(" · 微树空壳（跳过键或在覆盖层/晚到）");
                 }
             }
-            sb.append(" · 入窗 ").append(Math.max(0, (now - winStart) / 100L) / 10.0).append("s");
+            sb.append(" · 入窗 ").append(winStart > 0 ? String.valueOf(Math.max(0, (now - winStart) / 100L) / 10.0) : "?").append("s");
+            /* v7.15.10【三图类型诊断】图片键候选可见化：角落/泛位候选在场
+             * 但未出手（树上限/滚动/时窗/复验轮换中）——CSDN 左下图圆键/
+             * 商店推广页晚到键/上滑互动 H5 胶囊键的补规则金样本（此前只能
+             * 从候选样本反推，现在直接可读）。f 为末根画像（多根时末根
+             * 候选；已出手场景不会走到 miss 日志）。 */
+            if (f != null && (!f.corners.isEmpty() || !f.randCands.isEmpty())) {
+                sb.append(" · 图片键候选 角落").append(f.corners.size())
+                        .append("+泛位").append(f.randCands.size()).append("（未出手：门控/时序）");
+            }
             String cls = winClassOf(pkg);
             if (cls.length() > 0) sb.append(" · 窗口 ").append(shortCls(cls));
             /* v7.15.7：候选样本覆盖全部根（旧版只看 roots[0]——覆盖层窗口里

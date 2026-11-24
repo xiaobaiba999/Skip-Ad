@@ -12,7 +12,7 @@ import com.zai.adshield.test.TestHost.SimNode;
  * 底 18%+左右缘」零收集 = 识别不到且日志无记录的头号根因）。
  * 与 SplashCountdownTest 同规约（纯 Java 零 Android 依赖，ECJ -1.8 编译 JVM 运行）。
  * ─────────────────────────────────────────────────────────────
- * 断言规划（check/checkEq 总数 35）：
+ * 断言规划（check/checkEq 总数 38）：
  *  S1 泛位置几何 isRandPosControl（7）/ S2 vid 否决 randVidDenied（6）
  *  S3 walk 收集门（7）/ S4 decide L4.7 出手门（10）
  *  S5 hasActionableCand 联动（4）。
@@ -221,16 +221,35 @@ public final class RandGraphicSkipTest {
         Decision r3 = AdDecisionCore.decide(f1, d3);
         TestHost.check(AdDecisionCore.A_NONE.equals(r3.action),
                 "200ms 时机未到 → A_NONE（CORNER_MIN_MS 同源）");
-        // ④ 时机过晚（>6500ms）→ L4.7 拒，L5 热区返回键兜底接管（既有行为不变）
+        // ④ 时机过晚——v7.15.10 豁免带：开屏×强形态延至 8s（视频广告晚到键）
         Ctx d4 = new Ctx();
         d4.screenW = 1080;
         d4.screenH = 2400;
         d4.splashLive = true;
         d4.elapsedMs = 7000;
         Decision r4 = AdDecisionCore.decide(f1, d4);
-        TestHost.check(!"rand_graphic_skip".equals(r4.reason) && "hot_zone".equals(r4.reason),
-                "7000ms 过晚 → L4.7 拒 + L5 热区返回键兑底（CORNER_MAX_MS 同源）");
-        // ⑤ 可滚动窗（CSDN WebView 形态但有滚动容器）→ 拒（信息流防线）
+        TestHost.check("rand_graphic_skip".equals(r4.reason),
+                "7000ms×开屏×强形态 → 豁免带 8s 时窗内出手（v7.15.10 视频晚到键兜底）");
+        // ④b：超出 8s 豁免窗 → L4.7 拒 + L5 热区返回键兜底接管（上限保持）
+        Ctx d4b = new Ctx();
+        d4b.screenW = 1080;
+        d4b.screenH = 2400;
+        d4b.splashLive = true;
+        d4b.elapsedMs = 8500;
+        Decision r4b = AdDecisionCore.decide(f1, d4b);
+        TestHost.check(!"rand_graphic_skip".equals(r4b.reason) && "hot_zone".equals(r4b.reason),
+                "8500ms 超豁免窗 → L4.7 拒 + L5 热区返回键兜底（8s 上限保持）");
+        // ④c：晚到兜底仅限强形态——无强形态 7000ms 照旧拒（6.5s 旧时窗保持）
+        Ctx d4c = new Ctx();
+        d4c.screenW = 1080;
+        d4c.screenH = 2400;
+        d4c.splashLive = true;
+        d4c.elapsedMs = 7000;
+        Decision r4c = AdDecisionCore.decide(fPlain, d4c);
+        TestHost.check(AdDecisionCore.A_NONE.equals(r4c.action),
+                "7000ms×开屏×零强形态 → A_NONE（晚到兜底仅限强形态，旧 6.5s 时窗保持）");
+        // ⑤ 可滚动窗——v7.15.10 豁免带：开屏×强形态×滚动（上滑互动 H5）放行；
+        //    非开屏窗滚动硬挡保持（信息流/底部导航红线）
         ScanFind fScroll = AdDecisionCore.walk(keep1, c1);
         fScroll.scrollPresent = true; // 模拟 WebView 容器标记
         Ctx d5 = new Ctx();
@@ -239,8 +258,16 @@ public final class RandGraphicSkipTest {
         d5.splashLive = true;
         d5.elapsedMs = 600;
         Decision r5 = AdDecisionCore.decide(fScroll, d5);
-        TestHost.check(AdDecisionCore.A_NONE.equals(r5.action),
-                "scrollPresent → A_NONE（可滚动窗居中键绝不点）");
+        TestHost.check("rand_graphic_skip".equals(r5.reason),
+                "开屏×强形态×scrollPresent → 豁免带出手（v7.15.10 上滑互动 H5 死洞根治）");
+        Ctx d5b = new Ctx();
+        d5b.screenW = 1080;
+        d5b.screenH = 2400;
+        d5b.splashLive = false;
+        d5b.elapsedMs = 600;
+        Decision r5b = AdDecisionCore.decide(fScroll, d5b);
+        TestHost.check(AdDecisionCore.A_NONE.equals(r5b.action),
+                "非开屏×scrollPresent → A_NONE（可滚动窗居中键绝不点——信息流防线保持）");
         // ⑥ 角落键在场时让位（corners 优先，randCands 排后）
         Ctx d6 = new Ctx();
         d6.screenW = 1080;

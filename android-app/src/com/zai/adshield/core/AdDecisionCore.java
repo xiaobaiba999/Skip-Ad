@@ -242,6 +242,20 @@ public final class AdDecisionCore {
     public static final double POS_MAX_NORM = 0.97;      // v3.7.0：位置学习健全性上限（越界坐标点了也是死区）
     public static final int SKIP_CANDS_MAX = 8;          // v5.8.0：6→8（速度压榨：深树同文案候选全收，复验换候选零等待）
     public static final int CORNER_TREE_MAX_NODES = 150; // v3.7.0：角落/关闭键树上限放宽（广告窗树常大，微博根因之一）
+    /* ═══ v7.15.10【三图类型死洞根治】开屏×强广告形态豁免带 ═══
+     * 用户实锤三图（截图与 #103 日志同期）：①CSDN 视频开屏左下圆形
+     * 图片跳过键（无倒计时）②应用商店推广页纯倒计时徽章（跳过键晚到）
+     * ③上滑互动 H5 广告左下「跳过 2」胶囊（canvas 渲染时零无障碍文本）。
+     * 公共死洞：H5/视频广告树 300~800 节点 → corner 点击门 150 树上限
+     * 挡死；泛位候选（randCands）收集时排除角落几何（isRandPosControl
+     * 先斥 corner/midedge）→ 大树里的角落图片键【完全无处可点】；
+     * 上滑互动容器 scrollable → L4/L4.7 的 !scrollPresent 硬挡；视频
+     * 广告跳过键 5s 倒计时 + 渲染延迟可晚至 6.5s 后 → CORNER_MAX_MS
+     * 截断。豁免带仅限【开屏窗 × 强广告形态】同真：非开屏窗（信息流/
+     * feed 页也有角标+滚动+底部导航图标——误点「我的」Tab 红线）与
+     * 无强形态窗（普通主页角落图标）一切照旧 byte-for-byte。 */
+    public static final int CORNER_TREE_MAX_SPLASH_STRONG = 600;   // 开屏×强形态：实质不设额外上限（walk 预算本就 340~600）
+    public static final long CORNER_MAX_SPLASH_STRONG_MS = 8000;   // 开屏×强形态：视频广告跳过键晚到兑底
     public static final double HOT_ZONE_AREA = 0.55;   // 热区：≥55% 屏幕面积
     public static final int HOT_ZONE_MAX_NODES = 12;
     public static final double SKIP_AREA_MAX = 0.35;   // 真跳过键面积上限
@@ -748,6 +762,12 @@ public final class AdDecisionCore {
     public static boolean randVidDenied(String vid) {
         if (vid == null || vid.length() == 0) return false;
         String v = lowerAscii(vid);
+        /* v7.15.10【审核轮 P1 收口】底部导航/Tab 栏 token 否决：豁免带
+         * （开屏×强形态）激活时冷启动 feed 首页（splashLive 时间窗内 +
+         * 首屏广告卡片角标）的底部导航「我的」类 Tab 图标（底部+右缘+
+         * 无字+可点——恰在角落几何带）可能被误点。原生底部导航图标的
+         * vid 几乎必含 tab/nav/bottom token（tab_mine/navigation_profile/
+         * bottom_bar…），真跳过键不含；menu 既有。 */
         return v.contains("download") || v.contains("appstore") || v.contains("detail")
                 || v.contains("link") || v.contains("url") || v.contains("web")
                 || v.contains("share") || v.contains("avatar") || v.contains("user")
@@ -757,7 +777,8 @@ public final class AdDecisionCore {
                 || v.contains("forward") || v.contains("search") || v.contains("scan")
                 || v.contains("menu") || v.contains("delete") || v.contains("edit")
                 || v.contains("notice") || v.contains("message") || v.contains("redpacket")
-                || v.contains("lottery") || v.contains("welfare");
+                || v.contains("lottery") || v.contains("welfare")
+                || v.contains("tab") || v.contains("nav") || v.contains("bottom");
     }
 
     /** 向上找可点击祖先（最多 4 层） */
@@ -984,10 +1005,21 @@ public final class AdDecisionCore {
             //     ② 树上限放宽 CORNER_TREE_MAX_NODES=150（广告窗树常大）
             //     v3.8.0：前置到 L2 直断之前——角落键 500ms 时机先于 700ms 直断，
             //     有可点目标绝不先按返回键
+            /* ═══ v7.15.10【三图类型死洞根治】开屏×强广告形态豁免带 ═══
+             * H5 上滑互动/视频大树的角落图片跳过键三重死洞：①树 >150 时
+             * corner 点击门挡死（泛位候选又排除角落几何 → 无处可点）；
+             * ②scrollable 容器硬挡；③6.5s 时窗截断晚到键。豁免带仅限
+             * 【开屏窗 × 强广告形态】同真：非开屏窗（信息流页也有角标+
+             * 滚动+底部导航图标——误点「我的」Tab 红线）与无强形态窗
+             * （普通主页角落图标）一切照旧 byte-for-byte（见常量区注释）。 */
+            boolean strongAdForm = f.hotZone || f.adBadge || ctx.sdkAdWin || ctx.learnedCls;
+            boolean splashStrong = ctx.splashLive && strongAdForm;
+            int cornerTreeCap = splashStrong ? CORNER_TREE_MAX_SPLASH_STRONG : CORNER_TREE_MAX_NODES;
+            long cornerMaxMs = splashStrong ? CORNER_MAX_SPLASH_STRONG_MS : CORNER_MAX_MS;
             if (!f.corners.isEmpty() && ctx.clickAttempts < f.corners.size()
-                    && !f.scrollPresent && !f.editPresent
-                    && f.nodeCount <= CORNER_TREE_MAX_NODES
-                    && ctx.elapsedMs >= CORNER_MIN_MS && ctx.elapsedMs <= CORNER_MAX_MS
+                    && (!f.scrollPresent || splashStrong) && !f.editPresent
+                    && f.nodeCount <= cornerTreeCap
+                    && ctx.elapsedMs >= CORNER_MIN_MS && ctx.elapsedMs <= cornerMaxMs
                     // v3.9.0 广告形态确认门（不乱点红线）：角落无字控件必须
                     // 同时具备广告信号（热区/角标/SDK 窗/学习窗）或树极简
                     //（≤60 节点）才出手——普通主页角落图标绝不误点
@@ -995,9 +1027,7 @@ public final class AdDecisionCore {
                     // 仅强广告形态（热区/角标/SDK窗/学习窗）可出手（FAB 防线）。
                     // 逐候选分层门控：从第 clickAttempts 个起取首个过闸的候选
                     //（无 strongOnly 候选时与旧「第 N 击第 N 候选」逐字等价）
-                    && (f.hotZone || f.adBadge || ctx.sdkAdWin || ctx.learnedCls
-                        || f.nodeCount <= CORNER_CONFIRM_NODES)) {
-                boolean strongAdForm = f.hotZone || f.adBadge || ctx.sdkAdWin || ctx.learnedCls;
+                    && (strongAdForm || f.nodeCount <= CORNER_CONFIRM_NODES)) {
                 for (int ci = ctx.clickAttempts; ci < f.corners.size(); ci++) {
                     CornerCand c = f.corners.get(ci);
                     boolean tierOk = !c.strongOnly || strongAdForm;
@@ -1014,9 +1044,9 @@ public final class AdDecisionCore {
             //      角落位高，尺寸门已收得更紧）；排在角落候选用尽之后
             //      （先点像的，再点不像的），候选轮换与 L4 同熙。
             if (!f.randCands.isEmpty() && ctx.clickAttempts >= f.corners.size()
-                    && !f.scrollPresent && !f.editPresent
+                    && (!f.scrollPresent || splashStrong) && !f.editPresent
                     && (f.hotZone || f.adBadge || ctx.sdkAdWin || ctx.learnedCls)
-                    && ctx.elapsedMs >= CORNER_MIN_MS && ctx.elapsedMs <= CORNER_MAX_MS) {
+                    && ctx.elapsedMs >= CORNER_MIN_MS && ctx.elapsedMs <= cornerMaxMs) {
                 int rIdx = ctx.clickAttempts - f.corners.size();
                 if (rIdx < f.randCands.size()) {
                     return click(null, f.randCands.get(rIdx).tapBounds, "rand_graphic_skip");

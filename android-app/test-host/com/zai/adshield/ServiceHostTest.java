@@ -183,6 +183,8 @@ public class ServiceHostTest {
         s5_zeroCandidateMissLog();
         s6_startupBanner();
         s7_probeStarvedCleanWindow();
+        s8_h5BigTreeSwipeAd();
+        s9_systemDialogZeroScan();
         System.out.println();
         System.out.println("通过 " + pass + " · 失败 " + fail);
         if (!failures.isEmpty()) {
@@ -493,5 +495,97 @@ public class ServiceHostTest {
         check("S7c 微树补扫启用日志在场（门不再被饿死的铁证）",
                 hasLog(lg, "多窗补扫启用"),
                 "logs=" + lg.size());
+    }
+
+    /* ═══ S8 H5 上滑互动广告（用户实锤三图之 Type ③·v7.15.10 豁免带）═══
+     * 300+ 节点 H5 大树 + scrollable 容器（上滑手势容器）+「广告」角标 +
+     * 左下角纯图片跳过键（canvas 渲染零文本）——旧引擎三重死洞：树 >150
+     * corner 点击门挡死、泛位候选排除角落几何、scrollPresent 硬挡。
+     * v7.15.10 豁免带（开屏×强广告形态）必须救回：手势落点在左下键区域。 */
+    static void s8_h5BigTreeSwipeAd() throws Exception {
+        System.out.println("[S8] H5 上滑互动广告：大树+滚动容器+左下图片键（豁免带）");
+        AdSkipService svc = boot();
+        String sn = "com.snack.shop";
+
+        AccessibilityNodeInfo active = root(sn, 100, "android.widget.FrameLayout");
+        // 「广告」角标（强广告形态信号）
+        active.add(txt("广告", 40, 120, 150, 200));
+        // 左下角纯图片跳过键（无文本无 desc——canvas 渲染形态）
+        AccessibilityNodeInfo key = node("android.widget.ImageView", 30, 2200, 150, 2320);
+        key.clickable = true;
+        active.add(key);
+        // 上滑互动容器（scrollable）+ 300 节点深树（>150 旧上限）
+        AccessibilityNodeInfo swiper = node("android.widget.ScrollView", 0, 240, 1080, 2160);
+        swiper.scrollable = true;
+        for (int i = 0; i < 300; i++) {
+            swiper.add(node("android.view.View", 60 + (i % 12) * 80, 300 + (i / 12) * 70,
+                    90 + (i % 12) * 80, 330 + (i / 12) * 70));
+        }
+        active.add(swiper);
+
+        List<AccessibilityWindowInfo> wins = new ArrayList<AccessibilityWindowInfo>();
+        wins.add(win(100, active, true));
+        svc.windows = wins;
+        svc.activeRoot = active;
+
+        // settle 400ms：角落键 CORNER_MIN_MS=300 门槛过真实时序（同 S2 口径）
+        fire(svc, AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED, sn,
+                "com.snack.shop.activity.SplashActivity", 400);
+
+        lastLogs = logs(svc);
+        List<String> lg8 = lastLogs;
+        boolean acted8 = svc.gestureCount > 0 || key.clicked;
+        check("S8a 上滑互动 H5 广告左下图片键出手（豁免带：大树+滚动）", acted8,
+                "gestureCount=" + svc.gestureCount + " keyClicked=" + key.clicked
+                        + " · 图片键候选日志=" + hasLog(lg8, "图片键候选"));
+        if (acted8) {
+            check("S8b 手势落点在左下跳过键区域", svc.lastGestureX >= 20 && svc.lastGestureX <= 160
+                    && svc.lastGestureY >= 2190 && svc.lastGestureY <= 2330,
+                    "tap=(" + svc.lastGestureX + "," + svc.lastGestureY + ")");
+        }
+    }
+
+    /* ═══ S9 系统权限弹窗零扫描（#103 日志实锤：permissioncontroller 被白扫）═══
+     * 「开屏未命中（permissioncontroller）……候选样本：拒绝/始终允许」+
+     * 「弹窗未命中 · 入窗 1.79E9s」双日志——GrantPermissionsActivity 的
+     * 「拒绝」是全 app 误触代价最高的控件之一。事件入口直接丢弃：
+     * 零扫描零点击零日志（同 systemui 口径）。 */
+    static void s9_systemDialogZeroScan() throws Exception {
+        System.out.println("[S9] 系统权限弹窗零扫描（permissioncontroller）");
+        AdSkipService svc = boot();
+        String pc = "com.google.android.permissioncontroller";
+        // 真实权限弹窗形态：两个按钮（拒绝/始终允许）+ 说明文案——
+        // 旧代码（v7.15.9 及之前）会进开屏扫描并刷「未命中」双日志
+        AccessibilityNodeInfo dlg = root(pc, 200, "android.widget.FrameLayout");
+        dlg.add(txt("允许「示例应用」拍照和录像吗？", 140, 800, 940, 900));
+        AccessibilityNodeInfo deny = txt("拒绝", 140, 2100, 480, 2240);
+        dlg.add(deny);
+        dlg.add(txt("始终允许", 600, 2100, 940, 2240));
+        List<AccessibilityWindowInfo> wins = new ArrayList<AccessibilityWindowInfo>();
+        wins.add(win(200, dlg, true));
+        svc.windows = wins;
+        svc.activeRoot = dlg;
+
+        Object scansBefore = get("energyScans", svc);
+        List<String> before = logs(svc);
+
+        fire(svc, AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED, pc,
+                "com.google.android.permissioncontroller.permission.ui.GrantPermissionsActivity", 50);
+        fire(svc, AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED, pc,
+                "androidx.recyclerview.widget.RecyclerView", 50);
+
+        lastLogs = logs(svc);
+        List<String> after = lastLogs;
+        Object scansAfter = get("energyScans", svc);
+        boolean noLog = true;
+        for (String l : after) {
+            if (l.contains(pc)) noLog = false;
+        }
+        check("S9a 权限弹窗零日志（开屏/弹窗未命中双刷屏根治）", noLog,
+                "newLogs=" + (after.size() - before.size()));
+        check("S9b 权限弹窗零扫描（energyScans 不增）",
+                scansBefore instanceof Long && scansAfter instanceof Long
+                        && ((Long) scansAfter).longValue() == ((Long) scansBefore).longValue(),
+                "before=" + scansBefore + " after=" + scansAfter);
     }
 }
