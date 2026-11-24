@@ -15,6 +15,9 @@
 # v7.15.1：新增 RearmPlannerTest（亮屏/解锁重入目标解析——真机日志实锤
 #  issue#94：锁屏宿主污染前台追踪致补扫走偏+引擎致盲；目标校正/锁屏在场
 #  绝不出手/锁屏宿主族识别三层钉死）。
+# v7.15.3：新增 UpdateHostsTest（检查更新三面全崩根治：jsdelivr 四域梯度/域偏好
+#  sticky/@tag 域收敛/非法域攻击面收敛——v7.15.1 用户真机「多源均不可达：raw@main
+#  不可达 · jsdelivr@main 不可达 · GitHub API 返回 401」三面全崩的清单源面根治）。
 # v7.15.2：InterstitialGuardTest 新增 S9/S10（倒计时关闭词三族——GKD 全局
 #  规则 text*="跳过"&&len<10 同源：「跳过 4」「定时关闭，剩余24分16…」「5s后
 #  关闭」被闸①精确等值全拒的真机死因根治；强窗形免语境——SDK 广告窗/Dialog
@@ -52,7 +55,7 @@ echo "    编译产出: $OUT/classes"
 echo "==> [2/3] 运行测试套件"
 TOTAL_PASS=0
 TOTAL_FAIL=0
-for SUITE in MiniProgramGuardTest DecisionGuardTest SubscriptionBuiltinTest RegressionCoreTest MultiDeviceMatrixTest NonMainstreamAppTest RestoreGuardTest PowerGovernorTest RuleGovernorTest ComplianceGuardTest TapPointMatrixTest HumanTapMatrixTest BrandFocus308Test ReleaseNotesTest SubMirrorTest FeedAdGuardTest RuleOrderTest InterstitialGuardTest SplashCountdownTest AggressiveModeTest RearmPlannerTest; do
+for SUITE in MiniProgramGuardTest DecisionGuardTest SubscriptionBuiltinTest RegressionCoreTest MultiDeviceMatrixTest NonMainstreamAppTest RestoreGuardTest PowerGovernorTest RuleGovernorTest ComplianceGuardTest TapPointMatrixTest HumanTapMatrixTest BrandFocus308Test ReleaseNotesTest SubMirrorTest FeedAdGuardTest RuleOrderTest InterstitialGuardTest SplashCountdownTest AggressiveModeTest RearmPlannerTest UpdateHostsTest; do
   echo ""
   echo "══ $SUITE ══"
   if java -cp "$OUT/classes" "com.zai.adshield.test.$SUITE" | tee "$OUT/$SUITE.log"; then

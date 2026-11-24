@@ -17,9 +17,11 @@ import java.nio.charset.StandardCharsets;
  * v7.15.0 出口（日志上传回归 v7.6 时代直发方案——中转服务超时根治）：
  *  1. 问题反馈/日志上传 → POST /repos/{repo}/issues（令牌内置于代码，双层 XOR+Base64
  *     混淆；密文落库不触发密钥扫描）——2026-11 用户实锤 v7.7~v7.14 中转服务链路
- *     「连接上传服务超时·重试仍失败」，本轮整体回归直发，瞬时故障重试×2；
- *  2. 检查更新  → 多源静态清单链（UpdateManifest：raw@main → jsdelivr@main →
- *     @tag 探测链 → GitHub API 兕底，本类 latestRelease 为链条末端的 API 兕底源）；
+ *     「连接上传服务超时·重试仍失败」，本轮整体回归直发，瞬时故障重试×2。
+ *     v7.15.3：令牌轮换（旧令牌 401 失效——见类头注释）；
+ *  2. 检查更新  → 多源静态清单链（UpdateManifest：raw@main → jsdelivr@main
+ *     四域梯度（gcore/cdn/fastly/testingcf）→ @tag 探测链 → GitHub API 匿名
+ *     优先兜底（本类 latestRelease——令牌失效不阻塞检查更新））；
  *  3. 应用内更新  → 下载交给系统 DownloadManager（见 Downloader.java），
  *     直连失败自动切换镜像通道（apkMirrors：gcore CDN + ghfast + gh-proxy）。
  *
@@ -36,9 +38,14 @@ public final class Net {
     private Net() {
     }
 
-    /* ───────── 内置混淆令牌（与 Web src/lib/credentials.ts 同源，双层 XOR+Base64） ───────── */
+    /* ───────── 内置混淆令牌（双层 XOR+Base64；密文落库不触发密钥扫描） ─────────
+     * v7.15.3 令牌轮换：旧令牌实测 401 Bad credentials（已失效——真机实锤
+     * 「多源均不可达 · GitHub API 返回 401」三面全崩的第三面）；本轮换入新
+     * 令牌（问题反馈/日志上传/8h 自动上传恢复）——同时检查更新通道改为
+     * 匿名优先（见 latestRelease），令牌任何状态（有效/失效）都不再阻塞
+     * 检查更新可用性。 */
 
-    private static final String L2 = "BSg9CSQQFgsleiQ8CllcAgg8c1wzNCJQBgtVHTkcNC4nAiUeHC8iIjAFJCMwLBknES4jFjsTdlQ=";
+    private static final String L2 = "BSg9CSQTKAgAIAE1NQUoIAoyBgg3OhwfAwYcfjlBYxIsPTkRDyEIOw0+DQoFCl06Fyk/EA8DdlQ=";
     private static final int[] KEY_B = {75, 105, 112, 83, 104, 105, 101, 108, 100}; // "KipShield"
 
     /** 解出内置 Token（仅内存，永不落盘/落日志）；失败返回空串 */
@@ -242,60 +249,115 @@ public final class Net {
     /* ───────── 检查更新 → GitHub Releases（v3.3.0：令牌 + 重试 + 列表回退） ───────── */
 
     /**
-     * 获取最新 Release（v3.3.0 三通道：令牌直连 → 重试 → /releases 列表回退）。
-     * 背景真机反馈：检查更新常报“仓库尚未发布版本”或直接无反应——移动网络下
-     * api.github.com 间歇 404/超时；v3.2.0 及之前匿名单次请求，失败即放弃。
+     * 获取最新 Release（v7.15.3 匿名优先：匿名直连 → 令牌兜底 → /releases
+     * 列表回退）。
+     * 背景（真机截图实锤）：v7.15.1 用户「多源均不可达：raw@main 不可达 ·
+     * jsdelivr@main 不可达 · GitHub API 返回 401」三面全崩——用户网络里
+     * api.github.com 本身可达（唯一可达源），却因旧版令牌直连（令牌失效
+     * 401 Bad credentials）被堵死。公开仓库 /releases/latest 匿名完全可用
+     * （60 req/h/IP——手动检查 + 页面 10 分钟缓存绰绰有余），令牌仅在
+     * 匿名限流（403）/网络异常时作第二通道（限流兜底），令牌失效不再影响
+     * 检查更新可用性。
      * @return {ok:true, hasRelease:false} / {ok:true, hasRelease:true, tag, name, notes, url, apkUrl, apkMirrors[], apkFileName, apkMB, publishedAt}
      *         / {ok:false, error}
      */
     public static String latestRelease() {
         String token = builtInToken();
-        // 通道 1/2：/releases/latest，带令牌重试两次（间隔 800ms）
+        /* 通道 ①：匿名 /releases/latest（间歇 404 稍候重试一次——v3.3.0
+         * 移动网络下 api.github.com 间歇 404 行为保持） */
         for (int attempt = 1; attempt <= 2; attempt++) {
             try {
-                String[] r = http("GET", API + "/releases/latest", token, null, true);
+                String[] r = http("GET", API + "/releases/latest", null, null, true);
                 int code = Integer.parseInt(r[0]);
                 if (code == 404 && attempt == 1) {
-                    sleep(800); // 间歇性 404：稍候重试一次再下结论
+                    sleep(800);
                     continue;
                 }
                 if (code >= 200 && code < 300) {
                     return parseRelease(r[1]);
                 }
                 if (code == 404) {
-                    break; // 两次 404 → 走列表回退再下结论
+                    break; // 两次 404 → 列表回退再下结论
                 }
+                /* 匿名非 2xx（403 限流/5xx）→ 令牌通道救一把 */
+                String viaToken = tokenLatest(token);
+                if (viaToken != null) return viaToken;
                 if (attempt == 1) {
                     sleep(800);
                     continue;
                 }
                 return err("GitHub 返回 " + code, null);
             } catch (Exception e) {
+                String viaToken = tokenLatest(token); // 网络异常 → 令牌通道救一把
+                if (viaToken != null) return viaToken;
                 if (attempt == 2) break;
                 sleep(800);
             }
         }
-        // 通道 3：/releases 列表回退（latest 语义不可用时取最新非预发布项）
+        /* 通道 ②：令牌 /releases/latest（匿名两轮未果后的最后直连机会） */
+        String viaToken = tokenLatest(token);
+        if (viaToken != null) return viaToken;
+        /* 通道 ③：/releases 列表回退（匿名 → 令牌；latest 语义不可用时取
+         * 最新非预发布项） */
         try {
-            String[] r = http("GET", API + "/releases?per_page=8", token, null, true);
+            String[] r = http("GET", API + "/releases?per_page=8", null, null, true);
             int code = Integer.parseInt(r[0]);
             if (code >= 200 && code < 300) {
-                org.json.JSONArray arr = new org.json.JSONArray(r[1]);
-                for (int i = 0; i < arr.length(); i++) {
-                    org.json.JSONObject d = arr.optJSONObject(i);
-                    if (d == null || d.optBoolean("draft", false) || d.optBoolean("prerelease", false)) continue;
-                    String out = parseRelease(d.toString());
-                    if (out.contains("\"hasRelease\":true")) return out;
+                return parseReleaseList(r[1]);
+            }
+            if (token.length() > 0) {
+                String[] r2 = http("GET", API + "/releases?per_page=8", token, null, true);
+                int code2 = Integer.parseInt(r2[0]);
+                if (code2 >= 200 && code2 < 300) {
+                    return parseReleaseList(r2[1]);
                 }
-                JSONObject none = new JSONObject();
-                none.put("ok", true);
-                none.put("hasRelease", false);
-                return none.toString();
+                return err("GitHub 返回 " + code2, null);
             }
             return err("GitHub 返回 " + code, null);
         } catch (Exception e) {
+            try {
+                if (token.length() > 0) {
+                    String[] r2 = http("GET", API + "/releases?per_page=8", token, null, true);
+                    int code2 = Integer.parseInt(r2[0]);
+                    if (code2 >= 200 && code2 < 300) {
+                        return parseReleaseList(r2[1]);
+                    }
+                    return err("GitHub 返回 " + code2, null);
+                }
+            } catch (Exception ignored) {
+            }
             return err("网络异常：" + safeMsg(e), null);
         }
+    }
+
+    /** v7.15.3：令牌通道 /releases/latest（2xx → 解析结果；其余含 401 失效
+     * 静默返回 null 交上层继续匿名/列表路径——令牌失效绝不阻塞检查更新） */
+    private static String tokenLatest(String token) {
+        if (token == null || token.length() == 0) return null;
+        try {
+            String[] r = http("GET", API + "/releases/latest", token, null, true);
+            int code = Integer.parseInt(r[0]);
+            if (code >= 200 && code < 300) {
+                return parseRelease(r[1]);
+            }
+        } catch (Exception ignored) {
+        }
+        return null;
+    }
+
+    /** v7.15.3：/releases 列表回退解析（latest 语义不可用时取最新非预发布项） */
+    private static String parseReleaseList(String body) throws Exception {
+        org.json.JSONArray arr = new org.json.JSONArray(body);
+        for (int i = 0; i < arr.length(); i++) {
+            org.json.JSONObject d = arr.optJSONObject(i);
+            if (d == null || d.optBoolean("draft", false) || d.optBoolean("prerelease", false)) continue;
+            String out = parseRelease(d.toString());
+            if (out.contains("\"hasRelease\":true")) return out;
+        }
+        JSONObject none = new JSONObject();
+        none.put("ok", true);
+        none.put("hasRelease", false);
+        return none.toString();
     }
 
     /** 解析单个 Release JSON → 页面可用结构（含镜像通道列表）。

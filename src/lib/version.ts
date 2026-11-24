@@ -1,8 +1,8 @@
 /** 版本与 GitHub 仓库信息（Web 端与发布节奏共用）。
- * v7.15.2：息屏/切回拦截根治（SDK 广告窗直断兜底链 + 锁屏在场总闸）
- * + 8h 自动上传死链复活（维护心跳）+ 插屏倒计时关闭词三族（GKD 同源）。 */
-export const APP_VERSION = "7.15.2";
-export const VERSION_CODE = 85200; // v7.1.0 起标准公式 major*10000 + minor*1000 + patch*100（7.15.2→85200）；v7.10.0 统一版本规则：更新判定只看 versionCode，versionName 仅展示
+ * v7.15.3：检查更新三面全崩根治（jsdelivr 四域梯度 + GitHub API 匿名优先
+ * + 内置令牌轮换——旧令牌 401 失效实锤，日志上传/问题反馈一并恢复）。
+export const APP_VERSION = "7.15.3";
+export const VERSION_CODE = 85300; // v7.1.0 起标准公式 major*10000 + minor*1000 + patch*100（7.15.3→85300）；v7.10.0 统一版本规则：更新判定只看 versionCode，versionName 仅展示
 export const GITHUB_REPO = "xiaobaiba999/Skip-Ad";
 export const GITHUB_API = `https://api.github.com/repos/${GITHUB_REPO}`;
 export const GITHUB_HOME = `https://github.com/${GITHUB_REPO}`;
@@ -21,15 +21,15 @@ export interface VersionEntry {
  *  旧版本内容归档在 GitHub Releases 与 git 历史） */
 export const VERSION_HISTORY: VersionEntry[] = [
   {
-    version: "7.15.2",
-    code: 85200,
+    version: "7.15.3",
+    code: 85300,
     date: "2026-11-24",
-    tagline: "息屏/切回拦截根治 + 8h 自动上传死链复活 + 插屏倒计时关闭词（真机日志实锤修复轮）",
+    tagline: "检查更新三面全崩根治（jsdelivr 四域梯度 + API 匿名优先 + 令牌轮换）",
     notes: [
-      "SDK 广告窗直断兜底链：识别瞬间即排 900/1600/2400/3400ms 四档兜底针（独立于扫描代际护栏）——零动作且无闸拦时直派返回键温和直断；未触发必打原因日志（🛟）——真机实锤：整个开机周期返回键 0，承诺落空的死因根治",
-      "锁屏在场总闸（误触红线）：应用在锁屏后面就把返回开屏窗拉起来（事件早于 USER_PRESENT）——出手前统一过 keyguardBlocking（广播优先零 IPC + IPC 定音自愈型）；锁屏在场绝不出手（日志可见 🔒）",
-      "8h 自动上传死链复活：维护任务只挂心跳自检分支而服务健康时心跳被撤（#89 孤例是 MiTV：ROM 反复解绑反而救活心跳链）——存活期 30 分钟窗口式维护心跳 + 分档续期（活着 30 分钟/死了 5 分钟）+ 维护任务前置 keepOn 闸外",
-      "插屏倒计时关闭词三族（GKD 全局规则同源）：「跳过 4」「定时关闭，剩余24分16…」「5s后关闭」（必须含数字——广告倒计时特异信号）；强窗形（SDK 广告窗/Dialog）免语境闸⓪；JVM 4379 断言全绿（+31）",
+      "GitHub API 兜底匿名优先：旧版令牌直连，令牌失效（401 Bad credentials）直接把「用户网络里唯一可达的源」堵死——真机实锤「多源均不可达 · GitHub API 返回 401」三面全崩的第三面；令牌任何状态不再阻塞检查更新",
+      "jsdelivr 四域梯度（gcore→cdn→fastly→testingcf 逐域探测 + 域偏好 sticky）：cdn.jsdelivr.net 单域写死是国内间歇不可达时清单源的结构性弱点——与 raw@main 被墙叠加后仅剩 API 一条路",
+      "内置令牌轮换：旧令牌实测 401 已失效——问题反馈/手动日志上传/8h 自动上传一并恢复（与检查更新同把令牌）",
+      "UpdateHostsTest 新增 24 断言（四域梯度/偏好置顶/tag 域收敛/非法域攻击面收敛）",
     ],
   }];
 

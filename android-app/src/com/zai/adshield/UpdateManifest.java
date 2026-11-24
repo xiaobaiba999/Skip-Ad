@@ -20,10 +20,11 @@ import java.nio.charset.StandardCharsets;
  * 本轮结构性根治（用户红线指令：以后的版本禁止再出现检查更新不到新版本）：
  *  · 多源合流，取 versionCode 最大者——任一源活着即可检出新版：
  *    ① raw.githubusercontent.com @main（Fastly CDN，分钟级缓存，分支新鲜）
- *    ② cdn.jsdelivr.net @main（国内可达；可能带 ≤12h 源站陈旧窗口）
+ *    ② jsdelivr @main 四域梯度（v7.15.3：gcore→cdn→fastly→testingcf——
+ *       cdn 单域写死是真机「三面全崩」的第二面；域偏好 sticky，见 core.UpdateHosts）
  *    ③ @tag 探测链（tag 引用不可变、零源站缓存——发布即新鲜；候选 =
  *       当前版本之后的下一补丁 + 下两个 minor 的四个 tag）
- *    ④ GitHub API /releases/latest（令牌直连，Net.latestRelease 兜底）
+ *    ④ GitHub API /releases/latest（v7.15.3 匿名优先——Net.latestRelease；令牌失效不再堵死最后可达源）
  *  · @main 陈旧只代表该源暂时看不到新版，不再阻塞整体结果；@tag 探测链
  *    在发布后第一时间命中新 tag 树内的清单（发布流程保证：清单先于打 tag
  *    提交——tag 树自含本版清单）。
@@ -41,10 +42,10 @@ public final class UpdateManifest {
     /** 仓库常量（与 Net 同源） */
     private static final String RAW_MAIN = "https://raw.githubusercontent.com/"
             + Net.REPO + "/main/update/latest.json";
-    private static final String JSDELIVR_MAIN = "https://cdn.jsdelivr.net/gh/"
-            + Net.REPO + "@main/update/latest.json";
-    private static final String JSDELIVR_TAG = "https://cdn.jsdelivr.net/gh/"
-            + Net.REPO + "@";
+
+    /** v7.15.3：jsdelivr 域偏好（进程内 sticky——任一域成功后记住，后续
+     * 检查与 @tag 探测直接复用，正常路径零额外请求、抖动域永不再先试） */
+    private static volatile String preferredJsdelivrHost = null;
 
     /** 各源超时（秒）：@main 源连 6 读 6；@tag 探测快失败连 3 读 3 */
     private static final int MAIN_CONNECT_S = 6, MAIN_READ_S = 6;
@@ -75,30 +76,33 @@ public final class UpdateManifest {
         Candidate best = null;
         String lastError = "";
 
-        /* ── ①② @main 两源（可能陈旧——但陈旧不阻塞合流）── */
+        /* ── ① raw@main（Fastly 分钟级缓存，新鲜度最优；墙内常态不可达 6s 快失败）── */
         Candidate raw = fetchManifest(RAW_MAIN, MAIN_CONNECT_S, MAIN_READ_S, "raw@main");
         if (raw != null && raw.valid && raw.versionCode > bestCode(best, versionCode)) best = raw;
         else if (raw == null || !raw.valid) lastError = "raw@main 不可达";
 
-        Candidate jsd = fetchManifest(JSDELIVR_MAIN, MAIN_CONNECT_S, MAIN_READ_S, "jsdelivr@main");
+        /* ── ② jsdelivr@main 四域梯度（v7.15.3：gcore→cdn→fastly→testingcf
+         *     逐域探测首域成功即 sticky；旧版 cdn 单域写死是三面全崩第二面）── */
+        Candidate jsd = fetchJsdelivrMain();
         if (jsd != null && jsd.valid && jsd.versionCode > bestCode(best, versionCode)) best = jsd;
-        else if (jsd == null || !jsd.valid) lastError = lastError + " · jsdelivr@main 不可达";
+        else if (jsd == null || !jsd.valid) lastError = lastError + " · jsdelivr@main 全域不可达（gcore/cdn/fastly/testingcf）";
 
-        /* ── ③ @tag 探测链（不可变键零源站缓存——发布后第一时间新鲜）──
+        /* ── ③ @tag 探测链（不可变键零源站缓存——发布后第一时间新鲜；域 =
+         *     偏好域 + gcore ≤2，见 core.UpdateHosts.orderedTagHosts）──
          * 仅在前两源没有拿到比当前更新的结果时才探测（拿到了就不必）；
          * 候选集：下一补丁 + 下两个 minor（覆盖正常迭代步长）。 */
         if (bestCode(best, versionCode) <= versionCode && cur != null) {
             String[] tags = candidateTags(cur[0], cur[1], cur[2]);
             for (String tag : tags) {
-                Candidate t = fetchManifest(JSDELIVR_TAG + tag + "/update/latest.json",
-                        TAG_CONNECT_S, TAG_READ_S, "tag:" + tag);
+                Candidate t = fetchManifestTag(tag);
                 if (t != null && t.valid && t.versionCode > bestCode(best, versionCode)) {
                     best = t;
                 }
             }
         }
 
-        /* ── ④ GitHub API 兜底（令牌直连——v7.6 时代通道，配额 5000/h 足够）── */
+        /* ── ④ GitHub API 兜底（v7.15.3 匿名优先——Net.latestRelease：令牌
+         *     失效 401 不再堵死「用户网络可达的最后一条源」）── */
         if (bestCode(best, versionCode) <= versionCode) {
             try {
                 String api = Net.latestRelease();
@@ -213,6 +217,41 @@ public final class UpdateManifest {
         c.valid = false;
         c.source = source;
         return c;
+    }
+
+    /* ───────── v7.15.3：jsdelivr 多域探测（@main 四域梯度 + @tag 域收敛） ───────── */
+
+    /** jsdelivr@main：四域梯度逐域探测（偏好域置顶），首域成功即 sticky。
+     * 真机实锤（v7.15.1 用户截图）：cdn.jsdelivr.net 国内间歇连接层不可达
+     * （与 v6.1.0 订阅拉取 Connection reset 同源病灶）——单域写死时仅剩
+     * GitHub API 一条路（而 API 又被失效令牌打成 401）。 */
+    private static Candidate fetchJsdelivrMain() {
+        String[] hosts = com.zai.adshield.core.UpdateHosts.orderedMainHosts(preferredJsdelivrHost);
+        for (int i = 0; i < hosts.length; i++) {
+            String url = "https://" + hosts[i] + "/gh/" + Net.REPO + "@main/update/latest.json";
+            Candidate c = fetchManifest(url, MAIN_CONNECT_S, MAIN_READ_S, "jsdelivr@main");
+            if (c != null && c.valid) {
+                preferredJsdelivrHost = hosts[i];
+                return c;
+            }
+        }
+        return invalid("jsdelivr@main", "全域不可达");
+    }
+
+    /** @tag 清单：偏好域 + gcore ≤2 域快失败探测，命中即 sticky。
+     * tag 不可变键本就零源站缓存、全域展开会让 4 tag × 3s 预算翻倍——
+     * gcore 兜底足够（它也是基础序首位）。 */
+    private static Candidate fetchManifestTag(String tag) {
+        String[] hosts = com.zai.adshield.core.UpdateHosts.orderedTagHosts(preferredJsdelivrHost);
+        for (int i = 0; i < hosts.length; i++) {
+            String url = "https://" + hosts[i] + "/gh/" + Net.REPO + "@" + tag + "/update/latest.json";
+            Candidate c = fetchManifest(url, TAG_CONNECT_S, TAG_READ_S, "tag:" + tag);
+            if (c != null && c.valid) {
+                preferredJsdelivrHost = hosts[i];
+                return c;
+            }
+        }
+        return invalid("tag:" + tag, "不可达");
     }
 
     /* ───────── 输出（页面同形 JSON + 中国下载镜像链）───────── */
