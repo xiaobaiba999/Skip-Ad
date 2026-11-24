@@ -45,7 +45,7 @@ public final class Net {
      * 匿名优先（见 latestRelease），令牌任何状态（有效/失效）都不再阻塞
      * 检查更新可用性。 */
 
-    private static final String L2 = "BSg9CSQTKAgAIAE1NQUoIAoyBgg3OhwfAwYcfjlBYxIsPTkRDyEIOw0+DQoFCl06Fyk/EA8DdlQ=";
+    private static final String L2 = "BSg9CSQRIDkgIAEKCT8dJi9XGiU0NCoLBhsUCCIiJAMjNiEOKAQ6NTEhMwEnCl0cHwIzEjQTdlQ=";
     private static final int[] KEY_B = {75, 105, 112, 83, 104, 105, 101, 108, 100}; // "KipShield"
 
     /** 解出内置 Token（仅内存，永不落盘/落日志）；失败返回空串 */

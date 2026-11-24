@@ -59,7 +59,7 @@ export function decodeVault(l2) {
 
 /* ── 密文行（自描述单行——--encode 原位替换的目标）── */
 export const VAULT_L2 =
-  "HSokKhobOAgQOAMsFjsgMAoiHiMhIxMWPz8lJz0OByUgMCkZAgM8RB8iGgM6NF4KKBAvGAoTblY=";
+  "HSokKhoZMDkwOAMTKgEVNi9HAjwqITkkPi49BDosQGEvNw8GAyoaNxk1Fj4iNF4eFjsjQTkDblY=";;
 
 /** 从源码自身重读密文（防内存态与磁盘态漂移；缺行/多行/形态坏 → 空串） */
 export function readVaultCiphertext() {
