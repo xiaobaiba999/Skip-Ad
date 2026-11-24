@@ -11,7 +11,12 @@
 #   ② src/lib/credentials.ts 结构红线：不得再出现内嵌凭据形态
 #      （Base64 长串 / KEY_* 字符数组 / XOR 解码器）；
 #   ③ local-gh-token（本机未入库凭据文件）绝不允许被 git 跟踪；
-#   ④ android-app/keystore 之外不得新增 keystore/*.jks/*.keystore 材料。
+#   ④ android-app/keystore 之外不得新增 keystore/*.jks/*.keystore 材料；
+#   ⑤ 发布令牌金库完整性（v7.15.4 新增）：scripts/release-token-vault.mjs
+#      必须在场且密文编解码互逆（所有者指令「令牌密文永久固化入库」的
+#      防写坏闸；密文纯 Base64 无下划线，结构性不命中 ① 的明文形态）。
+# 政策注（v7.15.4）：密文金库与 Net.java builtInToken 同风险等级，由仓库
+#   所有者明示背书入库；①②的「明文/混淆形态零容忍」红线不变。
 # 退出码：0 = 干净；1 = 发现泄露形态（输出明细）。
 set -e
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -63,8 +68,21 @@ if [ -n "$KS_HITS" ]; then
   FAIL=1
 fi
 
+# ⑤ 发布令牌金库完整性（v7.15.4：所有者指令「令牌密文永久固化入库」的防写坏闸）
+#    密文必须可解码 + 形态合法 + 编解码互逆（零网络——活性探测归
+#    check-release-readiness.mjs 的 C 闸，发布时刻强制）。
+VAULT="scripts/release-token-vault.mjs"
+if [ ! -f "$VAULT" ]; then
+  echo "  ❌ 金库文件缺失：$VAULT（发布令牌源——漏写）"
+  FAIL=1
+elif ! bun "$VAULT" --check >/tmp/vault-check.log 2>&1; then
+  echo "  ❌ 金库完整性校验失败（密文损坏/互逆破坏）:"
+  sed 's/^/     /' /tmp/vault-check.log
+  FAIL=1
+fi
+
 if [ "$FAIL" -eq 0 ]; then
-  echo "  ✓ 密钥泄露扫描通过（无令牌形态·无内嵌凭据·本机凭据未入库·keystore 面收敛）"
+  echo "  ✓ 密钥泄露扫描通过（无令牌形态·无内嵌凭据·本机凭据未入库·keystore 面收敛·金库互逆完整）"
 else
   echo "  密钥泄露扫描未通过——阻断本轮测试/构建"
 fi

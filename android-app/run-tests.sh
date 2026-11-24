@@ -31,6 +31,10 @@ TOOLS=/home/z/android-tools
 ECJ="$TOOLS/ecj.jar"
 OUT="$ROOT/build-tests"
 
+# ── 密钥泄露扫描硬门（v7.9.4 声称接线·v7.15.4 实际补接 + 金库互逆闸⑤）──
+# 任何令牌形态进入被跟踪文件、或金库密文互逆破坏时，测试直接拒绝。
+"$ROOT/../scripts/secret-scan.sh"
+
 rm -rf "$OUT"
 mkdir -p "$OUT/classes"
 

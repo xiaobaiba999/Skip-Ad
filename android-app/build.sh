@@ -55,6 +55,12 @@ BUILD="$ROOT/build"
 rm -rf "$BUILD"
 mkdir -p "$BUILD/gen" "$BUILD/classes" "$BUILD/dex" "$(dirname "$OUT")"
 
+# ── 密钥泄露扫描硬门（v7.9.4 声称接线·v7.15.4 实际补接 + 金库互逆闸⑤）──
+# 任何令牌形态进入被跟踪文件、或金库密文互逆破坏时，打包直接拒绝。
+if [ -f "$ROOT/../scripts/secret-scan.sh" ]; then
+  "$ROOT/../scripts/secret-scan.sh"
+fi
+
 echo "▶ 1/6 注入版本号 versionCode=$VC versionName=$VN"
 sed -e "s/android:versionCode=\"[0-9]*\"/android:versionCode=\"${VC}\"/" \
     -e "s/android:versionName=\"[^\"]*\"/android:versionName=\"${VN}\"/" \
