@@ -16,14 +16,21 @@ import com.zai.adshield.core.FeedAdGuard.FeedDecision;
  *  · 闸⓪【广告语境在场】（contains，非精确等值）：窗内任何可见 label
  *    包含「广告/推广/赞助」→ 语境在场即出手（用户实锤「几乎都带有广告
  *    两个字」——变体千千万，包含匹配一网打尽）。角标自身仍绝不点击。
+ *    v7.15.2：强窗形（SDK 广告窗指纹/Dialog 形态——decideFromCandidates
+ *    strongWinForm 入参）免语境——窗口形态本身就是广告铁证（真机日志
+ *    #96 实锤：返回开屏窗/无角标插屏全被「无语境词」一票否决）。
  *  · 闸① 关闭词精确等值保持 + 扩表（v7.5.0「知道了」族被通用终闸
  *    语义面误杀的根治见 ComplianceGuard.interBoundaryCheck）：
  *    × 家族 > 关闭族 > 跳过族 > 知道了族 > 残忍离开族（游戏插屏标配）。
+ *    v7.15.2：+ 三个倒计时特异族（isCountdownCloseForm，GKD 全局规则
+ *    text*="跳过"&&len<10 同源）：「跳过 4」「定时关闭，剩余24分16…」
+ *    「5s后关闭」——子串直查本来找得到，死因是精确等值把它们全拒。
  *  · 闸② 关闭形态保持（≤30% 屏宽 × ≤12% 屏高）——关闭钮是钮不是横幅，
  *    广告主体大图/大容器绝不可能过闸（绝不点广告本体的几何兜底）。
  *  · 闸③ 位置闸激进放宽：非滚动窗【零位置闸】（关闭词本身已足够特异
  *    ——用户指令激进）；滚动窗（信息流卡片）须与广告语境节点近旁
- *    （|Δcy| ≤35% 屏高同排铁证）才出手。
+ *    （|Δcy| ≤35% 屏高同排铁证）才出手；强窗形免语境时滚动窗近旁闸
+ *    同步豁免（无语境基准可依）。
  *  · 闸④ 滚动窗不再一票否决：名单外 App 的信息流卡片广告（李跳跳在
  *    信息流里也点）——近旁铁证下可出手；Feed 名单 20 款窗由
  *    FeedAdGuard 两段式拥有（服务侧名单门保持，双重出手防线）。
@@ -57,6 +64,25 @@ public final class InterstitialGuard {
     /** 广告语境词字符上限（「查看广告详情」8 字内；超长正文虽含「广告」也不算语境节点——
      *  正文文本节点常几十上百字，contains 面过大）。 */
     public static final int CONTEXT_MAX_CHARS = 10;
+
+    /* ═══ v7.15.2 倒计时型关闭词（GKD 全局规则同源方法论）═══
+     * 真机日志实锤（#96 02:22 / #95 03:18）：插屏/开屏的关闭钮带倒计时后缀
+     * （「跳过 4」「定时关闭，剩余24分16…」「5s后关闭」）——原生直查用子串搜
+     * 「跳过/关闭」本来就能【找到】这些节点（日志样本里它们都在场），死因是
+     * 闸①的精确等值把它们全部拒之门外。GKD 默认订阅全局规则同款思路：
+     *   [text*="跳过"][text.length<10] ——包含匹配 + 长度封顶，一网打尽
+     * 「跳过 N/N秒 跳过/跳过5秒」族。本实现收三个倒计时特异族（必须含数字——
+     * 数字是广告倒计时的特异信号，普通「关闭」文案不带数字）：
+     *  · countdownSkip：含「跳过/跳過」+ 含数字 + ≤8 字（「跳过 4」「4s 跳过」）；
+     *  · scheduledClose：「定时关闭」开头 + ≤16 字（「定时关闭，剩余24分16…」）；
+     *  · delayedClose：含「后关闭/后可关闭/后可跳过」+ 含数字 + ≤12 字（「5s后关闭」）。
+     * 误触红线不破：普通窗仍须闸⓪广告语境同场；强窗形（SDK 广告窗/Dialog）
+     * 免语境时，这三族带数字的特异形态 + 形态闸（≤30%×≤12%）+ 终闸复验。 */
+    public static final int CD_CLOSE_MAX_CHARS = 8;      // countdownSkip 族字上限
+    public static final int SCHEDULED_CLOSE_MAX_CHARS = 16; // 定时关闭族字上限（倒计时尾长）
+    public static final int DELAYED_CLOSE_MAX_CHARS = 12;   // 「N后关闭」族字上限
+    /** 倒计时族优先级（劣于全部精确词——精确词优先出手）。 */
+    public static final int CD_CLOSE_PRIORITY = 100;
 
     /** 决策动作名（服务侧 Decision.reason 用——execute 走插屏专用终闸）。 */
     public static final String ACTION_CLOSE = "inter_close";
@@ -109,25 +135,51 @@ public final class InterstitialGuard {
 
     /* ───────── 闸①：关闭词语义（精确等值——绝不 contains） ───────── */
 
-    /** 是否插屏关闭词（trim 后精确等值——「进入广告详情」类营销文案绝不中）。 */
+    /** 是否插屏关闭词（trim 后精确等值——「进入广告详情」类营销文案绝不中）。
+     *  v7.15.2：精确等值之外新增三个倒计时特异族（isCountdownCloseForm——
+     *  GKD 全局规则 text*="跳过"&&len<10 同源：真机实锤「跳过 4」被等值闸拒之门外） */
     public static boolean isInterstitialCloseWord(String label) {
         if (label == null) return false;
         String t = label.trim();
-        if (t.length() == 0 || t.length() > CLOSE_MAX_CHARS) return false;
+        if (t.length() == 0 || t.length() > CLOSE_MAX_CHARS) return isCountdownCloseForm(t);
         for (String k : INTER_CLOSE_WORDS) {
             if (t.equals(k)) return true;
         }
+        return isCountdownCloseForm(t);
+    }
+
+    /** v7.15.2 倒计时型关闭词三族（含数字特异信号——普通文案不带数字）：
+     *  · countdownSkip：含跳过 + 含数字 + ≤8 字；
+     *  · scheduledClose：「定时关闭」开头 + ≤16 字；
+     *  · delayedClose：含「后关闭/后可关闭/后可跳过」+ 含数字 + ≤12 字。
+     *  纯字符扫描（无正则编译——热路径与 ECJ -1.8 兼容）。 */
+    public static boolean isCountdownCloseForm(String label) {
+        if (label == null) return false;
+        String t = label.trim();
+        int n = t.length();
+        if (n == 0) return false;
+        boolean hasDigit = false;
+        for (int i = 0; i < n; i++) {
+            char ch = t.charAt(i);
+            if (ch >= '0' && ch <= '9') { hasDigit = true; break; }
+        }
+        if (!hasDigit) return false; // 倒计时族的特异铁证：带数字
+        if (n <= CD_CLOSE_MAX_CHARS && (t.contains("跳过") || t.contains("跳過"))) return true;
+        if (n <= SCHEDULED_CLOSE_MAX_CHARS && t.startsWith("定时关闭")) return true;
+        if (n <= DELAYED_CLOSE_MAX_CHARS
+                && (t.contains("后关闭") || t.contains("后可关闭") || t.contains("后可跳过") || t.contains("後關閉"))) return true;
         return false;
     }
 
-    /** 关闭词优先级（数组序——× 家族 0 最优；未知词 -1）。 */
+    /** 关闭词优先级（数组序——× 家族 0 最优；未知词 -1）。
+     *  v7.15.2：倒计时族返回 CD_CLOSE_PRIORITY（劣于全部精确词）。 */
     public static int closeWordPriority(String label) {
         if (label == null) return -1;
         String t = label.trim();
         for (int i = 0; i < INTER_CLOSE_WORDS.length; i++) {
             if (INTER_CLOSE_WORDS[i].equals(t)) return i;
         }
-        return -1;
+        return isCountdownCloseForm(t) ? CD_CLOSE_PRIORITY : -1;
     }
 
     /* ───────── 闸②：关闭钮形态 ───────── */
@@ -146,44 +198,57 @@ public final class InterstitialGuard {
     /* ───────── 决策（纯函数 · 候选式——李跳跳方法论） ───────── */
 
     /**
-     * 插屏关闭决策（v7.6.0 激进版）：语境候选 + 关闭候选（原生直查命中）
-     * → 闸⓪~闸③逐候选判定。返回 null = 无插屏签名。
+     * 插屏关闭决策（v7.6.0 激进版 + v7.15.2 强窗形免语境）：语境候选 + 关闭候选
+     * （原生直查命中）→ 闸⓪~闸③逐候选判定。返回 null = 无插屏签名。
      * tapBounds = 关闭钮【自身】bounds——绝不广告主体、绝不语境节点。
      *
      * @param ctxCands   语境词直查命中（「广告」contains——闸⓪在场证据）
      * @param closeCands 关闭词直查命中（含未过闸的——闸①~③内逐个判定）
      * @param scrollPresent 窗内存在可滚动容器（闸③：滚动窗须近旁铁证）
+     * @param strongWinForm v7.15.2：强窗形（SDK 广告窗/Dialog 形态）——窗口
+     *                     形态本身即广告铁证，闸⓪语境在场免查（真机实锤：
+     *                     无角标插屏/返回开屏窗全被「无语境词」一票否决）
      */
     public static FeedDecision decideFromCandidates(java.util.List<NodeView> ctxCands,
                                                      java.util.List<NodeView> closeCands,
                                                      int screenW, int screenH,
-                                                     boolean scrollPresent) {
-        if (ctxCands == null || ctxCands.isEmpty() || closeCands == null || closeCands.isEmpty()) return null;
+                                                     boolean scrollPresent,
+                                                     boolean strongWinForm) {
+        /* v7.15.2：关闭候选在场是硬前提（任何形态）；语境候选在强窗形下
+         * 可以为空（窗口形态即广告铁证——免闸⓪）。 */
+        if (closeCands == null || closeCands.isEmpty()) return null;
+        boolean ctxOk = strongWinForm || (ctxCands != null && !ctxCands.isEmpty());
+        if (!ctxOk) return null;
 
         /* 闸⓪：广告语境在场（contains——用户实锤「几乎都带有广告两个字」）。
-         * 语境节点只作在场证据，绝不点击。收集语境节点中心（滚动窗近旁闸用）。 */
+         * 语境节点只作在场证据，绝不点击。收集语境节点中心（滚动窗近旁闸用）。
+         * v7.15.2：strongWinForm（SDK 广告窗/Dialog）免语境——窗口形态即铁证。 */
         int[] ctxB = null;
-        for (int i = 0; i < ctxCands.size(); i++) {
-            NodeView n = ctxCands.get(i);
-            if (n == null) continue;
-            try {
-                if (!n.visible()) continue;
-                String label = nz(n.text());
-                if (label.length() == 0) label = nz(n.desc());
-                if (!hasAdContextWord(label)) continue;
-                int[] b = n.bounds();
-                if (b != null && b.length >= 4 && b[2] > b[0] && b[3] > b[1]) {
-                    if (ctxB == null) ctxB = b; // 首个语境节点（近旁判定基准）
+        if (!strongWinForm) {
+            for (int i = 0; i < ctxCands.size(); i++) {
+                NodeView n = ctxCands.get(i);
+                if (n == null) continue;
+                try {
+                    if (!n.visible()) continue;
+                    String label = nz(n.text());
+                    if (label.length() == 0) label = nz(n.desc());
+                    if (!hasAdContextWord(label)) continue;
+                    int[] b = n.bounds();
+                    if (b != null && b.length >= 4 && b[2] > b[0] && b[3] > b[1]) {
+                        if (ctxB == null) ctxB = b; // 首个语境节点（近旁判定基准）
+                    }
+                } catch (Throwable ignored) {
                 }
-            } catch (Throwable ignored) {
             }
+            if (ctxB == null) return null; // 语境不在场且非强窗形 → 绝不出手
         }
-        if (ctxB == null) return null; // 语境不在场 → 绝不出手
 
         /* 闸①~③：关闭候选逐个判定（词优先级序收集最优）。
          * v7.6.0 激进：非滚动窗零位置闸（关闭词本身已足够特异——用户指令
          * 「激进一点暂时先放弃宁可漏拦绝不误触」）；滚动窗（信息流卡片）
-         * 须与广告语境节点近旁（|Δcy|≤35% 屏高同排铁证）才出手。 */
+         * 须与广告语境节点近旁（|Δcy|≤35% 屏高同排铁证）才出手。
+         * v7.15.2：强窗形免语境时滚动窗近旁闸改用首候选/任意关闭钮自身
+         * （无语境基准可依——强窗形下关闭钮本身已足够特异）。 */
         NodeView bestNode = null;
         int[] bestB = null;
         String bestLabel = null;
@@ -195,13 +260,13 @@ public final class InterstitialGuard {
                 if (!n.visible()) continue;
                 String label = nz(n.text());
                 if (label.length() == 0) label = nz(n.desc());
-                if (!isInterstitialCloseWord(label)) continue; // 闸①语义（精确等值）
+                if (!isInterstitialCloseWord(label)) continue; // 闸①语义（精确等值 + 倒计时族）
                 int[] b = n.bounds();
                 if (!closeFormOk(b, screenW, screenH)) continue; // 闸②形态
                 int pri = closeWordPriority(label);
                 if (pri < 0) continue;
                 if (pri >= bestPri) continue; // 只收更优（或首个）
-                if (scrollPresent && !nearContext(b, ctxB, screenH)) continue; // 闸③滚动窗近旁铁证
+                if (scrollPresent && !strongWinForm && !nearContext(b, ctxB, screenH)) continue; // 闸③滚动窗近旁铁证
                 bestNode = n;
                 bestB = b;
                 bestLabel = label;

@@ -1,9 +1,8 @@
 /** 版本与 GitHub 仓库信息（Web 端与发布节奏共用）。
- * v7.15.1 修复说明：v7.15.0 发布会话曾把本文件误写为两万多行重复块且
- * 丢失 APP_VERSION/VERSION_CODE 等导出（脚本事故——Web 编译与
- * scripts/check-version-sync.sh 均会失败）；本轮恢复到单条目规范形态。 */
-export const APP_VERSION = "7.15.1";
-export const VERSION_CODE = 85100; // v7.1.0 起标准公式 major*10000 + minor*1000 + patch*100（7.15.1→85100）；v7.10.0 统一版本规则：更新判定只看 versionCode，versionName 仅展示
+ * v7.15.2：息屏/切回拦截根治（SDK 广告窗直断兜底链 + 锁屏在场总闸）
+ * + 8h 自动上传死链复活（维护心跳）+ 插屏倒计时关闭词三族（GKD 同源）。 */
+export const APP_VERSION = "7.15.2";
+export const VERSION_CODE = 85200; // v7.1.0 起标准公式 major*10000 + minor*1000 + patch*100（7.15.2→85200）；v7.10.0 统一版本规则：更新判定只看 versionCode，versionName 仅展示
 export const GITHUB_REPO = "xiaobaiba999/Skip-Ad";
 export const GITHUB_API = `https://api.github.com/repos/${GITHUB_REPO}`;
 export const GITHUB_HOME = `https://github.com/${GITHUB_REPO}`;
@@ -22,16 +21,15 @@ export interface VersionEntry {
  *  旧版本内容归档在 GitHub Releases 与 git 历史） */
 export const VERSION_HISTORY: VersionEntry[] = [
   {
-    version: "7.15.1",
-    code: 85100,
+    version: "7.15.2",
+    code: 85200,
     date: "2026-11-24",
-    tagline: "息屏/解锁重入根治：锁屏污染前台追踪 → 补扫走偏 + 引擎致盲（真机日志实锤）",
+    tagline: "息屏/切回拦截根治 + 8h 自动上传死链复活 + 插屏倒计时关闭词（真机日志实锤修复轮）",
     notes: [
-      "亮屏/解锁视作重新进入（根治版）：窗龄重置 + 节流清空 + 立即主动补扫——扫描日志可直接核验「🔓 亮屏/解锁视作重新进入（应用名）」",
-      "补扫目标校正：解锁瞬间不再补扫锁屏自己的树（旧版实锤「开屏未命中（systemui）」六连发），校正回息屏前的真实应用（RearmPlanner 纯函数 + lastAppPkg 真实应用追踪）",
-      "前台追踪污染根除：锁屏宿主（systemui/keyguard）顶掉真实应用导致内容事件被前置过滤吞掉——引擎致盲根除点",
-      "亮屏而锁屏还在场时绝不出手（坐标点击不会落到锁屏上——误触红线不破），补扫推迟到真正解锁瞬间",
-      "重入重置与真实「进入应用」同语义：收手态/倒计时锚点/触点轨迹/三张包级节流表全量镜像重置；JVM 4348 断言全绿（新增 RearmPlannerTest 34 项）",
+      "SDK 广告窗直断兜底链：识别瞬间即排 900/1600/2400/3400ms 四档兜底针（独立于扫描代际护栏）——零动作且无闸拦时直派返回键温和直断；未触发必打原因日志（🛟）——真机实锤：整个开机周期返回键 0，承诺落空的死因根治",
+      "锁屏在场总闸（误触红线）：应用在锁屏后面就把返回开屏窗拉起来（事件早于 USER_PRESENT）——出手前统一过 keyguardBlocking（广播优先零 IPC + IPC 定音自愈型）；锁屏在场绝不出手（日志可见 🔒）",
+      "8h 自动上传死链复活：维护任务只挂心跳自检分支而服务健康时心跳被撤（#89 孤例是 MiTV：ROM 反复解绑反而救活心跳链）——存活期 30 分钟窗口式维护心跳 + 分档续期（活着 30 分钟/死了 5 分钟）+ 维护任务前置 keepOn 闸外",
+      "插屏倒计时关闭词三族（GKD 全局规则同源）：「跳过 4」「定时关闭，剩余24分16…」「5s后关闭」（必须含数字——广告倒计时特异信号）；强窗形（SDK 广告窗/Dialog）免语境闸⓪；JVM 4379 断言全绿（+31）",
     ],
   }];
 

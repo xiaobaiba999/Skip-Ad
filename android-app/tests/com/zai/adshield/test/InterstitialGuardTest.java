@@ -104,7 +104,7 @@ public final class InterstitialGuardTest {
         java.util.ArrayList<AdDecisionCore.NodeView> c1 = new java.util.ArrayList<>();
         b1.add(new SimNode("广告", 60, 100, 190, 180));
         c1.add(new SimNode("×", 960, 100, 1060, 180));
-        FeedAdGuard.FeedDecision hit = InterstitialGuard.decideFromCandidates(b1, c1, 1080, 2400, false);
+        FeedAdGuard.FeedDecision hit = InterstitialGuard.decideFromCandidates(b1, c1, 1080, 2400, false, false);
         TestHost.check(hit != null && InterstitialGuard.ACTION_CLOSE.equals(hit.action)
                         && "×".equals(hit.label) && hit.tapBounds[0] == 960 && hit.tapBounds[2] == 1060,
                 "广告语境+同排 × → 出手（tapBounds=×自身）");
@@ -113,7 +113,7 @@ public final class InterstitialGuardTest {
         java.util.ArrayList<AdDecisionCore.NodeView> c2 = new java.util.ArrayList<>();
         b2.add(new SimNode("查看广告详情", 500, 1100, 780, 1180));
         c2.add(new SimNode("残忍离开", 400, 1300, 680, 1380));
-        FeedAdGuard.FeedDecision mid = InterstitialGuard.decideFromCandidates(b2, c2, 1080, 2400, false);
+        FeedAdGuard.FeedDecision mid = InterstitialGuard.decideFromCandidates(b2, c2, 1080, 2400, false, false);
         TestHost.check(mid != null && "残忍离开".equals(mid.label),
                 "非滚动窗·中部「残忍离开」+ 广告语境 → 出手（旧带位闸全灭中部——死因③根治）");
         // 语境变体：广告 · 了解详情
@@ -121,34 +121,34 @@ public final class InterstitialGuardTest {
         java.util.ArrayList<AdDecisionCore.NodeView> c3 = new java.util.ArrayList<>();
         b3.add(new SimNode("广告 · 了解详情", 60, 2100, 420, 2180));
         c3.add(new SimNode("×", 960, 2100, 1060, 2180));
-        FeedAdGuard.FeedDecision var = InterstitialGuard.decideFromCandidates(b3, c3, 1080, 2400, false);
+        FeedAdGuard.FeedDecision var = InterstitialGuard.decideFromCandidates(b3, c3, 1080, 2400, false, false);
         TestHost.check(var != null && "×".equals(var.label),
                 "「广告 · 了解详情」语境变体（v7.5.0 isDisclosureBadge 拒）+ 底带 × → 出手");
         // 语境不在场 → 拒
         java.util.ArrayList<AdDecisionCore.NodeView> b4 = new java.util.ArrayList<>();
         java.util.ArrayList<AdDecisionCore.NodeView> c4 = new java.util.ArrayList<>();
         c4.add(new SimNode("×", 960, 100, 1060, 180));
-        FeedAdGuard.FeedDecision noCtx = InterstitialGuard.decideFromCandidates(b4, c4, 1080, 2400, false);
+        FeedAdGuard.FeedDecision noCtx = InterstitialGuard.decideFromCandidates(b4, c4, 1080, 2400, false, false);
         TestHost.check(noCtx == null, "无广告语境 → 绝不出手（普通页面零误点面）");
         // 关闭词缺 → 拒
         java.util.ArrayList<AdDecisionCore.NodeView> b5 = new java.util.ArrayList<>();
         java.util.ArrayList<AdDecisionCore.NodeView> c5 = new java.util.ArrayList<>();
         b5.add(new SimNode("广告", 60, 100, 190, 180));
-        FeedAdGuard.FeedDecision noClose = InterstitialGuard.decideFromCandidates(b5, c5, 1080, 2400, false);
+        FeedAdGuard.FeedDecision noClose = InterstitialGuard.decideFromCandidates(b5, c5, 1080, 2400, false, false);
         TestHost.check(noClose == null, "语境在场无关闭钮 → 拒");
         // 关闭钮超大形态（广告主体）→ 拒
         java.util.ArrayList<AdDecisionCore.NodeView> b6 = new java.util.ArrayList<>();
         java.util.ArrayList<AdDecisionCore.NodeView> c6 = new java.util.ArrayList<>();
         b6.add(new SimNode("广告", 60, 100, 190, 180));
         c6.add(new SimNode("跳过", 100, 400, 500, 700));
-        FeedAdGuard.FeedDecision big = InterstitialGuard.decideFromCandidates(b6, c6, 1080, 2400, false);
+        FeedAdGuard.FeedDecision big = InterstitialGuard.decideFromCandidates(b6, c6, 1080, 2400, false, false);
         TestHost.check(big == null, "关闭钮 400×300 超形态（>30%×12%）→ 拒（绝不点广告主体）");
         // 营销词冒充关闭词 → 拒
         java.util.ArrayList<AdDecisionCore.NodeView> b7 = new java.util.ArrayList<>();
         java.util.ArrayList<AdDecisionCore.NodeView> c7 = new java.util.ArrayList<>();
         b7.add(new SimNode("广告", 60, 100, 190, 180));
         c7.add(new SimNode("进入广告", 960, 100, 1060, 180));
-        FeedAdGuard.FeedDecision fake = InterstitialGuard.decideFromCandidates(b7, c7, 1080, 2400, false);
+        FeedAdGuard.FeedDecision fake = InterstitialGuard.decideFromCandidates(b7, c7, 1080, 2400, false, false);
         TestHost.check(fake == null, "「进入广告」营销词 → 精确等值拒（绝不点进广告）");
         // 不可见关闭钮 → 拒
         SimNode hidden = new SimNode("×", 960, 100, 1060, 180);
@@ -157,14 +157,14 @@ public final class InterstitialGuardTest {
         java.util.ArrayList<AdDecisionCore.NodeView> c8 = new java.util.ArrayList<>();
         b8.add(new SimNode("广告", 60, 100, 190, 180));
         c8.add(hidden);
-        FeedAdGuard.FeedDecision invis = InterstitialGuard.decideFromCandidates(b8, c8, 1080, 2400, false);
+        FeedAdGuard.FeedDecision invis = InterstitialGuard.decideFromCandidates(b8, c8, 1080, 2400, false, false);
         TestHost.check(invis == null, "不可见关闭钮 → 拒");
         // 滚动窗近旁铁证 → 出手（v7.5.0 一票否决——死因④根治：名单外信息流卡片）
         java.util.ArrayList<AdDecisionCore.NodeView> b9 = new java.util.ArrayList<>();
         java.util.ArrayList<AdDecisionCore.NodeView> c9 = new java.util.ArrayList<>();
         b9.add(new SimNode("广告", 60, 100, 190, 180));
         c9.add(new SimNode("关闭", 960, 100, 1060, 180));
-        FeedAdGuard.FeedDecision scrollNear = InterstitialGuard.decideFromCandidates(b9, c9, 1080, 2400, true);
+        FeedAdGuard.FeedDecision scrollNear = InterstitialGuard.decideFromCandidates(b9, c9, 1080, 2400, true, false);
         TestHost.check(scrollNear != null && "关闭".equals(scrollNear.label),
                 "滚动窗·同排近距关闭钮 → 出手（近旁铁证）");
         // 滚动窗远距 → 拒（上一卡的关闭钮不代点）
@@ -172,7 +172,7 @@ public final class InterstitialGuardTest {
         java.util.ArrayList<AdDecisionCore.NodeView> c10 = new java.util.ArrayList<>();
         b10.add(new SimNode("广告", 60, 100, 190, 180));
         c10.add(new SimNode("关闭", 960, 1400, 1060, 1480));
-        FeedAdGuard.FeedDecision scrollFar = InterstitialGuard.decideFromCandidates(b10, c10, 1080, 2400, true);
+        FeedAdGuard.FeedDecision scrollFar = InterstitialGuard.decideFromCandidates(b10, c10, 1080, 2400, true, false);
         TestHost.check(scrollFar == null, "滚动窗远距（|Δcy|≈55%）→ 拒（上一卡不代点）");
         // 多关闭候选取最优优先级
         java.util.ArrayList<AdDecisionCore.NodeView> b11 = new java.util.ArrayList<>();
@@ -180,14 +180,14 @@ public final class InterstitialGuardTest {
         b11.add(new SimNode("广告", 60, 100, 190, 180));
         c11.add(new SimNode("知道了", 960, 100, 1060, 180));
         c11.add(new SimNode("×", 900, 100, 1000, 180));
-        FeedAdGuard.FeedDecision best = InterstitialGuard.decideFromCandidates(b11, c11, 1080, 2400, false);
+        FeedAdGuard.FeedDecision best = InterstitialGuard.decideFromCandidates(b11, c11, 1080, 2400, false, false);
         TestHost.check(best != null && "×".equals(best.label), "多关闭候选取最优（× > 知道了——数组序优先级）");
         // 长文案语境节点（>10 字）不算在场
         java.util.ArrayList<AdDecisionCore.NodeView> b12 = new java.util.ArrayList<>();
         java.util.ArrayList<AdDecisionCore.NodeView> c12 = new java.util.ArrayList<>();
         b12.add(new SimNode("广告文案策划全解析从入门到精通", 60, 100, 190, 180));
         c12.add(new SimNode("×", 960, 100, 1060, 180));
-        FeedAdGuard.FeedDecision longCtx = InterstitialGuard.decideFromCandidates(b12, c12, 1080, 2400, false);
+        FeedAdGuard.FeedDecision longCtx = InterstitialGuard.decideFromCandidates(b12, c12, 1080, 2400, false, false);
         TestHost.check(longCtx == null, "超长正文语境节点不算在场 → 拒（contains 面可控）");
         // desc-only 语境节点也认
         SimNode descOnly = new SimNode("", 60, 100, 190, 180);
@@ -196,14 +196,14 @@ public final class InterstitialGuardTest {
         java.util.ArrayList<AdDecisionCore.NodeView> c13 = new java.util.ArrayList<>();
         b13.add(descOnly);
         c13.add(new SimNode("×", 960, 100, 1060, 180));
-        FeedAdGuard.FeedDecision descHit = InterstitialGuard.decideFromCandidates(b13, c13, 1080, 2400, false);
+        FeedAdGuard.FeedDecision descHit = InterstitialGuard.decideFromCandidates(b13, c13, 1080, 2400, false, false);
         TestHost.check(descHit != null, "desc-only 语境节点（contentDescription）→ 也认");
         // 屏幕未知兜底形态闸
         java.util.ArrayList<AdDecisionCore.NodeView> b14 = new java.util.ArrayList<>();
         java.util.ArrayList<AdDecisionCore.NodeView> c14 = new java.util.ArrayList<>();
         b14.add(new SimNode("广告", 60, 100, 190, 180));
         c14.add(new SimNode("×", 60, 100, 360, 240));
-        FeedAdGuard.FeedDecision fallback = InterstitialGuard.decideFromCandidates(b14, c14, 0, 0, false);
+        FeedAdGuard.FeedDecision fallback = InterstitialGuard.decideFromCandidates(b14, c14, 0, 0, false, false);
         TestHost.check(fallback != null, "屏幕未知 → 324×144px 兜底形态闸过（300×140 关闭钮）");
 
         /* ════ S6 interBoundaryCheck 终闸语义面（13 项——v7.5.0 死因②根治）════ */
@@ -261,7 +261,7 @@ public final class InterstitialGuardTest {
             java.util.ArrayList<AdDecisionCore.NodeView> cc = new java.util.ArrayList<>();
             bb.add(new SimNode("广告", (int) (w * 0.05), (int) (h * 0.04), (int) (w * 0.17), (int) (h * 0.075)));
             cc.add(new SimNode("×", (int) (w * 0.88), (int) (h * 0.04), (int) (w * 0.98), (int) (h * 0.075)));
-            FeedAdGuard.FeedDecision d = InterstitialGuard.decideFromCandidates(bb, cc, w, h, false);
+            FeedAdGuard.FeedDecision d = InterstitialGuard.decideFromCandidates(bb, cc, w, h, false, false);
             boolean pass = d != null && "×".equals(d.label)
                     && d.tapBounds[0] >= 0 && d.tapBounds[2] <= w;
             if (pass) brandOk++;
@@ -273,10 +273,93 @@ public final class InterstitialGuardTest {
             int w = brandRes[bi][0], h = brandRes[bi][1];
             java.util.ArrayList<AdDecisionCore.NodeView> cc = new java.util.ArrayList<>();
             cc.add(new SimNode("×", (int) (w * 0.88), (int) (h * 0.04), (int) (w * 0.98), (int) (h * 0.075)));
-            FeedAdGuard.FeedDecision d = InterstitialGuard.decideFromCandidates(new java.util.ArrayList<AdDecisionCore.NodeView>(), cc, w, h, false);
+            FeedAdGuard.FeedDecision d = InterstitialGuard.decideFromCandidates(new java.util.ArrayList<AdDecisionCore.NodeView>(), cc, w, h, false, false);
             if (d == null) brandReject++;
         }
         TestHost.checkEq(9, brandReject, "九品牌无语境反例零出手（宁漏勿误基线保持）");
+
+        /* ════ S9 v7.15.2 倒计时型关闭词族（GKD 全局规则同源）════
+         * 真机日志实锤（#96 02:22 / #95 03:18）：「定时关闭，剩余24分16…」
+         * 「跳过 4」被闸①精确等值全拒——子串直查找得到、词闸拒之门外。 */
+        TestHost.suite("InterstitialGuard · S9 v7.15.2 倒计时关闭词族（跳过4/定时关闭倒计时/N后关闭）");
+        String[] cdCloses = {
+                "跳过 4", "跳过 3", "跳过5秒", "4s 跳过", "跳過 2",     // countdownSkip（GKD text*="跳过" 同源）
+                "定时关闭 5s", "定时关闭，剩余24分16…",                // scheduledClose（真机实锤样本；带数字）
+                "5s后关闭", "3秒后可关闭", "15秒后关闭",                  // delayedClose
+        };
+        for (String w : cdCloses) {
+            TestHost.check(InterstitialGuard.isInterstitialCloseWord(w), "倒计时关闭词：" + w);
+        }
+        String[] cdNonCloses = {
+                "跳过啊",                                     // 无数字（纯词走精确表，变体不算）
+                "定时关闭",                                    // 无数字——播放器功能钮形态（非开头带尾不算，歧义拒）
+                "定时关闭广告后自动跳转领取福利大礼包超级加倍版",     // >16 字长文案拒
+                "明日定时关闭",                                // 非「定时关闭」开头
+                "领取3天", "第3期", "24分16",                   // 有数字无倒计时关闭语义
+                "后关闭",                                      // 无数字
+        };
+        for (String w : cdNonCloses) {
+            TestHost.check(!InterstitialGuard.isCountdownCloseForm(w), "非倒计时关闭形态：" + w);
+        }
+        TestHost.check(!InterstitialGuard.isCountdownCloseForm(null), "null 拒（倒计时族）");
+        // 倒计时族优先级：劣于全部精确词（CD_CLOSE_PRIORITY=100 > 精确表全长）
+        TestHost.checkEq(100, InterstitialGuard.closeWordPriority("跳过 4"), "「跳过 4」倒计时族优先级 100");
+        TestHost.check(InterstitialGuard.closeWordPriority("跳过 4") > InterstitialGuard.closeWordPriority("知道了"),
+                "倒计时族劣于「知道了」（精确词优先出手）");
+        // 终闸语义面收编（v7.5.0 死因②同款防线——倒计时词也过 interBoundaryCheck）
+        TestHost.checkEq(ComplianceGuard.BND_OK, ComplianceGuard.interBoundaryCheck("跳过 4", cb, 1080, 2400, "com.example.app", "android.widget.FrameLayout"),
+                "「跳过 4」过插屏终闸（倒计时族语义面收编）");
+        TestHost.checkEq(ComplianceGuard.BND_OK, ComplianceGuard.interBoundaryCheck("定时关闭，剩余24分16…", cb, 1080, 2400, "com.example.app", "android.widget.FrameLayout"),
+                "「定时关闭，剩余24分16…」过插屏终闸（真机实锤样本）");
+        TestHost.checkEq(ComplianceGuard.BND_FAIL_SEMANTIC, ComplianceGuard.interBoundaryCheck("明日定时关闭", cb, 1080, 2400, "com.example.app", "android.widget.FrameLayout"),
+                "「明日定时关闭」终闸拒（非开头变体）");
+
+        /* ════ S10 v7.15.2 强窗形免语境（SDK 广告窗/Dialog——窗口形态即铁证）════ */
+        TestHost.suite("InterstitialGuard · S10 v7.15.2 强窗形免语境（无角标插屏根治）");
+        // 强窗形 + 倒计时关闭钮 + 无语境 → 出手（#96 实锤死因：无语境词一票否决）
+        java.util.ArrayList<AdDecisionCore.NodeView> k1 = new java.util.ArrayList<>();
+        java.util.ArrayList<AdDecisionCore.NodeView> k1c = new java.util.ArrayList<>();
+        k1c.add(new SimNode("定时关闭，剩余24分16…", 940, 2000, 1060, 2080));
+        FeedAdGuard.FeedDecision sdkCd = InterstitialGuard.decideFromCandidates(k1, k1c, 1080, 2400, false, true);
+        TestHost.check(sdkCd != null && sdkCd.label.startsWith("定时关闭"),
+                "SDK 广告窗 + 「定时关闭，剩余24分16…」+ 无语境 → 出手（返回开屏窗真机实锤）");
+        // 强窗形 + 精确词「知道了」+ 无语境 → 出手
+        java.util.ArrayList<AdDecisionCore.NodeView> k2 = new java.util.ArrayList<>();
+        java.util.ArrayList<AdDecisionCore.NodeView> k2c = new java.util.ArrayList<>();
+        k2c.add(new SimNode("知道了", 480, 1100, 600, 1180));
+        FeedAdGuard.FeedDecision dialogKnow = InterstitialGuard.decideFromCandidates(k2, k2c, 1080, 2400, false, true);
+        TestHost.check(dialogKnow != null && "知道了".equals(dialogKnow.label),
+                "Dialog 形态 + 「知道了」+ 无语境 → 出手（无角标弹层插屏）");
+        // 强窗形 + 滚动容器 + 倒计时关闭 → 出手（闸③近旁基准缺失同步豁免）
+        java.util.ArrayList<AdDecisionCore.NodeView> k3 = new java.util.ArrayList<>();
+        java.util.ArrayList<AdDecisionCore.NodeView> k3c = new java.util.ArrayList<>();
+        k3c.add(new SimNode("跳过 4", 960, 100, 1060, 180));
+        FeedAdGuard.FeedDecision sdkScroll = InterstitialGuard.decideFromCandidates(k3, k3c, 1080, 2400, true, true);
+        TestHost.check(sdkScroll != null && "跳过 4".equals(sdkScroll.label),
+                "SDK 广告窗 + 滚动容器 + 「跳过 4」→ 出手（H5 容器常态）");
+        // 强窗形 + 超大形态关闭钮 → 拒（闸②形态保持——绝不点广告主体）
+        java.util.ArrayList<AdDecisionCore.NodeView> k4c = new java.util.ArrayList<>();
+        k4c.add(new SimNode("跳过 4", 100, 400, 500, 700));
+        FeedAdGuard.FeedDecision sdkBig = InterstitialGuard.decideFromCandidates(new java.util.ArrayList<AdDecisionCore.NodeView>(), k4c, 1080, 2400, false, true);
+        TestHost.check(sdkBig == null, "强窗形 + 400×300 超形态 → 拒（绝不点广告主体）");
+        // 强窗形 + 营销词 → 拒（闸①语义保持）
+        java.util.ArrayList<AdDecisionCore.NodeView> k5c = new java.util.ArrayList<>();
+        k5c.add(new SimNode("进入广告", 960, 100, 1060, 180));
+        FeedAdGuard.FeedDecision sdkFake = InterstitialGuard.decideFromCandidates(new java.util.ArrayList<AdDecisionCore.NodeView>(), k5c, 1080, 2400, false, true);
+        TestHost.check(sdkFake == null, "强窗形 + 「进入广告」营销词 → 拒（绝不点进广告）");
+        // 普通窗（strongWinForm=false）无语境 → 仍拒（S5 基线不破——宁漏勿误红线）
+        java.util.ArrayList<AdDecisionCore.NodeView> k6c = new java.util.ArrayList<>();
+        k6c.add(new SimNode("定时关闭，剩余24分16…", 940, 2000, 1060, 2080));
+        FeedAdGuard.FeedDecision plainCd = InterstitialGuard.decideFromCandidates(new java.util.ArrayList<AdDecisionCore.NodeView>(), k6c, 1080, 2400, false, false);
+        TestHost.check(plainCd == null, "普通窗无语境（播放器定时关闭功能钮）→ 拒（误触红线保持）");
+        // 普通窗 + 语境在场 + 倒计时关闭 → 出手（闸⓪过 + 倒计时族过）
+        java.util.ArrayList<AdDecisionCore.NodeView> k7 = new java.util.ArrayList<>();
+        java.util.ArrayList<AdDecisionCore.NodeView> k7c = new java.util.ArrayList<>();
+        k7.add(new SimNode("广告", 60, 2000, 190, 2080));
+        k7c.add(new SimNode("定时关闭，剩余24分16…", 940, 2000, 1060, 2080));
+        FeedAdGuard.FeedDecision plainAdCd = InterstitialGuard.decideFromCandidates(k7, k7c, 1080, 2400, false, false);
+        TestHost.check(plainAdCd != null && plainAdCd.label.startsWith("定时关闭"),
+                "普通窗 + 广告语境 + 倒计时关闭钮 → 出手（VIP 试用插屏真机形态）");
 
         TestHost.done();
     }

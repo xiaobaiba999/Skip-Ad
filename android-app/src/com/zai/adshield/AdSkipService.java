@@ -297,8 +297,18 @@ public class AdSkipService extends AccessibilityService {
     private final java.util.HashMap<String, Long> lastGestureOkAt = new java.util.HashMap<>();
 
     /* v6.1.0：每 8 小时自动提交引擎日志（用户实锤：一天自动提交 3 次、
-     * 24 小时均匀 → 12h→8h；成功才计时，服务未运行/息屏跳过等下轮心跳） */
+     * 24 小时均匀 → 12h→8h；成功才计时，服务未运行/息屏跳过等下轮心跳）
+     * v7.15.2：v6.1.0 的 8h 从未真正落地——issue 链实锤：唯一一次自动上传
+     * 是 v7.8.0 的 MiTV（服务被 ROM 反复解绑 → onUnbind 排的心跳链恰好活着）；
+     * 手机上服务健康常驻时 onServiceConnected 直接 cancelHeartbeat()——心跳
+     * （自动上传/订阅静默更新/每日导入的唯一触发源）整段死链。修复：
+     * 服务活着时改排【维护心跳】（窗口式非精确闹钟，30 分钟一档，Doze
+     * 维护窗内批量调度零唤醒）——存活性自检仍归它（发现延迟 5→30 分钟）。 */
     public static final long AUTO_LOG_MS = 8 * 60 * 60 * 1000L;
+    /* v7.15.2：服务存活期维护心跳节拍（30 分钟窗口式：自动上传/订阅更新/
+     * 每日导入三项维护任务 + 免费存活性自检；对比：服务死亡期心跳 5 分钟
+     * （快速自愈提醒）→ KeepAliveReceiver 按 isAlive() 分档续期） */
+    public static final long ALIVE_HEARTBEAT_MS = 30 * 60 * 1000L;
 
     /* 极速链（v4.3.0 功耗收紧：16 档 → 13 档——前 4s 的内容变化补扫已覆盖
        密集相位，固定档只留骨架；露头就秒跳不变（0/80/200ms 三连快扫）
@@ -991,7 +1001,14 @@ public class AdSkipService extends AccessibilityService {
         prefs().edit().putBoolean(KEY_KEEPON, true).apply();
         startKeepAliveForeground();
         cancelAlertNotification();
-        cancelHeartbeat(); // 服务活着，心跳自检不再需要
+        /* v7.15.2：服务存活期维护心跳——旧设计 cancelHeartbeat() 把心跳
+         * 全撤，自动上传/订阅静默更新/每日自动导入三个维护任务（只挂在
+         * KeepAliveReceiver 自检分支里）在服务健康时永无触发源（issue
+         * #89 后再无自动日志实锤：手机服务常驻 → 链死；MiTV 因 ROM 反复
+         * 解绑反而活了）。改为 30 分钟窗口式非精确闹钟：Doze 里批量调度
+         * 零额外唤醒，亮屏时排点即校验；同一 PendingIntent（requestCode 8）
+         * 天然去重覆盖，不叠加闹钟。 */
+        scheduleNextHeartbeat(this, System.currentTimeMillis() + ALIVE_HEARTBEAT_MS, true);
         // v3.6.0：清理 v3.5.0 误学毒指纹（MainActivity/FrameLayout/Dialog 被
         // 学成「广告窗指纹」——用户二次进入被连按返回键退出的根因）
         int purged = purgePoisonFingerprints();
@@ -1201,19 +1218,6 @@ public class AdSkipService extends AccessibilityService {
 
     private void scheduleHeartbeat() {
         scheduleNextHeartbeat(this, System.currentTimeMillis() + HEARTBEAT_MS, true);
-    }
-
-    private void cancelHeartbeat() {
-        try {
-            android.app.AlarmManager am = (android.app.AlarmManager) getSystemService(ALARM_SERVICE);
-            Intent it = new Intent(this, KeepAliveReceiver.class);
-            it.setAction(KeepAliveReceiver.ACTION_SELF_CHECK);
-            android.app.PendingIntent pi = android.app.PendingIntent.getBroadcast(
-                    this, 8, it,
-                    android.app.PendingIntent.FLAG_UPDATE_CURRENT | android.app.PendingIntent.FLAG_IMMUTABLE);
-            am.cancel(pi);
-        } catch (Throwable ignored) {
-        }
     }
 
     @Override
@@ -1442,6 +1446,14 @@ public class AdSkipService extends AccessibilityService {
             if (s == null) return;
             String act = i == null ? null : i.getAction();
             s.screenInteractive = Intent.ACTION_SCREEN_ON.equals(act);
+            /* v7.15.2 锁屏在场标记：SCREEN_ON 瞬间锁屏大概率在场（无锁设备
+             * USER_PRESENT 会毫秒级跟上把标记冲掉）；解锁/息屏都不在场。 */
+            if (Intent.ACTION_SCREEN_ON.equals(act)) {
+                s.keyguardLikely = true;
+            } else if (Intent.ACTION_USER_PRESENT.equals(act)
+                    || Intent.ACTION_SCREEN_OFF.equals(act)) {
+                s.keyguardLikely = false;
+            }
             if (Intent.ACTION_SCREEN_ON.equals(act)
                     || Intent.ACTION_USER_PRESENT.equals(act)) {
                 s.rearmForScreenOn(Intent.ACTION_USER_PRESENT.equals(act));
@@ -1453,6 +1465,21 @@ public class AdSkipService extends AccessibilityService {
     volatile boolean screenInteractive = true;
     /* 广播注册成功后热路径才用缓存（失败回退逐次查询，功能绝不缩水） */
     private volatile boolean screenRxOk = false;
+
+    /* ═══ v7.15.2 锁屏在场标记（广播维护，零 IPC）═══
+     * SCREEN_ON → true（屏亮但锁屏大概率在场）；USER_PRESENT/SCREEN_OFF →
+     * false。keyguardBlocking()：广播说“不在场”直接放行（零 IPC 热路径）；
+     * 说“在场”再 IPC 一次定音（防 USER_PRESENT 漏播导致永久卡死——自愈型）。 */
+    private volatile boolean keyguardLikely = false;
+
+    /* ═══ v7.15.2 SDK 广告窗直断兜底链（息屏回来根治第二件套）═══
+     * 真机日志（#96 · 09:13 实锤）：SDK 广告窗识别已打出、「700ms 内无
+     * 真跳过键将温和直断」承诺已打出，但整开机周期返回键 0——扫描梯子
+     * （唯一承载 L2 sdkCut 的路径）被代际护栏/窗口重入/树异常任意一环
+     * 吃掉时，承诺就落空。兜底链独立于 scanGen（不受任何代际冲刷）：
+     * 只认「窗口类名仍是那面 SDK 广告窗」——在 900/1600/2400/3400ms
+     * 四档直接评估直断，零动作且无闸拦时由 execute() 派返回键。 */
+    private final java.util.HashMap<String, Long> sdkEnfLogAt = new java.util.HashMap<>();
 
     private void registerScreenReceiver() {
         try {
@@ -1518,7 +1545,7 @@ public class AdSkipService extends AccessibilityService {
             if (!fromUnlock) {
                 /* 亮屏但锁屏还在场：等 USER_PRESENT（真正解锁）再重入。
                  * 无锁设备（亮屏即桌面/应用可见）走下方完整重入。 */
-                if (keyguardLocked()) return;
+                if (keyguardBlocking()) return;
             }
             /* 同一解锁周期内（亮屏→解锁毫秒级连发）只完整重入一次 */
             if (now - lastFullRearmAt < 1500) return;
@@ -1592,7 +1619,8 @@ public class AdSkipService extends AccessibilityService {
     }
 
     /** v7.15.1：锁屏在场判定（一次 IPC，仅亮屏/解锁瞬间用——热路径零成本；
-     *  查询失败按无锁放行——绝不错杀无锁设备的亮屏重入） */
+     *  查询失败按无锁放行——绝不错杀无锁设备的亮屏重入）
+     *  v7.15.2：升级为广播优先 + IPC 定音自愈型（keyguardBlocking）的底层探针。 */
     private boolean keyguardLocked() {
         try {
             android.app.KeyguardManager km = (android.app.KeyguardManager)
@@ -1600,6 +1628,96 @@ public class AdSkipService extends AccessibilityService {
             return km != null && km.isKeyguardLocked();
         } catch (Throwable t) {
             return false;
+        }
+    }
+
+    /** v7.15.2：锁屏在场总闸（出手前零误触红线的统一入口）。
+     *  广播未登记 → 回退逐次 IPC（v7.15.1 原路径）；广播说已不在场 → 零 IPC
+     *  直接放行（热路径）；广播怀疑在场 → IPC 一次定音，实测不在场即自愈
+     *  冲掉标记（防个别 ROM 漏播 USER_PRESENT 把标记卡成永久锁死）。 */
+    private boolean keyguardBlocking() {
+        if (!screenRxOk) return keyguardLocked();
+        if (!keyguardLikely) return false;
+        boolean locked = keyguardLocked();
+        if (!locked) keyguardLikely = false;
+        return locked;
+    }
+
+    /* ═══ v7.15.2 SDK 广告窗直断兜底链（scanGen 无关，窗口类名锚定）═══
+     * 挂点①（主路径）：SDK 广告窗识别瞬间（🎯 日志同帧）排 4 档兜底针；
+     * 挂点②（重入路径）：v7.15.1 解锁重入本身已重排全梯子，兜底针不受
+     * 冲刷继续在岗。每档评估（全部条件独立复检，绝不依赖主路径状态）：
+     *  · 窗口类名已换 → 静默退（广告窗已退场，新窗口自己的链接管）；
+     *  · 前台已换/主开关停 → 静默退；
+     *  · 主路径已有动作（点击梯子出手过/返回键用过/已收手）→ 静默退
+     *    （兜底只补「零动作」死局，绝不抢主路径的班）；
+     *  · 锁屏在场 → 让路等解锁重入（USER_PRESENT 后在岗的后续档 +
+     *    重入全梯子接管）；
+     *  · ≥700ms（与决策核心 CLS_BREAK_MS 同口径）且以上全清 → 直派
+     *    返回键（execute 走既有安全闸/让路/复验全链）。诊断日志：未触发
+     *    打抑制原因（每窗一条，10s 节流）——下轮上传日志直接定位是哪层。 */
+    private static final long[] SDK_ENFORCE_AT = {900, 1600, 2400, 3400};
+
+    private void scheduleSdkKillEnforcement(final String pkg, final String cls, final long winStart) {
+        for (int i = 0; i < SDK_ENFORCE_AT.length; i++) {
+            handler.postDelayed(() -> {
+                AdSkipService s = instance;
+                if (s == null) return;
+                try {
+                    s.sdkKillEnforce(pkg, cls, winStart);
+                } catch (Throwable ignored) {
+                }
+            }, SDK_ENFORCE_AT[i]);
+        }
+    }
+
+    private void sdkKillEnforce(String pkg, String cls, long winStart) {
+        if (!masterOn) return;
+        /* 窗口类名锚定：已不是那面 SDK 广告窗（广告自退/换窗）→ 静默退 */
+        if (!cls.equals(winClassOf(pkg))) return;
+        /* 前台门：窗口已不在前台 → 静默退 */
+        if (!pkg.equals(lastFgPkg)) return;
+        /* 主路径已接管（点击梯子/返回键/收手任一出手过）→ 静默退（不抢班） */
+        if (triesOfClick(pkg) > 0 || triesOf(pkg) > 0) return;
+        Boolean done = gaveUp.get(pkg);
+        if (done != null && done.booleanValue()) return;
+        /* 锁屏在场：屏上是锁屏不是广告——坐标/返回键全让路；
+         * 解锁重入（USER_PRESENT）全梯子 + 后续兜底档接管 */
+        if (keyguardBlocking()) {
+            sdkEnfLog(pkg, cls, "锁屏在场——等解锁重入接管（后续档在岗）");
+            return;
+        }
+        long now = System.currentTimeMillis();
+        /* 直断时限：与决策核心 CLS_BREAK_MS 同口径（≥700ms） */
+        if (now - winStart < 700) return;
+        Ctx ctx = new Ctx();
+        ctx.screenW = screenWidth;
+        ctx.screenH = screenHeight;
+        ctx.pkg = pkg;
+        ctx.activityId = cls;
+        ctx.sdkAdWin = true;
+        ctx.rootWindow = cls.equals(rootWinClsOf(pkg));
+        ctx.elapsedMs = now - winStart;
+        Decision d = new Decision();
+        d.action = AdDecisionCore.A_BACK;
+        d.reason = "sdk_window_enforce";
+        if (execute(pkg, d, null, ctx, true, now)) {
+            // 直断成功：主路径复验链（execute 内 600ms 复验）接管后续
+        } else {
+            sdkEnfLog(pkg, cls, "execute 闸未放行（冷却/让路/验证码横幅——见相邻日志）");
+        }
+    }
+
+    /** v7.15.2：SDK 直断兜底诊断日志（每包 10s 节流——不刷屏不冲掉 16 条留存量） */
+    private void sdkEnfLog(String pkg, String cls, String why) {
+        try {
+            long now = System.currentTimeMillis();
+            Long last = sdkEnfLogAt.get(pkg);
+            if (last != null && now - last.longValue() < 10_000L) return;
+            sdkEnfLogAt.put(pkg, now);
+            if (sdkEnfLogAt.size() > 24) sdkEnfLogAt.clear(); // 防膨胀
+            appendLog("🛟 SDK 直断兜底（" + shortPkg(pkg) + " · " + shortCls(cls) + "）：" + why);
+        } catch (Throwable ignored) {
         }
     }
 
@@ -1809,6 +1927,9 @@ public class AdSkipService extends AccessibilityService {
                 if (AdDecisionCore.isAdActivityClass(cls)) {
                     appendLog("🎯 SDK 广告窗识别（" + shortPkg(pkg) + "）：" + cls
                             + " → 700ms 内无真跳过键将温和直断");
+                    /* v7.15.2：直断兜底链挂点①——识别帧即排（scanGen 无关：
+                     * 主路径任何重入/冲刷都不影响四档兜底针的评估与出手） */
+                    scheduleSdkKillEnforcement(pkg, cls, now);
                 } else if (learnedClassHit(pkg, cls)) {
                     winClsLearned.put(pkg, Boolean.TRUE);
                 }
@@ -2886,9 +3007,14 @@ public class AdSkipService extends AccessibilityService {
                         nativeFindTexts(r, com.zai.adshield.core.InterstitialGuard.INTER_CONTEXT_WORDS);
                 java.util.ArrayList<com.zai.adshield.core.AdDecisionCore.NodeView> closeCands =
                         nativeFindTexts(r, com.zai.adshield.core.InterstitialGuard.INTER_SEARCH_WORDS);
+                /* v7.15.2 强窗形免语境：SDK 广告窗指纹 / Dialog 形态本身就是广告铁证
+                 * ——无角标插屏/返回开屏窗不再被「无语境词」一票否决。 */
+                boolean strongWinForm = com.zai.adshield.core.AdDecisionCore.isAdActivityClass(cls)
+                        || isDialogClass(cls)
+                        || AdDecisionCore.isAdActivityClass(winClassOf(pkg));
                 com.zai.adshield.core.FeedAdGuard.FeedDecision fd =
                         com.zai.adshield.core.InterstitialGuard.decideFromCandidates(
-                                ctxCands, closeCands, screenWidth, screenHeight, f.scrollPresent);
+                                ctxCands, closeCands, screenWidth, screenHeight, f.scrollPresent, strongWinForm);
                 if (fd != null && executeInterstitial(pkg, fd, now)) return;
                 if (missSamples == null) {
                     // v7.6.0：语境词与关闭词命中样本都登（被闸也照登）——上传日志
@@ -3598,6 +3724,24 @@ public class AdSkipService extends AccessibilityService {
             appendLog("🧩 小程序保护（" + shortPkg(pkg) + "）：容器内绝不动作");
             return false;
         }
+        /* ═══ v7.15.2 锁屏在场不出手（误触红线）═══
+         * 真机时序实锤（#96）：应用在锁屏后面就把返回开屏窗拉起来了（事件
+         * 在 USER_PRESENT 之前到达）——此时坐标点击/返回键全落在锁屏上。
+         * 出手前统一过 keyguardBlocking（广播优先零 IPC + IPC 定音自愈）；
+         * 解锁重入（v7.15.1）与 SDK 直断兜底链（本版）会接管解锁后的出手。 */
+        if (keyguardBlocking()) {
+            try {
+                long kgNow = System.currentTimeMillis();
+                Long lastKg = kgYieldLogAt.get(pkg);
+                if (lastKg == null || kgNow - lastKg.longValue() > 10_000L) {
+                    kgYieldLogAt.put(pkg, kgNow);
+                    if (kgYieldLogAt.size() > 24) kgYieldLogAt.clear(); // 防膨胀
+                    appendLog("🔒 锁屏在场（" + shortPkg(pkg) + "）：屏上是锁屏不是广告——本轮不出手（解锁重入自动接管）");
+                }
+            } catch (Throwable ignored) {
+            }
+            return false;
+        }
         /* ═══ v5.5.0 模块四：动作边界自检（出手前最后闸）═══
          * 仅代点原生跳过控件：语义（跳过/关闭/否定侧）+场景（零扫描
          * 场景绝不出手）+形态（≤35% 屏）三重断言；学习位置（用户手动
@@ -3689,7 +3833,20 @@ public class AdSkipService extends AccessibilityService {
                 appendLog("⛔ 根窗口安全门（" + shortPkg(pkg) + "）：入口窗禁返回键（防退出应用），只走点击梯子");
                 return false;
             }
-            if (triesOf(pkg) >= BACK_RETRY_MAX || !backAllowed(now)) return false;
+            if (triesOf(pkg) >= BACK_RETRY_MAX || !backAllowed(now)) {
+                /* v7.15.2：旧版此处静默 return——「返回键 0」之谜的唯一黑洞；
+                 * 现在打点抑制原因（10s 全局节流），下轮日志直接可见 */
+                try {
+                    long dNow = System.currentTimeMillis();
+                    if (dNow - lastBackDiagAt > 10_000L) {
+                        lastBackDiagAt = dNow;
+                        appendLog("🛡 直断抑制（" + shortPkg(pkg) + "）：返回键预算 "
+                                + triesOf(pkg) + "/" + BACK_RETRY_MAX + " 或全局冷却中——本窗收手");
+                    }
+                } catch (Throwable ignored) {
+                }
+                return false;
+            }
             performGlobalAction(GLOBAL_ACTION_BACK);
             energyBacks++;
             backTries.put(pkg, triesOf(pkg) + 1);
@@ -4166,6 +4323,7 @@ public class AdSkipService extends AccessibilityService {
         if (r.equals("skip_text")) return "文本跳过键";
         if (r.equals("fake_skip_tap")) return "假跳过手势直点（标签坐标）";
         if (r.equals("sdk_window")) return "SDK 广告窗指纹";
+        if (r.equals("sdk_window_enforce")) return "SDK 广告窗直断兜底（扫描链失效保险）";
         if (r.equals("sdk_window_learned")) return "学习窗口指纹（快断）";
         if (r.equals("gyro_immediate")) return "翻转/摇一摇文案立即直断";
         if (r.equals("gyro_break")) return "陀螺仪诱导/假跳过直断";
@@ -4179,6 +4337,9 @@ public class AdSkipService extends AccessibilityService {
 
     /** 返回键全局节流：600ms 内最多一次 */
     private long lastBackAt = 0;
+    /* v7.15.2：直断抑制诊断节流（全局 10s 一条）+ 锁屏让路诊断节流（每包） */
+    private volatile long lastBackDiagAt = 0;
+    private final java.util.HashMap<String, Long> kgYieldLogAt = new java.util.HashMap<>();
 
     private boolean backAllowed(long now) {
         if (now - lastBackAt < 600) return false;

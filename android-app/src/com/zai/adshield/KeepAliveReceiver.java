@@ -61,16 +61,22 @@ public class KeepAliveReceiver extends BroadcastReceiver {
         boolean replaced = Intent.ACTION_MY_PACKAGE_REPLACED.equals(act);
         boolean selfCheck = ACTION_SELF_CHECK.equals(act);
         if (!boot && !replaced && !selfCheck) return;
-        if (!ctx.getSharedPreferences("adshield", Context.MODE_PRIVATE)
-                .getBoolean("keepOn", false)) {
-            return; // 用户已手动关闭保活提醒
-        }
 
+        /* ═══ v7.15.2：维护任务前置（keepOn 闸之上）═══
+         * 死因链（issue 实锤：v7.8.0 后再无一条自动日志）：自动上传/订阅
+         * 静默更新/每日自动导入三个维护任务只挂在本分支，而旧代码：
+         *  ① 服务健康时 onServiceConnected 直接撤心跳 → 本分支永无触发源
+         *（仅 MiTV 因 ROM 反复解绑而“意外存活”过——#89 孤例）；
+         * ② keepOn 闸在本分支之前 → 用户关过“保活提醒”连维护任务一起断。
+         * 修复：①服务存活期改排 30 分钟维护心跳（AdSkipService 侧）；
+         * ②维护任务前置到闸外——“保活提醒”开关只管提醒/自愈，诊断性
+         * 维护（各任务自带节流：未到期/服务未运行/息屏秒回）不受牵连。
+         * 分档续期：活着 30 分钟（维护/存活自检）；死了 5 分钟（快速
+         * 自愈提醒）——同一 PendingIntent 天然去重覆盖，不叠加闹钟。 */
         if (selfCheck) {
-            // v3.8.0：先续期心跳（无论服务死活，心跳链永不中断），再自检
-            // v3.13.0：nightDeferrable=true——息屏时改 30~45 分钟窗口式非精确
-            // 闹钟（绝不把设备从 Doze 中唤醒，待机功耗治理）；亮屏仍 5 分钟精确
-            AdSkipService.scheduleNextHeartbeat(ctx, System.currentTimeMillis() + AdSkipService.HEARTBEAT_MS, true);
+            boolean alive = AdSkipService.isAlive();
+            long cadence = alive ? AdSkipService.ALIVE_HEARTBEAT_MS : AdSkipService.HEARTBEAT_MS;
+            AdSkipService.scheduleNextHeartbeat(ctx, System.currentTimeMillis() + cadence, true);
             // v4.0.0：心跳顺带触发订阅 24h 静默更新（无订阅/未到期秒回，零开销）
             Thread subThread = new Thread(() -> {
                 try {
@@ -89,14 +95,21 @@ public class KeepAliveReceiver extends BroadcastReceiver {
             }, "sub-auto-import");
             subImportThread.setDaemon(true);
             subImportThread.start();
-            // v4.2.0：心跳顺带检查自动日志提交（v6.1.0：8h 一日 3 次；未到期/服务未运行/息屏秒回零开销）
+            // v4.2.0：心跳顺带检查自动日志提交（v6.1.0：8h 一日 3 次；v7.15.2
+            // 维护前置：未到期/服务未运行/息屏秒回零开销；成功才计时——失败
+            // 网络异常下一轮 30 分钟心跳自然重试，绝不夜间耗电）
             try {
                 AdSkipService.maybeAutoUploadLog(ctx);
             } catch (Throwable ignored) {
             }
         }
 
-        /* ═══ v5.2.0 统一智能判定 ═══
+        if (!ctx.getSharedPreferences("adshield", Context.MODE_PRIVATE)
+                .getBoolean("keepOn", false)) {
+            return; // 用户已手动关闭保活提醒（只管提醒/自愈，维护任务已前置闸外）
+        }
+
+        /* ═══ v5.2.0 统一智能判定（提醒/自愈面）═══
          * 活着 → 零打扰；死了 → SmartRevive 步骤化踢链（自愈优先），
          * 终判两态通知。开机特殊：系统正在拉起服务，给足 8s 缓冲后
          * 仍死则排 +2s 自检闹钟（全新广播窗口走智能流程——onReceive
