@@ -35,16 +35,18 @@ function mascotImg(size, state, head) {
 
 $("#brand-logo").innerHTML = mascotImg(30, "on", true);
 
-/* ═══ v7.15.4 版本记录（开屏提示 12 小时窗 + 检查更新失败 GitHub 加速器指引）═══ */
+/* ═══ v7.15.6 版本记录（动态图开屏泛位置识别根治 + 首页白名单精简）═══ */
 const CURRENT_RELEASE = {
   date: "2026-11-24",
-  title: "开屏提示 12 小时窗 + 检查更新失败加速器指引",
+  title: "动态图开屏泛位置识别根治（Keep/CSDN）+ 首页白名单精简",
   features: [
-    "开屏提示「不再提示」窗口 24 小时 → 12 小时：弹窗节奏更跟手；升级新版后仍会重新提醒一次（版本钉不变）",
-    "检查更新失败文案、帮助页、当前版本下方（醒目橙字）三处新增 GitHub 加速器指引——检查更新失败时开启 GitHub 加速器（如 Watt Toolkit）重试即可，不开梯子也有出路",
-    "配合 v7.15.3 检查更新三面全崩根治（jsdelivr 四域梯度 + API 匿名优先 + 令牌轮换）——本轮把「失败了怎么办」送到用户眼前",
+    "泛位置图片跳过键：Keep/CSDN 动态图开屏（跳过按钮每次在不同地方、无倒计时、纯图片）旧版识别不到——现在任意位置的小图键都能收（仅强广告形态下出手，绝不乱点）",
+    "CLEAN 档案盲区根治：连续零候选的省电静默窗新增图形探针——纯图片跳过键/全屏热区一出现立即复活全量出手，不再「识别不到且日志没记录」",
+    "未命中日志豁免：热区/角标在场的广告窗必记录（不再被节流与 H5 大树过滤吞掉）；热区开屏窗 4s 后保持低频补扫——晚到的跳过键也能救回",
+    "首页白名单精简：去掉搜索框与添加按钮，默认只显示 5 款应用，「展开全部」按需查看——首页更短更清爽",
+    "代码冗余清理：诱导词双表合一、预算降级修复、7 个孤儿桥与约 90 行死样式移除、上传按钮转圈动画修复（全部经测试验证）",
   ],
-  summary: "v7.15.4 开屏提示 12 小时窗（24h→12h）+ 检查更新失败 GitHub 加速器指引三处落地（失败文案/帮助/当前版本下方醒目小字）——配合 v7.15.3 四域梯度与匿名优先，不开梯子也有出路",
+  summary: "v7.15.6 动态图开屏（跳过键位置随机·无倒计时·纯图片）识别不到且无日志三重根治 + 首页白名单精简（去搜索框/添加行，默认 5 款+展开全部）+ 冗余清理",
 };
 
 /* v7.0.0 新版功能描述（规范：≤5 个标题、带序号；检查更新发现新版本时就地渲染）。
@@ -105,7 +107,7 @@ $$(".tabbtn").forEach(b => b.addEventListener("click", () => {
   const pg = b.dataset.page;
   if (pg === "home") { refreshHome(); renderWhitelist(true); }
   if (pg === "help") renderHelpDynamic();
-  if (pg === "me") { renderLog(); renderReport(true); } // v7.2.0：进入我的页静默刷新使用报告（饼图常驻，零 toast）
+  if (pg === "me") { renderLog(); renderReport(); } // v7.2.0：进入我的页静默刷新使用报告（饼图常驻，零 toast）
 }));
 
 /* ══════════ 首页：守护状态 ══════════ */
@@ -430,8 +432,7 @@ bindToggle("toggle-learning", "learning", "习惯学习已开启", "习惯学习
 
 /* ══════════ v4.3.0 应用白名单 ══════════ */
 let wlCache = null; // {list:Set, known:[{pkg,label}]}
-let wlQuery = "";   // v7.1.0：白名单搜索词（中文名/包名实时过滤）
-let wlSearchTimer = null; // v7.2.0：搜索输入 120ms debounce 定时器
+let wlExpanded = false;  // v7.15.6：白名单列表展开态（默认收起只显示 5 款）
 let wlTotalEl = null;     // v7.2.0：列表上方「共 N 款应用」统计行（动态创建，避免改 index.html 结构）
 
 function loadWhitelist() {
@@ -448,20 +449,12 @@ function loadWhitelist() {
   return wlCache;
 }
 
-/* ═══ v7.1.0 白名单搜索匹配（用户实锤：应用白名单搜索栏实现 app 中文名搜索）═══
- * 匹配面：App 中文名（label，如「微信」「哔哩哔哩」）与应用包名（pkg）
- * 双通道不区分大小写包含匹配；去空格后逐字符匹配（中文名无空格语义）。 */
-function wlMatch(item, q) {
-  if (!q) return true;
-  const label = String(item.label || "").toLowerCase();
-  const pkg = String(item.pkg || "").toLowerCase();
-  return label.indexOf(q) >= 0 || pkg.indexOf(q) >= 0;
-}
-
 /* ═══ v7.2.0 白名单全量应用列表（用户实锤：搜索不到新装/未被拦截过的应用）═══
  * 后端 whitelistJson 已改为返回全部已安装可启动应用（∪白名单∪战绩，上限 500，
- * 30s 缓存）；前端配合：列表上方加「共 N 款应用」统计行、去截断、空态改
- * 「未能读取应用列表」（默认即全量，不再有“暂无记录”态）。 */
+ * 30s 缓存）；前端配合：列表上方加「共 N 款应用」统计行、空态改
+ * 「未能读取应用列表」（默认即全量，不再有“暂无记录”态）。
+ * v7.15.6：搜索框与手动添加行按用户指令移除——默认只显示 5 款（白名单内
+ * 置顶），底部「展开全部 N 款」切换全量（滚动容器仍在，展开后可滚动检索）。 */
 function wlTotalRow() {
   if (wlTotalEl && wlTotalEl.parentNode) return wlTotalEl;
   const box = $("#wl-list");
@@ -472,31 +465,31 @@ function wlTotalRow() {
   return wlTotalEl;
 }
 
+const WL_PREVIEW_COUNT = 5; // v7.15.6：默认显示的应用数（用户指令：3-5 款）
+
 function renderWhitelist(force) {
   const box = $("#wl-list");
   if (!box) return;
   if (!wlCache || force) loadWhitelist();
   const wl = wlCache;
   $("#wl-count").textContent = String(wl.list.size);
-  // v7.2.0：列表上方统计行——全量基数（known.length，与搜索过滤无关）
+  // 列表上方统计行——全量基数
   const knownAll = wl.known || [];
   const totalRow = wlTotalRow();
   if (totalRow) totalRow.textContent = "共 " + knownAll.length + " 款应用";
-  // 白名单里的排前面，其余中文序；v7.1.0：搜索词实时过滤（中文名/包名，
-  // 大小写不敏感）；v7.2.0：去 slice 截断，全量展示（上限由后端 500 控制）
-  const q = wlQuery.trim().toLowerCase();
-  const known = knownAll.filter(x => wlMatch(x, q)).sort((a, b) => {
+  // 白名单里的排前面，其余中文序（v7.15.6：搜索过滤已随搜索框移除）
+  const known = knownAll.slice().sort((a, b) => {
     const wa = wl.list.has(a.pkg) ? 0 : 1, wb = wl.list.has(b.pkg) ? 0 : 1;
     if (wa !== wb) return wa - wb;
     return String(a.label).localeCompare(String(b.label), "zh");
   });
   if (!known.length) {
-    box.innerHTML = q
-      ? '<div class="empty">没有匹配「' + esc(wlQuery.trim()) + '」的应用——可尝试中文名或包名关键字</div>'
-      : '<div class="empty">未能读取应用列表</div>';
+    box.innerHTML = '<div class="empty">未能读取应用列表</div>';
     return;
   }
-  box.innerHTML = known.map(x => {
+  // v7.15.6：默认收起只显示前 5 款；展开后全量渲染（滚动容器收纳）
+  const shown = wlExpanded ? known : known.slice(0, WL_PREVIEW_COUNT);
+  let html = shown.map(x => {
     const on = wl.list.has(x.pkg);
     return '<div class="wl-row">'
       + '<div class="wl-label"><span class="wl-name">' + esc(x.label) + '</span>'
@@ -505,46 +498,34 @@ function renderWhitelist(force) {
       + (on ? ' checked' : '') + '><span class="slider"></span></label>'
       + '</div>';
   }).join("");
+  if (known.length > WL_PREVIEW_COUNT) {
+    html += '<div class="wl-toggle" id="wl-toggle" role="button" tabindex="0">'
+      + (wlExpanded ? "收起 ▴" : "展开全部 " + known.length + " 款 ▾")
+      + '</div>';
+  }
+  box.innerHTML = html;
+  const toggle = $("#wl-toggle");
+  if (toggle) {
+    toggle.addEventListener("click", () => {
+      wlExpanded = !wlExpanded;
+      renderWhitelist(false);
+    });
+    toggle.addEventListener("keydown", e => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle.click(); }
+    });
+  }
   box.querySelectorAll('input[data-wl]').forEach(t => {
     t.addEventListener("change", () => {
       const pkg = t.dataset.wl;
-      let ok = false;
       try {
-        ok = t.checked ? AndroidApp.whitelistAdd(pkg) : AndroidApp.whitelistRemove(pkg);
+        if (t.checked) AndroidApp.whitelistAdd(pkg);
+        else AndroidApp.whitelistRemove(pkg);
       } catch (e) {}
       toast(t.checked ? "已加入白名单：卫士在该应用内完全让路" : "已移出白名单：恢复守护");
       renderWhitelist(true);
     });
   });
 }
-
-/* v7.1.0：搜索栏输入即过滤（中文名/包名实时过滤，零按钮防呆）；
- * v7.2.0：输入加 120ms debounce——全量列表渲染量大，逐键直渲会拖慢输入
- * （wlQuery 在防抖回调里更新，渲染用的始终是最终词） */
-if ($("#wl-search")) {
-  $("#wl-search").addEventListener("input", () => {
-    clearTimeout(wlSearchTimer);
-    wlSearchTimer = setTimeout(() => {
-      wlQuery = $("#wl-search").value || "";
-      renderWhitelist(false);
-    }, 120);
-  });
-}
-
-$("#btn-wl-add").addEventListener("click", () => {
-  const inp = $("#wl-input");
-  const pkg = inp.value.trim();
-  if (!pkg) { toast("请输入应用包名"); return; }
-  if (!HAS_BRIDGE) { toast("仅 APK 内可用"); return; }
-  let ok = false;
-  try { ok = AndroidApp.whitelistAdd(pkg); } catch (e) {}
-  if (ok) { inp.value = ""; toast("已加入白名单：" + pkg); renderWhitelist(true); }
-  else toast("添加失败：包名格式不正确或已存在");
-});
-
-$("#wl-input").addEventListener("keydown", (e) => {
-  if (e.key === "Enter") $("#btn-wl-add").click();
-});
 
 
 /* ══════════ v7.15.0 异步桥调用（卫士卡死根治的 JS 侧）═════════
@@ -684,7 +665,7 @@ const UM_JSD = "https://cdn.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/update/lat
 const UM_TAG = (t) => "https://cdn.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@" + t + "/update/latest.json";
 let ubTimer = null;
 let latestRelease = null;
-let dl = { channels: [], idx: 0, fileName: "", digest: "", size: 0, prefix: "page", lastBytes: -1, lastMoveAt: 0 };
+let dl = { channels: [], idx: 0, fileName: "", digest: "", size: 0, lastBytes: -1, lastMoveAt: 0 };
 
 function cmpVer(a, b) {
   const pa = String(a).replace(/^v/, "").split("."), pb = String(b).replace(/^v/, "").split(".");
@@ -801,14 +782,14 @@ function beginChannel() {
     const r = JSON.parse(AndroidApp.startUpdateDownload(url, dl.fileName, dl.digest, dl.size));
     if (r.ok) {
       /* v7.3.0 修复：按钮选择器与真实按钮 id 对齐（#page-dl-btn——旧
-       * prefix+"-btn" 永不命中，下载完成后按钮从不翻转「立即安装」） */
-      const btn = $("#" + dl.prefix + "-dl-btn");
+       * 前缀拼装选择器永不命中，下载完成后按钮从不翻转「立即安装」） */
+      const btn = $("#page-dl-btn");
       if (btn) { btn.textContent = "下载中…"; btn.disabled = true; }
-      const wrap = $("#" + dl.prefix + "-progress-wrap");
+      const wrap = $("#page-progress-wrap");
       if (wrap) wrap.style.display = "";
       dl.lastBytes = -1;
       dl.lastMoveAt = Date.now();
-      startProgressPoll(dl.prefix);
+      startProgressPoll();
     } else {
       /* ═══ v7.15.5 渠道启动被拒自动换道（死局根治）═══
        * 死因（用户实锤：v7.15.1/v7.15.3 点下载报「下载链接不在允许的
@@ -835,21 +816,23 @@ function switchChannel(reason) {
   return false;
 }
 
-function startPageDownload(d, prefix) {
+/* v7.15.6 冗余清理：prefix 参数移除（v7.0.0 顶部更新横幅删除后只剩
+ * "page" 一个下载位，双下载位遗迹收编为硬编码 id）。 */
+function startPageDownload(d) {
   if (!d.apkUrl) { toast("该版本没有 APK 附件"); return; }
   if (!HAS_BRIDGE) { window.open(d.apkUrl, "_blank"); return; }
   /* v7.15.0 中国下载兜底：gcore CDN 直链优先（全日可达），GitHub 官方与
  * ghfast/gh-proxy 镜像随后自动切换（30s 无进展即换通道——既有机制） */
-  dl = { channels: (d.apkMirrors || []).concat(d.apkUrl ? [d.apkUrl] : []), idx: 0, fileName: d.apkFileName || "adshield.apk", digest: d.apkDigest || "", size: d.apkSize || 0, prefix, lastBytes: -1, lastMoveAt: Date.now() };
+  dl = { channels: (d.apkMirrors || []).concat(d.apkUrl ? [d.apkUrl] : []), idx: 0, fileName: d.apkFileName || "adshield.apk", digest: d.apkDigest || "", size: d.apkSize || 0, lastBytes: -1, lastMoveAt: Date.now() };
   beginChannel();
 }
 
-function startProgressPoll(prefix) {
+function startProgressPoll() {
   if (ubTimer) clearInterval(ubTimer);
   ubTimer = setInterval(() => {
     try {
       const d = JSON.parse(AndroidApp.updateProgress());
-      const bar = $("#" + prefix + "-bar"), txt = $("#" + prefix + "-text");
+      const bar = $("#page-bar"), txt = $("#page-progress-text");
       if (d.state === "running" || d.state === "paused") {
         bar.style.width = d.percent + "%";
         txt.textContent = d.percent + "% · " + (d.bytes / 1048576).toFixed(1) + " / " + (d.total / 1048576).toFixed(1) + " MB";
@@ -862,13 +845,13 @@ function startProgressPoll(prefix) {
         clearInterval(ubTimer); ubTimer = null;
         bar.style.width = "100%";
         txt.textContent = "下载完成（已验 SHA-256），点击安装即覆盖升级";
-        const btn = $("#" + prefix + "-dl-btn");
+        const btn = $("#page-dl-btn");
         if (btn) { btn.textContent = "立即安装"; btn.disabled = false; btn.dataset.phase = "install"; }
       } else if (d.state === "failed") {
         clearInterval(ubTimer); ubTimer = null;
         if (switchChannel("下载失败")) return;
         txt.textContent = "下载失败，可稍后重试";
-        const btn = $("#" + prefix + "-dl-btn");
+        const btn = $("#page-dl-btn");
         if (btn) { btn.textContent = "重新下载"; btn.disabled = false; btn.dataset.phase = "download"; }
       }
     } catch (e) { clearInterval(ubTimer); ubTimer = null; }
@@ -923,7 +906,7 @@ $("#page-dl-btn").addEventListener("click", () => {
     }
     return;
   }
-  if (latestRelease) startPageDownload(latestRelease, "page");
+  if (latestRelease) startPageDownload(latestRelease);
 });
 
 /* ══════════ 引擎画像（日志上传正文 · v4.2.0 更具体） ══════════ */
@@ -996,7 +979,7 @@ function engineProfile() {
 }
 
 /* ══════════ 我的：日志 ══════════ */
-function renderLog(force) {
+function renderLog() {
   const st = getRealState();
   const log = (st.log || []).slice().reverse();
   $("#real-log").innerHTML = log.length
@@ -1006,7 +989,7 @@ function renderLog(force) {
 /* v5.8.0：日志刷新按钮（用户实锤：日志上传按钮旁边加一个刷新）——
  * 重读服务内存快照（kvGet("state") 走 snapshotState 实时态） */
 $("#btn-refresh-log").addEventListener("click", () => {
-  renderLog(true);
+  renderLog();
   toast("日志已刷新");
 });
 
@@ -1072,8 +1055,10 @@ function closeModal() {
 
 /* v5.8.0：系统通知仅保留失败路径（成功已有唯一确认弹窗——单一反馈通道防呆；
  * 失败通知在用户离开 App 时仍可召回，是罕见场景兜底） */
-function notifyUploadResult(ok, number) {
-  if (!HAS_BRIDGE || ok) return;
+/* v7.15.6 冗余清理：仅剩失败路径（成功通知已随单一反馈通道移除），
+ * ok/number 形参随之移除（唯一调用点只走失败分支）。 */
+function notifyUploadResult() {
+  if (!HAS_BRIDGE) return;
   try {
     AndroidApp.postNotify(
       "日志上传失败",
@@ -1150,7 +1135,7 @@ async function doUploadLog() {
     showUploadDoneModal(res.number);               // 唯一反馈：一个确认弹窗（v5.8.0）
   } else {
     showUploadFail(box, res && res.error);          // 明确原因 + 重试按钮
-    notifyUploadResult(false, 0);                  // 失败通知保留（罕见场景兜底）
+    notifyUploadResult();                          // 失败通知保留（罕见场景兜底）
   }
 }
 
@@ -1187,9 +1172,9 @@ function reportFold(title, bodyLines) {
  * 顺序与 segs 一一对应；空态（全 0）用中性灰 #CBD5D1 整环。 */
 const RP_PIE_COLORS = ["#047857", "#059669", "#10B981", "#34D399", "#C8DCCF"];
 
-/* refresh：v7.2.0 刷新语义——进入我的页/点「刷新报告」均传 true；
- * 函数内零 toast（提示一律由调用方决定），每次全量重渲染（折叠态回默认收起）。 */
-function renderReport(refresh) {
+/* v7.2.0 刷新语义：每次全量重渲染（折叠态回默认收起）；函数内零 toast
+ * （提示一律由调用方决定）。v7.15.6 冗余清理：refresh 形参从未使用，移除。 */
+function renderReport() {
   const box = $("#report-body");
   if (!box) return;
   let st = { stats: {} }, sub = { builtinApps: 0, builtinRules: 0, remoteHits: 0, builtinHits: 0 };
@@ -1310,7 +1295,7 @@ function renderReport(refresh) {
 }
 
 if ($("#btn-report")) {
-  $("#btn-report").addEventListener("click", () => { renderReport(true); toast("报告已刷新"); });
+  $("#btn-report").addEventListener("click", () => { renderReport(); toast("报告已刷新"); });
 }
 
 /* ══════════ 我的：链接 ══════════ */

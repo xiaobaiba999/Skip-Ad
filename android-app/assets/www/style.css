@@ -62,25 +62,9 @@ body {
   font-weight: 600;
 }
 
-/* ───────── 更新横幅 ───────── */
-.update-banner {
-  margin: 4px 16px 0;
-  background: var(--brand-soft);
-  border: 1px solid #b8e6cd;
-  border-radius: 14px;
-  padding: 10px 14px;
-}
-.ub-row { display: flex; align-items: center; gap: 10px; }
-.ub-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--brand); flex: none; }
-.ub-text { flex: 1; font-size: 14px; }
-.ub-btn {
-  border: none; background: var(--brand); color: #fff;
-  border-radius: 10px; padding: 5px 14px; font-size: 13px; font-weight: 600;
-}
-.ub-detail { margin-top: 10px; }
-/* v6.1.0 新版功能描述（≤5 标题，言简意赅） */
-/* v7.0.0 新版本功能描述（我的页检查更新就地渲染：≤5 条带序号）——
- * 顶部更新横幅已移除，.ub-* 系列随之退役 */
+/* ───────── 主体 ───────── */
+/* v7.15.6 冗余清理：顶部更新横幅 .update-banner/.ub-* 已随 v7.0.0 横幅
+ * 移除而退役（原约 20 行），此处仅保留在役的 page-notes 新版功能描述 */
 .page-notes { margin: 2px 0 10px; padding: 8px 10px; background: #f2f9f5; border-radius: 10px; }
 .pn-title { font-size: 12px; font-weight: 700; color: #1c7a48; margin-bottom: 4px; }
 .pn-item { font-size: 12.5px; color: #33564a; line-height: 1.65; }
@@ -210,22 +194,9 @@ body {
 #page-me .btn-row { margin-top: 0; }
 .btn { white-space: nowrap; }
 
-.fb-select, .fb-input, textarea {
-  width: 100%;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: #fafdfb;
-  padding: 11px 12px;
-  font-size: 14px;
-  font-family: inherit;
-  color: var(--ink);
-  margin-bottom: 10px;
-  outline: none;
-}
-.fb-select:focus, .fb-input:focus, textarea:focus { border-color: var(--brand); }
-textarea { resize: none; }
-
 .fb-result { font-size: 13px; color: var(--sub); margin-top: 8px; line-height: 1.6; }
+/* v7.15.6 冗余清理：.fb-select/.fb-input/textarea 样式已无使用者
+ * （反馈表单与白名单搜索框均已移除），仅保留在役的 .fb-result */
 .fb-result.ok { color: var(--brand-deep); }
 .fb-result.err { color: #b91c1c; }
 
@@ -240,11 +211,7 @@ textarea { resize: none; }
 .kv span { color: var(--sub); }
 .kv b { font-weight: 700; font-variant-numeric: tabular-nums; }
 .sub-note { font-size: 12.5px; color: var(--sub); margin: 4px 0 10px; }
-.sub-status {
-  margin-top: 12px;
-  border-top: 1px dashed var(--line);
-  padding-top: 4px;
-}
+/* v7.15.6 冗余清理：.sub-status（订阅页 v7.15.0 移除后退役）已删 */
 .chip {
   font-size: 11.5px;
   font-weight: 700;
@@ -254,7 +221,7 @@ textarea { resize: none; }
 .chip-green { background: var(--brand-soft); color: var(--brand-deep); }
 
 /* ───────── 我的 ───────── */
-.changelog { }
+/* v7.15.6 冗余清理：空规则 .changelog { } 已删（元素布局由父容器管） */
 .log-item { padding: 10px 0; border-bottom: 1px solid var(--line); }
 .log-item:last-child { border-bottom: none; }
 .log-v { font-size: 13px; font-weight: 800; color: var(--brand-deep); }
@@ -350,9 +317,13 @@ textarea { resize: none; }
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-5px); }
 }
+/* v7.15.6 缺陷修复：上传按钮 spinner 用的 adspin 关键帧此前从未定义
+ * （app.js 内联 animation:adspin .8s linear infinite 无 keyframes = 静止）。 */
+@keyframes adspin { to { transform: rotate(360deg); } }
 
 /* ───────── v4.3.0 应用白名单 ───────── */
-/* v7.2.0 全量应用列表：可视区 264px→460px（一般手机 100~400 款应用，滚动检索更顺手） */
+/* v7.2.0 全量应用列表：可视区 264px→460px；v7.15.6 默认收起只显示 5 款
+ * （展开后仍在此高度内滚动检索） */
 .wl-list {
   margin-top: 10px;
   max-height: 460px;
@@ -380,20 +351,28 @@ textarea { resize: none; }
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   max-width: 60vw;
 }
-.wl-add-row { display: flex; gap: 8px; margin-top: 12px; }
-/* v7.1.0 白名单搜索栏（中文名/包名实时过滤） */
-.wl-search-row { display: flex; gap: 8px; margin-top: 10px; }
-.wl-search-row .fb-input { flex: 1; min-width: 0; }
-.wl-search-row .wl-search-count {
-  align-self: center; font-size: 12.5px; color: var(--sub); white-space: nowrap;
+/* v7.15.6 展开全部/收起切换行（默认 5 款 + 展开全量）——44px 触控目标 */
+.wl-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  margin-top: 2px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--brand-deep);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
-/* v7.1.0 卫士使用报告 */
+.wl-toggle:active { opacity: .7; }
+.wl-toggle:focus-visible { outline: 2px solid #10B981; outline-offset: 2px; border-radius: 8px; }
+/* v7.15.6 冗余清理：.wl-add-row / .wl-search-row 系列已随搜索框与手动
+ * 添加行移除而退役 */
+
+/* v7.1.0 卫士使用报告（.rp-sec 已随 v7.2.0 rp-fold 改版退役；其余在役） */
 .report-box { font-size: 12.5px; line-height: 1.7; }
-.report-box .rp-sec { font-weight: 700; margin-top: 8px; }
-.report-box .rp-sec:first-child { margin-top: 0; }
 .report-box .rp-line { color: var(--ink); }
 .report-box .rp-meta { color: var(--sub); font-size: 11.5px; margin-top: 6px; }
-.wl-add-row .fb-input { flex: 1; min-width: 0; }
 
 /* ══════════ v5.2.0 保活体检（issue#56：防清理后台/覆盖安装吊销无障碍）══════════ */
 .ka-row {
@@ -404,82 +383,15 @@ textarea { resize: none; }
   border-bottom: 1px solid rgba(16, 185, 129, 0.08);
 }
 .ka-row:last-child { border-bottom: none; }
-.ka-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex: 0 0 8px;
-}
-.ka-dot.ok { background: #10B981; }
-.ka-dot.warn { background: #F59E0B; }
-.ka-dot.manual { background: #CBD5D1; }
+/* v7.15.6 冗余清理：.ka-dot 系列已随 v5.8.0 保活体检简化退役 */
 .ka-info { flex: 1; min-width: 0; }
 .ka-name { font-size: 13.5px; font-weight: 600; color: #1A2E24; }
 .ka-desc { font-size: 11.5px; color: #7A8F84; margin-top: 2px; line-height: 1.45; }
 .ka-chip-ok { background: rgba(16, 185, 129, 0.12); color: #0B7A5C; }
 .ka-chip-warn { background: rgba(245, 158, 11, 0.14); color: #B45309; }
 
-/* ══════════ v5.6.0 订阅市场（活跃维护源一键导入） ══════════ */
-.market-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 6px;
-}
-.market-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  border-radius: 12px;
-  background: rgba(16, 185, 129, 0.05);
-  border: 1px solid rgba(16, 185, 129, 0.12);
-}
-/* v5.8.0 防呆版：整行即按钮（点一下即导入）——44px 触控目标 + 按压反馈 */
-.market-tap {
-  width: 100%;
-  text-align: left;
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-  transition: background .15s ease, border-color .15s ease, transform .1s ease;
-}
-.market-tap:active { background: rgba(16, 185, 129, 0.12); transform: scale(0.985); }
-.market-tap:focus-visible { outline: 2px solid #10B981; outline-offset: 2px; }
-.market-go {
-  flex: 0 0 auto;
-  min-width: 56px;
-  text-align: center;
-  padding: 7px 14px;
-  border-radius: 999px;
-  font-size: 12.5px;
-  font-weight: 600;
-  background: #10B981;
-  color: #fff;
-}
-.market-info { flex: 1; min-width: 0; }
-.market-name { font-size: 13.5px; font-weight: 600; color: #1A2E24; }
-.market-badge {
-  display: inline-block;
-  margin-left: 4px;
-  padding: 1px 7px;
-  border-radius: 999px;
-  font-size: 10.5px;
-  font-weight: 600;
-  background: rgba(16, 185, 129, 0.12);
-  color: #0B7A5C;
-  vertical-align: 1px;
-}
-.market-desc {
-  font-size: 11.5px;
-  color: #7A8F84;
-  margin-top: 2px;
-  line-height: 1.45;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.market-acts { display: flex; gap: 6px; flex: 0 0 auto; }
-.market-list a { color: #0B7A5C; text-decoration: underline; }
+/* v7.15.6 冗余清理：v5.6.0 订阅市场 .market-* 系列已随 v7.15.0 订阅页
+ * 移除而退役（原约 60 行），仅保留其后在役的保活体检绿字 */
 /* v5.8.0 保活体检一行绿字（全部通过态） */
 .ka-ok-line {
   font-size: 13px;

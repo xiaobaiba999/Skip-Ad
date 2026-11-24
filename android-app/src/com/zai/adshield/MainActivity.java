@@ -353,20 +353,9 @@ public class MainActivity extends Activity {
             return CrashCapture.readAndClear(a);
         }
 
-        /** keepOn：开启后除非手动关闭，更新/重启断连都会提醒恢复 */
-        @JavascriptInterface
-        public boolean isKeepOn() {
-            return a.getSharedPreferences("adshield", Context.MODE_PRIVATE)
-                    .getBoolean("keepOn", false);
-        }
-
-        @JavascriptInterface
-        public void setKeepOn(boolean on) {
-            a.getSharedPreferences("adshield", Context.MODE_PRIVATE)
-                    .edit().putBoolean("keepOn", on).apply();
-        }
-
         /** 电池优化白名单状态（厂商省电策略是杀服务主因之一） */
+        /* v7.15.6 冗余清理：isKeepOn/setKeepOn 桥（持久模式开关移除后零 JS
+         *  调用方）已删；keepOn 键值读写由服务侧自管，不受影响 */
         @JavascriptInterface
         public boolean isBatteryWhitelisted() {
             try {
@@ -582,89 +571,10 @@ public class MainActivity extends Activity {
             return SubscriptionManager.stateJson(a);
         }
 
-        /** v5.6.0 订阅市场：活跃维护订阅列表（内置注册表，零网络） */
-        @JavascriptInterface
-        public String subRecommend() {
-            return SubscriptionManager.recommendJson();
-        }
-
-        /** 设置/清空远程订阅 URL（立即拉取；后台线程执行）。
-         *  v7.0.0：镜像切换进度实时回报页内（window.__subProgress(attempt,total,host)
-         *  ——「正在切换镜像 X/Y · host」反馈；离线快照兜底由 SubscriptionManager
-         *  内部完成，导入路径永不硬失败）。 */
-        @JavascriptInterface
-        public void subSetUrl(final String url, final String cb) {
-            new Thread(() -> {
-                final String r;
-                try {
-                    SubscriptionManager.ProgressSink sink = (attempt, total, host) -> a.runOnUiThread(() -> {
-                        try {
-                            if (a.webView != null) {
-                                a.webView.evaluateJavascript(
-                                        "window.__subProgress && window.__subProgress("
-                                                + attempt + "," + total + "," + JSON.stringifyCb(host) + ")", null);
-                            }
-                        } catch (Throwable ignored) {
-                        }
-                    });
-                    r = SubscriptionManager.setUrl(a, url, sink);
-                } catch (final Throwable t) {
-                    a.runOnUiThread(() -> {
-                        try {
-                            if (a.webView != null) {
-                                a.webView.evaluateJavascript(
-                                        "window.__subCb && window.__subCb(" + JSON.stringifyCb(cb) + ",{ok:false,error:'内部错误'})", null);
-                            }
-                        } catch (Throwable ignored) {
-                        }
-                    });
-                    return;
-                }
-                a.runOnUiThread(() -> {
-                    try {
-                        if (a.webView != null) {
-                            a.webView.evaluateJavascript(
-                                    "window.__subCb && window.__subCb(" + JSON.stringifyCb(cb) + "," + r + ")", null);
-                        }
-                    } catch (Throwable ignored) {
-                    }
-                });
-            }, "sub-set-url").start();
-        }
-
-        /** 立即更新远程订阅（后台线程） */
-        @JavascriptInterface
-        public void subUpdateNow(final String cb) {
-            new Thread(() -> {
-                try {
-                    final String r = SubscriptionManager.updateNow(a);
-                    a.runOnUiThread(() -> {
-                        try {
-                            if (a.webView != null) {
-                                a.webView.evaluateJavascript(
-                                        "window.__subCb && window.__subCb(" + JSON.stringifyCb(cb) + "," + r + ")", null);
-                            }
-                        } catch (Throwable ignored) {
-                        }
-                    });
-                } catch (final Throwable t) {
-                    a.runOnUiThread(() -> {
-                        try {
-                            if (a.webView != null) {
-                                a.webView.evaluateJavascript(
-                                        "window.__subCb && window.__subCb(" + JSON.stringifyCb(cb) + ",{ok:false,error:'内部错误'})", null);
-                            }
-                        } catch (Throwable ignored) {
-                        }
-                    });
-                }
-            }, "sub-update-now").start();
-        }
-
-        @JavascriptInterface
-        public void subSetEnabled(boolean on) {
-            SubscriptionManager.setEnabled(a, on);
-        }
+        /* v7.15.6 冗余清理：订阅页 v7.15.0 移除后的四个孤儿桥已删——
+         *  subRecommend / subSetUrl / subUpdateNow / subSetEnabled
+         *  （app.js 零调用方；订阅的每日后台自动导入由服务侧定时器自管，
+         *  不经这些桥）；订阅管理器本体（SubscriptionManager）不动 */
 
         /* ───── v4.3.0 应用白名单（白名单内应用零扫描零点击零学习） ───── */
 
@@ -1043,20 +953,8 @@ public class MainActivity extends Activity {
             a.autoRestoreHandled();
         }
 
-        /* ═══ v5.6.0 零打扰持久模式（免设置自愈）状态桥 ═══
-         * 返回 {granted, cmd, desc}——页面「持久守护」卡片渲染用。 */
-        @JavascriptInterface
-        public String secureHealStatus() {
-            org.json.JSONObject o = new org.json.JSONObject();
-            try {
-                o.put("granted", AdSkipService.canSecureSelfHeal(a));
-                o.put("cmd", com.zai.adshield.core.RestoreGuard.secureGrantCmd(a.getPackageName()));
-                o.put("desc", com.zai.adshield.core.RestoreGuard.secureModeDesc());
-            } catch (Exception ignored) {
-            }
-            return o.toString();
-        }
-
+        /* v7.15.6 冗余清理：secureHealStatus 桥（零打扰持久模式卡片移除后
+         *  零 JS 调用方）已删；RestoreGuard 自愈本体不动 */
         /* ═══ v7.15.0 异步检查更新（多源静态清单链——同步旧桥已随卡死根治整体退役）═══ */
         @JavascriptInterface
         public void netGetUpdateAsync(final String cb) {

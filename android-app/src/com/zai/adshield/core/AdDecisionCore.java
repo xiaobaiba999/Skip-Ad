@@ -261,6 +261,17 @@ public final class AdDecisionCore {
      * 仅强广告形态（热区/角标/SDK窗/学习窗）下可出手，树极简兕底不适用
      *（FAB/普通悬浮钮误点防线——宁漏勿误红线）。 */
     public static final double MIDEDGE_MIN_PX = 24;   // 中部边带控件最小像素（与角落同源）
+    /* ══ v7.15.6 泛位置图片跳过键（用户实锤：Keep/CSDN 动态图开屏——跳过按钮
+     * 每次在不同地方、无倒计时、无文本，旧几何带「顶 14%/底 18%+左右缘」
+     * 对居中随机位零收集 = 识别不到且日志无记录的头号根因）══
+     * 任意位置（含居中）的小可点无字控件入 randCands；出手门比角落键更严：
+     * 仅强广告形态（热区/角标/SDK窗/学习窗）——无「树极简」兕底（树极简
+     * 只是间接证据，居中随机位误点代价比角落位高），且排在角落候选之后
+     * （先点像的再点不像的）。动态图开屏全屏可点（hotZone）是强信号常客。 */
+    public static final double RAND_AREA_MAX = 0.06;  // 泛位置候选面积上限（真跳过键 ≤48dp≈1.5%~6% 屏；CTA 图一般更大）
+    public static final double RAND_W_MAX = 0.30;      // 泛位置候选宽上限（与角落/边带同源）
+    public static final double RAND_H_MAX = 0.12;      // 泛位置候选高上限
+    public static final int RAND_CANDS_MAX = 3;        // 泛位置候选收集上限（随机位键一般 1~2 个，多收徒增误点面）
     /* ══ v7.5.0 倒计时解耦（用户十四轮实锤：「开屏按钮跳过不是每个都带倒计时」）══
      * 兄弟节点倒计时：穿山甲族「跳过」文案与倒计时数字分属两个节点——
      * parseCountdown(label)=0 → 首击立即出手（白点）+ 3 击耐心预算烧完
@@ -365,6 +376,7 @@ public final class AdDecisionCore {
         public boolean hotZone;        // 全屏大热区
         public boolean longText;       // 存在长文本（>40 字，正常内容页特征，v3.5.0）
         public final java.util.ArrayList<CornerCand> corners = new java.util.ArrayList<CornerCand>(); // 角落候选（v3.5.0 多候选）
+        public final java.util.ArrayList<CornerCand> randCands = new java.util.ArrayList<CornerCand>(); // v7.15.6 泛位置候选（居中随机位图片跳过键——仅强广告形态可出手）
         public final java.util.ArrayList<CdDigit> cdDigits = new java.util.ArrayList<CdDigit>(); // v7.5.0 独立倒计时数字（walk 后并入门控）
         public boolean dialogForm;     // 根节点 Dialog/Popup 形态
     }
@@ -633,6 +645,21 @@ public final class AdDecisionCore {
                     c.strongOnly = !isCornerControl(b, ctx);
                     f.corners.add(c);
                 }
+            } else if (b != null && vis && ctx.splashLive && f.randCands.size() < RAND_CANDS_MAX
+                    && isRandPosControl(b, ctx) && !randVidDenied(node.viewId())
+                    && !hasCornerChild(node, ctx)) {
+                // 【v7.15.6】泛位置候选（居中随机位图片跳过键——Keep/CSDN
+                // 动态图开屏：跳过按钮每次在不同地方、无倒计时、无文本）。
+                // 收集门：开屏窗内 + 尺寸像按钮 + vid 无诱导 token；出手门
+                // 在 L4.7（仅强广告形态，比角落键更严）。
+                NodeView click = clickable ? node : resolveClickable(node, 4);
+                if (click != null) {
+                    CornerCand c = new CornerCand();
+                    c.clickNode = click;
+                    c.tapBounds = b;
+                    c.strongOnly = true;
+                    f.randCands.add(c);
+                }
             }
 
             int n = node.childCount();
@@ -694,6 +721,39 @@ public final class AdDecisionCore {
         boolean rightEdge = b[2] >= ctx.screenW * CORNER_RIGHT_MIN;
         boolean leftEdge = b[0] <= ctx.screenW * CORNER_LEFT_MAX;
         return rightEdge || leftEdge;
+    }
+
+    /** v7.15.6 泛位置控件：任意位置（含居中）的小可点无字控件。
+     *  已过角落/边带几何的不算（那些由更强门控的候选收录）；面积/宽高
+     *  比角落键收得更紧（居中随机位误点代价比角落位高——尺寸越像按钮
+     *  越安全）。 */
+    public static boolean isRandPosControl(int[] b, Ctx ctx) {
+        if (b == null || ctx.screenW <= 0 || ctx.screenH <= 0) return false;
+        if (isCornerControl(b, ctx) || isMidEdgeControl(b, ctx)) return false;
+        int w = b[2] - b[0];
+        int h = b[3] - b[1];
+        if (w < CORNER_MIN_PX || h < CORNER_MIN_PX) return false;
+        if (w > ctx.screenW * RAND_W_MAX || h > ctx.screenH * RAND_H_MAX) return false;
+        return areaRatio(b, ctx) <= RAND_AREA_MAX;
+    }
+
+    /** v7.15.6 泛位置候选 vid 否决表：viewId 含下载/分享/用户/购物类
+     *  token 的控件绝不是跳过键（纯图片 CTA/功能钮），一律拒收。
+     *  vid 含 skip（isVidSkip 真键分支）的到不了这里；含 close 的照常
+     *  收录（居中随机位关闭键正是本层要点的目标）。 */
+    public static boolean randVidDenied(String vid) {
+        if (vid == null || vid.length() == 0) return false;
+        String v = lowerAscii(vid);
+        return v.contains("download") || v.contains("appstore") || v.contains("detail")
+                || v.contains("link") || v.contains("url") || v.contains("web")
+                || v.contains("share") || v.contains("avatar") || v.contains("user")
+                || v.contains("member") || v.contains("vip") || v.contains("buy")
+                || v.contains("cart") || v.contains("shop") || v.contains("more")
+                || v.contains("play") || v.contains("like") || v.contains("comment")
+                || v.contains("forward") || v.contains("search") || v.contains("scan")
+                || v.contains("menu") || v.contains("delete") || v.contains("edit")
+                || v.contains("notice") || v.contains("message") || v.contains("redpacket")
+                || v.contains("lottery") || v.contains("welfare");
     }
 
     /** 向上找可点击祖先（最多 4 层） */
@@ -943,6 +1003,21 @@ public final class AdDecisionCore {
                     }
                 }
             }
+            // L4.7 泛位置图片跳过键（v7.15.6：Keep/CSDN 动态图开屏——跳过
+            //      按钮每次在不同地方、无倒计时、无文本）。任意位置的小
+            //      可点无字控件（含居中），仅强广告形态（热区/角标/SDK窗/
+            //      学习窗）下出手——无「树极简」兕底（居中位误点代价比
+            //      角落位高，尺寸门已收得更紧）；排在角落候选用尽之后
+            //      （先点像的，再点不像的），候选轮换与 L4 同熙。
+            if (!f.randCands.isEmpty() && ctx.clickAttempts >= f.corners.size()
+                    && !f.scrollPresent && !f.editPresent
+                    && (f.hotZone || f.adBadge || ctx.sdkAdWin || ctx.learnedCls)
+                    && ctx.elapsedMs >= CORNER_MIN_MS && ctx.elapsedMs <= CORNER_MAX_MS) {
+                int rIdx = ctx.clickAttempts - f.corners.size();
+                if (rIdx < f.randCands.size()) {
+                    return click(null, f.randCands.get(rIdx).tapBounds, "rand_graphic_skip");
+                }
+            }
             // L2 SDK / 学习 className 窗口指纹 → 返回键直断
             //    SDK 广告窗是独立 Activity，返回回到应用内页——根窗口也安全。
             //    v3.6.0 学习指纹快断加双保险（真机事故：毒指纹把主页学成广告窗
@@ -1081,6 +1156,10 @@ public final class AdDecisionCore {
      *  「有候选」，退避永远不触发 = 校徽页继续被扫到天荒地老。 */
     public static boolean hasActionableCand(ScanFind f, Ctx ctx) {
         if (!f.skipCands.isEmpty() || !f.fakeCands.isEmpty() || f.foundClose || f.foundSkip) return true;
+        // v7.15.6 泛位置候选：仅强广告形态下才算「可出手」（与 L4.7 出手门
+        // 同源——无强形态时它们不是候选，零候选退避照常触发）
+        if (!f.randCands.isEmpty()
+                && (f.hotZone || f.adBadge || ctx.sdkAdWin || ctx.learnedCls)) return true;
         if (f.corners.isEmpty()) return false;
         return f.hotZone || f.adBadge || ctx.sdkAdWin || ctx.learnedCls
                 || f.nodeCount <= CORNER_CONFIRM_NODES;

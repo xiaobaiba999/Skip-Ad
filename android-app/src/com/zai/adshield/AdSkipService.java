@@ -385,6 +385,13 @@ public class AdSkipService extends AccessibilityService {
     private final java.util.HashMap<String, Long> burstBasePopup = new java.util.HashMap<>();
     /** 探针哨兵补扫节流：pkg → 上次哨兵时刻（CLEAN 窗 250ms 节流） */
     private final java.util.HashMap<String, Long> probeNudgeAt = new java.util.HashMap<>();
+    /* v7.15.6 图形探针节流：pkg|winStart → 上次图形探针时刻（1.5s 一档
+     * ——CLEAN 档案窗的动态图开屏（屏闪高频内容事件）不能每次都跑浅 DFS） */
+    private final java.util.HashMap<String, Long> graphicProbeAt = new java.util.HashMap<>();
+    /* v7.15.6 热区开屏窗晚到键补扫：pkg → 上次补扫时刻（500ms 节流）；
+     * hotZoneWin：pkg|winStart → 本窗已确认热区（walk 见过全屏可点广告图） */
+    private final java.util.HashMap<String, Long> hotNudgeAt = new java.util.HashMap<>();
+    private final java.util.HashMap<String, Boolean> hotZoneWin = new java.util.HashMap<>();
     /** 档案省电日志去重：pkg → 上次记日志时刻（60s 一条，防刷屏） */
     private final java.util.HashMap<String, Long> profileLogAt = new java.util.HashMap<>();
 
@@ -1868,7 +1875,7 @@ public class AdSkipService extends AccessibilityService {
                     /* v4.2.0 IPC 重排：活动窗口归属查询（单次 IPC）前置——
                      * 常见路径一次短路，小窗全量遍历（getWindows 重 IPC）仅在
                      * 活动窗口确属该包时才兜底执行（灵动岛小窗包场景） */
-                    if (isDialogClass(cls) && !isOemUtilityPkg(pkg)) {
+                    if (isDialogClass(cls) && !AdDecisionCore.isOemUtilityPkg(pkg)) {
                         popupUntil.put(pkg, now + POPUP_WINDOW_MS);
                         nudgePopupScan(pkg, now);
                     }
@@ -1921,7 +1928,7 @@ public class AdSkipService extends AccessibilityService {
                 chainKilledAt.remove(pkg); // v4.3.0：新窗重置内容页早退
                 nudgeAt.remove(pkg);      // v4.3.0：新窗重置补扫节流
                 rescueAt.remove(pkg);     // v4.4.0：新窗重置救回节流（旧窗时间戳不得拖慢新窗首救）
-                if (isDialogClass(cls) && !isOemUtilityPkg(pkg)) {
+                if (isDialogClass(cls) && !AdDecisionCore.isOemUtilityPkg(pkg)) {
                     /* ═══ v4.5.0 用户打开的弹窗/抽屉守护（乱点根治第二道闸）═══
                      * issue#42-44 实锤：用户点开右侧抽屉（BaseCustomDialogFragment
                      * 菜单），4s 让路期一过引擎就点菜单里的「跳过」列表项。
@@ -2025,10 +2032,8 @@ public class AdSkipService extends AccessibilityService {
 
     /** v3.6.0：厂商系统工具包（安全中心/系统管家类）——弹窗突发检测不适用
      *（真机日志：securitycenter/keep 的系统弹窗被误开弹窗识别窗）。
-     *  v3.13.0：上移到决策核心 isOemUtilityPkg（JVM 可单测），本类三处共用 */
-    private boolean isOemUtilityPkg(String pkg) {
-        return AdDecisionCore.isOemUtilityPkg(pkg);
-    }
+     *  v3.13.0：上移到决策核心 isOemUtilityPkg（JVM 可单测），本类三处共用。
+     *  v7.15.6 冗余清理：纯转发包装移除，调用点直接走 AdDecisionCore。 */
 
     /** v3.13.0：息屏判定（查询失败按亮屏放行——绝不错杀正常跳过） */
     static boolean isScreenOn(Context ctx) {
@@ -2418,6 +2423,24 @@ public class AdSkipService extends AccessibilityService {
                 profileReset(pkg, winClassOf(pkg));
                 appendLog("⚡ 探针哨兵命中（" + shortPkg(pkg) + "）：CLEAN 档案窗出现真「跳过」→ 档案复活，全量出手");
                 tryScan(pkg, winStart, 0); // 复用全量路径（含规则/订阅/复验/执行）
+                return;
+            }
+            /* v7.15.6 图形探针：文本探针盲区（纯图片跳过键/全屏热区——
+             * Keep/CSDN 动态图开屏「识别不到且无日志」头号根因）。仅开屏
+             * 窗内跑，1.5s/窗一档（屏闪高频事件不重复扫）；命中即档案复活。 */
+            if (ctx.splashLive) {
+                String gKey = pkg + "|" + winStart;
+                Long gLast = graphicProbeAt.get(gKey);
+                long nowMs = System.currentTimeMillis();
+                if (gLast == null || nowMs - gLast.longValue() >= 1500) {
+                    graphicProbeAt.put(gKey, Long.valueOf(nowMs));
+                    if (graphicProbeAt.size() > 48) graphicProbeAt.clear(); // 防膨胀
+                    if (graphicProbe(root, ctx)) {
+                        profileReset(pkg, winClassOf(pkg));
+                        appendLog("⚡ 图形探针命中（" + shortPkg(pkg) + "）：CLEAN 档案窗出现图片跳过键/全屏热区（动态图开屏）→ 档案复活，全量出手");
+                        tryScan(pkg, winStart, 0);
+                    }
+                }
             }
         } catch (Throwable ignored) {
         }
@@ -2431,6 +2454,30 @@ public class AdSkipService extends AccessibilityService {
         probeNudgeAt.put(pkg, now);
         final int g = -1;
         handler.post(() -> probeSentinel(pkg, winStart, g));
+    }
+
+    /* ═══ v7.15.6 图形探针（CLEAN 档案盲区根治）═══
+     * 用户实锤（Keep/CSDN）：动态图开屏广告「识别不到，且日志里都没记录」
+     * 头号根因——(pkg|cls) 连续 3 次零候选判 CLEAN 后只剩文本探针，而动态
+     * 图开屏的跳过键是【纯图片】（无文本可探）+ 全屏可点热区 → 探不到 →
+     * 不扫不点不记（72h 才复查一次）。本探针在开屏窗内补一次浅 DFS
+     * （预算 120 ≈ 全量扫描 1/5 成本，1.5s 节流）：vid 键/角落键/泛位置
+     * 键/热区/角标任一在场 = 强广告信号 → 档案复活全量出手。 */
+    private boolean graphicProbe(AccessibilityNodeInfo root, Ctx ctx) {
+        try {
+            ctx.budgetNodes = 120;
+            ScanFind f = AdDecisionCore.walk(new NodeAdapter(root), ctx);
+            return AdDecisionCore.hasActionableCand(f, ctx) || f.hotZone || f.adBadge;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** v7.15.6：本窗是否已确认热区（walk 见过全屏可点广告图）——nudgeScan
+     *  4s 后停扫豁免的依据；窗口一切换 key 即变，天然失效。 */
+    private boolean winHotZoneLive(String pkg) {
+        Boolean b = hotZoneWin.get(pkg + "|" + winAt(pkg));
+        return b != null && b.booleanValue();
     }
 
     /* ═══ v5.5.0 模块二：更新诱导弹窗双信号普查 ═══
@@ -2620,8 +2667,17 @@ public class AdSkipService extends AccessibilityService {
                 Long last = popupNudgeAt.get(pkg); // 弹窗窗期：240ms 节流补扫（v5.8.0：300→240）
                 if (last != null && now - last < 240) return;
                 popupNudgeAt.put(pkg, now);
+            } else if (winHotZoneLive(pkg) && elapsed <= splashDeadlineMs(winClassOf(pkg))) {
+                /* v7.15.6 热区开屏窗晚到键补扫（Keep/CSDN 动态图开屏：跳过
+                 * 按钮可晚至 5~12s 出现）——旧版 4s 后全停 = 晚到按钮永远
+                 * 等不到扫描。仅限本窗已确认热区（walk 见过全屏可点广告图）
+                 * 且仍在开屏观察窗内；500ms 节流（比杀链救回 600ms 略密，
+                 * 比前期 80ms 风暴松一个量级——屏闪窗的功耗可控）。 */
+                Long last = hotNudgeAt.get(pkg);
+                if (last != null && now - last < 500) return;
+                hotNudgeAt.put(pkg, now);
             } else {
-                return;                            // 弹窗窗期外：内容变化零补扫
+                return;                            // 非热区开屏窗：内容变化零补扫
             }
         }
         final int g = gen.intValue();
@@ -2644,7 +2700,7 @@ public class AdSkipService extends AccessibilityService {
     }
 
     private void detectPopupBurst(String pkg, long now) {
-        if (!popupShieldEnabled() || isOemUtilityPkg(pkg)) return;
+        if (!popupShieldEnabled() || AdDecisionCore.isOemUtilityPkg(pkg)) return;
         // v4.1.0 前台门：只对前台应用做突发检测（灵岛/悬浮窗动画的高频
         // 内容变化绝不开弹窗识别窗——乱点元凶）
         if (!pkg.equals(lastFgPkg)) return;
@@ -3053,10 +3109,11 @@ public class AdSkipService extends AccessibilityService {
                 java.util.ArrayList<com.zai.adshield.core.AdDecisionCore.NodeView> closeCands =
                         nativeFindTexts(r, com.zai.adshield.core.InterstitialGuard.INTER_SEARCH_WORDS);
                 /* v7.15.2 强窗形免语境：SDK 广告窗指纹 / Dialog 形态本身就是广告铁证
-                 * ——无角标插屏/返回开屏窗不再被「无语境词」一票否决。 */
+                 * ——无角标插屏/返回开屏窗不再被「无语境词」一票否决。
+                 * v7.15.6 冗余清理：第三项原为 isAdActivityClass(winClassOf(pkg))
+                 * ——cls 即 winClassOf(pkg)（上方赋值），与第一项恒等。 */
                 boolean strongWinForm = com.zai.adshield.core.AdDecisionCore.isAdActivityClass(cls)
-                        || isDialogClass(cls)
-                        || AdDecisionCore.isAdActivityClass(winClassOf(pkg));
+                        || isDialogClass(cls);
                 com.zai.adshield.core.FeedAdGuard.FeedDecision fd =
                         com.zai.adshield.core.InterstitialGuard.decideFromCandidates(
                                 ctxCands, closeCands, screenWidth, screenHeight, f.scrollPresent, strongWinForm);
@@ -3256,9 +3313,6 @@ public class AdSkipService extends AccessibilityService {
                 double perfFactor = com.zai.adshield.core.ComplianceGuard.budgetFactor(
                         deviceTierCache, com.zai.adshield.core.ComplianceGuard.batteryTier(
                                 batteryPctCache, chargingCache));
-                if (perfFactor < 1.0) {
-                    ctx.budgetNodes = Math.max(120, (int) (ctx.budgetNodes * perfFactor));
-                }
                 // v4.3.0 功耗分层 / v4.4.0 修正：早档【固定档 0~400ms】（广告窗
                 // 刚渲染树小）340 提速；中档 600（晚出键的深树覆盖）；晚档
                 // （固定档 ≥3.6s，真广告早该出手，深树几乎必是内容页）360。
@@ -3272,6 +3326,13 @@ public class AdSkipService extends AccessibilityService {
                 ctx.budgetNodes = splashLive
                         ? (atMs >= 0 && atMs <= 400 ? 340 : (atMs >= 3600 ? 360 : 600))
                         : (atMs == -2 ? 280 : com.zai.adshield.core.SmartScanPlanner.budgetFor(ctx));
+                /* v7.15.6 冗余修复：低端机低电量预算降级（×0.6，下限 120）此前
+                 * 写在主赋值【之前】被无条件覆盖——纯死存储白算。移到主赋值
+                 * 之后真正生效（v5.5.0 模块三的设计意图：增益路径降级，而
+                 * 事件驱动首扫/探针前置不在此处）。 */
+                if (perfFactor < 1.0) {
+                    ctx.budgetNodes = Math.max(120, (int) (ctx.budgetNodes * perfFactor));
+                }
 
                 /* ═══ v3.9.0 主路径：内嵌规则引擎 0ms 出手 ═══
                  * 规则只认控件属性（text/desc/vid），点击的是控件自身 bounds 中心
@@ -3359,6 +3420,14 @@ public class AdSkipService extends AccessibilityService {
                 ScanFind f = AdDecisionCore.walk(new NodeAdapter(roots[ri]), ctx);
                 lastFind = f;
                 lastCtx = ctx;
+                /* v7.15.6 热区记账：本窗确认过全屏可点广告图 → nudgeScan
+                 * 的 4s 后停扫豁免依据（动态图开屏的晚到跳过键 5~12s
+                 * 仍可救回；窗口一切换 key 变化自动失效）。 */
+                if (f.hotZone) {
+                    String hk = pkg + "|" + winStart;
+                    hotZoneWin.put(hk, Boolean.TRUE);
+                    if (hotZoneWin.size() > 24) hotZoneWin.clear(); // 防膨胀
+                }
                 /* v3.8.0 倒计时门控（issue#10 二轮·喜马拉雅）：穿山甲类 SDK 倒计时
                  * 结束前跳过键不响应——「已点击×4 不跳转」真凶之一（提前点全白点）。
                  * v3.9.0 抽取为 countdownWait()（规则路径/兜底路径共用） */
@@ -3444,7 +3513,7 @@ public class AdSkipService extends AccessibilityService {
         Boolean learned = winClsLearned.get(pkg);
         if (learned != null && learned.booleanValue()) return false;
         boolean noCand = f.skipCands.isEmpty() && f.fakeCands.isEmpty()
-                && f.corners.isEmpty() && !f.foundClose;
+                && f.corners.isEmpty() && f.randCands.isEmpty() && !f.foundClose;
         if (!noCand) return false;
         return f.scrollPresent || f.editPresent || f.longText || f.nodeCount > 260;
     }
@@ -3472,13 +3541,20 @@ public class AdSkipService extends AccessibilityService {
             if (AdDecisionCore.postSkipQuiet(closedAt == null ? 0 : closedAt.longValue(), now)) return;
             // v5.1.0 微树过滤：加载占位窗（≤5 节点）无诊断价值
             if (f != null && f.nodeCount <= 5) return;
+            /* v7.15.6 强广告形态豁免（Keep/CSDN「识别不到且日志没记录」根治）：
+             * 热区/角标在场 = 大概率广告窗（动态图开屏全屏可点是常态）——
+             * 此前同包 8s 节流（logo 窗先记一条把真广告窗的吞掉）与 H5 大树
+             * 过滤（WebView 容器 nodeCount>150 全吞）双杀广告窗的未命中样本
+             * = 最高价值诊断恰恰零记录。广告窗的 miss 必记，其余照旧节流。 */
+            boolean strongAdForm = f != null && (f.hotZone || f.adBadge);
             String key = pkg + "|" + winStart;
             Long last = missLogAt.get(key);
             if (last != null) return;
             /* v5.5.1 同包 8s 节流：窗口类名抖动期 winStart 每抖一次换新键，
-             * 逐窗去重对抖动无效——包级节流才能挡住 2 秒 4 条的爆发 */
+             * 逐窗去重对抖动无效——包级节流才能挡住 2 秒 4 条的爆发
+             * （v7.15.6：强广告形态窗豁免——广告 miss 是补规则的黄金样本） */
             Long lastPkg = missThrottleAt.get(pkg);
-            if (lastPkg != null && now - lastPkg.longValue() < 8_000L) return;
+            if (lastPkg != null && now - lastPkg.longValue() < 8_000L && !strongAdForm) return;
             missThrottleAt.put(pkg, now);
             if (missThrottleAt.size() > 32) missThrottleAt.clear(); // 防膨胀
             missLogAt.put(key, now);
@@ -3486,8 +3562,8 @@ public class AdSkipService extends AccessibilityService {
             // 弹窗路径且无画像（未走到 walk）：不记（弹窗识别本就门控严格）
             if (popup && f == null) return;
             // 内容页特征太强（可滚动+输入框）且零候选：不记（不是广告场景，
-            // 每个正常应用启动都记一条 = 刷屏）
-            if (f != null && (f.scrollPresent || f.editPresent) && f.nodeCount > 150) return;
+            // 每个正常应用启动都记一条 = 刷屏）——v7.15.6 强广告形态豁免同上
+            if (f != null && (f.scrollPresent || f.editPresent) && f.nodeCount > 150 && !strongAdForm) return;
             StringBuilder sb = new StringBuilder(160);
             sb.append(popup ? "❓ 弹窗未命中（" : "❓ 开屏未命中（").append(shortPkg(pkg)).append("）");
             sb.append(f != null ? "树 " + f.nodeCount + " 节点" : "树 ?");
@@ -4036,10 +4112,9 @@ public class AdSkipService extends AccessibilityService {
                                 + reasonZh(d.reason) + "（真实触点·1:1 人手·换第 " + (attempts + 1) + " 个候选，同坐标绝不重复盲刺）");
                     }
                     if (d.reason != null && d.reason.startsWith("feed_")) {
-                        /* v7.2.0：feed 路径不计 auto——信息流关闭由 executeFeed
-                         * P2 完成时单独记 feed（P1 拉菜单是中间动作，不虚增战绩）。
-                         * v7.15.5：本分支为防御性保留（上方 else-if 已拦截 feed
-                         * 前缀与 inter_close——到这里的 reason 必非两者） */
+                        /* v7.15.6 冗余清理备注：本分支不可达（上方 else-if 已拦截
+                         * feed_ 与 inter_close，到这里的 reason 必非两者）——
+                         * v7.2.0「feed 不计 auto」语义由该 else-if 独占。 */
                     } else {
                         bumpStat(pkg, "auto");
                     }
@@ -4089,7 +4164,8 @@ public class AdSkipService extends AccessibilityService {
                             + HumanTap.verifyDelayMs(tapAttempts) + "ms 后复验");
                 }
                 if (d.reason != null && d.reason.startsWith("feed_")) {
-                    /* v7.2.0：feed 路径不计 auto（feed 只走 A_CLICK_BOUNDS，防御性对称） */
+                    /* v7.15.6 冗余清理备注：不可达（feed 只走 A_CLICK_BOUNDS）
+                     * ——防御性对称语义收编为注释。 */
                 } else {
                     bumpStat(pkg, "auto");
                 }
@@ -4413,10 +4489,13 @@ public class AdSkipService extends AccessibilityService {
         if (r.equals("gyro_immediate")) return "翻转/摇一摇文案立即直断";
         if (r.equals("gyro_break")) return "陀螺仪诱导/假跳过直断";
         if (r.equals("corner_image_skip")) return "角落图片跳过键";
+        if (r.equals("rand_graphic_skip")) return "泛位置图片跳过键（动态图开屏·位置随机）"; // v7.15.6 Keep/CSDN
         if (r.equals("learned_pos")) return "学习位置（你手动教过）";
         if (r.equals("splash_close")) return "开屏×关闭键";
+        if (r.equals("badge_close")) return "角标在场×关闭键";      // v7.15.6 补齐：L1.5 产出旧裸显英文
+        if (r.equals("popup_badge")) return "弹窗广告角标关闭键";    // v7.15.6 补齐：弹窗路径产出
+        if (r.equals("popup_cta")) return "弹窗 Dialog+营销话术关闭键"; // v7.15.6 补齐：弹窗路径产出
         if (r.equals("hot_zone")) return "全屏热区自绘广告";
-        if (r.equals("coord_fallback")) return "坐标级兜底";
         return r;
     }
 
@@ -4605,7 +4684,10 @@ public class AdSkipService extends AccessibilityService {
     private void observeMisclick(String pkg, AccessibilityEvent event, long now) {
         try {
             if (screenWidth <= 0 || screenHeight <= 0) return;
-            if (now - winAt(pkg) > WINDOW_MS) return;
+            /* v7.15.6 口径统一：热区误触观察窗用 splashDeadlineMs（SDK 广告窗
+             * 20s）——旧版散落的裸 WINDOW_MS 是 v7.15.5「唯一口径」收编漏网
+             * 的第四处（SDK 窗 12~20s 的热区误触观察不到）。 */
+            if (now - winAt(pkg) > splashDeadlineMs(winClassOf(pkg))) return;
             AccessibilityNodeInfo src = event.getSource();
             if (src == null) return;
             String label = cs(src.getText());

@@ -33,9 +33,9 @@ public final class SubMirrors {
     public static final String ASSET_XNX = "subsnap/xnx.json5";
 
     /**
-     * 市场精选源注册表：{规范 jsdelivr URL, 快照资产名}。
-     * 第一列是 SubscriptionManager.RECOMMENDED_SUBS 的 URL（同一数据源，
-     * 市场渲染与快照匹配共用一套事实）。
+     * 快照精选源注册表：{规范 jsdelivr URL, 快照资产名}。
+     * 与 SubscriptionManager.DEFAULT_SUB_URL 同一套订阅源事实（市场注册表
+     * v7.15.6 移除后由本表独立承载快照兜底匹配）。
      */
     public static final String[][] SNAPSHOT_SOURCES = {
             {"https://cdn.jsdelivr.net/gh/Lin-arm/GKD_subscription@main/dist/gkd.json5", ASSET_LINARM},

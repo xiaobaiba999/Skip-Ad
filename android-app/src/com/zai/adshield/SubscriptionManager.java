@@ -106,55 +106,9 @@ public final class SubscriptionManager {
 
     static boolean loaded = false;
 
-    /* ═══ v5.6.0 订阅市场：活跃维护的第三方订阅注册表 ═══
-     * v5.8.0 防呆版：只留 gkd-subscription 话题星数前三且当日活跃的源；
-     * v7.0.0 三个源的内容随 APK 离线快照内置（SubMirrors.SNAPSHOT_SOURCES
-     * 与本表同一套 URL 事实——全通道失败时秒导快照）。 */
-    static final String[][] RECOMMENDED_SUBS = {
-            {"id667 的 GKD 订阅", "Lin-arm",
-                    "https://cdn.jsdelivr.net/gh/Lin-arm/GKD_subscription@main/dist/gkd.json5",
-                    "⭐7.4k · 日更——社区事实标准", "日更"},
-            {"ganlin 的 GKD 订阅", "ganlinte",
-                    "https://cdn.jsdelivr.net/gh/ganlinte/GKD-subscription@main/dist/ganlin_gkd.json5",
-                    "⭐935 · 610 款应用", "周更"},
-            {"小年侠订阅", "MengNianxiaoyao",
-                    "https://cdn.jsdelivr.net/gh/MengNianxiaoyao/gkd-subscription@main/dist/gkd.json5",
-                    "⭐496 · 持续维护", "活跃"},
-    };
-    /** 订阅市场 JSON（页顶卡片渲染用；无 Android 依赖纯拼装） */
-    public static String recommendJson() {
-        StringBuilder b = new StringBuilder(1024);
-        b.append("[");
-        for (int i = 0; i < RECOMMENDED_SUBS.length; i++) {
-            String[] s = RECOMMENDED_SUBS[i];
-            if (i > 0) b.append(',');
-            b.append("{\"idx\":").append(i)
-                    .append(",\"name\":").append(jsonStr(s[0]))
-                    .append(",\"owner\":").append(jsonStr(s[1]))
-                    .append(",\"url\":").append(jsonStr(s[2]))
-                    .append(",\"desc\":").append(jsonStr(s[3]))
-                    .append(",\"badge\":").append(jsonStr(s[4]))
-                    .append(",\"repo\":").append(jsonStr("https://github.com/" + repoOf(s[2])))
-                    .append('}');
-        }
-        b.append("]");
-        return b.toString();
-    }
-
-    /** 从 jsdelivr gh URL 提取 owner/repo */
-    static String repoOf(String jsdelivrUrl) {
-        try {
-            String u = jsdelivrUrl;
-            int at = u.indexOf("@main/");
-            if (at > 0) {
-                String head = u.substring(0, at); // .../gh/owner/repo
-                int gh = head.indexOf("/gh/");
-                if (gh >= 0) return head.substring(gh + 4);
-            }
-        } catch (Throwable ignored) {
-        }
-        return "";
-    }
+    /* v7.15.6 冗余清理：订阅市场注册表 RECOMMENDED_SUBS + recommendJson()
+     *  + repoOf()（订阅市场 UI v7.15.0 移除、市场桥 v7.15.6 删除后零调用方）
+     *  已整体移除；默认订阅源由下方 DEFAULT_SUB_URL 独立承载，不受影响。 */
 
     /* ───────── 加载（服务连接时 + Bridge 调用时） ───────── */
 
@@ -447,15 +401,8 @@ public final class SubscriptionManager {
         return fetch(ctx, u, sp, progress);
     }
 
-    /** 立即更新（订阅页「检查更新」按钮 / 24h 静默更新共用） */
-    public static String updateNow(Context ctx) {
-        ensureLoaded(ctx);
-        if (subUrl == null || subUrl.length() == 0) {
-            return "{\"ok\":false,\"error\":\"未添加订阅\"}";
-        }
-        SharedPreferences sp = ctx.getSharedPreferences("adshield", Context.MODE_PRIVATE);
-        return fetch(ctx, subUrl, sp, null);
-    }
+    /* v7.15.6 冗余清理：updateNow()（订阅页按钮移除后零调用方——静默
+     *  更新走下方 maybeSilentUpdate）已删 */
 
     /** 24h 静默更新（服务心跳顺带调用；无订阅/不到期秒回）。
      *  v7.0.0：离线快照导入后 1 小时即提前重拉（联网恢复后自动换成最新版）。 */
@@ -486,7 +433,7 @@ public final class SubscriptionManager {
     static final long AUTO_IMPORT_INTERVAL_MS = 24 * 60 * 60 * 1000L;
     static final long AUTO_IMPORT_RETRY_MS = 30 * 60 * 1000L;
 
-    /** id667 默认源（与 RECOMMENDED_SUBS 第一行同源——社区事实标准） */
+    /** id667 默认源（社区事实标准；订阅市场注册表移除后由本源独立承载） */
     static final String DEFAULT_SUB_URL =
             "https://cdn.jsdelivr.net/gh/Lin-arm/GKD_subscription@main/dist/gkd.json5";
 
@@ -659,12 +606,7 @@ public final class SubscriptionManager {
                 + ",\"apps\":" + apps + ",\"rules\":" + rules + "}";
     }
 
-    public static void setEnabled(Context ctx, boolean on) {
-        ensureLoaded(ctx);
-        remoteEnabled = on;
-        ctx.getSharedPreferences("adshield", Context.MODE_PRIVATE)
-                .edit().putBoolean("subEnabled", on).apply();
-    }
+    /* v7.15.6 冗余清理：setEnabled()（订阅开关桥删除后零调用方）已删 */
 
     public static boolean isEnabled() {
         return remoteEnabled;

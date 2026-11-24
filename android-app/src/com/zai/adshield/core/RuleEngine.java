@@ -230,11 +230,9 @@ public final class RuleEngine {
             "跳过", "跳過", "skip",
     };
     static final int CONTAINS_MAX_LEN = 8;
-    static final String[] DANGEROUS_WORDS = {
-            "摇", "晃", "翻", "转", "扭", "领", "福利", "详情", "下载", "开通",
-            "注册", "登录", "抽奖", "红包", "进入", "查看", "立即",
-            "抢购", "秒杀", "礼包", "优惠", "补贴", "立减", "低价", "充值",
-    };
+    /* v7.15.6 冗余合一：此前与 AdDecisionCore.INDUCE_WORDS 逐字相同的双份
+     * 维护表（25 词 × 2 处）收编为单源引用——两表漂移的历史隐患根除。 */
+    static final String[] DANGEROUS_WORDS = AdDecisionCore.INDUCE_WORDS;
 
     /* ── 第4层：vid 关键段 ──
        SKIP 族 + 倒计时控件：任意窗口；

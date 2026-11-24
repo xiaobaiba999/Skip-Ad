@@ -1,5 +1,32 @@
 # 变更记录
 
+## v7.15.6 · 2026-11-24 · 动态图开屏泛位置识别根治（Keep/CSDN）+ 首页白名单精简 + 代码冗余清理
+
+**用户实锤**：Keep/CSDN 等 App 的动态图开屏广告——跳过按钮每次在不同地方、没有倒计时、纯图片（无文本），引擎识别不到且日志里都没有记录；首页白名单模块显示太长不美观；代码冗余清理（去除前判断与测试，不引入不可用）。
+
+**死因链（考古定位）**：
+
+1. **居中随机位零收集**：`AdDecisionCore.walk` 的图片键候选只认「顶部 14%/底部 18% + 左右缘」几何带（`isCornerControl`/`isMidEdgeControl`）——居中随机位的纯图片跳过键不在任何几何带 = 零候选 = `decide` 返回 NONE（识别不到）
+2. **CLEAN 档案静默**：`(pkg|cls)` 连续 3 次零候选判省电（`PowerGovernor.CLEAN_STREAK_MIN`）后只剩 `probeSentinel` 文本探针（`findAccessibilityNodeInfosByText("跳过/跳過/skip")`）——纯图片键无文本可探 → 不扫不点不记（`logScanMiss` 住在 tryScan 全量路径里，探针路径零日志），72h 才复查一次——「识别不到且日志没记录」头号根因
+3. **miss 日志双吞**：`logScanMiss` 的「同包 8s 节流」（logo 窗先记一条，3s 后真广告窗的被吞）与「H5 大树过滤」（`scrollPresent && nodeCount>150` 全吞——CSDN WebView 开屏常态）叠加——广告窗的未命中样本恰恰零记录
+4. **4s 后停扫**：`nudgeScan` 对超 4s 且非弹窗窗的内容事件直接 return——晚到跳过键（5~12s）永远等不到扫描
+
+**本轮交付**：
+
+1. **泛位置图片跳过键（`randCands` + 决策层 L4.7）**：`visit()` 链尾新增收集分支——任意位置（含居中）的小可点无字图键（`isRandPosControl`：面积 ≤6% 屏 · 宽 ≤30% · 高 ≤12% · ≥24px，显式排除角落/边带几何）；`randVidDenied` vid 否决表（download/share/user/buy/redpacket 等 29 token——纯图片 CTA 防线）；出手门仅强广告形态（`hotZone/adBadge/sdkAdWin/learnedCls`）四选一，无「树极简 ≤60」兜底（居中位误点代价比角落位高），排在 L4 角落候选用尽之后（先点像的再点不像的），`rIdx = clickAttempts - corners.size()` 轮换与 L4 同熙；`hasActionableCand`/`chainCanQuit` 联动（有泛位置候选 + 强形态 → 零候选退避不触发、内容页早退不放行）
+2. **CLEAN 档案图形探针（`graphicProbe`）**：`probeSentinel` 文本探针不中后，开屏窗内每 1.5s（`graphicProbeAt` per pkg|winStart 节流）跑一次浅 DFS（预算 120 ≈ 全量 1/5）：vid 键/角落键/泛位置键/热区/角标任一在场（`hasActionableCand || hotZone || adBadge`）→ `profileReset` 档案复活 + `tryScan` 全量出手
+3. **miss 日志强广告形态豁免**：`logScanMiss` 新增 `strongAdForm = hotZone || adBadge` 豁免——同包 8s 节流与 H5 大树过滤对广告窗 miss 双失效（广告 miss 是补规则黄金样本必记录；逐窗去重保留，类名抖动爆发仍被挡）
+4. **热区晚到键补扫**：`tryScan` walk 见 `hotZone` 时记账（`hotZoneWin` per pkg|winStart——窗口切换 key 天然失效）；`nudgeScan` 4s 后对 `winHotZoneLive` 且仍在开屏观察窗（`splashDeadlineMs` 唯一口径）的窗 500ms 节流补扫——晚到跳过键 5~12s 仍可救回（屏闪窗功耗可控：比前期 80ms 风暴松一个量级）
+5. **首页白名单精简**：index.html 删搜索框（`#wl-search`）与手动添加行（`.wl-add-row`）；app.js `renderWhitelist` 默认渲染 5 款（白名单内置顶 + 中文序），底部 `.wl-toggle`「展开全部 N 款 ▾ / 收起 ▴」（44px 触控目标 + 键盘可达，展开后仍 460px 滚动容器）；`wlQuery/wlMatch/120ms debounce/回车提交` 等搜索逻辑随之移除
+6. **冗余清理（判断 + 测试先行，24 套件 4493 断言全绿）**：
+   - `RuleEngine.DANGEROUS_WORDS` ≡ `AdDecisionCore.INDUCE_WORDS`（25 词逐字相同双份维护）→ 单源引用
+   - AdSkipService：插屏 `strongWinForm` 恒等第三项删除；`observeMisclick` 裸 `WINDOW_MS` → `splashDeadlineMs`（v7.15.5「唯一口径」漏网第四处）；低端机预算降级死存储修复（写在主赋值前被覆盖 = 白算——`SmartScanPlanner.budgetFor` 只读标志不读 budgetNodes，移到主赋值后真正生效）；`execute` 两处不可达 feed_ 分支注释化；`reasonZh` 补 `badge_close/popup_badge/popup_cta` 中文映射 + 删 `coord_fallback` 死映射；`isOemUtilityPkg` 纯转发包装移除（3 调用点直连）
+   - MainActivity：7 个孤儿桥删除（`isKeepOn/setKeepOn/subRecommend/subSetUrl/subUpdateNow/subSetEnabled/secureHealStatus`——app.js 零调用方逐一核实）；SubscriptionManager：`RECOMMENDED_SUBS/recommendJson/repoOf/updateNow/setEnabled` 死代码移除（`setUrl` 为每日自动导入在用保留）
+   - app.js：下载位 `prefix` 机制收编（唯一调用值 "page" 硬编码）；`renderLog(force)/renderReport(refresh)/notifyUploadResult(ok,number)` 死参数移除；index.html `#page-install-btn` 孤儿节点删除
+   - style.css：约 90 行死样式移除（`.update-banner/.ub-*`/`.fb-select/.fb-input/textarea`/`.sub-status`/`.changelog` 空规则/`.wl-add-row/.wl-search-*`/`.rp-sec`/`.ka-dot` 族/`.market-*` 族）；**`@keyframes adspin` 缺陷修复**（上传按钮 spinner 内联动画引用的关键帧从未定义 = 一直静止）
+   - **下载进度文本 id 错配修复（v7.3.0 遗留真 bug）**：`startProgressPoll` 的 `$("#page-text")` 实为 `#page-progress-text`——进度轮询首个 tick 即 TypeError 静默死亡（进度冻结、「下载完成→立即安装」翻转永不可达、30s 无进展换道全断）；v7.3.0 修 `-btn` 漏了 `-text`，本轮 prefix 收编时审核轮揪出
+7. **测试**：新增 `RandGraphicSkipTest`（35 断言五节：S1 泛位置几何 7 / S2 vid 否决 6 / S3 walk 收集门 7 / S4 L4.7 出手门 10 / S5 退避联动 4——Keep 动态图开屏全链/无强形态拒/时机窗/可滚动拒/角落让位/复验轮换/晚窗 L5 兜底衔接）；JVM 24 套件 4493 断言全绿；页面资产符号闸 11 项在场；密钥泄露扫描全绿；ESLint 零告警；APK 85600 重建（签名证书 05ada6e3… 与历史一致）
+
 ## v7.15.5 · 2026-11-24 · 下载通道死局根治 + 开屏扫描误门控解除（开屏/插屏严格分域）+ 订阅规则自动瘦身
 
 **用户实锤三合一**：① v7.15.1/v7.15.3 检测到新版本后点下载报「下载链接不在允许的发布通道内」；② 很多 App 开屏的广告跳不了、日志也没有记录（规则和日志须严格区分开屏广告和插屏广告）；③ 订阅的规则命中很少的去除掉。

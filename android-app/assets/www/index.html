@@ -87,7 +87,8 @@
         </div>
       </div>
 
-      <!-- v4.3.0 应用白名单 -->
+      <!-- v4.3.0 应用白名单（v7.15.6：去掉搜索框与手动添加行，默认只显示
+           5 款应用 + 展开全部——首页更短更清爽，展开后仍可滚动检索全部） -->
       <div class="card" id="wl-card">
         <div class="row-between">
           <div>
@@ -96,17 +97,7 @@
           </div>
           <span class="chip" id="wl-count">0</span>
         </div>
-        <!-- v7.1.0 白名单搜索栏（用户实锤：应用白名单搜索栏实现 app 中文名搜索——
-             支持中文名/包名不区分大小写包含匹配，实时过滤下方列表） -->
-        <div class="wl-search-row">
-          <input type="text" id="wl-search" class="fb-input" placeholder="搜索应用（中文名 / 包名，不区分大小写）"
-                 autocomplete="off" aria-label="搜索白名单应用">
-        </div>
         <div class="wl-list" id="wl-list"><div class="empty">加载中…</div></div>
-        <div class="wl-add-row">
-          <input type="text" id="wl-input" class="fb-input" placeholder="输入应用包名，如 net.csdn.csdnplus">
-          <button class="btn btn-primary" id="btn-wl-add">添加</button>
-        </div>
       </div>
     </section>
 
@@ -187,7 +178,6 @@
           <div class="progress-text" id="page-progress-text">准备中</div>
         </div>
         <button class="btn btn-primary btn-block" id="page-dl-btn" style="display:none;margin-top:10px">下载更新</button>
-        <button class="btn btn-primary btn-block" id="page-install-btn" style="display:none;margin-top:10px">立即安装</button>
         <div class="fb-result" id="page-dl-note" style="display:none"></div>
       </div>
 
