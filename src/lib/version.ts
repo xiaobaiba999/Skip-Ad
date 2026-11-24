@@ -1,8 +1,8 @@
 /** 版本与 GitHub 仓库信息（Web 端与发布节奏共用）。
- * v7.15.3：检查更新三面全崩根治（jsdelivr 四域梯度 + GitHub API 匿名优先
- * + 内置令牌轮换——旧令牌 401 失效实锤，日志上传/问题反馈一并恢复）。
-export const APP_VERSION = "7.15.3";
-export const VERSION_CODE = 85300; // v7.1.0 起标准公式 major*10000 + minor*1000 + patch*100（7.15.3→85300）；v7.10.0 统一版本规则：更新判定只看 versionCode，versionName 仅展示
+ * v7.15.4：开屏提示 12 小时窗（24h→12h）+ 检查更新失败 GitHub 加速器
+ * 指引三处落地（失败文案/帮助/当前版本下方醒目小字）。 */
+export const APP_VERSION = "7.15.4";
+export const VERSION_CODE = 85400; // v7.1.0 起标准公式 major*10000 + minor*1000 + patch*100（7.15.4→85400）；v7.10.0 统一版本规则：更新判定只看 versionCode，versionName 仅展示
 export const GITHUB_REPO = "xiaobaiba999/Skip-Ad";
 export const GITHUB_API = `https://api.github.com/repos/${GITHUB_REPO}`;
 export const GITHUB_HOME = `https://github.com/${GITHUB_REPO}`;
@@ -21,15 +21,15 @@ export interface VersionEntry {
  *  旧版本内容归档在 GitHub Releases 与 git 历史） */
 export const VERSION_HISTORY: VersionEntry[] = [
   {
-    version: "7.15.3",
-    code: 85300,
+    version: "7.15.4",
+    code: 85400,
     date: "2026-11-24",
-    tagline: "检查更新三面全崩根治（jsdelivr 四域梯度 + API 匿名优先 + 令牌轮换）",
+    tagline: "开屏提示 12 小时窗 + 检查更新失败 GitHub 加速器指引",
     notes: [
-      "GitHub API 兜底匿名优先：旧版令牌直连，令牌失效（401 Bad credentials）直接把「用户网络里唯一可达的源」堵死——真机实锤「多源均不可达 · GitHub API 返回 401」三面全崩的第三面；令牌任何状态不再阻塞检查更新",
-      "jsdelivr 四域梯度（gcore→cdn→fastly→testingcf 逐域探测 + 域偏好 sticky）：cdn.jsdelivr.net 单域写死是国内间歇不可达时清单源的结构性弱点——与 raw@main 被墙叠加后仅剩 API 一条路",
-      "内置令牌轮换：旧令牌实测 401 已失效——问题反馈/手动日志上传/8h 自动上传一并恢复（与检查更新同把令牌）",
-      "UpdateHostsTest 新增 24 断言（四域梯度/偏好置顶/tag 域收敛/非法域攻击面收敛）",
+      "开屏提示「不再提示」窗口 24 小时 → 12 小时：弹窗节奏更跟手；升级新版后仍会重新提醒一次（版本钉不变）",
+      "检查更新失败文案、帮助页、当前版本下方（醒目橙字）三处新增 GitHub 加速器指引——检查更新失败时开启 GitHub 加速器（如 Watt Toolkit）重试即可，不开梯子也有出路",
+      "配合 v7.15.3 检查更新三面全崩根治（jsdelivr 四域梯度 + API 匿名优先 + 令牌轮换）——本轮把「失败了怎么办」送到用户眼前",
+      "修复 version.ts 头注释未闭合（v7.15.3 遗留）：块注释吞掉 APP_VERSION/VERSION_CODE 声明——与 v7.6.1 页面资产符号闸同类事故，本轮补上闭合并如实记录",
     ],
   }];
 

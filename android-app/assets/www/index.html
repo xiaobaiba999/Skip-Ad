@@ -149,8 +149,8 @@
         <div class="card-title">常见问题</div>
         <div class="help-group">
           <div class="help-row"><b>息屏或切应用回来，第一个广告没拦住？</b><span>卫士后台被清理所致（见上方「固定后台」）。新版已在亮屏/解锁瞬间自动补扫，但后台被杀仍需恢复——按三步加固即可根治。</span></div>
-          <div class="help-row"><b>进入 App 弹出的提示是什么？</b><span>开屏广告拦截提示（知道了 / 24 小时不再提示 / 去上传日志）。选「24 小时不再提示」当日静音，升级新版本后会再提醒一次。</span></div>
-          <div class="help-row"><b>检查更新慢或下载失败？</b><span>内置多条备用下载通道会自动切换（CDN 直链优先）；也可到 GitHub Releases 页手动下载安装。</span></div>
+          <div class="help-row"><b>进入 App 弹出的提示是什么？</b><span>开屏广告拦截提示（知道了 / 12 小时不再提示 / 去上传日志）。选「12 小时不再提示」静音 12 小时，升级新版本后会再提醒一次。</span></div>
+          <div class="help-row"><b>检查更新失败或下载慢？</b><span><b style="color:#C2410C">检查更新失败请开启 GitHub 加速器（如 Watt Toolkit）后重试</b>——不开梯子也能恢复；下载内置多条备用通道自动切换（CDN 直链优先），也可到 GitHub Releases 页手动下载安装。</span></div>
           <div class="help-row"><b>订阅规则还要手动导入吗？</b><span>不用。社区订阅每日后台自动导入（失败自动重试 + 内置快照兜底），无需任何操作。</span></div>
         </div>
       </div>
@@ -174,6 +174,8 @@
           <div class="kv" style="padding:0"><span>当前版本</span><b id="me-ver">--</b></div>
           <button class="btn btn-ghost btn-sm" id="btn-check-update">检查更新</button>
         </div>
+        <!-- v7.15.4：检查更新失败指引（用户指令：当前版本下方小字·醒目色） -->
+        <div style="margin-top:8px;padding:7px 10px;border-radius:10px;background:#FFF7ED;border:1px solid #FDBA74;font-size:12px;font-weight:700;color:#C2410C;line-height:1.55">检查更新失败？开启 GitHub 加速器（如 Watt Toolkit）后重试即可</div>
         <!-- v7.0.0：新版本功能描述就地渲染（≤5 条带序号——检查更新发现新版本时
              当场显示下一版本的功能，不再只弹版本号） -->
         <div class="page-notes" id="page-notes" style="display:none"></div>

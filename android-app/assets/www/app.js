@@ -1,4 +1,4 @@
-/* 开屏卫士 v7.15.3 · 激进模式重构版（基于 v7.6.0 激进模式基线 · 7.6 之后版本整体召回后的重制版；v7.15.3 检查更新三面全崩根治：jsdelivr 四域梯度 + API 匿名优先 + 令牌轮换） */
+/* 开屏卫士 v7.15.4 · 激进模式重构版（基于 v7.6.0 激进模式基线 · 7.6 之后版本整体召回后的重制版；v7.15.4 开屏提示 12 小时窗 + 检查更新失败 GitHub 加速器指引三处落地） */
 "use strict";
 
 /* ══════════ 环境 ══════════ */
@@ -23,8 +23,8 @@ const store = {
 };
 
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "7.15.3"; }
-function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "85200"; }
+function appVer() { if (HAS_BRIDGE) { try { return AndroidApp.versionName(); } catch (e) {} } return "7.15.4"; }
+function appCode() { if (HAS_BRIDGE) { try { return String(AndroidApp.versionCode()); } catch (e) {} } return "85400"; }
 
 /* ══════════ 吉祥物（v4.1.0 全新形象：白机器人小侠 + 绿披风跳跃） ══════════
  * 与启动器图标同源；state: on（跳跃浮动）/ off（灰度待命） */
@@ -35,17 +35,16 @@ function mascotImg(size, state, head) {
 
 $("#brand-logo").innerHTML = mascotImg(30, "on", true);
 
-/* ═══ v7.15.3 版本记录（检查更新三面全崩根治：jsdelivr 四域梯度 + API 匿名优先 + 令牌轮换）═══ */
+/* ═══ v7.15.4 版本记录（开屏提示 12 小时窗 + 检查更新失败 GitHub 加速器指引）═══ */
 const CURRENT_RELEASE = {
   date: "2026-11-24",
-  title: "检查更新三面全崩根治（真机实锤修复轮）",
+  title: "开屏提示 12 小时窗 + 检查更新失败加速器指引",
   features: [
-    "GitHub API 兜底匿名优先：旧版令牌直连，令牌失效（401）直接把「用户网络里唯一可达的源」堵死——真机实锤「多源均不可达：raw@main 不可达 · jsdelivr@main 不可达 · GitHub API 返回 401」三面全崩的第三面；令牌任何状态不再阻塞检查更新",
-    "jsdelivr 四域梯度（gcore→cdn→fastly→testingcf 逐域探测 + 域偏好 sticky）：cdn 单域写死是国内间歇不可达时清单源的结构性弱点——与 raw@main 被墙叠加后仅剩 API 一条路",
-    "内置令牌轮换：旧令牌实测 401 已失效——问题反馈/手动日志上传/8h 自动上传一并恢复（与检查更新同把令牌）",
-    "UpdateHostsTest 新增 24 断言（四域梯度/偏好置顶/tag 域收敛/非法域攻击面收敛）",
+    "开屏提示「不再提示」窗口 24 小时 → 12 小时：弹窗节奏更跟手；升级新版后仍会重新提醒一次（版本钉不变）",
+    "检查更新失败文案、帮助页、当前版本下方（醒目橙字）三处新增 GitHub 加速器指引——检查更新失败时开启 GitHub 加速器（如 Watt Toolkit）重试即可，不开梯子也有出路",
+    "配合 v7.15.3 检查更新三面全崩根治（jsdelivr 四域梯度 + API 匿名优先 + 令牌轮换）——本轮把「失败了怎么办」送到用户眼前",
   ],
-  summary: "v7.15.3 检查更新三面全崩根治：raw@main 墙内不可达 + cdn.jsdelivr.net 间歇不可达 + GitHub API 兜底被失效令牌（401 Bad credentials）堵死——三面叠加后已装用户检查更新全灭。本轮：API 兜底匿名优先（令牌失效不再影响检查更新）+ jsdelivr 四域梯度（gcore 优先 + 域偏好 sticky）+ 内置令牌轮换（日志上传/问题反馈恢复）",
+  summary: "v7.15.4 开屏提示 12 小时窗（24h→12h）+ 检查更新失败 GitHub 加速器指引三处落地（失败文案/帮助/当前版本下方醒目小字）——配合 v7.15.3 四域梯度与匿名优先，不开梯子也有出路",
 };
 
 /* v7.0.0 新版功能描述（规范：≤5 个标题、带序号；检查更新发现新版本时就地渲染）。
@@ -601,12 +600,13 @@ function renderHelpDynamic() {
 
 /* ══════════ v7.15.0 进入 App 开屏提示弹窗（三按钮）═════════
  * 用户指令：开屏提示内容不放帮助里，每次进入 App 时弹出提示；
- * 「24 小时不再提示」当日静音；升级新版本后重新提醒一次（版本钉
- * tipPinVer——升级后新能力告知，与 v7.6.1 时代「页面资产符号闸」
- * 同思路的防呆：提示永不过期、也永不骚扰）。
- * 三按钮：知道了（本次关闭）/ 24 小时不再提示 / 去上传日志（直达
+ * v7.15.4 用户指令：「不再提示」窗口 24 小时 → 12 小时；
+ * 升级新版本后重新提醒一次（版本钉 tipPinVer——升级后新能力告知，
+ * 与 v7.6.1 时代「页面资产符号闸」同思路的防呆：提示永不过期、
+ * 也永不骚扰）。
+ * 三按钮：知道了（本次关闭）/ 12 小时不再提示 / 去上传日志（直达
  * 我的页引擎日志并自动发起上传）。 */
-const TIP_24H_MS = 24 * 60 * 60 * 1000;
+const TIP_12H_MS = 12 * 60 * 60 * 1000;
 function tipDismissUntil() { return +store.get("tipDismissUntil", 0) || 0; }
 function tipPinVer() { return String(store.get("tipPinVer", "")); }
 function tipDue() {
@@ -633,7 +633,7 @@ function showSplashTip() {
     + '</ul>'
     + '<div class="tip-btns">'
     + '<button data-act="ok" class="tip-btn">知道了</button>'
-    + '<button data-act="mute" class="tip-btn tip-btn-mute">24 小时不再提示</button>'
+    + '<button data-act="mute" class="tip-btn tip-btn-mute">12 小时不再提示</button>'
     + '<button data-act="upload" class="tip-btn tip-btn-go">去上传日志</button>'
     + '</div></div>';
   document.body.appendChild(wrap);
@@ -645,8 +645,8 @@ function showSplashTip() {
       closeSplashTip();
     } else if (act === "mute") {
       store.set("tipPinVer", appVer());
-      store.set("tipDismissUntil", Date.now() + TIP_24H_MS);
-      toast("24 小时内进入不再提示（升级新版后会再提醒一次）");
+      store.set("tipDismissUntil", Date.now() + TIP_12H_MS);
+      toast("12 小时内进入不再提示（升级新版后会再提醒一次）");
       closeSplashTip();
     } else if (act === "upload") {
       store.set("tipPinVer", appVer());
@@ -871,7 +871,7 @@ $("#btn-check-update").addEventListener("click", async () => {
   const d = await fetchLatest();
   btn.disabled = false;
   btn.textContent = "检查更新";
-  if (!d.ok) { note.className = "fb-result err"; note.style.display = ""; note.textContent = "查询失败：" + (d.error || "未知"); return; }
+  if (!d.ok) { note.className = "fb-result err"; note.style.display = ""; note.textContent = "查询失败：" + (d.error || "未知") + "。检查更新失败？开启 GitHub 加速器（如 Watt Toolkit）后重试即可"; return; }
   if (!d.hasRelease) { note.className = "fb-result"; note.style.display = ""; note.textContent = "尚未发布版本"; return; }
   latestRelease = d;
   const latest = String(d.tag || "").replace(/^v/, "");
@@ -1328,7 +1328,7 @@ function toast(msg) {
   }, 600);
   // v5.2.0：从系统设置返回（开完开关/配完自启动）即刻刷新——
   // 用户回 App 的瞬间就能看到「守护中」，不用等 5s 轮询
-  // v7.15.0：切回 App（进入）时也重新评估开屏提示弹窗（24h 窗/版本钉）
+  // v7.15.0：切回 App（进入）时也重新评估开屏提示弹窗（12h 窗/版本钉——v7.15.4 由 24h 收紧）
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") {
       refreshHome();
@@ -1346,7 +1346,7 @@ function toast(msg) {
       renderKeepAlive();
     }
   }, 5000);
-  // v7.15.0：进入 App 即弹开屏提示（三按钮——24 小时窗口 + 升级重新提醒）
+  // v7.15.0：进入 App 即弹开屏提示（三按钮——12 小时窗口 + 升级重新提醒）
   setTimeout(() => { if (tipDue()) showSplashTip(); }, 450);
   // v7.0.0：初始化完成哨兵（index.html 内联保险丝在 5s 后检查——
   // app.js 早期崩溃时不再「检查中/加载中」永久占位，给出可操作指引）
