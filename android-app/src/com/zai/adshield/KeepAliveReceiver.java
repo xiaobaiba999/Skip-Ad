@@ -75,6 +75,11 @@ public class KeepAliveReceiver extends BroadcastReceiver {
          * 自愈提醒）——同一 PendingIntent 天然去重覆盖，不叠加闹钟。 */
         if (selfCheck) {
             boolean alive = AdSkipService.isAlive();
+            if (!alive) {
+                // v7.15.12：断线首检时戳（重连日志可回答「日志为什么断流」；
+                // 进程重启间 prefs 持久——覆盖安装后新进程能续上首检时戳）
+                AdSkipService.markDeadSince(ctx);
+            }
             long cadence = alive ? AdSkipService.ALIVE_HEARTBEAT_MS : AdSkipService.HEARTBEAT_MS;
             AdSkipService.scheduleNextHeartbeat(ctx, System.currentTimeMillis() + cadence, true);
             // v4.0.0：心跳顺带触发订阅 24h 静默更新（无订阅/未到期秒回，零开销）
@@ -114,6 +119,14 @@ public class KeepAliveReceiver extends BroadcastReceiver {
             }
         }
 
+        /* v7.15.12 更新存活链：覆盖安装完成日志（无条件记——无论服务死活，
+         * 日志考古锚点：用户反馈「更新后日志不记录」时能直接看到安装时刻；
+         * appendLogStatic 在 instance==null 时 prefs 直写，重连后可见）。 */
+        if (replaced) {
+            AdSkipService.appendLogStatic(ctx, "📦 覆盖安装完成（v" + AdSkipService.versionName(ctx)
+                    + "）——服务自检踢链中；若未自动恢复请点通知栏「待恢复」提醒");
+        }
+
         if (!ctx.getSharedPreferences("adshield", Context.MODE_PRIVATE)
                 .getBoolean("keepOn", false)) {
             return; // 用户已手动关闭保活提醒（只管提醒/自愈，维护任务已前置闸外）
@@ -141,7 +154,11 @@ public class KeepAliveReceiver extends BroadcastReceiver {
             return;
         }
         // 自检 / 覆盖安装：600ms 后启动步骤化踢链（预算 ≤8.2s < 10s 广播窗口）
-        new Handler(Looper.getMainLooper()).postDelayed(new SmartRevive(ctx, result), 600);
+        if (replaced) {
+            // v7.15.12：断线首检时戳（服务死着才走到这里——活着的在上方早退）
+            AdSkipService.markDeadSince(ctx);
+        }
+        new Handler(Looper.getMainLooper()).postDelayed(new SmartRevive(ctx, result, replaced), 600);
     }
 
     /**
@@ -150,16 +167,21 @@ public class KeepAliveReceiver extends BroadcastReceiver {
      * → +2.5s 终判两态通知。每条路径恰好一次 finish（绝不广播 ANR）。
      * 步骤语义：alive → 零打扰收尾；吊销 → 直达开关通知（唯一出路）；
      * 仍登记 → 踢 AMS 重绑，三轮踢完仍死才按登记态两态通知。
-     */
+     * v7.15.12：fromReplace——覆盖安装触发的踢链终判仍死时排 +30s
+     * 复活梯子（重绑常在安装后 10~30s 才完成，8.2s 预算内踢不完；
+     * 梯子并入 5 分钟心跳循环，绝下「一次失败即弃」）。自检触发的踢链
+     * 维持 v5.2.0 节奏（5 分钟心跳已够——清理后台场景重绑预期快）。 */
     private static final class SmartRevive implements Runnable {
         private final Context ctx;
         private final PendingResult result;
+        private final boolean fromReplace;
         private final Handler h = new Handler(Looper.getMainLooper());
         private int step = 0;
 
-        SmartRevive(Context ctx, PendingResult result) {
+        SmartRevive(Context ctx, PendingResult result, boolean fromReplace) {
             this.ctx = ctx;
             this.result = result;
+            this.fromReplace = fromReplace;
         }
 
         @Override
@@ -183,6 +205,7 @@ public class KeepAliveReceiver extends BroadcastReceiver {
                         return;
                     }
                     notifyAlert(ctx, false);
+                    reviveLadder();
                     finish();
                     return;
                 }
@@ -194,12 +217,14 @@ public class KeepAliveReceiver extends BroadcastReceiver {
                 }
                 // 三轮踢完仍死：按此刻登记态两态通知
                 notifyAlert(ctx, AdSkipService.registrationPresent(ctx));
+                reviveLadder();
                 finish();
             } catch (Throwable t) {                     // 任何异常兜底收尾（绝不断链）
                 try {
                     notifyAlert(ctx, AdSkipService.registrationPresent(ctx));
                 } catch (Throwable ignored) {
                 }
+                reviveLadder();
                 finish();
             }
         }
@@ -210,6 +235,19 @@ public class KeepAliveReceiver extends BroadcastReceiver {
                     result.finish();
                 } catch (Throwable ignored) {
                 }
+            }
+        }
+
+        /** v7.15.12：覆盖安装踢链终判仍死 → +30s 复活梯子（重绑常在
+         * 安装后 10~30s 才完成；selfCheck 分支已排的 +5min 被提前到 30s
+         * ——同一 PendingIntent 天然去重覆盖不叠加；30s 后并入 5 分钟
+         * 心跳循环持续自愈/提醒，绝下「一次失败即弃」）。 */
+        private void reviveLadder() {
+            if (!fromReplace) return;
+            try {
+                AdSkipService.scheduleNextHeartbeat(ctx,
+                        System.currentTimeMillis() + 30_000L);
+            } catch (Throwable ignored) {
             }
         }
     }

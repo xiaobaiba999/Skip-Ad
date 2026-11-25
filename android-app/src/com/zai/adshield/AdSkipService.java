@@ -238,6 +238,22 @@ public class AdSkipService extends AccessibilityService {
     private static final String PREFS = "adshield";
     private static final String KEY_STATE = "state";
     private static final String KEY_KEEPON = "keepOn";
+    /* ═══ v7.15.12 更新存活链（用户实锤：更新安装新版后「日志不记录 + 开屏全不跳」
+     * 常现——覆盖安装杀进程后无障碍重绑时机失控，ROM 侧还可能吞/延迟
+     * MY_PACKAGE_REPLACED 广播与心跳闹钟）。四件套：
+     *  ① preserveStateForUpdate：拉起安装器前【同步 commit】落盘状态
+     *    （apply 异步写会被安装杀进程截断——最后 ≤15s 日志/战绩不再丢）
+     *    + 预排 +25s 自检闹钟（RTC 闹钟跨 APK 替换存活，ROM 吞广播时
+     *    兜底触发 KeepAliveReceiver 踢链梯子）；
+     *  ② SmartRevive 终判梯子（KeepAliveReceiver 侧）：覆盖安装发现服务
+     *    死了且三轮踢链失败 → +30s 复查并入 5 分钟心跳循环；
+     *  ③ deadSince 断线可见化：断线首次检出即记时戳，重连时日志给出
+     *    「离线 X 分 Y 秒」——「日志为什么断流/广告为什么没跳」直接在
+     *    日志里可回答，不再日志黑洞；
+     *  ④ appendLogStatic：服务已死时的日志通道（prefs 直写，重连后
+     *    可见——覆盖安装完成/断线检出等关键时刻不再空白）。 */
+    private static final String KEY_DEAD_SINCE = "deadSinceMs";
+    static volatile long deadSinceMs = 0L;
     /* v4.1.0：App 内主开关（免去看系统设置 10 秒警告的暂停/恢复）。
      * 服务保持存活（保活四件套不受影响），但暂停期间绝不扫描、绝不
      * 点击、绝不学习、绝不突发检测——只维持窗口/前台追踪，恢复即无缝衔接。 */
@@ -698,6 +714,100 @@ public class AdSkipService extends AccessibilityService {
      * 从固定 px 迁 dp：160dpi 与 480dpi 行为归一，「分辨率原因」的触点
      * 漂移根治；onServiceConnected 时从 DisplayMetrics 缓存，热路径零 IPC） */
     private volatile float screenDensity = 1f;
+
+    /* ═══ v7.15.12 更新存活链（方法面）═══ */
+
+    /** v7.15.12：安装器拉起前调用（Downloader.install）——状态同步落盘 +
+     * 预排更新后自检闹钟。commit() 同步写：apply() 的异步落盘会被「安装
+     * 替换杀进程」截断（用户实锤：更新装完回来日志断流）；+25s 闹钟跨
+     * APK 替换存活，ROM 吞/延迟 MY_PACKAGE_REPLACED 广播时兜底触发
+     * KeepAliveReceiver 自检 → SmartRevive 踢链 → +30s 梯子。 */
+    public static void preserveStateForUpdate(Context ctx) {
+        AdSkipService s = instance;
+        if (s != null) {
+            try {
+                s.flushSync();
+            } catch (Throwable ignored) {
+            }
+        }
+        try {
+            scheduleNextHeartbeat(ctx, System.currentTimeMillis() + 25_000L);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** v7.15.12：服务已死时的日志通道（prefs 直写 commit——重连后可见；
+     * 实例活着则路由实例路径防内存态覆盖竞态，仅在 instance == null 时
+     * 直写。覆盖安装完成/断线检出等关键时刻不再日志黑洞）。 */
+    static void appendLogStatic(Context ctx, String msg) {
+        AdSkipService s = instance;
+        if (s != null) {
+            s.appendLog(msg);
+            return;
+        }
+        try {
+            android.content.SharedPreferences sp = ctx.getSharedPreferences(PREFS, MODE_PRIVATE);
+            String raw = sp.getString(KEY_STATE, null);
+            JSONObject st = raw != null ? new JSONObject(raw) : new JSONObject();
+            JSONArray log = st.optJSONArray("log");
+            if (log == null) {
+                log = new JSONArray();
+                st.put("log", log);
+            }
+            JSONObject entry = new JSONObject();
+            entry.put("t", System.currentTimeMillis());
+            entry.put("msg", msg);
+            log.put(entry);
+            while (log.length() > MAX_LOG) {
+                log.remove(0);
+            }
+            sp.edit().putString(KEY_STATE, st.toString()).commit();
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** v7.15.12：断线时戳记账（静态——接收器/心跳/服务三侧共用；只记
+     * 首次检出，重连清零；进程重启间走 prefs 持久——覆盖安装杀进程后
+     * 新进程的接收器仍能续上首检时戳）。 */
+    static void markDeadSince(Context ctx) {
+        try {
+            if (deadSinceMs == 0L) {
+                long saved = ctx.getSharedPreferences(PREFS, MODE_PRIVATE).getLong(KEY_DEAD_SINCE, 0L);
+                if (saved > 0L) {
+                    deadSinceMs = saved;
+                    return;
+                }
+                deadSinceMs = System.currentTimeMillis();
+                ctx.getSharedPreferences(PREFS, MODE_PRIVATE)
+                        .edit().putLong(KEY_DEAD_SINCE, deadSinceMs).apply();
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** v7.15.12：同步落盘（commit）——安装替换杀进程前的最后一搏
+     *（onDestroy/安装前专用；热路径仍走 15s 延迟 apply 零卡顿）。 */
+    private void flushSync() {
+        synchronized (lock) {
+            flushScheduled = false;
+        }
+        org.json.JSONObject st = stateInMemory;
+        if (st == null) return;
+        try {
+            prefs().edit().putString(KEY_STATE, st.toString()).commit();
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** v7.15.12：离线时长人性化（重连日志用——「日志为什么断流」直接可读） */
+    static String downTimeZh(long ms) {
+        if (ms < 0) ms = 0;
+        long sec = ms / 1000L;
+        if (sec < 60) return sec + " 秒";
+        long min = sec / 60L;
+        if (min < 60) return min + " 分 " + (sec % 60L) + " 秒";
+        return (min / 60L) + " 时 " + (min % 60L) + " 分";
+    }
     /* v6.0.0 触点轨迹：同窗已出手触点（同一坐标 ±8dp 内绝不重复盲刺——
      * 「多点」根治；窗口切换清空与 clickTries 同步）。key=pkg，
      * value=本窗已出手触点列表） */
@@ -1060,6 +1170,26 @@ public class AdSkipService extends AccessibilityService {
         super.onServiceConnected();
         instance = this;
         bound = true; // v4.4.0：真实绑定态
+        /* v7.15.12 断线时长可见化：重连即回答「日志为什么断流/广告为什么
+         * 没跳」——离线时段零扫描零日志（deadSince 由 onUnbind/onDestroy/
+         * 接收器首次检出时记入；进程重启间 prefs 持久）。 */
+        try {
+            long deadAt = deadSinceMs;
+            if (deadAt == 0L) {
+                deadAt = prefs().getLong(KEY_DEAD_SINCE, 0L);
+            }
+            if (deadAt > 0L) {
+                long offMs = System.currentTimeMillis() - deadAt;
+                if (offMs > 20_000L) { // <20s 的解绑重连不刷屏
+                    appendLog("🔌 服务重连成功（此前离线 " + downTimeZh(offMs)
+                            + "——离线期零扫描零日志，多由覆盖安装/清理后台/厂商省电管控引发；"
+                            + "若长时间未自动恢复，检查通知栏「待恢复」提醒）");
+                }
+                deadSinceMs = 0L;
+                prefs().edit().remove(KEY_DEAD_SINCE).apply();
+            }
+        } catch (Throwable ignored) {
+        }
         screenWidth = getResources().getDisplayMetrics().widthPixels;
         screenHeight = getResources().getDisplayMetrics().heightPixels;
         try {
@@ -1235,6 +1365,7 @@ public class AdSkipService extends AccessibilityService {
     @Override
     public boolean onUnbind(Intent intent) {
         bound = false; // v4.4.0：解绑即僵尸态（实例保留但收不到事件）
+        markDeadSince(this); // v7.15.12：断线首检时戳（重连日志可回答「日志为什么断流」）
         // 系统解绑但非用户主动关闭：保留服务等待 AMS 重绑，并排自检 + 心跳
         try {
             if (prefs().getBoolean(KEY_KEEPON, false)) {
@@ -1446,6 +1577,7 @@ public class AdSkipService extends AccessibilityService {
     @Override
     public void onDestroy() {
         bound = false; // v4.4.0：销毁即非存活
+        markDeadSince(this); // v7.15.12：断线首检时戳（重连日志可回答「日志为什么断流」）
         handler.removeCallbacks(feedPatrol); // v7.4.0：巡检链随服务销毁拆除
         feedPatrolLive = false;
         feedPatrolPkg = null;
@@ -1460,7 +1592,7 @@ public class AdSkipService extends AccessibilityService {
             }
         } catch (Throwable ignored) {
         }
-        flushNow();
+        flushSync(); // v7.15.12：apply → commit 同步写（安装替换杀进程防截断——最后日志不再丢）
         instance = null;
         super.onDestroy();
     }

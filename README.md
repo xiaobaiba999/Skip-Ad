@@ -22,13 +22,13 @@
 
 ## ⬇️ 下载最新版
 
-**当前版本 [v7.15.11](https://github.com/xiaobaiba999/Skip-Ad/releases/tag/v7.15.11)（2026-11-25）**：锁屏/切换 app 开屏根治 + 多点治理 + 功耗优化。APK `869,942` 字节 · SHA-256 `93a0d028…f64d41`（[完整值](https://github.com/xiaobaiba999/Skip-Ad/releases/tag/v7.15.11)）。
+**当前版本 [v7.15.12](https://github.com/xiaobaiba999/Skip-Ad/releases/tag/v7.15.12)（2026-11-25）**：更新存活链根治（安装前落盘+复活梯子+断线可见化）+ B站系补全。APK `869,942` 字节 · SHA-256 `84d8bf24…4d8bdd`（[完整值](https://github.com/xiaobaiba999/Skip-Ad/releases/tag/v7.15.12)）。
 
 | 下载通道 | 说明 | 链接 |
 | --- | --- | --- |
-| **jsDelivr CDN 直链** | 国内推荐，直出仓库归档（与 Release 资产同字节） | [`adshield-latest.apk`（始终最新）](https://gcore.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/android-app/dist/adshield-latest.apk) · [本版直链](https://gcore.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/android-app/dist/adshield-v7.15.11.apk) · [testingcf 备用](https://testingcf.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/android-app/dist/adshield-latest.apk) |
-| **ghfast.top 镜像** | GitHub Release 资产加速 | [下载 adshield-v7.15.11.apk](https://ghfast.top/https://github.com/xiaobaiba999/Skip-Ad/releases/download/v7.15.11/adshield-v7.15.11.apk) |
-| **gh-proxy.com 镜像** | GitHub Release 资产加速 | [下载 adshield-v7.15.11.apk](https://gh-proxy.com/https://github.com/xiaobaiba999/Skip-Ad/releases/download/v7.15.11/adshield-v7.15.11.apk) |
+| **jsDelivr CDN 直链** | 国内推荐，直出仓库归档（与 Release 资产同字节） | [`adshield-latest.apk`（始终最新）](https://gcore.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/android-app/dist/adshield-latest.apk) · [本版直链](https://gcore.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/android-app/dist/adshield-v7.15.12.apk) · [testingcf 备用](https://testingcf.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/android-app/dist/adshield-latest.apk) |
+| **ghfast.top 镜像** | GitHub Release 资产加速 | [下载 adshield-v7.15.12.apk](https://ghfast.top/https://github.com/xiaobaiba999/Skip-Ad/releases/download/v7.15.12/adshield-v7.15.12.apk) |
+| **gh-proxy.com 镜像** | GitHub Release 资产加速 | [下载 adshield-v7.15.12.apk](https://gh-proxy.com/https://github.com/xiaobaiba999/Skip-Ad/releases/download/v7.15.12/adshield-v7.15.12.apk) |
 | **GitHub Releases** | 官方主源 | [releases/latest](https://github.com/xiaobaiba999/Skip-Ad/releases/latest) |
 
 - 已装 v7.x 任何正式版：**直接覆盖安装即升级**（签名一致——无障碍授权、学习数据、订阅全部保留）；
@@ -89,7 +89,7 @@
 ## ✅ 质量与兼容
 
 - **机型矩阵**：9 品牌 + 子品牌（OPPO/vivo/小米/三星/华为/荣耀/红米/一加/iQOO 及 POCO/realme）11 组 × 32 机型 = **352 机型**，九维各 352/352（开屏命中/多点误点/屏蔽速度/bug/功耗/精准度/算法优化/信息流广告/回切开屏）；
-- **JVM 断言**：25 套件 **4530 断言**全绿（决策核心/规则引擎/触点矩阵/人手矩阵/订阅镜像/发布描述规范）+ 服务级 29 项行为场景（锁屏/回切/横幅/退避等真实时序复刻，双向验证：旧代码红/新代码绿）；
+- **JVM 断言**：25 套件 **4530 断言**全绿（决策核心/规则引擎/触点矩阵/人手矩阵/订阅镜像/发布描述规范）+ 服务级 35 项行为场景（锁屏/回切/横幅/退避/更新存活链等真实时序复刻，双向验证：旧代码红/新代码绿）；
 - **人手模拟矩阵**：24 类真实设备几何 × 真实密度配对 × 7 档压力条件契约全绿；
 - 自测轨迹：[docs/test-reports/summary.md](docs/test-reports/summary.md)（三十五轮，每轮 `round-N.json`）。
 

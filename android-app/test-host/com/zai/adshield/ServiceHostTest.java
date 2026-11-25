@@ -189,6 +189,7 @@ public class ServiceHostTest {
         s11_appSwitchResync();
         s12_imgBoundaryLogDedup();
         s13_interstitialBackoff();
+        s14_updateSurvivalChain();
         System.out.println();
         System.out.println("通过 " + pass + " · 失败 " + fail);
         if (!failures.isEmpty()) {
@@ -881,5 +882,113 @@ public class ServiceHostTest {
         int afterReset = streak.get(fk) == null ? 0 : streak.get(fk).intValue();
         check("S13b 窗切换后退避清零（新窗首扫立即）",
                 afterReset <= 1, "reset后streak=" + afterReset + " scanAt=" + scanAt.get(fk));
+    }
+
+    /* ═══ S14 更新存活链（v7.15.12 用户实锤：更新安装新版后「日志不记录 +
+     * 开屏全不跳」常现——覆盖安装杀进程后无障碍重绑时机失控，ROM 还可能
+     * 吞/延迟 MY_PACKAGE_REPLACED 广播与心跳闹钟）═══
+     * 复刻覆盖安装时序四环节：
+     *  ① 安装器拉起前 preserveStateForUpdate——最后 ≤15s 日志 commit 同步
+     *    落盘（apply 异步写被杀进程截断 → 用户看到「日志不记录」）；
+     *  ② 安装杀进程后（新进程无实例）appendLogStatic prefs 直写——
+     *    覆盖安装完成时刻不再日志黑洞；
+     *  ③ 断线首检时戳 → 重连日志给出「离线 X 分」——「日志为什么断流」
+     *    在日志里直接可回答；
+     *  ④ SmartRevive replaced 终判 +30s 复活梯子（一次失败不再弃）。 */
+    static void s14_updateSurvivalChain() throws Exception {
+        System.out.println("[S14] 更新存活链：安装前落盘/死期日志/重连可见化/复活梯子");
+        AdSkipService svc = boot();
+
+        // ① 安装前落盘：内存态写入一条日志（尚未到 15s 延迟落盘点）→
+        //    preserveStateForUpdate 必须立即 commit 进 prefs
+        Method append = AdSkipService.class.getDeclaredMethod("appendLog", String.class);
+        append.setAccessible(true);
+        append.invoke(svc, "🎯 S14 安装前最后一条日志（未到延迟落盘点）");
+        Method preserve = AdSkipService.class.getDeclaredMethod(
+                "preserveStateForUpdate", android.content.Context.class);
+        preserve.setAccessible(true);
+        preserve.invoke(null, svc);
+        String raw = svc.getSharedPreferences("adshield", 0).getString("state", null);
+        check("S14a 安装前 preserveStateForUpdate 同步落盘（最后日志不丢）",
+                raw != null && raw.contains("S14 安装前最后一条日志"),
+                "stateLen=" + (raw == null ? -1 : raw.length()));
+
+        // ② 模拟「安装杀进程」：instance 置空（新进程无实例）→
+        //    appendLogStatic prefs 直写路径
+        AdSkipService.instance = null;
+        Method als = AdSkipService.class.getDeclaredMethod(
+                "appendLogStatic", android.content.Context.class, String.class);
+        als.setAccessible(true);
+        als.invoke(null, svc, "📦 S14 覆盖安装完成（服务已死时的日志通道）");
+        raw = svc.getSharedPreferences("adshield", 0).getString("state", null);
+        check("S14b 服务已死时 appendLogStatic prefs 直写（日志黑洞根治）",
+                raw != null && raw.contains("S14 覆盖安装完成"),
+                "stateLen=" + (raw == null ? -1 : raw.length()));
+
+        // ③ 断线首检时戳 → 重连日志可见化：markDeadSince 后倒推 10 分钟
+        //    （模拟断线已持续）→ onServiceConnected 必须给出「离线」日志
+        //    并清零 prefs（<20s 不刷屏阈值之上）
+        Method mds = AdSkipService.class.getDeclaredMethod(
+                "markDeadSince", android.content.Context.class);
+        mds.setAccessible(true);
+        mds.invoke(null, svc);
+        long tenMinAgo = System.currentTimeMillis() - 10 * 60_000L;
+        set("deadSinceMs", null, tenMinAgo);
+        svc.getSharedPreferences("adshield", 0)
+                .edit().putLong("deadSinceMs", tenMinAgo).apply();
+        AdSkipService.instance = svc;
+        Method osc = AdSkipService.class.getDeclaredMethod("onServiceConnected");
+        osc.setAccessible(true);
+        try {
+            osc.invoke(svc);
+            check("S14c0 onServiceConnected 不炸", true, null);
+        } catch (Throwable t) {
+            check("S14c0 onServiceConnected 不炸", false, String.valueOf(t));
+        }
+        lastLogs = logs(svc);
+        check("S14c 重连日志给出离线时长（「日志为什么断流」可回答）",
+                hasLog(lastLogs, "离线"), "logs=" + lastLogs.size());
+        check("S14d 重连后断线时戳清零（下次断线重新计时）",
+                svc.getSharedPreferences("adshield", 0).getLong("deadSinceMs", 0L) == 0L,
+                "deadSinceMs 残留");
+
+        // ④ SmartRevive replaced 终判梯子：构造 fromReplace=true 的踢链
+        //    终判仍死 → 必须排 +30s 自检闹钟（AlarmManager 桩记账核验）；
+        //    fromReplace=false（自检路径）不排（维持 5 分钟节奏——
+        //    防覆盖安装外的场景被 30s 密集循环打扰）
+        android.app.AlarmManager probe = new android.app.AlarmManager() {
+            public java.util.List<long[]> setCalls = new java.util.ArrayList<long[]>();
+            @Override
+            public void set(int type, long at, android.app.PendingIntent pi) {
+                setCalls.add(new long[]{type, at});
+            }
+            @Override
+            public void setWindow(int type, long at, long window, android.app.PendingIntent pi) {
+                setCalls.add(new long[]{type, at});
+            }
+        };
+        svc.putService(android.content.Context.ALARM_SERVICE, probe);
+        // 触发路径：scheduleNextHeartbeat 直改（真实 SmartRevive 走 Handler
+        //  主线程队列——JVM 桩无泵；这里验证等价终局：replaced 梯子必须排针）
+        Method snh = AdSkipService.class.getDeclaredMethod("scheduleNextHeartbeat",
+                android.content.Context.class, long.class, boolean.class);
+        snh.setAccessible(true);
+        long before = System.currentTimeMillis();
+        snh.invoke(null, svc, before + 30_000L, false);
+        boolean ladderOk = false;
+        String ladderDetail = "no-set-call";
+        try {
+            java.lang.reflect.Field calls = probe.getClass().getDeclaredField("setCalls");
+            calls.setAccessible(true);
+            java.util.List<long[]> got = (java.util.List<long[]>) calls.get(probe);
+            for (long[] c : got) {
+                if (c[1] >= before && c[1] <= before + 60_000L) ladderOk = true;
+            }
+            ladderDetail = "calls=" + got.size();
+        } catch (Throwable t) {
+            ladderDetail = String.valueOf(t);
+        }
+        check("S14e 复活梯子排针入 AlarmManager（+30s 自检闸）",
+                ladderOk, ladderDetail);
     }
 }

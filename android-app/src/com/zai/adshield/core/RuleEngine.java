@@ -69,6 +69,10 @@ public final class RuleEngine {
             { "com.sina.weibo", "跳过广告", "跳过" },
             { "com.ximalaya.ting.android", "跳过广告", "跳过" },
             { "tv.danmaku.bili", "跳过广告", "跳过" },
+            /* v7.15.12 B站系补全：国际版（com.bilibili.app.in）与国内版
+             * 同源广告 SDK——视频开屏「跳过 5」胶囊走倒计时正则亦可命中，
+             * 分应用精确等值零误点面（用户实锤 B 站视频开屏未跳过轮）。 */
+            { "com.bilibili.app.in", "跳过广告", "跳过" },
             { "com.qiyi.video", "跳过广告", "跳过" },
             { "com.youku.phone", "跳过广告", "跳过" },
             { "com.tencent.qqlive", "跳过广告", "跳过" },

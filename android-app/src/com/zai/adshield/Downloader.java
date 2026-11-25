@@ -221,6 +221,12 @@ public final class Downloader {
                 out.put("needPermission", true);
                 return out.toString();
             }
+            /* v7.15.12 更新存活链：拉起安装器前【同步 commit】落盘状态
+             * （apply 异步写会被安装杀进程截断——最后 ≤15s 日志/战绩不再丢，
+             * 用户实锤「更新装完回来日志不记录」）+ 预排 +25s 自检闹钟
+             * （RTC 闹钟跨 APK 替换存活，ROM 吞/延迟 MY_PACKAGE_REPLACED
+             * 广播时兜底触发 KeepAliveReceiver 踢链与 +30s 梯子）。 */
+            com.zai.adshield.AdSkipService.preserveStateForUpdate(ctx);
             Intent it = new Intent(Intent.ACTION_VIEW);
             it.setDataAndType(uri, "application/vnd.android.package-archive");
             it.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
