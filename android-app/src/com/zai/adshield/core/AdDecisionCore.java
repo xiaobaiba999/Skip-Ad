@@ -392,6 +392,8 @@ public final class AdDecisionCore {
         public final java.util.ArrayList<CornerCand> corners = new java.util.ArrayList<CornerCand>(); // 角落候选（v3.5.0 多候选）
         public final java.util.ArrayList<CornerCand> randCands = new java.util.ArrayList<CornerCand>(); // v7.15.6 泛位置候选（居中随机位图片跳过键——仅强广告形态可出手）
         public final java.util.ArrayList<CdDigit> cdDigits = new java.util.ArrayList<CdDigit>(); // v7.5.0 独立倒计时数字（walk 后并入门控）
+        public int mktVidN;           // v7.15.14：营销 SDK vid 节点计数（开屏窗内 mi_/mhh 前缀）
+        public boolean mktVid;        // v7.15.14：营销 vid 证据成立（≥2 节点——QQ 小米营销纯图开屏实锤）
         public boolean dialogForm;     // 根节点 Dialog/Popup 形态
     }
 
@@ -526,6 +528,25 @@ public final class AdDecisionCore {
 
             // 全屏热区：可点且 ≥55% 屏幕
             if (!f.hotZone && clickable && areaRatio >= HOT_ZONE_AREA) f.hotZone = true;
+
+            /* ═══ v7.15.14 营销 SDK vid 证据（#119 QQ 开屏实锤）═══
+             * mobileqq 小米营销纯图开屏：vid:mi_×2 + vid:mhh×2，无角标无热区
+             * 非 SDK 窗类名 → 树 112 > CORNER_CONFIRM_NODES(60) 把 L4 广告
+             * 形态确认门挡死（「图片键候选 角落4+泛位3（未出手：门控/时序）」
+             * 三连——真跳过键就在角落候选里却永远轮不到出手）。双门槛收口：
+             * ① 仅开屏窗（splashLive）内置位——聊天窗/非开屏场景的偶发
+             * mi_ 前缀控件零影响；② ≥2 个营销 vid 节点才构成证据（单个
+             * 前缀撞车不成立）。viewIdResourceName 是节点快照数据零 binder。 */
+            if (!f.mktVid && ctx.splashLive && b != null && vis) {
+                String mvid = node.viewId();
+                int idAt = mvid == null ? -1 : mvid.indexOf(":id/");
+                if (idAt >= 0) {
+                    String rn = mvid.substring(idAt + 4);
+                    if (rn.startsWith("mi_") || rn.startsWith("mhh")) {
+                        if (++f.mktVidN >= 2) f.mktVid = true;
+                    }
+                }
+            }
 
             if (label.length() > 0) {
                 if (label.length() <= 14 && matchesSkip(label)) {
@@ -1012,7 +1033,7 @@ public final class AdDecisionCore {
              * 【开屏窗 × 强广告形态】同真：非开屏窗（信息流页也有角标+
              * 滚动+底部导航图标——误点「我的」Tab 红线）与无强形态窗
              * （普通主页角落图标）一切照旧 byte-for-byte（见常量区注释）。 */
-            boolean strongAdForm = f.hotZone || f.adBadge || ctx.sdkAdWin || ctx.learnedCls;
+            boolean strongAdForm = f.hotZone || f.adBadge || ctx.sdkAdWin || ctx.learnedCls || f.mktVid;
             boolean splashStrong = ctx.splashLive && strongAdForm;
             int cornerTreeCap = splashStrong ? CORNER_TREE_MAX_SPLASH_STRONG : CORNER_TREE_MAX_NODES;
             long cornerMaxMs = splashStrong ? CORNER_MAX_SPLASH_STRONG_MS : CORNER_MAX_MS;
@@ -1045,7 +1066,7 @@ public final class AdDecisionCore {
             //      （先点像的，再点不像的），候选轮换与 L4 同熙。
             if (!f.randCands.isEmpty() && ctx.clickAttempts >= f.corners.size()
                     && (!f.scrollPresent || splashStrong) && !f.editPresent
-                    && (f.hotZone || f.adBadge || ctx.sdkAdWin || ctx.learnedCls)
+                    && (f.hotZone || f.adBadge || ctx.sdkAdWin || ctx.learnedCls || f.mktVid)
                     && ctx.elapsedMs >= CORNER_MIN_MS && ctx.elapsedMs <= cornerMaxMs) {
                 int rIdx = ctx.clickAttempts - f.corners.size();
                 if (rIdx < f.randCands.size()) {
@@ -1205,9 +1226,9 @@ public final class AdDecisionCore {
         // v7.15.6 泛位置候选：仅强广告形态下才算「可出手」（与 L4.7 出手门
         // 同源——无强形态时它们不是候选，零候选退避照常触发）
         if (!f.randCands.isEmpty()
-                && (f.hotZone || f.adBadge || ctx.sdkAdWin || ctx.learnedCls)) return true;
+                && (f.hotZone || f.adBadge || ctx.sdkAdWin || ctx.learnedCls || f.mktVid)) return true;
         if (f.corners.isEmpty()) return false;
-        return f.hotZone || f.adBadge || ctx.sdkAdWin || ctx.learnedCls
+        return f.hotZone || f.adBadge || ctx.sdkAdWin || ctx.learnedCls || f.mktVid
                 || f.nodeCount <= CORNER_CONFIRM_NODES;
     }
 
@@ -1285,7 +1306,12 @@ public final class AdDecisionCore {
             if (s.contains("unionsplash") || s.contains("interstitial")
                     || s.contains("insertscreen") || s.contains("insertadscreen")
                     || s.contains("advertising") || s.contains("advertad")
-                    || s.contains("promoad") || s.contains("bonusad")) return true;
+                    || s.contains("promoad") || s.contains("bonusad")
+                    /* v7.15.14（#118 网盘插屏实锤）：RichMediaActivity——富媒体
+                     * 插屏广告窗通用命名（百度网盘 advertise.ui.RichMediaActivity
+                     * 12 分钟 16 轮「插屏未命中」——整窗无指纹=零 vid-close
+                     * 零返回兜底；RichMedia 为广告行业术语，业务窗罕见）。 */
+                    || s.contains("richmedia")) return true;
             /* v5.7.0 扫描日志继续激进化（用户二轮实锤：可以大胆激进一点）——
              * 国际主流 SDK 漏网指纹 +12 档（未命中诊断日志实锤：整窗
              * 无指纹 = 零 vid-close 点击 + 零返回键兜底）：

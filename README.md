@@ -22,13 +22,13 @@
 
 ## ⬇️ 下载最新版
 
-**当前版本 [v7.15.13](https://github.com/xiaobaiba999/Skip-Ad/releases/tag/v7.15.13)（2026-11-25）**：app→app 跳转接管（竞速自检梯+阴性快重试+IME 零劫持）。APK `869,942` 字节 · SHA-256 `5fbe317b…a0b4c`（[完整值](https://github.com/xiaobaiba999/Skip-Ad/releases/tag/v7.15.13)）。
+**当前版本 [v7.15.14](https://github.com/xiaobaiba999/Skip-Ad/releases/tag/v7.15.14)（2026-11-25）**：后台丢功能根治（死透快档闹钟+keepOn 解耦+营销 vid 证据）。APK `869,942` 字节 · SHA-256 `50779c63…b924a`（[完整值](https://github.com/xiaobaiba999/Skip-Ad/releases/tag/v7.15.14)）。
 
 | 下载通道 | 说明 | 链接 |
 | --- | --- | --- |
-| **jsDelivr CDN 直链** | 国内推荐，直出仓库归档（与 Release 资产同字节） | [`adshield-latest.apk`（始终最新）](https://gcore.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/android-app/dist/adshield-latest.apk) · [本版直链](https://gcore.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/android-app/dist/adshield-v7.15.13.apk) · [testingcf 备用](https://testingcf.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/android-app/dist/adshield-latest.apk) |
-| **ghfast.top 镜像** | GitHub Release 资产加速 | [下载 adshield-v7.15.13.apk](https://ghfast.top/https://github.com/xiaobaiba999/Skip-Ad/releases/download/v7.15.13/adshield-v7.15.13.apk) |
-| **gh-proxy.com 镜像** | GitHub Release 资产加速 | [下载 adshield-v7.15.13.apk](https://gh-proxy.com/https://github.com/xiaobaiba999/Skip-Ad/releases/download/v7.15.13/adshield-v7.15.13.apk) |
+| **jsDelivr CDN 直链** | 国内推荐，直出仓库归档（与 Release 资产同字节） | [`adshield-latest.apk`（始终最新）](https://gcore.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/android-app/dist/adshield-latest.apk) · [本版直链](https://gcore.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/android-app/dist/adshield-v7.15.14.apk) · [testingcf 备用](https://testingcf.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/android-app/dist/adshield-latest.apk) |
+| **ghfast.top 镜像** | GitHub Release 资产加速 | [下载 adshield-v7.15.14.apk](https://ghfast.top/https://github.com/xiaobaiba999/Skip-Ad/releases/download/v7.15.14/adshield-v7.15.14.apk) |
+| **gh-proxy.com 镜像** | GitHub Release 资产加速 | [下载 adshield-v7.15.14.apk](https://gh-proxy.com/https://github.com/xiaobaiba999/Skip-Ad/releases/download/v7.15.14/adshield-v7.15.14.apk) |
 | **GitHub Releases** | 官方主源 | [releases/latest](https://github.com/xiaobaiba999/Skip-Ad/releases/latest) |
 
 - 已装 v7.x 任何正式版：**直接覆盖安装即升级**（签名一致——无障碍授权、学习数据、订阅全部保留）；

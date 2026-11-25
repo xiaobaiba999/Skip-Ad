@@ -191,6 +191,7 @@ public class ServiceHostTest {
         s13_interstitialBackoff();
         s14_updateSurvivalChain();
         s15_appJumpTakeover();
+        s16_deadWatchKeepOnDecouple();
         System.out.println();
         System.out.println("通过 " + pass + " · 失败 " + fail);
         if (!failures.isEmpty()) {
@@ -1160,5 +1161,100 @@ public class ServiceHostTest {
         check("S15c3 设置页真实前台切换照旧追踪",
                 "com.android.settings".equals(get("lastFgPkg", svc3)),
                 "lastFgPkg=" + get("lastFgPkg", svc3));
+    }
+
+    /* ═══ S16 死透快档 + keepOn 解耦（v7.15.14 用户实锤：「卫士挂后台
+     * 长时间后丢失功能，要重新退出进一下；没开启自启动状态下」+
+     * #116 日志考古：16:36→21:58 断流 3h45m「自愈/拉活 0」）═══
+     * 死因链：①服务死透后的下一跳闹钟是 setWindow 窗口式——App Standby
+     * 深桶/厂商省电管控下推迟数小时；②keepOn=false 时 onUnbind/
+     * onTaskRemoved 直接跳过排闹钟——闹钟链断裂自愈无从触发。
+     * 修复验证（AdSkipService 侧新静态/去闸路径——KeepAliveReceiver
+     * 真实逻辑在 JVM 侧由桩替身占位，接收器侧由发布前人工链路核验）：
+     *  a) scheduleDeadWatch 死透快档：setAndAllowWhileIdle 型排针
+     *    （doze 中准点触发，不再受窗口式批量调度推迟）；
+     *  b) keepOn=false 时 onUnbind 仍排自检+心跳（旧版零排=链断）；
+     *  c) onUnbind 返回 true（服务实例保留等待 AMS 重绑）；
+     *  d) keepOn=false 时 onTaskRemoved 不炸且闹钟照排；
+     *  e) scheduleNextHeartbeat 夜间窗口式口径不回归（息屏 30min 窗口）。 */
+    static void s16_deadWatchKeepOnDecouple() throws Exception {
+        System.out.println("[S16] 死透快档闹钟 + keepOn 解耦（后台丢功能根治）");
+        AdSkipService svc = boot();
+
+        // 记账型 AlarmManager 桩（三型全记：set/setWindow/setAndAllowWhileIdle）
+        final java.util.List<String> calls = new ArrayList<String>();
+        android.app.AlarmManager probe = new android.app.AlarmManager() {
+            @Override
+            public void set(int type, long at, android.app.PendingIntent pi) {
+                calls.add("set@" + at);
+            }
+            @Override
+            public void setWindow(int type, long at, long window, android.app.PendingIntent pi) {
+                calls.add("win@" + at);
+            }
+            @Override
+            public void setAndAllowWhileIdle(int type, long at, android.app.PendingIntent pi) {
+                calls.add("awi@" + at);
+            }
+        };
+        svc.putService(android.content.Context.ALARM_SERVICE, probe);
+
+        // a) 死透快档：+2min allowWhileIdle 排针（旧版 setWindow 推迟数小时）
+        Method sdw = AdSkipService.class.getDeclaredMethod(
+                "scheduleDeadWatch", android.content.Context.class, long.class);
+        sdw.setAccessible(true);
+        long before = System.currentTimeMillis();
+        sdw.invoke(null, svc, before + AdSkipService.DEAD_WATCH_MS);
+        boolean awiOk = false;
+        for (String c : calls) {
+            if (c.startsWith("awi@") && Long.parseLong(c.substring(4)) >= before) awiOk = true;
+        }
+        check("S16a 死透快档 allowWhileIdle 排针（doze 中准点触发）",
+                awiOk, "calls=" + calls);
+
+        // b/c) keepOn=false + onUnbind：旧版直接跳过（零闹钟=链断）；
+        //     新版无条件排自检（set@+3s）+ 心跳（亮屏 win@+5min）
+        svc.getSharedPreferences("adshield", 0)
+                .edit().putBoolean("keepOn", false).commit();
+        calls.clear();
+        Method ou = AdSkipService.class.getDeclaredMethod(
+                "onUnbind", android.content.Intent.class);
+        ou.setAccessible(true);
+        Object keepInst = ou.invoke(svc, (Object) null);
+        check("S16b keepOn=false 时 onUnbind 仍排自检+心跳（闹钟链不断）",
+                !calls.isEmpty(), "calls=" + calls);
+        check("S16c onUnbind 返回 true（实例保留待 AMS 重绑）",
+                Boolean.TRUE.equals(keepInst), "ret=" + keepInst);
+        lastLogs = logs(svc);
+        check("S16c2 解绑日志在场（keepOn=false 也不再静默——可考古）",
+                hasLog(lastLogs, "服务被系统解绑"), "logs=" + lastLogs.size());
+
+        // d) keepOn=false + onTaskRemoved：不炸且闹钟照排（旧版 4s 提醒被
+        //    闸跳过+零闹钟；新版通知由 notifyAlert 内置闸管、闹钟无条件）
+        calls.clear();
+        Method otr = AdSkipService.class.getDeclaredMethod(
+                "onTaskRemoved", android.content.Intent.class);
+        otr.setAccessible(true);
+        otr.invoke(svc, (Object) null);
+        check("S16d keepOn=false 时 onTaskRemoved 闹钟照排（链不断）",
+                !calls.isEmpty(), "calls=" + calls);
+        // 4s 提醒 postDelayed 在 handler 队列（实例活着时不发通知——零打扰）
+        drain(svc);
+
+        // e) 夜间窗口式口径不回归：息屏 + nightDeferrable → setWindow@+30min
+        android.os.PowerManager pm = new android.os.PowerManager();
+        pm.setInteractive(false);
+        svc.putService(android.content.Context.POWER_SERVICE, pm);
+        calls.clear();
+        Method snh = AdSkipService.class.getDeclaredMethod(
+                "scheduleNextHeartbeat", android.content.Context.class, long.class, boolean.class);
+        snh.setAccessible(true);
+        snh.invoke(null, svc, System.currentTimeMillis() + 30 * 60_000L, true);
+        boolean nightWin = false;
+        for (String c : calls) {
+            if (c.startsWith("win@")) nightWin = true;
+        }
+        check("S16e 息屏夜间心跳维持窗口式（30min 批量调度不唤醒设备）",
+                nightWin, "calls=" + calls);
     }
 }

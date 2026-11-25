@@ -69,10 +69,12 @@ public class KeepAliveReceiver extends BroadcastReceiver {
          *（仅 MiTV 因 ROM 反复解绑而“意外存活”过——#89 孤例）；
          * ② keepOn 闸在本分支之前 → 用户关过“保活提醒”连维护任务一起断。
          * 修复：①服务存活期改排 30 分钟维护心跳（AdSkipService 侧）；
-         * ②维护任务前置到闸外——“保活提醒”开关只管提醒/自愈，诊断性
+         * ②维护任务前置到闸外——“保活提醒”开关只管提醒，诊断性
          * 维护（各任务自带节流：未到期/服务未运行/息屏秒回）不受牵连。
-         * 分档续期：活着 30 分钟（维护/存活自检）；死了 5 分钟（快速
-         * 自愈提醒）——同一 PendingIntent 天然去重覆盖，不叠加闹钟。 */
+         * 分档续期（v7.15.14 口径）：活着 30 分钟窗口式（维护/存活自检）；
+         * 死透+亮屏 2 分钟 allowWhileIdle 死透快档（App Standby 不再推迟
+         * 数小时）；死透+息屏 30 分钟窗口式——同一 PendingIntent 天然
+         * 去重覆盖，不叠加闹钟。 */
         if (selfCheck) {
             boolean alive = AdSkipService.isAlive();
             if (!alive) {
@@ -80,8 +82,22 @@ public class KeepAliveReceiver extends BroadcastReceiver {
                 // 进程重启间 prefs 持久——覆盖安装后新进程能续上首检时戳）
                 AdSkipService.markDeadSince(ctx);
             }
-            long cadence = alive ? AdSkipService.ALIVE_HEARTBEAT_MS : AdSkipService.HEARTBEAT_MS;
-            AdSkipService.scheduleNextHeartbeat(ctx, System.currentTimeMillis() + cadence, true);
+            /* v7.15.14 死透快档分档（#116 实锤：断流 3h45m「自愈/拉活 0」——
+             * setWindow 窗口式闹钟在 App Standby 深桶/厂商省电管控下被推迟
+             * 数小时）：活着 30 分钟窗口式（维护/存活自检，v7.15.2 口径
+             * 不变）；死透+亮屏 → 死透快档 allowWhileIdle 2 分钟（doze 中
+             * 也准点触发——用户正在用手机却漏拦广告的每一秒都是伤害）；
+             * 死透+息屏 → 30 分钟窗口式（夜间无广告场景不耗电）。 */
+            if (alive) {
+                AdSkipService.scheduleNextHeartbeat(ctx,
+                        System.currentTimeMillis() + AdSkipService.ALIVE_HEARTBEAT_MS, true);
+            } else if (AdSkipService.isScreenOn(ctx)) {
+                AdSkipService.scheduleDeadWatch(ctx,
+                        System.currentTimeMillis() + AdSkipService.DEAD_WATCH_MS);
+            } else {
+                AdSkipService.scheduleNextHeartbeat(ctx,
+                        System.currentTimeMillis() + AdSkipService.NIGHT_HEARTBEAT_MS, true);
+            }
             // v4.0.0：心跳顺带触发订阅 24h 静默更新（无订阅/未到期秒回，零开销）
             Thread subThread = new Thread(() -> {
                 try {
@@ -127,16 +143,18 @@ public class KeepAliveReceiver extends BroadcastReceiver {
                     + "）——服务自检踢链中；若未自动恢复请点通知栏「待恢复」提醒");
         }
 
-        if (!ctx.getSharedPreferences("adshield", Context.MODE_PRIVATE)
-                .getBoolean("keepOn", false)) {
-            return; // 用户已手动关闭保活提醒（只管提醒/自愈，维护任务已前置闸外）
-        }
-
         /* ═══ v5.2.0 统一智能判定（提醒/自愈面）═══
          * 活着 → 零打扰；死了 → SmartRevive 步骤化踢链（自愈优先），
          * 终判两态通知。开机特殊：系统正在拉起服务，给足 8s 缓冲后
          * 仍死则排 +2s 自检闹钟（全新广播窗口走智能流程——onReceive
-         * 返回后排程器不受 goAsync 预算约束，沿用 v3.8.1 验证过的路径）。 */
+         * 返回后排程器不受 goAsync 预算约束，沿用 v3.8.1 验证过的路径）。
+         * 【v7.15.14 keepOn 解耦】：旧版 keepOn=false（用户关「保活提醒」）
+         * 时此处直接 return——踢链自愈连坐被闸，服务死透后零自愈（用户
+         * 实锤「挂后台长时间丢功能，要重新退出进一下」）。现改为：踢链
+         * 自愈无条件跑（零打扰：getEnabledAccessibilityServiceList 触发
+         * AMS 重绑，无任何用户可见输出）；keepOn 只管通知打扰（notifyAlert
+         * 内置闸）。用户主开关 masterOn=false 的语义不受影响（踢链仅在
+         * isAlive()==false 时发生，复活后 masterOn 照旧）。 */
         if (AdSkipService.isAlive()) return;
 
         final PendingResult result = goAsync();
@@ -169,8 +187,10 @@ public class KeepAliveReceiver extends BroadcastReceiver {
      * 仍登记 → 踢 AMS 重绑，三轮踢完仍死才按登记态两态通知。
      * v7.15.12：fromReplace——覆盖安装触发的踢链终判仍死时排 +30s
      * 复活梯子（重绑常在安装后 10~30s 才完成，8.2s 预算内踢不完；
-     * 梯子并入 5 分钟心跳循环，绝下「一次失败即弃」）。自检触发的踢链
-     * 维持 v5.2.0 节奏（5 分钟心跳已够——清理后台场景重绑预期快）。 */
+     * 梯子并入 5 分钟心跳循环，绝下「一次失败即弃」）。
+     * v7.15.14：自检触发的踢链终判也排 +30s 快梯（厂商省电管控下
+     * AMS 重绑同样可能滞后——不再只等下一档闹钟；+30s 快梯与死透
+     * 快档（allowWhileIdle 2min）同链去重覆盖，不叠加闹钟）。 */
     private static final class SmartRevive implements Runnable {
         private final Context ctx;
         private final PendingResult result;
@@ -238,12 +258,11 @@ public class KeepAliveReceiver extends BroadcastReceiver {
             }
         }
 
-        /** v7.15.12：覆盖安装踢链终判仍死 → +30s 复活梯子（重绑常在
-         * 安装后 10~30s 才完成；selfCheck 分支已排的 +5min 被提前到 30s
-         * ——同一 PendingIntent 天然去重覆盖不叠加；30s 后并入 5 分钟
-         * 心跳循环持续自愈/提醒，绝下「一次失败即弃」）。 */
+        /** v7.15.12：踢链终判仍死 → +30s 复活梯子（重绑常在安装后
+         * 10~30s 才完成；v7.15.14 起自检踢链同样适用——AMS 重绑滞后
+         * 场景不再干等下一档闹钟。同一 PendingIntent 天然去重覆盖不叠加；
+         * 30s 后并入死透快档/心跳循环持续自愈/提醒，绝下「一次失败即弃」）。 */
         private void reviveLadder() {
-            if (!fromReplace) return;
             try {
                 AdSkipService.scheduleNextHeartbeat(ctx,
                         System.currentTimeMillis() + 30_000L);
@@ -273,9 +292,13 @@ public class KeepAliveReceiver extends BroadcastReceiver {
      *  · registered=false → 「直达服务开关」jump_a11y（直达本服务详情页
      *    一步开启；文案明示 10 秒安全确认属厂商防诈设计——预期管理）。
      * 同态 10 分钟冷却（心跳周期不重复打扰）；态切换立即通知。
-     */
+     * 【v7.15.14 keepOn 解耦】：通知打扰内置 keepOn 闸（用户关闭「保活
+     * 提醒」后只静默自愈、绝不弹通知——踢链自愈不再被连坐）。默认 true
+     *（服务连上即置 true，仅用户在 App 内手动关闭才 false）。 */
     static void notifyAlert(Context ctx, boolean registered) {
         try {
+            if (!ctx.getSharedPreferences("adshield", Context.MODE_PRIVATE)
+                    .getBoolean("keepOn", true)) return;
             int mode = registered ? RestoreGuard.NOTIFY_AUTO_RESTORE : RestoreGuard.NOTIFY_TO_SETTINGS;
             long now = SystemClock.elapsedRealtime();
             if (registered) {

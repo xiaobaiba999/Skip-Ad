@@ -1371,12 +1371,12 @@ public class AdSkipService extends AccessibilityService {
         bound = false; // v4.4.0：解绑即僵尸态（实例保留但收不到事件）
         markDeadSince(this); // v7.15.12：断线首检时戳（重连日志可回答「日志为什么断流」）
         // 系统解绑但非用户主动关闭：保留服务等待 AMS 重绑，并排自检 + 心跳
+        //（v7.15.14：去 keepOn 闸——闹钟链永不中断是自愈链的地基；
+        //  keepOn 只管通知打扰，不再连坐自愈踢链）
         try {
-            if (prefs().getBoolean(KEY_KEEPON, false)) {
-                appendLog("🔌 服务被系统解绑（非手动关闭）→ 保留实例等待重绑，已排自检与心跳");
-                scheduleSelfCheckAlarm(3000);
-                scheduleHeartbeat();
-            }
+            appendLog("🔌 服务被系统解绑（非手动关闭）→ 保留实例等待重绑，已排自检与心跳");
+            scheduleSelfCheckAlarm(3000);
+            scheduleHeartbeat();
         } catch (Throwable ignored) {
         }
         return true; // 关键：true = 不销毁服务，下次 AMS 重绑直接复用
@@ -1391,6 +1391,36 @@ public class AdSkipService extends AccessibilityService {
      *  setExactAndAllowWhileIdle 一晚唤醒 96 次是待机耗电元凶） */
     public static final long NIGHT_HEARTBEAT_MS = 30 * 60 * 1000;
     public static final long NIGHT_HEARTBEAT_WINDOW_MS = 15 * 60 * 1000;
+
+    /* ═══ v7.15.14 死透快档守望（用户实锤：「卫士挂后台长时间后丢失功能，
+     * 要重新退出进一下；没开启自启动状态下」+ #116 日志考古：16:36→
+     * 21:58「服务已启动」断流 3 小时 45 分且「自愈/拉活 0」）═══
+     * 死因：服务死透后的下一跳闹钟是 setWindow 窗口式——App Standby
+     * 深桶/厂商省电管控下被推迟数小时，KeepAliveReceiver 迟迟不触发，
+     * 踢链自愈无从谈起。修复：死透+亮屏场景改 setAndAllowWhileIdle
+     *（doze 中也准点触发，不受窗口式批量调度约束）；亮屏时设备本就
+     * 醒着，2 分钟一档进程拉起+一次 binder 查询开销可忽略；服务一旦
+     * 踢活即回 30 分钟存活节奏。息屏维持 30 分钟窗口式（夜间无广告
+     * 场景不耗电，v3.13.0 待机功耗治理不变）。 */
+    public static final long DEAD_WATCH_MS = 2 * 60 * 1000L;
+
+    /** v7.15.14：死透快档闹钟（与心跳同 requestCode 8——同一 PendingIntent
+     *  天然去重覆盖不叠加）。allowWhileIdle 型不受 doze 批量调度推迟；
+     *  doze 内每 app 每 9 分钟一次限额兑底（仍远优于窗口式的数小时级）。 */
+    static void scheduleDeadWatch(Context ctx, long atMs) {
+        try {
+            android.app.AlarmManager am = (android.app.AlarmManager) ctx.getSystemService(Context.ALARM_SERVICE);
+            Intent it = new Intent(ctx, KeepAliveReceiver.class);
+            it.setAction(KeepAliveReceiver.ACTION_SELF_CHECK);
+            android.app.PendingIntent pi = android.app.PendingIntent.getBroadcast(
+                    ctx, 8, it,
+                    android.app.PendingIntent.FLAG_UPDATE_CURRENT | android.app.PendingIntent.FLAG_IMMUTABLE);
+            am.setAndAllowWhileIdle(android.app.AlarmManager.RTC, atMs, pi);
+        } catch (Throwable t) {
+            // 兑底：窗口式也优于不排（部分 ROM 未实现 allowWhileIdle 型）
+            scheduleNextHeartbeat(ctx, atMs, false);
+        }
+    }
 
     /** v3.8.0：排下一次心跳（静态：KeepAliveReceiver 收到自检后自续期共用——
      *  心跳链永不中断）。亮屏：精确闹钟优先（Doze 中也能准点触发），未授予
@@ -1436,10 +1466,11 @@ public class AdSkipService extends AccessibilityService {
         // v3.6.0：后台清理（滑掉最近任务）时，部分 ROM 会连无障碍服务一起杀。
         // ① 若进程幸存：4s 后自检，服务真死了才发「待恢复」提醒（防误报）
         // ② 自检闹钟（15s）：进程被杀但非 force-stop 的 ROM 上仍可触发提醒
-        // v3.7.0：追加 15 分钟心跳闹钟——进程被杀后持续自检，
-        //    服务一旦真死即提醒恢复（用户手动关闭 keepOn 时不排）
+        // v3.7.0：追加 15 分钟心跳闹钟——进程被杀后持续自检，服务一旦真死
+        //    即提醒恢复
+        //（v7.15.14：去 keepOn 闸——闹钟链永不中断；通知打扰由 notifyAlert
+        //  内置 keepOn 闸收敛，不再连坐自愈踢链）
         try {
-            if (!prefs().getBoolean(KEY_KEEPON, false)) return;
             handler.postDelayed(() -> {
                 // v5.2.0：两态通知——按登记状态决定「自动恢复」还是「直达开关」
                 if (instance == null) KeepAliveReceiver.notifyAlert(AdSkipService.this,

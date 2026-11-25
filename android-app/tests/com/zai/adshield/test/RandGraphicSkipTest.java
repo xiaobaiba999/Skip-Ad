@@ -12,10 +12,10 @@ import com.zai.adshield.test.TestHost.SimNode;
  * 底 18%+左右缘」零收集 = 识别不到且日志无记录的头号根因）。
  * 与 SplashCountdownTest 同规约（纯 Java 零 Android 依赖，ECJ -1.8 编译 JVM 运行）。
  * ─────────────────────────────────────────────────────────────
- * 断言规划（check/checkEq 总数 38）：
+ * 断言规划（check/checkEq 总数 49）：
  *  S1 泛位置几何 isRandPosControl（7）/ S2 vid 否决 randVidDenied（6）
  *  S3 walk 收集门（7）/ S4 decide L4.7 出手门（10）
- *  S5 hasActionableCand 联动（4）。
+ *  S5 hasActionableCand 联动（4）/ S6 营销 vid 证据（11 · v7.15.14）。
  * 标准屏 1080×2400；Keep 动态图开屏典型形态：全屏可点广告图（hotZone）
  * + 居中随机位无字小可点图片键。
  */
@@ -341,7 +341,107 @@ public final class RandGraphicSkipTest {
         TestHost.check(AdDecisionCore.hasActionableCand(fHz2, new Ctx()),
                 "randCands+hotZone（空 Ctx）→ 有可出手候选");
 
+        /* ════ S6 营销 vid 证据（v7.15.14 · #119 QQ 开屏实锤复刻）════
+         * mobileqq 小米营销纯图开屏：vid:mi_×2 + vid:mhh×2、无角标无热区
+         * 非 SDK 窗类名、树 112 > CORNER_CONFIRM_NODES(60)——旧版 L4 广告
+         * 形态确认门挡死「图片键候选 角落4+泛位3（未出手：门控/时序）」
+         * 三连。营销 vid ≥2 节点 = 广告容器证据 → strongAdForm 兜底放行。 */
+        TestHost.suite("RandGraphicSkip · S6 营销 vid 证据（QQ 开屏实锤）");
+        Ctx cqq = new Ctx();
+        cqq.screenW = 1080;
+        cqq.screenH = 2400;
+        cqq.splashLive = true;
+        cqq.budgetNodes = 600;
+        // QQ 树 1:1 复刻：容器 + 营销 vid ×2 + 右上无字图片跳过键 + 空节点凑 68（>60）
+        SimNode qqRoot = new SimNode();
+        qqRoot.boundsArr = new int[]{0, 0, 1080, 2400};
+        qqRoot.cls = "android.widget.FrameLayout";
+        SimNode mi1 = new SimNode();
+        mi1.vid = "com.tencent.mobileqq:id/mi_splash_container";
+        mi1.boundsArr = new int[]{0, 0, 1080, 2000};
+        mi1.cls = "android.widget.ImageView";
+        SimNode mhh = new SimNode();
+        mhh.vid = "com.tencent.mobileqq:id/mhh_ad_view";
+        mhh.boundsArr = new int[]{0, 0, 1080, 2000};
+        mhh.cls = "android.widget.ImageView";
+        SimNode qqSkip = new SimNode();
+        qqSkip.vid = "com.tencent.mobileqq:id/mhh_btn";
+        qqSkip.boundsArr = new int[]{930, 130, 1040, 210};
+        qqSkip.cls = "android.widget.ImageView";
+        qqSkip.clickable = true;
+        qqRoot.add(mi1);
+        qqRoot.add(mhh);
+        qqRoot.add(qqSkip);
+        for (int i = 0; i < 65; i++) qqRoot.add(new SimNode());
+        ScanFind fqq = AdDecisionCore.walk(qqRoot, cqq);
+        TestHost.check(fqq.mktVidN >= 2 && fqq.mktVid,
+                "开屏窗内 mi_+mhh 营销 vid ≥2 → 证据成立");
+        TestHost.check(fqq.nodeCount > 60,
+                "树 " + fqq.nodeCount + " 节点 > CORNER_CONFIRM_NODES(60)——QQ 实锤规模");
+        TestHost.check(fqq.corners.size() >= 1,
+                "右上无字小可点键 → 角落候选在场");
+        TestHost.check(!fqq.hotZone && !fqq.adBadge,
+                "无热区无角标（QQ 纯图开屏实锤——唯一强形态信号来自营销 vid）");
+        Ctx dqq = new Ctx();
+        dqq.screenW = 1080;
+        dqq.screenH = 2400;
+        dqq.splashLive = true;
+        dqq.elapsedMs = 600;
+        Decision rqq = AdDecisionCore.decide(fqq, dqq);
+        TestHost.check("corner_image_skip".equals(rqq.reason),
+                "营销 vid 证据 → L4 放行角落图片键（旧死因：门控/时序三连）");
+        // 单个营销 vid → 证据不成立（≥2 门槛）
+        SimNode qqSingle = new SimNode();
+        qqSingle.boundsArr = new int[]{0, 0, 1080, 2400};
+        qqSingle.cls = "android.widget.FrameLayout";
+        SimNode miSingle = new SimNode();
+        miSingle.vid = "com.tencent.mobileqq:id/mi_splash_container";
+        miSingle.boundsArr = new int[]{0, 0, 1080, 2000};
+        miSingle.cls = "android.widget.ImageView";
+        SimNode skipSingle = new SimNode();
+        skipSingle.boundsArr = new int[]{930, 130, 1040, 210};
+        skipSingle.cls = "android.widget.ImageView";
+        skipSingle.clickable = true;
+        qqSingle.add(miSingle);
+        qqSingle.add(skipSingle);
+        for (int i = 0; i < 65; i++) qqSingle.add(new SimNode());
+        Ctx cqs = new Ctx();
+        cqs.screenW = 1080;
+        cqs.screenH = 2400;
+        cqs.splashLive = true;
+        cqs.budgetNodes = 600;
+        ScanFind fqs = AdDecisionCore.walk(qqSingle, cqs);
+        TestHost.check(!fqs.mktVid,
+                "单个 mi_ 前缀节点 → 证据不成立（前缀撞车防线）");
+        Decision rqs = AdDecisionCore.decide(fqs, newCtx(600));
+        TestHost.check(AdDecisionCore.A_NONE.equals(rqs.action),
+                "单 vid 树 68 节点无其它信号 → 依旧零出手（旧死因反向钉死）");
+        // 非开屏窗 → 永不置位（splashLive 限定）
+        Ctx cqf = new Ctx();
+        cqf.screenW = 1080;
+        cqf.screenH = 2400;
+        cqf.splashLive = false;
+        cqf.budgetNodes = 600;
+        ScanFind fqf = AdDecisionCore.walk(qqRoot, cqf);
+        TestHost.check(!fqf.mktVid,
+                "非开屏窗（聊天主页）→ 营销 vid 证据永不置位");
+        // hasActionableCand 联动（零候选退避不误杀）
+        TestHost.check(AdDecisionCore.hasActionableCand(fqq, hz),
+                "mktVid+角落候选 → 有可出手候选（退避不触发=救晚到键）");
+        TestHost.check(!AdDecisionCore.hasActionableCand(fqs, hz),
+                "单 vid 树 → 不算可出手（零候选退避照常触发）");
+
         TestHost.done();
+    }
+
+    /** S6 辅助：标准屏开屏窗 Ctx */
+    private static Ctx newCtx(long elapsedMs) {
+        Ctx c = new Ctx();
+        c.screenW = 1080;
+        c.screenH = 2400;
+        c.splashLive = true;
+        c.elapsedMs = elapsedMs;
+        return c;
     }
 
     private RandGraphicSkipTest() {
