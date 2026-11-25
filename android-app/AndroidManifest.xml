@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.zai.adshield"
-    android:versionCode="86000"
-    android:versionName="7.15.10">
+    android:versionCode="86100"
+    android:versionName="7.15.11">
 
     <!-- 网络：问题反馈（GitHub Issues）与检查更新（GitHub Releases） -->
     <uses-permission android:name="android.permission.INTERNET" />

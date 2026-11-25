@@ -530,6 +530,41 @@ public class AdSkipService extends AccessibilityService {
     private final java.util.HashMap<String, Long> interMissAt = new java.util.HashMap<String, Long>();
     private final java.util.HashMap<String, Long> interWinAt = new java.util.HashMap<String, Long>(); // v7.6.0：新窗提速（窗切换重置节流）
     private long interMisses;
+    /* ═══ v7.15.11 插屏窗级退避（#106 OPPO 实锤功耗）：静态窗内容事件不停
+     * （动画/进度条）→ 插屏扫描 2.5s 一轮对同一面窗无限重扫（fenglink66p
+     * ASenVaultyk4 一小时 24+ 轮 walk300 + 双词表直查——纯浪费）。同窗连
+     * 续未命中递进退避：streak≤2 照常 2.5s、3~5 次 10s、≥6 次 30s 封顶；
+     * 窗切换（winAt 变化）/出手成功即清零——新插层照常秒级响应。 */
+    private final java.util.HashMap<String, Integer> interMissStreak = new java.util.HashMap<String, Integer>();
+    /* ═══ v7.15.11 图片键边界放行日志去重（#108/#109/#105 三台设备实锤：
+     * 同一秒 5~13 条「🎯 图片跳过键边界放行」刷屏——每次扫描每轮 execute
+     * 都打一条，用户读日志=「点了十几次」的多点观感，实际出手以 ⚡/🔁 为准）
+     * ——同包同理由 6s 一条（首条必记），日志量直降一个量级。 */
+    private final java.util.HashMap<String, Long> imgBndLogAt = new java.util.HashMap<String, Long>();
+    /* ═══ v7.15.11 派发失败连击退避（#108 azukireader 实锤：手势被覆盖层
+     * 拒发后 clickNode false，无冷却记账 → 以扫描节奏 ~2.6 次/秒对同一
+     * 候选无限重试 7 秒）。连续 ≥3 次派发失败后按 1.5s 人手耐心节流，
+     * 成功即清零——首两次快重试保留（按钮动画中 staleBounds 场景需要）。 */
+    private final java.util.HashMap<String, Integer> dispatchFailStreak = new java.util.HashMap<String, Integer>();
+    private final java.util.HashMap<String, Long> dispatchFailAt = new java.util.HashMap<String, Long>();
+    /* ═══ v7.15.11 横幅让路重排（#109 解锁实锤：验证码/短信 heads-up 横幅
+     * 把触点/返回键全挡 → 横幅自动消散后无人再扫 = 解锁开屏广告白看到底）。
+     * 出手被横幅挡下时排 3 针重查（+2.5/+5/+9s），横幅已散且窗仍在 →
+     * 重排扫描链立即补扫。每包 6s 一轮防针堆积。 */
+    private final java.util.HashMap<String, Long> bannerRequeueAt = new java.util.HashMap<String, Long>();
+    private final java.util.HashMap<String, Long> bannerClearLogAt = new java.util.HashMap<String, Long>();
+    /* ═══ v7.15.11 切换app前台回归探针（HyperOS/Android17 无 STATE_CHANGED
+     * 回归实锤——v7.12.0 前台竞速晋升在 v7.15.0 版本线重制时遗失）：
+     * STATE_CHANGED 竞速被丢弃时登记 fgPending（3s 窗口）；后续该包
+     * CONTENT_CHANGED 以活动窗口归属【阳性证据】复核（getRootInActiveWindow
+     * 根节点包名==该包才晋升——查询失败绝不误晋升），晋升=完整进入重置。
+     * 非竞速场景兜底探针：包级 5s + 全局 1.5s 双节流（binder 红线：
+     * 最坏 ~0.67 次/秒）。 */
+    private String fgPendingPkg;
+    private String fgPendingCls;
+    private long fgPendingAt;
+    private final java.util.HashMap<String, Long> fgProbeAt = new java.util.HashMap<String, Long>();
+    private long fgProbeGlobalAt;
     /* v7.4.0 空闲巡检：用户停下刷屏盯着广告看时 content-changed 零事件 =
      * 零扫描（日志 #79/#80 实锤：广告静止在屏 2 分钟引擎全程盲）。巡检
      * Runnable 2.5s 一扫，只在信息流窗在场时存活（离窗/切包/masterOff 即停
@@ -1637,6 +1672,34 @@ public class AdSkipService extends AccessibilityService {
                 } catch (Throwable ignored) {
                 }
             }, 400);
+            /* ═══ v7.15.11 解锁晚到键两针（锁屏开屏根治一环 · #109 实锤）═══
+             * 解锁瞬间广告窗常是 5 节点空壳（跳过键 4~6s 才渲染），既有链
+             * 最晚 3.4s（晚档梯子 3.2s + SDK 兜底 3.4s）够不着晚到键；
+             * 横幅在场时全部让路更是链死。+2.5s/+5.5s 两针兜底（幂等：
+             * 前台已换/窗口已切自然作废；CLEAN 档案窗不扰——探针梯自理），
+             * 每次解锁至多两扫，功耗红线不破。 */
+            handler.postDelayed(() -> {
+                try {
+                    AdSkipService s = instance;
+                    if (s == null || !masterOn) return;
+                    if (screenRxOk && !screenInteractive) return; // 审核轮 r1：息屏让路（再亮屏重入接管）
+                    String fg2 = lastFgPkg;
+                    if (fg2 == null || !fg2.equals(target)) return;
+                    if (!profileSuppressScan(target, winClassOf(target))) tryScan(target, winAt(target), 0);
+                } catch (Throwable ignored) {
+                }
+            }, 2500);
+            handler.postDelayed(() -> {
+                try {
+                    AdSkipService s = instance;
+                    if (s == null || !masterOn) return;
+                    if (screenRxOk && !screenInteractive) return; // 审核轮 r1：息屏让路（再亮屏重入接管）
+                    String fg2 = lastFgPkg;
+                    if (fg2 == null || !fg2.equals(target)) return;
+                    if (!profileSuppressScan(target, winClassOf(target))) tryScan(target, winAt(target), 0);
+                } catch (Throwable ignored) {
+                }
+            }, 5500);
             appendLog("🔓 亮屏/解锁视作重新进入（" + shortPkg(target) + "）：窗龄重置 + 节流清空 → 立即补扫"
                     + (plan.repairFg ? "（前台追踪已校正——锁屏污染清除）" : ""));
         } catch (Throwable ignored) {
@@ -1778,10 +1841,15 @@ public class AdSkipService extends AccessibilityService {
         /* ═══ v4.4.0 热路径前置过滤（功耗主力，issue#40 事件 4602/开机）═══
          * 非前台包的内容变化事件是事件洪流主体（后台应用动画/刷新/灵岛动画），
          * 且无弹窗识别窗在期 → 一步丢弃（此前要过完整过滤器链+switch 才短路）。
-         * 对比 lastFgPkg 是纯内存字符串比较，零 IPC 零哈希写。 */
+         * 对比 lastFgPkg 是纯内存字符串比较，零 IPC 零哈希写。
+         * ═══ v7.15.11 切换app前台回归探针（回切开屏整窗漏拦根治）═══
+         * HyperOS/Android17 回切不发 STATE_CHANGED → lastFgPkg 停在旧应用
+         * → 本应用内容事件在此被全量丢弃（整窗漏拦）。丢弃前过探针（节流
+         * 闸后单次 binder，阳性证据才晋升——详见 maybeResyncForeground）。 */
         if (et == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
                 && !pkg.equals(lastFgPkg)
                 && now >= popupUntilGet(pkg)) {
+            maybeResyncForeground(pkg, cs(event.getClassName()), now);
             return;
         }
 
@@ -1891,17 +1959,42 @@ public class AdSkipService extends AccessibilityService {
                  * 绝不更新前台追踪（灵岛窗口曾被当「新应用进入前台」）、
                  * 绝不重置开屏窗计时、绝不启动开屏扫描链（灵岛小窗控件
                  * 被当「角落跳过键」= 乱点元凶）。只允许走严格门控的弹窗
-                 * 识别路径（Dialog 形态 + 角标/营销话术双信号）。 */
-                if (!pkg.equals(lastFgPkg)
-                        && (isDialogClass(cls) || !isActiveWindowOf(pkg) || isSmallOverlayWindow(pkg))) {
-                    /* v4.2.0 IPC 重排：活动窗口归属查询（单次 IPC）前置——
-                     * 常见路径一次短路，小窗全量遍历（getWindows 重 IPC）仅在
-                     * 活动窗口确属该包时才兜底执行（灵动岛小窗包场景） */
-                    if (isDialogClass(cls) && !AdDecisionCore.isOemUtilityPkg(pkg)) {
-                        popupUntil.put(pkg, now + POPUP_WINDOW_MS);
-                        nudgePopupScan(pkg, now);
+                 * 识别路径（Dialog 形态 + 角标/营销话术双信号）。
+                 * v7.15.11：条件求值缓存化（dialog/mine/small 各一次，IPC
+                 * 剖面不变）+ 前台竞速登记（回切开屏整窗漏拦重建——v7.12.0
+                 * 晋升机制在 v7.15.0 版本线重制时遗失）：最近任务回切/切换
+                 * 动画期活动窗口尚未切换完成 → 归属查询 false → 事件被丢弃
+                 * 且不登记 lastFgPkg → 该应用后续内容事件被前台门全量丢弃。
+                 * 登记竞速候选（3s 窗口），由后续内容事件的阳性证据探针
+                 * （maybeResyncForeground）复核晋升。仅非 Dialog 非小窗的
+                 * 普通窗口才有资格（Dialog/小窗不改变前台应用）。 */
+                if (!pkg.equals(lastFgPkg)) {
+                    boolean dialog = isDialogClass(cls);
+                    boolean mine = dialog ? false : isActiveWindowOf(pkg);
+                    boolean small = (!dialog && mine) ? isSmallOverlayWindow(pkg) : false;
+                    if (dialog || !mine || small) {
+                        /* v4.2.0 IPC 重排：活动窗口归属查询（单次 IPC）前置——
+                         * 常见路径一次短路，小窗全量遍历（getWindows 重 IPC）仅在
+                         * 活动窗口确属该包时才兜底执行（灵动岛小窗包场景） */
+                        if (dialog && !AdDecisionCore.isOemUtilityPkg(pkg)) {
+                            popupUntil.put(pkg, now + POPUP_WINDOW_MS);
+                            nudgePopupScan(pkg, now);
+                        } else if (!dialog && !mine && !small) {
+                            noteFgRaceCandidate(pkg, cls, now);
+                        }
+                        return;
                     }
-                    return;
+                }
+                /* v7.15.11：正常进入处理到场——竞速候选即作废（互不侵蚀） */
+                fgPendingPkg = null;
+                /* v7.15.11 Toast 类窗零开屏链（#105 实锤白扫；审核轮 r1 前置：
+                 * Toast 窗不是窗——绝不重置窗龄/复验计数/不写 winClass，
+                 * 否则同包 Toast 出现即断流当前窗的晚到键补扫链 + 该应用
+                 * 后续内容事件被 Toast 类名门全量挡住直到下一真实窗口事件）。
+                 * 只维持前台追踪（事件已过全部前台门）。 */
+                if (isToastClass(cls)) {
+                    lastFgPkg = pkg;
+                    break;
                 }
                 // v3.6.0 根窗口追踪：新进入前台的应用，其首个窗口 = 入口窗
                 //（冷启动开屏 / 从桌面·其他应用回前台的首窗）——入口窗上
@@ -2000,6 +2093,8 @@ public class AdSkipService extends AccessibilityService {
                 // 绝不扫描、绝不突发检测——灵岛高频内容变化曾被当「内容
                 // 突发→覆盖层弹窗」开启弹窗识别窗 → 乱点灵岛控件
                 if (!pkg.equals(lastFgPkg)) {
+                    /* v7.15.11：弹窗识别窗期内不探（审核轮 r1 收敛——弹窗
+                     * 链自己扫该包的 Dialog；回归探针只走前置过滤主路径） */
                     if (now < popupUntilGet(pkg)) nudgePopupScan(pkg, now);
                     break;
                 }
@@ -2011,7 +2106,8 @@ public class AdSkipService extends AccessibilityService {
                  * 不重置）；名单门 + 微信 sns 窗门 + 1.2s 节流 + 300 节点预算
                  * 双闸（功耗红线）；开屏窗期内让路（开屏路径优先）。 ═══ */
                 maybeFeedScan(pkg, now);
-                if (now - winAt(pkg) < splashDeadlineMs(winClassOf(pkg))) {
+                if (now - winAt(pkg) < splashDeadlineMs(winClassOf(pkg))
+                        && !isToastClass(winClassOf(pkg))) { // v7.15.11：Toast 窗零开屏链
                     nudgeScan(pkg, now);
                     break;
                 }
@@ -2057,7 +2153,20 @@ public class AdSkipService extends AccessibilityService {
                  * GrantPermissionsActivity 的「拒绝」按钮是全 app 误触代价
                  * 最高的控件之一（拒绝权限=功能残废）——虽然决策层没点它，
                  * 但扫描面就不该进来：零扫描零点击零学习，同 systemui 口径。 */
-                || pkg.contains("permissioncontroller");
+                || pkg.contains("permissioncontroller")
+                /* v7.15.11【#106 OPPO 日志实锤】securitypermission（OPPO
+                 * 权限详情页族 AppBehaviorDetailActivity/PermissionGroupsActivity）
+                 * 被当开屏扫描+多窗补扫白扫——与 permissioncontroller 同类
+                 * 的系统权限面（误触代价最高控件聚集地），零扫描零点击零学习。 */
+                || pkg.contains("securitypermission");
+    }
+
+    /** v7.15.11：Toast 类窗口（aweme ToastDialog 等自灭提示窗）——
+     *  开屏扫描链零接入（#105 实锤白扫：树 600 节点未命中刷屏；Toast
+     *  2~3.5s 自动消散且从无跳过键）。类名含 Toast 即认定（提示窗命名
+     *  惯例；开屏广告窗住 Activity 从不叫 Toast）。 */
+    private static boolean isToastClass(String cls) {
+        return cls != null && cls.contains("Toast");
     }
 
     /** v3.6.0：厂商系统工具包（安全中心/系统管家类）——弹窗突发检测不适用
@@ -3144,16 +3253,26 @@ public class AdSkipService extends AccessibilityService {
         if (com.zai.adshield.core.FeedAdGuard.isFeedWindow(pkg, cls)) return;
         // armed 指纹窗内绝不出手（P2 收菜单优先——与 feed 两段式同语义）
         if (pkg.equals(feedArmedPkg)) return;
-        /* v7.6.0 新窗提速：窗已切（winAt 变化）→ 清节流记录，新窗首扫立即。 */
+        /* v7.6.0 新窗提速：窗已切（winAt 变化）→ 清节流记录，新窗首扫立即。
+         * v7.15.11 同步清退避计数（新窗新计——新插层照常秒级响应）。 */
         long wAt = winAt(pkg);
         Long lastWin = interWinAt.get(pkg);
         if (lastWin == null || lastWin.longValue() != wAt) {
             interWinAt.put(pkg, wAt);
             interScanAt.remove(pkg);
+            interMissStreak.remove(pkg);
             if (interWinAt.size() > 64) interWinAt.clear(); // 防膨胀
         }
+        /* v7.15.11 窗级退避（#106 OPPO 实锤功耗：fenglink66p 静态窗内容事件
+         * 不停 → 2.5s 一轮无限重扫）：同窗连续未命中 streak≤2 照常 2.5s、
+         * 3~5 次 10s、≥6 次 30s 封顶（扫描量降 12~24 倍；插层出现必是
+         * 新窗/新事件洪峰——退避不误新插层）。 */
+        Integer missStreak = interMissStreak.get(pkg);
+        int mst = missStreak == null ? 0 : missStreak.intValue();
+        long interThrottleMs = mst >= 6 ? 30_000L : (mst >= 3 ? 10_000L
+                : com.zai.adshield.core.InterstitialGuard.INTER_SCAN_THROTTLE_MS);
         Long last = interScanAt.get(pkg);
-        if (last != null && now - last < com.zai.adshield.core.InterstitialGuard.INTER_SCAN_THROTTLE_MS) return;
+        if (last != null && now - last < interThrottleMs) return;
         interScanAt.put(pkg, now);
         if (interScanAt.size() > 64) interScanAt.clear(); // 防膨胀
         try {
@@ -3186,7 +3305,10 @@ public class AdSkipService extends AccessibilityService {
                 com.zai.adshield.core.FeedAdGuard.FeedDecision fd =
                         com.zai.adshield.core.InterstitialGuard.decideFromCandidates(
                                 ctxCands, closeCands, screenWidth, screenHeight, f.scrollPresent, strongWinForm);
-                if (fd != null && executeInterstitial(pkg, fd, now)) return;
+                if (fd != null && executeInterstitial(pkg, fd, now)) {
+                    interMissStreak.remove(pkg); // v7.15.11：出手成功清退避
+                    return;
+                }
                 if (missSamples == null) {
                     // v7.6.0：语境词与关闭词命中样本都登（被闸也照登）——上传日志
                     // 直接定位「语境不在场」还是「关闭钮被哪道闸拒」
@@ -3198,6 +3320,10 @@ public class AdSkipService extends AccessibilityService {
                 }
             }
             logInterMiss(pkg, cls, now, missSamples);
+            /* v7.15.11：同窗连续未命中计数 +1（退避梯子依据——见上方节流） */
+            Integer st0 = interMissStreak.get(pkg);
+            interMissStreak.put(pkg, Integer.valueOf(st0 == null ? 1 : st0.intValue() + 1));
+            if (interMissStreak.size() > 32) interMissStreak.clear(); // 防膨胀
         } catch (Throwable ignored) {
         }
     }
@@ -4246,8 +4372,18 @@ public class AdSkipService extends AccessibilityService {
                 bnd = com.zai.adshield.core.ComplianceGuard.imageKeyBoundaryCheck(
                         bb2, screenWidth, screenHeight, pkg, winClassOf(pkg));
                 if (bnd == com.zai.adshield.core.ComplianceGuard.BND_OK) {
-                    appendLog("🎯 图片跳过键边界放行（" + shortPkg(pkg) + " · " + reasonZh(d.reason)
-                            + "）：纯图键零文案语义——场景+形态双重门替代（面积 ≤6% 屏）");
+                    /* v7.15.11 日志去重：同包同理由 6s 一条（#108 实锤同一秒
+                     * 13 条——每次扫描每轮 execute 都重打，「多点」观感的直接
+                     * 来源；实际出手以 ⚡/🔁 日志为准）。首条必记。 */
+                    long ibNow = System.currentTimeMillis();
+                    String ibKey = pkg + "|" + d.reason;
+                    Long ibLast = imgBndLogAt.get(ibKey);
+                    if (ibLast == null || ibNow - ibLast.longValue() >= 6_000L) {
+                        imgBndLogAt.put(ibKey, ibNow);
+                        if (imgBndLogAt.size() > 48) imgBndLogAt.clear(); // 防膨胀
+                        appendLog("🎯 图片跳过键边界放行（" + shortPkg(pkg) + " · " + reasonZh(d.reason)
+                                + "）：纯图键零文案语义——场景+形态双重门替代（面积 ≤6% 屏）");
+                    }
                 }
             }
             if (bnd != com.zai.adshield.core.ComplianceGuard.BND_OK) {
@@ -4285,6 +4421,10 @@ public class AdSkipService extends AccessibilityService {
             // 绝不派返回键——BACK 会先关掉横幅（验证码/短信/来电被误关）
             if (headsUpBanner(null) != null) {
                 headsUpGuardLog(pkg, System.currentTimeMillis());
+                /* v7.15.11 横幅让路重排（#109 解锁实锤）：横幅自动消散后
+                 * 系统不会再发任何可触发事件——排 3 针重查，横幅已散即
+                 * 重排扫描链（否则解锁开屏白看到底）。 */
+                scheduleBannerClearRecheck(pkg, System.currentTimeMillis());
                 return false;
             }
             // v3.6.0 根窗口安全门（双保险，决策核心已先拦一道）：
@@ -4337,6 +4477,12 @@ public class AdSkipService extends AccessibilityService {
         }
         if (d.action.equals(AdDecisionCore.A_CLICK_BOUNDS) || d.action.equals(AdDecisionCore.A_CLOSE)) {
             if (!clickCoolOK) return false;
+            /* v7.15.11 派发失败连击退避：连续 ≥3 次派发失败（覆盖层拦截/按钮
+             * 位移中/节点不可见——clickNode false 且无冷却记账）后按 1.5s
+             * 人手耐心节流，掐断 #108 azukireader 式 ~2.6 次/秒对同一候选
+             * 的无限重试（每轮都烧 getWindows 覆盖层判定）。首两次快重试
+             * 保留（动画中 staleBounds 下一轮就好）。 */
+            if (dispatchFailPaced(pkg, now)) return false;
             /* ═══ v7.3.0 多点防线 II（nudge 补扫旁路封死）：出手节奏 = 人手耐心 ═══
              * 原冷却仅 300ms（COOLDOWN_MS）——nudge 补扫 80ms 节流只挡扫描频次，
              * 广告动画/进度条密集内容事件仍可 ~300ms 连发换候选出手（H 静默
@@ -4395,7 +4541,7 @@ public class AdSkipService extends AccessibilityService {
                             firedTargetCount.remove(deadKey);
                         }
                     } catch (Throwable ignored) {
-                        firedTargetAt.clear(); // 排序异常兑底：绝不无限膨胀
+                        firedTargetAt.clear(); // 排序异常兜底：绝不无限膨胀
                         firedTargetCount.clear();
                     }
                 }
@@ -4445,12 +4591,15 @@ public class AdSkipService extends AccessibilityService {
                 }
                 // v3.5.0 关键：点击后【不熔断】扫描链——由后续扫描复验；
                 // 广告关掉会触发新窗口事件（计数清零）；仍在则换候选/升级兜底
+                dispatchFailStreak.remove(pkg); // v7.15.11：派发成功清零连击
                 return true;
             }
+            noteDispatchFail(pkg, now); // v7.15.11：失败记账（连击退避 + 横幅重排钩）
             return false;
         }
         if (d.action.equals(AdDecisionCore.A_TAP_POINT)) {
             if (!clickCoolOK) return false;
+            if (dispatchFailPaced(pkg, now)) return false; // v7.15.11：派发失败连击退避（同熙）
             boolean isLearned = "learned_pos".equals(d.reason);
             int tapAttempts = triesOfClick(pkg); // v6.0.0：人手节奏基数（学习位置直点同熙）
             /* v7.3.0 多点防线 II：同 CLICK_BOUNDS 分支——人手耐心节奏对学习位置
@@ -4472,6 +4621,7 @@ public class AdSkipService extends AccessibilityService {
                 clickTries.put(pkg, tapAttempts + 1);
                 skipAt.put(pkg, now); // v3.14.0：记录引擎出手时刻（学习位置直点也是跳过出手）
                 energyGestures++;
+                dispatchFailStreak.remove(pkg); // v7.15.11：派发成功清零连击
                 firedTargetAt.put(targetKey, now); // v6.1.0 F：同指纹目标静默生效中
                 Integer prevCnt = firedTargetCount.get(targetKey); // v7.2.0 防线 I：同指纹击数
                 firedTargetCount.put(targetKey, prevCnt == null ? 1 : prevCnt + 1);
@@ -4495,9 +4645,204 @@ public class AdSkipService extends AccessibilityService {
                 }
                 return true; // 不熔断：交由复验扫描确认
             }
+            noteDispatchFail(pkg, now); // v7.15.11：失败记账（连击退避 + 横幅重排钩）
             return false;
         }
         return false;
+    }
+
+    /* ═══ v7.15.11 派发失败连击退避（#108 azukireader 实锤）═══
+     * clickNode/gestureTap 失败（覆盖层拦截/按钮动画位移/节点不可见）无
+     * 冷却记账——旧版以扫描节奏 ~2.6 次/秒对同一候选无限重试（7 秒 18 轮，
+     * 每轮烧一次 getWindows 覆盖层判定 + 🎯 日志刷屏 = 用户「多点」观感）。
+     * 连续 ≥3 次失败后 1.5s 人手耐心节流；成功即清零；首两次快重试保留
+     * （动画中 staleBounds 下一轮扫描即恢复——不能为退避误伤快速恢复场景）。 */
+    private static final long DISPATCH_FAIL_PACE_MS = 1500L;
+
+    private boolean dispatchFailPaced(String pkg, long now) {
+        try {
+            Integer streak = dispatchFailStreak.get(pkg);
+            if (streak == null || streak.intValue() < 3) return false;
+            Long last = dispatchFailAt.get(pkg);
+            return last != null && now - last.longValue() < DISPATCH_FAIL_PACE_MS;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    private void noteDispatchFail(String pkg, long now) {
+        try {
+            Integer prev = dispatchFailStreak.get(pkg);
+            int s = prev == null ? 1 : prev.intValue() + 1;
+            dispatchFailStreak.put(pkg, Integer.valueOf(s));
+            dispatchFailAt.put(pkg, now);
+            if (dispatchFailStreak.size() > 32) dispatchFailStreak.clear(); // 防膨胀
+            if (dispatchFailAt.size() > 32) dispatchFailAt.clear(); // 审核轮 r1：同上限（streak 清零时 paced 不读，安全）
+            /* 横幅让路重排钩（#109 解锁实锤）：失败因 heads-up 横幅（验证码/
+             * 短信）在场时，横幅自动消散后系统不会再发任何可触发事件——
+             * 排 3 针重查，横幅已散即重排扫描链（否则解锁开屏白看到底）。 */
+            if (headsUpBanner(null) != null) scheduleBannerClearRecheck(pkg, now);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /* ═══ v7.15.11 横幅消散重排（锁屏/解锁开屏根治一环）═══
+     * heads-up 横幅把触点/返回键挡下（绝不点掉横幅——红线保持），但横幅
+     * 3~8s 自动消散后无人再扫 = 广告白看到底。3 针重查（+2.5/+5/+9s）：
+     * 横幅已散 + 前台未换 + 窗口未切 + 主开关在 → bumpScanChain + 立即补扫。
+     * 每包 6s 一轮防针堆积；重排成功打一条日志（10s 节流）。 */
+    private static final long[] BANNER_RECHECK_AT = {2500, 5000, 9000};
+
+    private void scheduleBannerClearRecheck(final String pkg, long now) {
+        try {
+            Long last = bannerRequeueAt.get(pkg);
+            if (last != null && now - last.longValue() < 6_000L) return;
+            bannerRequeueAt.put(pkg, now);
+            if (bannerRequeueAt.size() > 24) bannerRequeueAt.clear(); // 防膨胀
+            final String cls = winClassOf(pkg);
+            for (int i = 0; i < BANNER_RECHECK_AT.length; i++) {
+                handler.postDelayed(() -> {
+                    AdSkipService s = instance;
+                    if (s == null) return;
+                    try {
+                        s.bannerClearRecheck(pkg, cls);
+                    } catch (Throwable ignored) {
+                    }
+                }, BANNER_RECHECK_AT[i]);
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private void bannerClearRecheck(String pkg, String cls) {
+        if (!masterOn) return;
+        if (screenRxOk && !screenInteractive) return;    // 审核轮 r1：息屏让路（与探针对称——解锁重入接管）
+        if (!pkg.equals(lastFgPkg)) return;              // 前台已换
+        if (cls != null && cls.length() > 0 && !cls.equals(winClassOf(pkg))) return; // 窗口已切
+        if (keyguardBlocking()) return;                  // 又锁上了（等解锁重入）
+        if (headsUpBanner(null) != null) return;         // 横幅还在——下一针再看
+        /* 横幅已散：重排扫描链 + 立即补扫（幂等：冷却/复验门自然挡住重复
+         * 出手；代际护栏自动作废旧链）。连击退避同步清零——横幅消散 =
+         * 挡点条件已根本变化，旧连击不约束新一轮出手（真实时序上重查针
+         * 与末次失败天然隔 ≥1.5s，此处清零是给同帧恢复场景兜底）。 */
+        dispatchFailStreak.remove(pkg);
+        bumpScanChain(pkg);
+        /* 审核轮 r1 口径注：此处 tryScan 不预检 profileSuppressScan——
+         * 这是恢复路径（被横幅挡下 = 已知有可处置决策/兜底在等），CLEAN
+         * 档案窗的探针梯在横幅期已被消耗，本针是唯一救回通道；量界
+         * 3 针/6s/包（仅前台包可达此），与解锁针同量级。 */
+        tryScan(pkg, winAt(pkg), 0);
+        try {
+            long now = System.currentTimeMillis();
+            Long lastLog = bannerClearLogAt.get(pkg);
+            if (lastLog == null || now - lastLog.longValue() >= 10_000L) {
+                bannerClearLogAt.put(pkg, now);
+                if (bannerClearLogAt.size() > 24) bannerClearLogAt.clear(); // 防膨胀
+                appendLog("🔔 横幅已消散（" + shortPkg(pkg) + "）：恢复开屏处置——重排扫描链立即补扫");
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /* ═══ v7.15.11 切换app前台回归探针（HyperOS/Android17 实锤：回切不发
+     * STATE_CHANGED → lastFgPkg 停在旧应用 → 本应用内容事件被前台门全量
+     * 丢弃 = 回切开屏整窗漏拦；v7.12.0 前台竞速晋升在 v7.15.0 版本线重制
+     * 时遗失，本轮以【阳性证据探针】重建并泛化——竞速与无事件两种形态
+     * 一并覆盖）═══
+     *  · 竞速登记：STATE_CHANGED 因活动窗口归属未切换被丢弃时记 fgPending
+     *    （3s 窗口）——后续该包 CONTENT_CHANGED 走紧急探针（包级 1s）；
+     *  · 兜底探针：非竞速场景包级 5s + 全局 1.5s 双节流；
+     *  · 晋升判定：getRootInActiveWindow 根节点包名 == 该包才晋升（阳性
+     *    证据唯一——查询失败/根为空绝不误晋升，与 isActiveWindowOf 的
+     *    fail-open 语义相反，专为本路径设计）；
+     *  · 晋升动作 = 与「进入应用」同语义完整重置（解锁重入镜像）+ 日志。 */
+    private static final long FG_PENDING_WIN_MS = 3000L;
+
+    void noteFgRaceCandidate(String pkg, String cls, long now) {
+        if (pkg == null || pkg.length() == 0) return;
+        fgPendingPkg = pkg;
+        fgPendingCls = cls == null ? "" : cls;
+        fgPendingAt = now;
+    }
+
+    private boolean fgProbeSaysActive(String pkg) {
+        try {
+            AccessibilityNodeInfo r = getRootInActiveWindow();
+            if (r == null) return false; // 阴性证据缺失 ≠ 阳性——绝不误晋升
+            CharSequence rp = r.getPackageName();
+            return rp != null && pkg.contentEquals(rp);
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** CONTENT_CHANGED 非前台分支的回归探针入口（节流后单次 binder：包级
+     *  竞速 1s / 兜底 5s + 全局 1.5s——最坏 ~0.67 次/秒，红线内）。 */
+    void maybeResyncForeground(String pkg, String cls, long now) {
+        try {
+            if (!masterOn) return; // 暂停期零扫描零晋升（追踪由窗口事件自理）
+            if (pkg == null || pkg.equals(lastFgPkg)) return;
+            if (screenRxOk && !screenInteractive) return; // 息屏回归走解锁重入——不探
+            /* 资格门（与 rearm 同键闸——桌面/白名单/系统噪声/零扫描宿主/
+             * 相机/聊天主界面/小程序容器不是回归目标） */
+            if (!isRearmableApp(pkg, cls)) return;
+            boolean urgent = pkg.equals(fgPendingPkg)
+                    && now - fgPendingAt < FG_PENDING_WIN_MS;
+            long perPkg = urgent ? 1_000L : 5_000L;
+            Long last = fgProbeAt.get(pkg);
+            if (last != null && now - last.longValue() < perPkg) return;
+            if (!urgent && now - fgProbeGlobalAt < 1_500L) return;
+            fgProbeAt.put(pkg, now);
+            if (fgProbeAt.size() > 32) fgProbeAt.clear(); // 防膨胀
+            if (!urgent) fgProbeGlobalAt = now;
+            if (!fgProbeSaysActive(pkg)) return;
+            promoteForeground(pkg, cls, now);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** 阳性证据到手：按「进入应用」同语义完整重置（解锁重入镜像）。
+     *  审核轮 r1【致命-1 修复】窗口类语义还原：CONTENT_CHANGED 的
+     *  className 是【源 View 类】（TextView/RecyclerView——AOSP
+     *  ViewRootImpl 语义），不是窗口类。直接写入会静默绕过聊天主界面/
+     *  小程序容器/密码窗三道类名级零扫描门 + 根窗口返回键安全门。
+     *  窗口类只从两个真实来源取：①竞速登记捕获的 STATE_CHANGED 窗口类
+     *  （fgPendingCls——回切竞速形态，即真实当前窗口）；②该包上次真实
+     *  窗口事件登记的 winClass（沿用——回切窗大概率未变，聊天/相机/
+     *  小程序门照常生效）。两者皆无（从未见过该包的窗口事件）→ 不写
+     *  winClass（winClassOf 空——下游门按保守分支走）。rootWinCls 同步
+     *  写入：回切首窗 = 入口窗语义（禁返回键保守向——v3.6.0 毒链防线
+     *  在晋升路径同样在岗）。 */
+    private void promoteForeground(String pkg, String cls, long now) {
+        if (pkg.equals(lastFgPkg)) return;
+        lastFgPkg = pkg;
+        lastAppPkg = pkg;
+        String raceCls = pkg.equals(fgPendingPkg) ? fgPendingCls : null;
+        String winCls = (raceCls != null && raceCls.length() > 0) ? raceCls : winClassOf(pkg);
+        if (winCls.length() > 0) {
+            winClass.put(pkg, winCls);
+            rootWinCls.put(pkg, winCls); // 回切首窗 = 入口窗（禁返回键保守向）
+        }
+        windowAt.put(pkg, now);
+        gaveUp.put(pkg, Boolean.FALSE);
+        clickTries.put(pkg, 0);
+        backTries.put(pkg, 0);
+        clearTapTrail(pkg);
+        clearTapGuards(pkg);
+        cdLastN.remove(pkg);
+        cdAnchorAt.remove(pkg);
+        cdWaitUntil.remove(pkg);
+        winClsLearned.remove(pkg);
+        chainKilledAt.remove(pkg);
+        nudgeAt.remove(pkg);
+        rescueAt.remove(pkg);
+        interWinAt.remove(pkg);
+        adClosedAt.remove(pkg);
+        dispatchFailStreak.remove(pkg); // v7.15.11：新窗连击清零
+        fgPendingPkg = null;            // 竞速候选已消化
+        bumpScanChain(pkg);
+        if (!profileSuppressScan(pkg, winClassOf(pkg))) tryScan(pkg, now, 0);
+        appendLog("🔄 切换app回归（" + shortPkg(pkg) + "）：前台追踪已校正（回切未伴随窗口事件）→ 立即补扫");
     }
 
     private boolean lastGesture = false;

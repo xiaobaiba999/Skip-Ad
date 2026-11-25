@@ -185,6 +185,10 @@ public class ServiceHostTest {
         s7_probeStarvedCleanWindow();
         s8_h5BigTreeSwipeAd();
         s9_systemDialogZeroScan();
+        s10_bannerClearRequeue();
+        s11_appSwitchResync();
+        s12_imgBoundaryLogDedup();
+        s13_interstitialBackoff();
         System.out.println();
         System.out.println("通过 " + pass + " · 失败 " + fail);
         if (!failures.isEmpty()) {
@@ -587,5 +591,295 @@ public class ServiceHostTest {
                 scansBefore instanceof Long && scansAfter instanceof Long
                         && ((Long) scansAfter).longValue() == ((Long) scansBefore).longValue(),
                 "before=" + scansBefore + " after=" + scansAfter);
+    }
+
+    /* ═══ S10 横幅让路重排（v7.15.11 锁屏/解锁开屏根治一环 · #109 实锤）═══
+     * 验证码/短信 heads-up 横幅在场 → 触点被挡（绝不点掉横幅——红线保持）
+     * → v7.15.10 及之前：横幅自动消散后无人再扫 = 解锁开屏白看到底；
+     * v7.15.11：被挡时排 3 针重查（+2.5/+5/+9s），横幅已散且窗仍在 →
+     * 重排扫描链立即补扫。场景：右上角纯图跳过键 + 横幅覆盖其上。 */
+    static void s10_bannerClearRequeue() throws Exception {
+        System.out.println("[S10] 横幅让路重排：横幅挡点 → 消散后自动补扫");
+        AdSkipService svc = boot();
+        String nb = "com.nb.video";
+
+        // 广告窗：全屏热区 + 角标 + 右上角纯图跳过键（同 S2 形态）
+        AccessibilityNodeInfo active = root(nb, 300, "android.widget.FrameLayout");
+        AccessibilityNodeInfo adImg = node("android.widget.ImageView", 0, 0, 1080, 2200);
+        adImg.clickable = true;
+        active.add(adImg);
+        active.add(txt("广告", 20, 120, 120, 200));
+        AccessibilityNodeInfo key = node("android.widget.ImageView", 950, 130, 1040, 220);
+        key.clickable = true;
+        active.add(key);
+        for (int i = 0; i < 18; i++) {
+            active.add(node("android.view.View", 60 + i * 15, 260 + i * 30, 100 + i * 15, 290 + i * 30));
+        }
+
+        // systemui heads-up 横幅窗（Z 序更高=列表更前；顶部 0~560px、高 560
+        // < 35% 屏高 → headsUpBanner 判定成立；覆盖跳过键区域）
+        AccessibilityNodeInfo bannerRoot = root("com.android.systemui", 301, "android.widget.FrameLayout");
+        AccessibilityWindowInfo wBanner = win(301, bannerRoot, false);
+        wBanner.bounds = new android.graphics.Rect(0, 0, 1080, 560);
+
+        List<AccessibilityWindowInfo> wins = new ArrayList<AccessibilityWindowInfo>();
+        wins.add(wBanner); // 索引 0 = Z 序最高（覆盖活动窗触点）
+        wins.add(win(300, active, true));
+        svc.windows = wins;
+        svc.activeRoot = active;
+
+        // handler 引用（横幅消散动作注入用——排在扫描梯之后、重查针之前，
+        // 真实时序等价物：横幅 3~8s 自动消散后重查针才到点）
+        Object h = get("handler", svc);
+        java.lang.reflect.Method post = h.getClass().getMethod("post", Runnable.class);
+        final AdSkipService s10 = svc;
+
+        // 开窗（真实时序：事件→梯子入队→settle 400ms→横幅消散→泵链）
+        AccessibilityEvent ev = AccessibilityEvent.obtain();
+        ev.eventType = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED;
+        ev.packageName = nb;
+        ev.className = "com.nb.video.SplashActivity";
+        ev.eventTime = System.currentTimeMillis();
+        svc.onAccessibilityEvent(ev);
+        Thread.sleep(400); // 角落键 CORNER_MIN_MS=300 时序
+        post.invoke(h, (Runnable) () -> {
+            List<AccessibilityWindowInfo> gone = new ArrayList<AccessibilityWindowInfo>();
+            gone.add(win(300, active, true));
+            s10.windows = gone; // 横幅消散
+        });
+        drain(svc);
+
+        lastLogs = logs(svc);
+        List<String> lg = lastLogs;
+        check("S10a 横幅在场时触点被挡（覆盖层防误触日志在场）",
+                hasLog(lg, "覆盖层防误触") || hasLog(lg, "顶部横幅保护"),
+                "logs=" + lg.size());
+        check("S10b 横幅消散后自动补扫出手（重排链救回）",
+                svc.gestureCount > 0 || key.clicked,
+                "gestureCount=" + svc.gestureCount + " keyClicked=" + key.clicked);
+        check("S10c 横幅消散重排日志在场（用户可核验）",
+                hasLog(lg, "横幅已消散"),
+                "logs=" + lg.size());
+    }
+
+    /* ═══ S11 切换app前台回归探针（v7.15.11 回切开屏整窗漏拦根治）═══
+     * HyperOS/Android17 回切不发 STATE_CHANGED：应用 B 在前台 → 切回 A
+     * （活动窗根已指向 A 的广告窗，但无窗口事件）→ A 的内容事件被前台门
+     * 全量丢弃 = 整窗漏拦。v7.15.11：内容事件前置过滤处阳性证据探针 →
+     * 晋升（完整进入重置）+ 立即补扫 → 跳过。 */
+    static void s11_appSwitchResync() throws Exception {
+        System.out.println("[S11] 切换app回归：无窗口事件回切 → 探针晋升补扫");
+        AdSkipService svc = boot();
+        String appB = "com.bbb.browser";
+        String appA = "com.aaa.shop";
+
+        // 阶段1：B 在前台（正常 STATE_CHANGED）
+        AccessibilityNodeInfo bRoot = root(appB, 400, "android.widget.FrameLayout");
+        bRoot.add(txt("浏览器主页", 340, 700, 740, 800));
+        for (int i = 0; i < 12; i++) {
+            bRoot.add(node("android.view.View", 100 + i * 30, 900 + i * 30, 140 + i * 30, 930 + i * 30));
+        }
+        List<AccessibilityWindowInfo> winsB = new ArrayList<AccessibilityWindowInfo>();
+        winsB.add(win(400, bRoot, true));
+        svc.windows = winsB;
+        svc.activeRoot = bRoot;
+        fire(svc, AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED, appB,
+                "com.bbb.browser.MainActivity", 50);
+
+        // 阶段2：切回 A（HyperOS 无 STATE_CHANGED）——活动窗已是 A 的广告窗
+        AccessibilityNodeInfo aRoot = root(appA, 410, "android.widget.FrameLayout");
+        AccessibilityNodeInfo adImg = node("android.widget.ImageView", 0, 0, 1080, 2200);
+        adImg.clickable = true;
+        aRoot.add(adImg);
+        aRoot.add(txt("广告", 20, 120, 120, 200));
+        AccessibilityNodeInfo key = node("android.widget.ImageView", 950, 130, 1040, 220);
+        key.clickable = true;
+        aRoot.add(key);
+        for (int i = 0; i < 18; i++) {
+            aRoot.add(node("android.view.View", 60 + i * 15, 260 + i * 30, 100 + i * 15, 290 + i * 30));
+        }
+        List<AccessibilityWindowInfo> winsA = new ArrayList<AccessibilityWindowInfo>();
+        winsA.add(win(410, aRoot, true));
+        svc.windows = winsA;
+        svc.activeRoot = aRoot;
+
+        // 阶段3：A 的内容事件（旧版在此被前置过滤直接丢弃——整窗漏拦）
+        // settle 400ms 后泵链（探针晋升 + 梯子补扫）
+        fire(svc, AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED, appA,
+                "com.aaa.shop.SplashActivity", 400);
+
+        lastLogs = logs(svc);
+        List<String> lg = lastLogs;
+        Object fgNow = get("lastFgPkg", svc);
+        check("S11a 前台追踪已校正（lastFgPkg=回切应用）",
+                appA.equals(fgNow), "lastFgPkg=" + fgNow);
+        check("S11b 回归晋升日志在场（切换app回归）",
+                hasLog(lg, "切换app回归"),
+                "logs=" + lg.size());
+        check("S11c 回切开屏被跳过（探针晋升 + 立即补扫）",
+                svc.gestureCount > 0 || key.clicked,
+                "gestureCount=" + svc.gestureCount + " keyClicked=" + key.clicked);
+
+        /* ── S11d（审核轮 r1【致命-1】负例）：回切微信聊天主界面——
+         * 竞速登记捕获真实窗口类（LauncherUI），晋升后 winClass 必须是
+         * 真实窗口类而非 CONTENT_CHANGED 的源 View 类，聊天主界面门
+         * （bumpScanChain/tryScan 双门）必须照常生效 = 零扫描。 */
+        AdSkipService svc2 = boot();
+        // B 在前台
+        AccessibilityNodeInfo b2 = root(appB, 420, "android.widget.FrameLayout");
+        b2.add(txt("浏览器", 340, 700, 740, 800));
+        List<AccessibilityWindowInfo> winsB2 = new ArrayList<AccessibilityWindowInfo>();
+        winsB2.add(win(420, b2, true));
+        svc2.windows = winsB2;
+        svc2.activeRoot = b2;
+        fire(svc2, AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED, appB,
+                "com.bbb.browser.MainActivity", 50);
+        // 竞速：微信 STATE_CHANGED 到场但活动窗尚未切换（归属查询 false）→ 登记 fgPending
+        fire(svc2, AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED, "com.tencent.mm",
+                "com.tencent.mm.ui.LauncherUI", 30);
+        // 活动窗切到微信聊天列表（无后续 STATE_CHANGED——HyperOS 形态）
+        AccessibilityNodeInfo chat = root("com.tencent.mm", 430, "android.widget.FrameLayout");
+        chat.add(txt("微信", 340, 120, 740, 220));
+        for (int i = 0; i < 10; i++) {
+            chat.add(txt("聊天" + i, 80, 400 + i * 160, 1000, 520 + i * 160));
+        }
+        List<AccessibilityWindowInfo> winsChat = new ArrayList<AccessibilityWindowInfo>();
+        winsChat.add(win(430, chat, true));
+        svc2.windows = winsChat;
+        svc2.activeRoot = chat;
+        Object scansBefore2 = get("energyScans", svc2);
+        // 微信内容事件（源 View 类——审核致命-1 的核心场景）
+        fire(svc2, AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED, "com.tencent.mm",
+                "androidx.recyclerview.widget.RecyclerView", 100);
+        lastLogs = logs(svc2);
+        List<String> lg2 = lastLogs;
+        java.util.HashMap<String, String> wc2 =
+                (java.util.HashMap<String, String>) get("winClass", svc2);
+        Object scansAfter2 = get("energyScans", svc2);
+        check("S11d 聊天主界面回切零扫描（窗口类语义还原——LauncherUI 门照常）",
+                scansBefore2 instanceof Long && scansAfter2 instanceof Long
+                        && ((Long) scansAfter2).longValue() == ((Long) scansBefore2).longValue()
+                        && "com.tencent.mm.ui.LauncherUI".equals(wc2.get("com.tencent.mm")),
+                "scans " + scansBefore2 + "→" + scansAfter2
+                        + " winClass=" + wc2.get("com.tencent.mm")
+                        + " · 晋升日志=" + hasLog(lg2, "切换app回归"));
+    }
+
+    /* ═══ S12 图片键边界放行日志去重（v7.15.11 多点观感根治）═══
+     * #108/#109/#105 三台设备实锤：横幅/覆盖层挡点后同一秒 5~13 条「🎯
+     * 图片跳过键边界放行」刷屏（每轮扫描每轮 execute 都打一条）——用户
+     * 读日志=「点了十几次」。v7.15.11：同包同理由 6s 一条。 */
+    static void s12_imgBoundaryLogDedup() throws Exception {
+        System.out.println("[S12] 🎯 边界放行日志去重（多点观感根治）");
+        AdSkipService svc = boot();
+        String rd = "com.rd.reader";
+
+        AccessibilityNodeInfo active = root(rd, 500, "android.widget.FrameLayout");
+        AccessibilityNodeInfo adImg = node("android.widget.ImageView", 0, 0, 1080, 2200);
+        adImg.clickable = true;
+        active.add(adImg);
+        active.add(txt("广告", 20, 120, 120, 200));
+        AccessibilityNodeInfo key = node("android.widget.ImageView", 950, 130, 1040, 220);
+        key.clickable = true;
+        active.add(key);
+        for (int i = 0; i < 18; i++) {
+            active.add(node("android.view.View", 60 + i * 15, 260 + i * 30, 100 + i * 15, 290 + i * 30));
+        }
+
+        // 持久横幅（不消散——隔离出去重变量：只验日志量，不验重排）
+        AccessibilityNodeInfo bannerRoot = root("com.android.systemui", 501, "android.widget.FrameLayout");
+        AccessibilityWindowInfo wBanner = win(501, bannerRoot, false);
+        wBanner.bounds = new android.graphics.Rect(0, 0, 1080, 560);
+        List<AccessibilityWindowInfo> wins = new ArrayList<AccessibilityWindowInfo>();
+        wins.add(wBanner);
+        wins.add(win(500, active, true));
+        svc.windows = wins;
+        svc.activeRoot = active;
+
+        fire(svc, AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED, rd,
+                "com.rd.reader.SplashActivity", 400);
+        // 连发 4 轮内容事件（每轮 nudge → execute → 边界放行重打——去重后应只 1 条）
+        for (int i = 0; i < 4; i++) {
+            fire(svc, AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED, rd,
+                    "com.rd.reader.SplashActivity", 120);
+        }
+
+        lastLogs = logs(svc);
+        int passCount = 0;
+        for (String l : lastLogs) {
+            if (l.contains("图片跳过键边界放行")) passCount++;
+        }
+        check("S12a 边界放行日志 6s 窗口内只记 1 条（多点观感根治）",
+                passCount <= 1, "实际 " + passCount + " 条");
+        check("S12b 横幅在场绝不出手（红线保持）",
+                svc.gestureCount == 0 && !key.clicked,
+                "gestureCount=" + svc.gestureCount + " keyClicked=" + key.clicked);
+    }
+
+    /* ═══ S13 插屏窗级退避（v7.15.11 功耗 · #106 OPPO 实锤）═══
+     * 静态窗内容事件不停（动画/进度条）→ 旧版 2.5s 一轮无限重扫。
+     * v7.15.11：同窗连续未命中 streak≤2 照常 2.5s、3~5 次 10s、≥6 次
+     * 30s。以反射直调 maybeInterstitialScan + 假时钟驱动（扫描是否运行
+     * 以 interMissStreak 是否递增为铁证）。 */
+    static void s13_interstitialBackoff() throws Exception {
+        System.out.println("[S13] 插屏窗级退避（静态窗无限重扫根治）");
+        AdSkipService svc = boot();
+        String fk = "com.fk.client";
+        String cls = "com.fk.client.MainActivity";
+
+        // 静态窗（无广告语境/关闭钮——插屏必未命中）
+        AccessibilityNodeInfo active = root(fk, 600, "android.widget.FrameLayout");
+        active.add(txt("设置", 340, 200, 740, 300));
+        for (int i = 0; i < 15; i++) {
+            active.add(node("android.view.View", 100 + i * 40, 400 + i * 60, 160 + i * 40, 450 + i * 60));
+        }
+        List<AccessibilityWindowInfo> wins = new ArrayList<AccessibilityWindowInfo>();
+        wins.add(win(600, active, true));
+        svc.windows = wins;
+        svc.activeRoot = active;
+
+        // 前台+窗口已落定（开屏观察窗已过——插屏路径活跃的前提）
+        set("lastFgPkg", svc, fk);
+        java.util.HashMap<String, String> wc = (java.util.HashMap<String, String>) get("winClass", svc);
+        wc.put(fk, cls);
+        java.util.HashMap<String, Long> wa = (java.util.HashMap<String, Long>) get("windowAt", svc);
+        long t0 = System.currentTimeMillis() - 20_000L; // 窗已落定 20s
+        wa.put(fk, t0);
+
+        java.lang.reflect.Method scan = AdSkipService.class.getDeclaredMethod(
+                "maybeInterstitialScan", String.class, long.class);
+        scan.setAccessible(true);
+        java.util.HashMap<String, Integer> streak =
+                (java.util.HashMap<String, Integer>) get("interMissStreak", svc);
+        java.util.HashMap<String, Long> scanAt =
+                (java.util.HashMap<String, Long>) get("interScanAt", svc);
+
+        int idx = 0;
+        long base = t0 + 20_000L; // 开屏观察窗（12s）已过——插屏路径活跃
+        long[] clock = {base, base + 3000, base + 6000, base + 9000, base + 11000, base + 17000};
+        int[] expectRun = {1, 1, 1, 0, 0, 1}; // streak=3→10s 退避：+9s/+11s 挡、+17s（距末扫 11s）放行
+        boolean allOk = true;
+        StringBuilder detail = new StringBuilder();
+        for (long t : clock) {
+            int before = streak.get(fk) == null ? 0 : streak.get(fk).intValue();
+            scan.invoke(svc, fk, t);
+            int after = streak.get(fk) == null ? 0 : streak.get(fk).intValue();
+            boolean ran = after > before;
+            if (ran != (expectRun[idx] == 1)) {
+                allOk = false;
+                detail.append("t+").append(t - t0).append("ms ran=").append(ran)
+                        .append(" expect=").append(expectRun[idx] == 1).append("; ");
+            }
+            idx++;
+        }
+        check("S13a 退避梯子按 streak 递进（2.5s→10s）", allOk,
+                detail.length() == 0 ? ("末轮 streak=" + streak.get(fk)) : detail.toString());
+        // 窗切换重置（新窗新计——新插层秒级响应不误伤；新窗开屏观察窗
+        // 12s 过后插屏路径才活跃——与真实「窗落定后插屏接管」同口径）
+        wa.put(fk, t0 + 100_000L);
+        scan.invoke(svc, fk, t0 + 115_500L);
+        int afterReset = streak.get(fk) == null ? 0 : streak.get(fk).intValue();
+        check("S13b 窗切换后退避清零（新窗首扫立即）",
+                afterReset <= 1, "reset后streak=" + afterReset + " scanAt=" + scanAt.get(fk));
     }
 }
