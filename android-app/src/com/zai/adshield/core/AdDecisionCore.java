@@ -1379,6 +1379,17 @@ public final class AdDecisionCore {
         return p.contains("camera"); // com.android.camera / GoogleCamera / 各厂商与第三方相机 App
     }
 
+    /** v7.15.13：输入法族包识别（前台劫持修复用——键盘是覆盖在真前台
+     *  应用上的浮层，不是前台应用；IME 窗口事件零扫描零点击照旧，但
+     *  绝不写 lastFgPkg——#114 Sony 实锤：键盘起落反复劫走前台追踪 →
+     *  每 5s 一轮「切换app回归」晋升 + 全量重扫）。
+     *  与 ComplianceGuard.isZeroScanScenario 的 IME 分支同源同判。 */
+    public static boolean isImePkg(String pkg) {
+        if (pkg == null) return false;
+        String p = pkg.toLowerCase();
+        return p.contains(".inputmethod") || p.contains(".ime.") || p.endsWith(".ime");
+    }
+
     /** v4.1.0：相机/拍摄/扫码类窗口类名识别——微信拍摄（plugin.camera.ui.
      *  CameraActivity）、抖音故事相机、各 App 拍摄页、扫码 CaptureActivity。
      *  这些窗口绝不扫描、绝不点击、绝不学习。 */

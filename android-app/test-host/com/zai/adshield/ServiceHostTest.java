@@ -190,6 +190,7 @@ public class ServiceHostTest {
         s12_imgBoundaryLogDedup();
         s13_interstitialBackoff();
         s14_updateSurvivalChain();
+        s15_appJumpTakeover();
         System.out.println();
         System.out.println("通过 " + pass + " · 失败 " + fail);
         if (!failures.isEmpty()) {
@@ -990,5 +991,174 @@ public class ServiceHostTest {
         }
         check("S14e 复活梯子排针入 AlarmManager（+30s 自检闸）",
                 ladderOk, ladderDetail);
+    }
+
+    /* ═══ S15 app→app 跳转接管（v7.15.13 用户实锤：从 app 跳转到另一个
+     * app 后目标 app 开屏「跳不了/没触发」根治）═══
+     * 三缺口复刻（#114/#115 日志实锤形态）：
+     *  a) 跳转动画期 B 的 STATE_CHANGED 被竞速丢弃 + 静态开屏（WebView/
+     *     纯图）零内容事件 → 竞速自检梯主动晋升（不再被动等事件）→
+     *     必须补扫跳过（旧版被动等 = 整窗漏拦「没触发」）；
+     *  b) 无竞速形态（ROM 吞窗）首探阴性（根还属旧应用）→ 阴性记账 →
+     *     800ms 快档连探（旧 5s 档在 5s 开屏上等于放弃）→ 第二波事件
+     *     必须晋升补扫；
+     *  c) 输入法键盘起落不得劫持 lastFgPkg（#114 Sony 实锤：每 5s 一轮
+     *     「切换app回归」晋升循环根因）；设置页等真实前台切换照旧（负例）。 */
+    static void s15_appJumpTakeover() throws Exception {
+        System.out.println("[S15] app→app 跳转：竞速自检梯 + 阴性快重试 + IME 零劫持");
+        String appA = "com.aaa.news";
+        String appB = "com.bbb.shop";
+
+        /* ── a) 竞速自检梯：A 前台 → B 跳转动画期 STATE_CHANGED 被竞速丢弃
+         *     → 动画完成活动窗换 B 开屏（零后续事件——静态 WebView 形态）
+         *     → 泵链：三针自检阳性 → 晋升 → 补扫跳过 ── */
+        AdSkipService svc = boot();
+        AccessibilityNodeInfo aRoot = root(appA, 600, "android.widget.FrameLayout");
+        aRoot.add(txt("新闻列表", 340, 700, 740, 800));
+        for (int i = 0; i < 12; i++) {
+            aRoot.add(node("android.view.View", 100 + i * 30, 900 + i * 30, 140 + i * 30, 930 + i * 30));
+        }
+        List<AccessibilityWindowInfo> winsA = new ArrayList<AccessibilityWindowInfo>();
+        winsA.add(win(600, aRoot, true));
+        svc.windows = winsA;
+        svc.activeRoot = aRoot;
+        fire(svc, AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED, appA,
+                "com.aaa.news.MainActivity", 50);
+
+        // B 的 STATE_CHANGED 到场（活动窗归属还是 A → 竞速丢弃 + 登记 + 三针自检入队）
+        AccessibilityEvent ev = AccessibilityEvent.obtain();
+        ev.eventType = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED;
+        ev.packageName = appB;
+        ev.className = "com.bbb.shop.SplashActivity";
+        ev.eventTime = System.currentTimeMillis();
+        svc.onAccessibilityEvent(ev);
+        Object pend = get("fgPendingPkg", svc);
+        check("S15a1 竞速候选已登记（动画期窗口事件被丢弃）",
+                appB.equals(pend), "fgPendingPkg=" + pend);
+
+        // 动画完成：活动窗切到 B 的开屏（热区 + 角标 + 跳过广告文本键）——零后续事件
+        AccessibilityNodeInfo bSplash = root(appB, 601, "android.widget.FrameLayout");
+        AccessibilityNodeInfo adImg = node("android.widget.ImageView", 0, 0, 1080, 2200);
+        adImg.clickable = true;
+        bSplash.add(adImg);
+        bSplash.add(txt("广告", 20, 120, 120, 200));
+        AccessibilityNodeInfo key = txt("跳过广告", 840, 150, 1030, 210);
+        bSplash.add(key);
+        for (int i = 0; i < 18; i++) {
+            bSplash.add(node("android.view.View", 60 + i * 15, 260 + i * 30, 100 + i * 15, 290 + i * 30));
+        }
+        List<AccessibilityWindowInfo> winsB = new ArrayList<AccessibilityWindowInfo>();
+        winsB.add(win(601, bSplash, true));
+        svc.windows = winsB;
+        svc.activeRoot = bSplash;
+        drain(svc); // 三针自检（桩忽略延时）→ 阳性 → 晋升 → 补扫
+
+        lastLogs = logs(svc);
+        List<String> lg = lastLogs;
+        Object fgB = get("lastFgPkg", svc);
+        check("S15a2 跳转接管晋升（lastFgPkg=目标 app）",
+                appB.equals(fgB), "lastFgPkg=" + fgB);
+        check("S15a3 跳转接管日志在场（用户可核验）",
+                hasLog(lg, "跳转接管"), "logs=" + lg.size());
+        check("S15a4 静态开屏被补扫跳过（竞速自检梯救回）",
+                svc.gestureCount > 0 || key.clicked,
+                "gestureCount=" + svc.gestureCount + " keyClicked=" + key.clicked);
+
+        /* ── b) 阴性快重试：无竞速形态（ROM 吞掉 B 的 STATE_CHANGED）→
+         *     B 的内容事件首探阴性（活动窗还属 A）→ 阴性记账 → 850ms 后
+         *     第二波内容事件（活动窗已属 B）→ 800ms 快档放行 → 晋升补扫
+         *     （旧 5s 包级节流在此刻将直接拦下——本断言即回归红线）── */
+        AdSkipService svc2 = boot();
+        AccessibilityNodeInfo aRoot2 = root(appA, 610, "android.widget.FrameLayout");
+        aRoot2.add(txt("新闻列表", 340, 700, 740, 800));
+        for (int i = 0; i < 12; i++) {
+            aRoot2.add(node("android.view.View", 100 + i * 30, 900 + i * 30, 140 + i * 30, 930 + i * 30));
+        }
+        List<AccessibilityWindowInfo> winsA2 = new ArrayList<AccessibilityWindowInfo>();
+        winsA2.add(win(610, aRoot2, true));
+        svc2.windows = winsA2;
+        svc2.activeRoot = aRoot2;
+        fire(svc2, AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED, appA,
+                "com.aaa.news.MainActivity", 50);
+
+        // B 的内容事件（无任何 STATE_CHANGED——活动窗还属 A）→ 首探阴性
+        fire(svc2, AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED, appB,
+                "androidx.recyclerview.widget.RecyclerView", 60);
+        java.util.HashMap<String, Long> neg =
+                (java.util.HashMap<String, Long>) get("fgProbeNegAt", svc2);
+        check("S15b1 首探阴性已记账（快重试窗开启）",
+                neg != null && neg.containsKey(appB), "negMap=" + neg);
+        check("S15b2 阴性期未误晋升（根还属旧应用）",
+                !appB.equals(get("lastFgPkg", svc2)),
+                "lastFgPkg=" + get("lastFgPkg", svc2));
+
+        Thread.sleep(850); // 越过 800ms 快档（旧版此处为 5s 档=放弃）
+
+        // 活动窗切到 B 的开屏（零窗口事件——ROM 吞窗形态）
+        AccessibilityNodeInfo bSplash2 = root(appB, 611, "android.widget.FrameLayout");
+        AccessibilityNodeInfo adImg2 = node("android.widget.ImageView", 0, 0, 1080, 2200);
+        adImg2.clickable = true;
+        bSplash2.add(adImg2);
+        bSplash2.add(txt("广告", 20, 120, 120, 200));
+        AccessibilityNodeInfo key2 = txt("跳过广告", 840, 150, 1030, 210);
+        bSplash2.add(key2);
+        for (int i = 0; i < 18; i++) {
+            bSplash2.add(node("android.view.View", 60 + i * 15, 260 + i * 30, 100 + i * 15, 290 + i * 30));
+        }
+        List<AccessibilityWindowInfo> winsB2 = new ArrayList<AccessibilityWindowInfo>();
+        winsB2.add(win(611, bSplash2, true));
+        svc2.windows = winsB2;
+        svc2.activeRoot = bSplash2;
+        fire(svc2, AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED, appB,
+                "androidx.recyclerview.widget.RecyclerView", 50);
+
+        lastLogs = logs(svc2);
+        List<String> lg2 = lastLogs;
+        check("S15b3 快档连探晋升（800ms 档放行，旧 5s 档必挂）",
+                appB.equals(get("lastFgPkg", svc2)),
+                "lastFgPkg=" + get("lastFgPkg", svc2));
+        check("S15b4 切换app回归日志在场",
+                hasLog(lg2, "切换app回归"), "logs=" + lg2.size());
+        check("S15b5 第二波事件上补扫跳过",
+                svc2.gestureCount > 0 || key2.clicked,
+                "gestureCount=" + svc2.gestureCount + " keyClicked=" + key2.clicked);
+
+        /* ── c) IME 零劫持：评论键盘起落绝不写 lastFgPkg；设置页等真实
+         *     前台切换照旧写（负例对照）── */
+        AdSkipService svc3 = boot();
+        AccessibilityNodeInfo aRoot3 = root(appA, 620, "android.widget.FrameLayout");
+        aRoot3.add(txt("新闻列表", 340, 700, 740, 800));
+        for (int i = 0; i < 12; i++) {
+            aRoot3.add(node("android.view.View", 100 + i * 30, 900 + i * 30, 140 + i * 30, 930 + i * 30));
+        }
+        List<AccessibilityWindowInfo> winsA3 = new ArrayList<AccessibilityWindowInfo>();
+        winsA3.add(win(620, aRoot3, true));
+        svc3.windows = winsA3;
+        svc3.activeRoot = aRoot3;
+        fire(svc3, AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED, appA,
+                "com.aaa.news.MainActivity", 50);
+        check("S15c0 前台基线（A 在前台）",
+                appA.equals(get("lastFgPkg", svc3)),
+                "lastFgPkg=" + get("lastFgPkg", svc3));
+
+        // 搜狗键盘弹出（STATE_CHANGED——零扫描分支，旧版在此劫持前台）
+        fire(svc3, AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
+                "com.sohu.inputmethod.sogou", "com.sohu.inputmethod.sogou.SogouIME", 30);
+        check("S15c1 输入法不劫持前台（键盘是浮层不是前台应用）",
+                appA.equals(get("lastFgPkg", svc3)),
+                "lastFgPkg=" + get("lastFgPkg", svc3));
+
+        // 键盘起落后 A 的内容事件照常前台处理（无回归晋升日志 = 前台从未丢失）
+        fire(svc3, AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED, appA,
+                "android.widget.TextView", 30);
+        check("S15c2 键盘起落后 A 的内容事件零晋升日志（前台从未丢失）",
+                !hasLog(logs(svc3), "切换app回归"), "不应出现晋升日志");
+
+        // 负例对照：系统设置页是真实前台切换——照旧写前台追踪
+        fire(svc3, AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
+                "com.android.settings", "com.android.settings.Settings", 30);
+        check("S15c3 设置页真实前台切换照旧追踪",
+                "com.android.settings".equals(get("lastFgPkg", svc3)),
+                "lastFgPkg=" + get("lastFgPkg", svc3));
     }
 }

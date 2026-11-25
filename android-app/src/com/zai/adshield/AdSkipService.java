@@ -581,6 +581,10 @@ public class AdSkipService extends AccessibilityService {
     private long fgPendingAt;
     private final java.util.HashMap<String, Long> fgProbeAt = new java.util.HashMap<String, Long>();
     private long fgProbeGlobalAt;
+    /* ═══ v7.15.13 探针阴性快重试（app→app 跳转实锤：切屏动画期首探阴性
+     * ——根还属旧应用——后，旧 5s 包级节流在 5s 开屏上等于放弃；阴性后
+     * 3s 窗内改 800ms 快档，事件仍在流入即连探）═══ */
+    private final java.util.HashMap<String, Long> fgProbeNegAt = new java.util.HashMap<String, Long>();
     /* v7.4.0 空闲巡检：用户停下刷屏盯着广告看时 content-changed 零事件 =
      * 零扫描（日志 #79/#80 实锤：广告静止在屏 2 分钟引擎全程盲）。巡检
      * Runnable 2.5s 一扫，只在信息流窗在场时存活（离窗/切包/masterOff 即停
@@ -2031,8 +2035,14 @@ public class AdSkipService extends AccessibilityService {
          * 密码页——【绝不扫描、绝不点击、绝不学习】，仅维持前台追踪。 */
         if (com.zai.adshield.core.ComplianceGuard.isZeroScanScenario(
                 pkg, cs(event.getClassName()))) {
+            /* v7.15.13 输入法前台劫持修复（#114 Sony 实锤：评论框键盘起落把
+             * lastFgPkg 反复劫走 → 每 5s 一轮「切换app回归」晋升 + 全量重扫。
+             * 键盘是覆盖在真前台应用上的浮层，不是前台应用——IME 族包只
+             * 零扫描返回，绝不写前台追踪；设置/锁屏等真实前台切换照旧。
+             * 检测与 ComplianceGuard.ime 同源（.inputmethod/.ime 族）。 */
             if (et == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
-                    && !isDialogClass(cs(event.getClassName()))) {
+                    && !isDialogClass(cs(event.getClassName()))
+                    && !AdDecisionCore.isImePkg(pkg)) {
                 lastFgPkg = pkg;
             }
             return;
@@ -4895,6 +4905,39 @@ public class AdSkipService extends AccessibilityService {
         fgPendingPkg = pkg;
         fgPendingCls = cls == null ? "" : cls;
         fgPendingAt = now;
+        /* ═══ v7.15.13 竞速自检梯（app→app 跳转「没触发」根治）═══
+         * 跳转动画期 STATE_CHANGED 因活动窗口归属未切换被竞速丢弃后，
+         * 静态开屏（WebView/纯图——#115 dkXAy 实锤微树空壳零内容事件）
+         * 前 2~3s 常零 CONTENT_CHANGED → 被动等事件晋升 = 整窗漏拦。
+         * 三针主动自检（+0.5/+1.2/+2.4s，各一次 binder 根查询，阳性证据
+         * 才晋升），竞速窗 3s 内最坏 +3 次 binder ≈ 1 次/秒——红线内。 */
+        handler.postDelayed(() -> raceSelfProbe(pkg), 500L);
+        handler.postDelayed(() -> raceSelfProbe(pkg), 1200L);
+        handler.postDelayed(() -> raceSelfProbe(pkg), 2400L);
+    }
+
+    /** v7.15.13 竞速自检针：不等待 CONTENT_CHANGED——主动查根属。过闸
+     *  条件与 CONTENT 探针完全同源（阳性证据唯一/资格门/息屏/弹窗链让
+     *  路/共享 fgProbeAt 节流防同瞬双探），晋升后与回切同语义完整重置。 */
+    private void raceSelfProbe(final String pkg) {
+        try {
+            if (!masterOn) return;
+            if (pkg == null || !pkg.equals(fgPendingPkg)) return; // 已被新竞速取代/已消化
+            if (pkg.equals(lastFgPkg)) return;                     // 已进入正常处理
+            long now = System.currentTimeMillis();
+            if (now - fgPendingAt > FG_PENDING_WIN_MS) return;     // 竞速窗已过
+            if (screenRxOk && !screenInteractive) return;          // 息屏走解锁重入
+            if (now < popupUntilGet(pkg)) return;                   // 弹窗链自扫该包
+            Long last = fgProbeAt.get(pkg);
+            if (last != null && now - last.longValue() < 350L) return; // 与 CONTENT 探针共享节流
+            if (!isRearmableApp(pkg, fgPendingCls)) return;
+            fgProbeAt.put(pkg, now);
+            if (fgProbeAt.size() > 32) fgProbeAt.clear(); // 防膨胀
+            if (!fgProbeSaysActive(pkg)) return;
+            promoteForeground(pkg, fgPendingCls, now,
+                    "🔄 跳转接管（" + shortPkg(pkg) + "）：前台竞速自检阳性（跳转动画期窗口事件被丢弃）→ 立即补扫");
+        } catch (Throwable ignored) {
+        }
     }
 
     private boolean fgProbeSaysActive(String pkg) {
@@ -4920,15 +4963,25 @@ public class AdSkipService extends AccessibilityService {
             if (!isRearmableApp(pkg, cls)) return;
             boolean urgent = pkg.equals(fgPendingPkg)
                     && now - fgPendingAt < FG_PENDING_WIN_MS;
-            long perPkg = urgent ? 1_000L : 5_000L;
+            /* v7.15.13 阴性快重试：切屏动画期首探阴性（根还属旧应用）后
+             * 事件仍在流入 → 3s 窗内 800ms 快档连探（旧 5s 档在 5s 开屏
+             * 上等于放弃）；阳性/晋升即清阴性标记。 */
+            Long negAt = fgProbeNegAt.get(pkg);
+            boolean fastRetry = !urgent && negAt != null && now - negAt.longValue() < 3_000L;
+            long perPkg = urgent ? 1_000L : (fastRetry ? 800L : 5_000L);
             Long last = fgProbeAt.get(pkg);
             if (last != null && now - last.longValue() < perPkg) return;
-            if (!urgent && now - fgProbeGlobalAt < 1_500L) return;
+            if (!urgent && !fastRetry && now - fgProbeGlobalAt < 1_500L) return;
             fgProbeAt.put(pkg, now);
             if (fgProbeAt.size() > 32) fgProbeAt.clear(); // 防膨胀
-            if (!urgent) fgProbeGlobalAt = now;
-            if (!fgProbeSaysActive(pkg)) return;
-            promoteForeground(pkg, cls, now);
+            if (!urgent && !fastRetry) fgProbeGlobalAt = now;
+            if (!fgProbeSaysActive(pkg)) {
+                fgProbeNegAt.put(pkg, now);
+                if (fgProbeNegAt.size() > 32) fgProbeNegAt.clear(); // 防膨胀
+                return;
+            }
+            promoteForeground(pkg, cls, now,
+                    "🔄 切换app回归（" + shortPkg(pkg) + "）：前台追踪已校正（回切未伴随窗口事件）→ 立即补扫");
         } catch (Throwable ignored) {
         }
     }
@@ -4945,10 +4998,11 @@ public class AdSkipService extends AccessibilityService {
      *  winClass（winClassOf 空——下游门按保守分支走）。rootWinCls 同步
      *  写入：回切首窗 = 入口窗语义（禁返回键保守向——v3.6.0 毒链防线
      *  在晋升路径同样在岗）。 */
-    private void promoteForeground(String pkg, String cls, long now) {
+    private void promoteForeground(String pkg, String cls, long now, String viaLog) {
         if (pkg.equals(lastFgPkg)) return;
         lastFgPkg = pkg;
         lastAppPkg = pkg;
+        fgProbeNegAt.remove(pkg); // v7.15.13：阳性到手，阴性快重试窗关闭
         String raceCls = pkg.equals(fgPendingPkg) ? fgPendingCls : null;
         String winCls = (raceCls != null && raceCls.length() > 0) ? raceCls : winClassOf(pkg);
         if (winCls.length() > 0) {
@@ -4972,9 +5026,10 @@ public class AdSkipService extends AccessibilityService {
         adClosedAt.remove(pkg);
         dispatchFailStreak.remove(pkg); // v7.15.11：新窗连击清零
         fgPendingPkg = null;            // 竞速候选已消化
+        fgProbeNegAt.remove(pkg);       // v7.15.13：快重试窗随晋升关闭
         bumpScanChain(pkg);
         if (!profileSuppressScan(pkg, winClassOf(pkg))) tryScan(pkg, now, 0);
-        appendLog("🔄 切换app回归（" + shortPkg(pkg) + "）：前台追踪已校正（回切未伴随窗口事件）→ 立即补扫");
+        appendLog(viaLog);
     }
 
     private boolean lastGesture = false;
