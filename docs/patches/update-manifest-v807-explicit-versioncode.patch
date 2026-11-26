@@ -1,0 +1,30 @@
+diff --git a/.github/workflows/update-manifest.yml b/.github/workflows/update-manifest.yml
+index c5d3c18..82f684e 100644
+--- a/.github/workflows/update-manifest.yml
++++ b/.github/workflows/update-manifest.yml
+@@ -131,12 +131,24 @@ jobs:
+           # GitHub Actions 以 bash -e 执行本脚本——python 非零退出必须用「|| RC=$?」
+           # 捕获；裸调用后取 $? 永不执行（上线实测踩坑：幂等 SKIP exit 3 被 -e
+           # 提前终止误报为步骤失败）。
++          # v8.0.7+ 显式抬码：Release 正文携带「versionCode: N」元数据行（行首裸
++          # 格式）时透传 --version-code（versionCode 与 7.x 公式解耦——跨 7.15.x
++          # 存量段 85000-86400 的兼容抬码，正文元数据行即显式确认记录）。
++          VC_ARG=()
++          VC_BODY=$(jq -r '[.body | split("\n")[] | select(startswith("versionCode:"))][0] // empty' /tmp/rel.json | head -1)
++          if [ -n "$VC_BODY" ]; then
++            VC_VALUE=$(echo "$VC_BODY" | sed -n 's/^versionCode:[[:space:]]*\([0-9][0-9]*\).*/\1/p')
++            if [ -n "$VC_VALUE" ]; then
++              echo "检测到 Release 正文显式 versionCode 元数据行：$VC_VALUE（抬码透传）"
++              VC_ARG=(--version-code "$VC_VALUE")
++            fi
++          fi
+           RC=0
+           python3 scripts/update_manifest.py \
+             --release-json /tmp/rel.json \
+             --apk /tmp/app-release.apk \
+             --repo-manifest update/latest.json \
+-            --out /tmp/latest.json || RC=$?
++            --out /tmp/latest.json "${VC_ARG[@]}" || RC=$?
+           if [ $RC -eq 0 ]; then
+             echo "skipped=false" >> "$GITHUB_OUTPUT"
+             exit 0
