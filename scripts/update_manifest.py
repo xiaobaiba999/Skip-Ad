@@ -20,6 +20,9 @@ Release 发布（release.published）或手动触发（workflow_dispatch）时�
      （v7.1.0 起项目公式；v7.10.0 统一规则：非三段 tag（历史 plus 系）
      一律硬失败拒绝生成——Release 正文 versionCode 元数据行不再作为
      回退定码来源，仅作一致性校验）
+     【v8.0.7 起显式抬码】--version-code N 显式指定（见 main 内闸门：
+     必须等于 APK 实际 versionCode、高于公式值、高于历史存量最大码
+     86400，且 Release 正文必须携带一致的 versionCode 元数据行）
   6. APK 实算 SHA256 == 资产 digest（GitHub API 官方值；资产无 digest
      时记录实算值并通过——大小校验仍硬性）
   7. APK 实测文件大小 == 资产 size
@@ -96,6 +99,11 @@ def main(argv):
     ap.add_argument("--repo-manifest", default=None, help="仓库现有清单（陈旧守卫；缺省跳过守卫）")
     ap.add_argument("--out", default=None, help="输出路径（缺省只校验不写文件）")
     ap.add_argument("--expect-package", default="com.zai.adshield")
+    ap.add_argument("--version-code", type=int, default=None,
+                    help="显式 versionCode（v8.0.7 起版本命名与码解耦："
+                         "旧版 7.15.x 存量 85000-86400 只按 versionCode 数值比较，"
+                         "公式码 80700 < 86400 会让存量旧版永远发现不了新版本；"
+                         "显式码必须 == APK 实际码且 > 公式值与历史最大码）")
     args = ap.parse_args(argv)
 
     with open(args.release_json, "r", encoding="utf-8") as f:
@@ -139,8 +147,28 @@ def main(argv):
         if vn != tag_vn:
             fail(EXIT_INVALID, "APK versionName %r != tag %r（三段式同名同码红线）" % (vn, tag_vn))
         if vc != derived:
-            fail(EXIT_INVALID, "APK versionCode %d != tag 公式值 %d（major*10000+minor*1000+patch*100）"
-                 % (vc, derived))
+            # v8.0.7 起显式抬码闸：允许 --version-code 显式解耦（跨 86400 存量段），
+            # 但闸门三重：①显式码必须给出（拒绝静默偏差）②必须等于 APK 实际码
+            # ③必须高于公式值与历史最大码 86400（只升不降），且 Release 正文
+            # 必须携带一致的 versionCode 元数据行（幂等可考古）。
+            if args.version_code is None:
+                fail(EXIT_INVALID, "APK versionCode %d != tag 公式值 %d（major*10000+minor*1000+patch*100）；"
+                     "如为显式抬码（v8.0.7+ 兼容 7.15.x 存量），必须显式传 --version-code %d"
+                     % (vc, derived, vc))
+            if args.version_code != vc:
+                fail(EXIT_INVALID, "--version-code %d != APK 实际 versionCode %d（显式码必须与 APK 一致）"
+                     % (args.version_code, vc))
+            if vc <= derived:
+                fail(EXIT_INVALID, "显式 versionCode %d <= 公式值 %d（抬码只升不降；如需同名同码请勿传 --version-code）"
+                     % (vc, derived))
+            if vc <= 86400:
+                fail(EXIT_INVALID, "显式 versionCode %d <= 历史存量最大码 86400（v7.15.14）——抬码必须跨过 7.15.x 存量段，"
+                     "否则旧版 7.15.x（85000-86400）永远发现不了新版本" % vc)
+            if notes_vc != vc:
+                fail(EXIT_INVALID, "显式抬码模式下 Release 正文必须携带一致元数据行（versionCode: %d），实为 %r"
+                     % (vc, notes_vc))
+            print("ℹ 显式抬码：tag %s 公式码 %d → versionCode %d（跨 7.15.x 存量段 85000-86400，兼容旧客户端数值比较）"
+                  % (tag, derived, vc))
         if notes_vc and notes_vc != vc:
             fail(EXIT_INVALID, "Release 正文 versionCode %d != APK versionCode %d" % (notes_vc, vc))
     else:
