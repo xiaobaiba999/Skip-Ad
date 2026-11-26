@@ -1,0 +1,84 @@
+package li.gkd.app.record
+
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.launch
+import li.gkd.app.logging.LogUtils
+import li.gkd.db.Db
+import li.gkd.db.EngineEventLog
+
+/**
+ * 详细引擎日志写入器（v8.0.6 双通道日志体系）。
+ * · 非阻塞：调用线程（含无障碍事件线程）只做 Channel.trySend，绝不等待
+ * · 容量有界：队列 256 条，溢出丢最旧 info 级换位，warn/error 尽力保留
+ * · 单协程消费：批 ≤16 条写库 + 定期裁剪（保留最近 800 条）
+ * · 失败只进 LogUtils：日志体系绝不允许影响引擎主链/点击速度
+ */
+object EngineEventLogWriter {
+    private const val QUEUE_CAPACITY = 256
+    private const val BATCH_SIZE = 16
+    private const val TRIM_INTERVAL = 64L
+
+    private val queue = Channel<EngineEventLog>(QUEUE_CAPACITY)
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    @Volatile private var started = false
+    private var written = 0L
+
+    fun start() {
+        if (started) return
+        synchronized(this) {
+            if (started) return
+            started = true
+            scope.launch {
+                val batch = ArrayList<EngineEventLog>(BATCH_SIZE)
+                while (true) {
+                    batch.clear()
+                    batch.add(queue.receive())
+                    while (batch.size < BATCH_SIZE) {
+                        val next = queue.tryReceive().getOrNull() ?: break
+                        batch.add(next)
+                    }
+                    try {
+                        Db.engineEventLogDao.insert(*batch.toTypedArray())
+                        val before = written
+                        written += batch.size
+                        if (before / TRIM_INTERVAL != written / TRIM_INTERVAL) {
+                            Db.engineEventLogDao.deleteKeepLatest()
+                        }
+                    } catch (e: Exception) {
+                        LogUtils.w("engine event log write failed", e)
+                    }
+                }
+            }
+        }
+    }
+
+    /** 线程安全非阻塞。重要事件（warn/error）溢出时保留优先级更高者。 */
+    fun log(
+        kind: String,
+        message: String,
+        level: Int = 0,
+        appId: String? = null,
+        actionLogId: Long? = null,
+        detail: String? = null,
+    ) {
+        start()
+        val entry =
+            EngineEventLog(
+                ctime = System.currentTimeMillis(),
+                level = level,
+                kind = kind,
+                appId = appId,
+                actionLogId = actionLogId,
+                message = message,
+                detail = detail,
+            )
+        if (queue.trySend(entry).isSuccess) return
+        val dropped = queue.tryReceive().getOrNull()
+        if (dropped == null || dropped.level < level) {
+            queue.trySend(entry)
+        }
+    }
+}

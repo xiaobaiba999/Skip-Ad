@@ -1,0 +1,600 @@
+/* 开屏卫士 v4.0.0 · 绿色主题 · 极简 */
+:root {
+  --bg: #f2f7f3;
+  --card: #ffffff;
+  --line: #e3ede6;
+  --ink: #0c2015;
+  --sub: #63756b;
+  --brand: #059669;
+  --brand-deep: #047857;
+  --brand-soft: #dff3e7;
+  --warn: #b45309;
+  --warn-bg: #fff8ec;
+  --radius: 18px;
+  --shadow: 0 1px 2px rgba(12, 32, 21, .04), 0 6px 20px -8px rgba(12, 32, 21, .08);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+html, body { height: 100%; }
+
+body {
+  font-family: -apple-system, "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Noto Sans SC", "Source Han Sans SC", sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+#app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  max-width: 480px;
+  margin: 0 auto;
+}
+
+/* ───────── 顶栏 ───────── */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: calc(14px + env(safe-area-inset-top)) 20px 14px;
+  position: sticky;
+  top: 0;
+  background: rgba(242, 247, 243, .92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  z-index: 10;
+}
+
+.brand { display: flex; align-items: center; gap: 10px; }
+.brand-logo { display: flex; }
+.brand-name { font-size: 17px; font-weight: 700; letter-spacing: .5px; }
+
+.ver-chip {
+  font-size: 12px;
+  color: var(--brand-deep);
+  background: var(--brand-soft);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-weight: 600;
+}
+
+/* ───────── 主体 ───────── */
+/* v7.15.6 冗余清理：顶部更新横幅 .update-banner/.ub-* 已随 v7.0.0 横幅
+ * 移除而退役（原约 20 行），此处仅保留在役的 page-notes 新版功能描述 */
+.page-notes { margin: 2px 0 10px; padding: 8px 10px; background: #f2f9f5; border-radius: 10px; }
+.pn-title { font-size: 12px; font-weight: 700; color: #1c7a48; margin-bottom: 4px; }
+.pn-item { font-size: 12.5px; color: #33564a; line-height: 1.65; }
+.pn-item b { color: #0B7A5C; font-weight: 700; margin-right: 2px; }
+
+/* ───────── 主体 ───────── */
+#main { flex: 1; padding: 14px 16px 24px; }
+
+.page { display: none; animation: fade .18s ease; }
+.page.active { display: block; }
+@keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 12px;
+  box-shadow: var(--shadow);
+}
+
+.card-title { font-size: 15px; font-weight: 700; margin-bottom: 10px; }
+.row-between { display: flex; align-items: center; justify-content: space-between; }
+
+/* ───────── 首页：守护状态 ───────── */
+.battery-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--warn-bg);
+  border: 1px solid #f3dfb7;
+  color: var(--warn);
+  border-radius: 14px;
+  padding: 10px 14px;
+  font-size: 13.5px;
+  margin-bottom: 12px;
+}
+.link-btn {
+  border: none; background: none; color: var(--warn);
+  font-size: 13.5px; font-weight: 700; padding: 4px 8px;
+}
+
+.hero-card {
+  background: linear-gradient(160deg, #ffffff 0%, #f4fbf6 100%);
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  padding: 24px 20px 20px;
+  margin-bottom: 12px;
+  text-align: center;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  position: relative;
+}
+
+.hero-card.on { background: linear-gradient(160deg, #ffffff 0%, #e8f8ee 100%); border-color: #bce6cd; }
+.hero-card.paused { background: linear-gradient(160deg, #ffffff 0%, #f6f7f6 100%); border-color: #d8ded9; }
+.hero-card.paused .hero-title { color: var(--sub); }
+
+.hero-mascot { display: flex; justify-content: center; margin-bottom: 10px; }
+
+.hero-title { font-size: 20px; font-weight: 800; letter-spacing: .5px; }
+.hero-sub { font-size: 13px; color: var(--sub); margin-top: 2px; }
+.hero-actions { margin-top: 16px; }
+.hero-tip { font-size: 12px; color: var(--sub); margin-top: 10px; }
+
+/* ───────── 战绩 ───────── */
+.stats-card { display: flex; padding: 18px 8px; }
+.stat { flex: 1; text-align: center; }
+.stat + .stat { border-left: 1px solid var(--line); }
+.stat .num { font-size: 24px; font-weight: 800; color: var(--brand-deep); font-variant-numeric: tabular-nums; }
+.stat .lbl { font-size: 12px; color: var(--sub); margin-top: 2px; }
+
+/* ───────── 开关行 ───────── */
+.switch-card { padding: 4px 16px; }
+.switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 13px 0;
+}
+.switch-row + .switch-row { border-top: 1px solid var(--line); }
+.sw-name { font-size: 15px; font-weight: 600; }
+
+.switch { position: relative; width: 46px; height: 27px; flex: none; display: inline-block; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.slider {
+  position: absolute; inset: 0;
+  background: #cfdcd3;
+  border-radius: 999px;
+  transition: background .18s;
+}
+.slider::before {
+  content: "";
+  position: absolute;
+  width: 21px; height: 21px;
+  left: 3px; top: 3px;
+  background: #fff;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(12, 32, 21, .25);
+  transition: transform .18s;
+}
+.switch input:checked + .slider { background: var(--brand); }
+.switch input:checked + .slider::before { transform: translateX(19px); }
+
+/* ───────── 通用控件 ───────── */
+.btn {
+  border: none;
+  border-radius: 13px;
+  font-size: 15px;
+  font-weight: 700;
+  padding: 12px 18px;
+  cursor: pointer;
+  transition: transform .08s, opacity .15s;
+}
+.btn:active { transform: scale(.97); }
+.btn-primary { background: var(--brand); color: #fff; }
+.btn-primary:active { background: var(--brand-deep); }
+.btn-ghost {
+  background: var(--brand-soft);
+  color: var(--brand-deep);
+}
+.btn-block { display: block; width: 100%; }
+.btn-sm { padding: 7px 14px; font-size: 13px; border-radius: 10px; }
+.btn-row { display: flex; gap: 8px; margin-top: 10px; }
+.btn-row .btn { flex: 1; padding: 11px 8px; font-size: 14px; }
+/* v5.8.0：日志卡双按钮（刷新+上传）——不换行、等高不拉伸 */
+#page-me .btn-row { margin-top: 0; }
+.btn { white-space: nowrap; }
+
+.fb-result { font-size: 13px; color: var(--sub); margin-top: 8px; line-height: 1.6; }
+/* v7.15.6 冗余清理：.fb-select/.fb-input/textarea 样式已无使用者
+ * （反馈表单与白名单搜索框均已移除），仅保留在役的 .fb-result */
+.fb-result.ok { color: var(--brand-deep); }
+.fb-result.err { color: #b91c1c; }
+
+/* ───────── 订阅页 ───────── */
+.kv {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 9px 0;
+  font-size: 14px;
+}
+.kv span { color: var(--sub); }
+.kv b { font-weight: 700; font-variant-numeric: tabular-nums; }
+.sub-note { font-size: 12.5px; color: var(--sub); margin: 4px 0 10px; }
+/* v7.15.6 冗余清理：.sub-status（订阅页 v7.15.0 移除后退役）已删 */
+.chip {
+  font-size: 11.5px;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 3px 10px;
+}
+.chip-green { background: var(--brand-soft); color: var(--brand-deep); }
+
+/* ───────── 我的 ───────── */
+/* v7.15.6 冗余清理：空规则 .changelog { } 已删（元素布局由父容器管） */
+.log-item { padding: 10px 0; border-bottom: 1px solid var(--line); }
+.log-item:last-child { border-bottom: none; }
+.log-v { font-size: 13px; font-weight: 800; color: var(--brand-deep); }
+.log-d { font-size: 13px; color: var(--sub); margin-top: 3px; line-height: 1.65; }
+
+.log-box {
+  max-height: 300px;
+  overflow-y: auto;
+  background: #f7fbf8;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 12px;
+  color: var(--sub);
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.log-box::-webkit-scrollbar { width: 4px; }
+.log-box::-webkit-scrollbar-thumb { background: #c8dccf; border-radius: 2px; }
+.log-box .empty { text-align: center; padding: 20px 0; }
+
+.links-card { padding: 4px 16px; }
+.link-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  background: none;
+  border: none;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+  padding: 14px 0;
+  cursor: pointer;
+}
+.link-row + .link-row { border-top: 1px solid var(--line); }
+.arrow { color: #a9bcb0; font-size: 18px; }
+
+.foot-note { text-align: center; font-size: 12px; color: #93a89b; padding: 8px 0 12px; }
+
+/* ───────── 进度条 ───────── */
+.progress-wrap { margin-top: 10px; }
+.progress {
+  height: 7px;
+  background: #e3ede6;
+  border-radius: 99px;
+  overflow: hidden;
+}
+.progress-bar {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #34d399, #059669);
+  border-radius: 99px;
+  transition: width .3s;
+}
+.progress-text { font-size: 12px; color: var(--sub); margin-top: 6px; text-align: center; }
+
+/* ───────── 底部导航 ───────── */
+.tabbar {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  background: rgba(255, 255, 255, .95);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-top: 1px solid var(--line);
+  padding-bottom: env(safe-area-inset-bottom);
+  z-index: 10;
+}
+
+.tabbtn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  background: none;
+  border: none;
+  color: #8ba293;
+  font-size: 11px;
+  font-family: inherit;
+  padding: 9px 0 8px;
+  cursor: pointer;
+}
+.tabbtn.active { color: var(--brand); font-weight: 700; }
+
+/* mascot 动效（v4.1.0：新形象为位图，用滤镜 + 轻浮动表达状态） */
+.hero-mascot img, .brand-logo img { display: block; }
+.hero-mascot img.on { animation: float 2.6s ease-in-out infinite; }
+.hero-mascot img.off, .brand-logo img.off { filter: grayscale(.75) opacity(.72); }
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+/* v7.15.6 缺陷修复：上传按钮 spinner 用的 adspin 关键帧此前从未定义
+ * （app.js 内联 animation:adspin .8s linear infinite 无 keyframes = 静止）。 */
+@keyframes adspin { to { transform: rotate(360deg); } }
+
+/* ───────── v4.3.0 应用白名单 ───────── */
+/* v7.2.0 全量应用列表：可视区 264px→460px；v7.15.6 默认收起只显示 5 款
+ * （展开后仍在此高度内滚动检索） */
+.wl-list {
+  margin-top: 10px;
+  max-height: 460px;
+  overflow-y: auto;
+  border-top: 1px solid var(--line);
+  -webkit-overflow-scrolling: touch;
+}
+.wl-list::-webkit-scrollbar { width: 4px; }
+.wl-list::-webkit-scrollbar-thumb { background: #d5e5da; border-radius: 4px; }
+/* v7.2.0 全量应用列表统计行（renderWhitelist 动态插入 wl-list 上方） */
+.wl-total { font-size: 12px; color: var(--sub); margin: 4px 0; }
+.wl-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 2px;
+  border-bottom: 1px solid var(--line);
+}
+.wl-row:last-child { border-bottom: none; }
+.wl-label { display: flex; flex-direction: column; min-width: 0; }
+.wl-name { font-size: 14px; font-weight: 600; color: var(--ink); }
+.wl-pkg {
+  font-size: 11px; color: var(--sub);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 60vw;
+}
+/* v7.15.6 展开全部/收起切换行（默认 5 款 + 展开全量）——44px 触控目标 */
+.wl-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  margin-top: 2px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--brand-deep);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.wl-toggle:active { opacity: .7; }
+.wl-toggle:focus-visible { outline: 2px solid #10B981; outline-offset: 2px; border-radius: 8px; }
+/* v7.15.6 冗余清理：.wl-add-row / .wl-search-row 系列已随搜索框与手动
+ * 添加行移除而退役 */
+
+/* v7.1.0 卫士使用报告（.rp-sec 已随 v7.2.0 rp-fold 改版退役；其余在役） */
+.report-box { font-size: 12.5px; line-height: 1.7; }
+.report-box .rp-line { color: var(--ink); }
+.report-box .rp-meta { color: var(--sub); font-size: 11.5px; margin-top: 6px; }
+
+/* ══════════ v5.2.0 保活体检（issue#56：防清理后台/覆盖安装吊销无障碍）══════════ */
+.ka-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 0;
+  border-bottom: 1px solid rgba(16, 185, 129, 0.08);
+}
+.ka-row:last-child { border-bottom: none; }
+/* v7.15.6 冗余清理：.ka-dot 系列已随 v5.8.0 保活体检简化退役 */
+.ka-info { flex: 1; min-width: 0; }
+.ka-name { font-size: 13.5px; font-weight: 600; color: #1A2E24; }
+.ka-desc { font-size: 11.5px; color: #7A8F84; margin-top: 2px; line-height: 1.45; }
+.ka-chip-ok { background: rgba(16, 185, 129, 0.12); color: #0B7A5C; }
+.ka-chip-warn { background: rgba(245, 158, 11, 0.14); color: #B45309; }
+
+/* v7.15.6 冗余清理：v5.6.0 订阅市场 .market-* 系列已随 v7.15.0 订阅页
+ * 移除而退役（原约 60 行），仅保留其后在役的保活体检绿字 */
+/* v5.8.0 保活体检一行绿字（全部通过态） */
+.ka-ok-line {
+  font-size: 13px;
+  font-weight: 600;
+  color: #0B7A5C;
+  padding: 2px 0;
+}
+
+/* ══════════ v7.2.0 卫士使用报告：饼图常驻 + 明细折叠 ══════════
+ * （用户实锤：报告生成后太长看着难受——顶部拦截分布饼图常驻 + 五段明细
+ *  默认收起，进入我的页自动刷新；配色只用绿色系，均取自本文件既有色板：
+ *  深绿 --brand-deep / 中绿 --brand / 翠绿 #10B981 / 浅绿 #34D399 / 灰绿
+ *  #C8DCCF，空态环用中性灰 #CBD5D1——绝不用蓝色/靛蓝色） */
+.report-box .rp-pie-wrap {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 2px 0 4px;
+}
+.rp-pie {
+  width: 112px;
+  height: 112px;
+  border-radius: 50%;
+  flex: 0 0 112px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.rp-pie-hole {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+.rp-pie-num {
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--brand-deep);
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+}
+.rp-pie-lbl { font-size: 9.5px; color: var(--sub); line-height: 1.3; }
+.rp-legend { flex: 1; min-width: 0; }
+.rp-legend-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 2.5px 0;
+  font-size: 12px;
+}
+.rp-legend-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+  flex: 0 0 9px;
+  border: 1px solid rgba(12, 32, 21, .08);
+}
+.rp-legend-name {
+  flex: 1;
+  min-width: 0;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rp-legend-val { color: var(--sub); font-variant-numeric: tabular-nums; }
+/* 折叠明细：默认全收起（.rp-fold-bd 隐藏），点标题行切换 .open；
+ * 展开箭头用 ::after 字符 ▸/▾（与 .arrow 的 › 同体系的轻量字符三角） */
+.rp-fold { border-top: 1px dashed var(--line); margin-top: 8px; }
+.rp-fold-hd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 2px 4px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.rp-fold-hd:active { opacity: .6; }
+.rp-fold-tt { font-size: 12.5px; font-weight: 700; color: var(--ink); }
+.rp-fold-arrow { flex: 0 0 auto; color: #a9bcb0; font-size: 12px; }
+.rp-fold-arrow::after { content: "▸"; }
+.rp-fold.open .rp-fold-arrow::after { content: "▾"; }
+.rp-fold-bd { display: none; padding-bottom: 6px; }
+.rp-fold.open .rp-fold-bd { display: block; }
+
+/* ══════════ v7.15.0 帮助页 + 开屏提示弹窗 ══════════ */
+.help-group { margin-top: 8px; display: flex; flex-direction: column; gap: 10px; }
+.help-row { display: flex; flex-direction: column; gap: 3px; padding-bottom: 9px; border-bottom: 1px dashed #e3ece6; }
+.help-row:last-child { border-bottom: none; padding-bottom: 0; }
+.help-row b { font-size: 13.5px; color: #0c2015; font-weight: 700; }
+.help-row span { font-size: 12.5px; color: #5b6b60; line-height: 1.55; }
+.hs-row { font-size: 12.5px; color: #5b6b60; line-height: 1.5; margin-top: 6px; }
+.hs-ok { color: #047857; font-weight: 700; }
+.hs-warn { color: #b45309; font-weight: 700; }
+
+/* 开屏提示弹窗（进入 App 三按钮——v7.15.0） */
+.tip-card { background: #fff; border-radius: 16px; max-width: 340px; width: 100%;
+  padding: 20px 18px 14px; box-shadow: 0 18px 50px rgba(0,0,0,.28); }
+.tip-badge { font-size: 16.5px; font-weight: 800; color: #0c2015; text-align: center; }
+.tip-list { list-style: none; margin: 12px 0 14px; padding: 0; display: flex;
+  flex-direction: column; gap: 9px; }
+.tip-list li { font-size: 12.5px; color: #3f4f45; line-height: 1.55; position: relative;
+  padding-left: 14px; }
+.tip-list li::before { content: ""; position: absolute; left: 0; top: 7px; width: 6px;
+  height: 6px; border-radius: 50%; background: var(--brand); }
+.tip-list b { color: #0c2015; }
+.tip-btns { display: flex; flex-direction: column; gap: 8px; }
+.tip-btn { width: 100%; border: 0; border-radius: 10px; font-size: 14px; font-weight: 600;
+  padding: 10px 0; background: var(--brand); color: #fff; }
+.tip-btn:active { opacity: .88; }
+.tip-btn:disabled { opacity: .45; cursor: not-allowed; }
+.tip-btn-mute { background: #eef4f0; color: #5b6b60; }
+.tip-btn-go { background: #fff; color: var(--brand-deep); box-shadow: inset 0 0 0 1.5px var(--brand); }
+/* v7.15.7 用户指令：亮字承诺——每周根据日志问题至少迭代版本一次（品牌绿高亮行） */
+.tip-weekly { margin: 0 0 10px; padding: 9px 12px; border-radius: 10px;
+  background: var(--brand-soft); border: 1px solid #a7e3c3;
+  font-size: 13px; font-weight: 700; color: var(--brand-deep); line-height: 1.5;
+  text-align: center; }
+.tip-weekly b { color: #065f46; }
+/* v7.15.7 3 秒观闸倒计时行（到点自动移除） */
+.tip-hold { margin: 0 0 10px; font-size: 12px; font-weight: 600; color: #8ba293;
+  text-align: center; }
+/* v7.15.7 版本页「迭代节奏」亮字卡 */
+.iter-promise { font-size: 13px; font-weight: 600; color: var(--brand-deep);
+  line-height: 1.6; }
+.iter-promise b { color: #065f46; }
+
+/* ═══ v8.0.6 白名单图标 / 搜索 / 引擎日志双通道 ═══ */
+.wl-search-row { display: flex; margin: 6px 0 2px; }
+.wl-search {
+  flex: 1; border: 1px solid var(--line); border-radius: 10px;
+  padding: 9px 12px; font-size: 13px; background: #fff; color: var(--ink);
+  outline: none; min-width: 0;
+}
+.wl-search:focus { border-color: #34D399; box-shadow: 0 0 0 2px rgba(52,211,153,.18); }
+.wl-search::placeholder { color: #9aa8a0; }
+.wl-row .wl-icon {
+  width: 40px; height: 40px; border-radius: 12px; flex: none;
+  background: #E8F3EC; color: #40604e; font-size: 17px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden; user-select: none;
+}
+.wl-row .wl-icon img { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: inherit; }
+/* 既有 .wl-row 为 space-between 三段式（gap:10px 原已有）：图标/标签/开关
+ * 布局需要中段标签吃满剩余空间，否则 space-between 会把标签推到行中央 */
+.wl-row .wl-label { flex: 1; }
+.log-tabs { display: flex; align-items: center; gap: 8px; margin: 4px 0 8px; flex-wrap: wrap; }
+.log-chip {
+  border: 1px solid var(--line); background: #fff; color: var(--sub);
+  font-size: 12.5px; font-weight: 700; padding: 5px 14px; border-radius: 999px;
+  cursor: pointer;
+}
+.log-chip.active { background: var(--brand-deep); border-color: var(--brand-deep); color: #fff; }
+.log-tab-note { font-size: 11.5px; color: #9aa8a0; }
+.logd-row { display: flex; gap: 8px; padding: 5px 0; align-items: baseline; }
+.logd-t { font-size: 11px; color: #9aa8a0; flex: none; font-variant-numeric: tabular-nums; width: 58px; }
+.logd-m { font-size: 12.5px; line-height: 1.6; color: var(--ink); word-break: break-all; }
+.logd-warn .logd-m { color: #b45309; }
+.logd-err .logd-m { color: #b91c1c; }
+.logd-d2 { font-size: 11px; color: #9aa8a0; padding: 0 0 5px 66px; word-break: break-all; line-height: 1.5; font-family: monospace; }
+
+/* ═══ v8.0.7 白名单展开态置顶收起条（sticky——列表滚到任何位置都能一键收起）═══
+ * 行语言与 .wl-row 一致（全宽 / 9px 2px 内距 / 底部 1px 分隔线 / 白色不透明底，
+ * 同卡片白 #fff——本样式表无 --bg-card 变量，白底与 .wl-search/.log-chip 一致）。
+ * 整条不加圆角：全宽 sticky 圆角会在四角透出行内容；圆角语言由「收起 ▴」
+ * pill 按钮承载（描边风同 .tip-btn-go，绿色文字+描边，非大色块）。 */
+.wl-sticky-collapse {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 44px;
+  padding: 9px 2px;
+  background: #fff;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+/* label 字号/字色同 .wl-pkg 小字 */
+.wl-sticky-label { font-size: 11px; color: var(--sub); }
+.wl-sticky-btn {
+  flex: none;
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--brand-deep);
+  background: #fff;
+  box-shadow: inset 0 0 0 1.5px var(--brand);
+  transition: background-color .15s ease;
+}
+.wl-sticky-collapse:hover { background: #f6faf7; }
+.wl-sticky-collapse:active { background: #eff7f1; }
+.wl-sticky-btn:hover { background: var(--brand-soft); }
+.wl-sticky-btn:active { opacity: .7; }
+.wl-sticky-collapse:focus-visible { outline: 2px solid #10B981; outline-offset: -2px; }

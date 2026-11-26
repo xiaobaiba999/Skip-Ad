@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<title>开屏卫士</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- 顶栏 -->
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-logo" id="brand-logo"></span>
+      <span class="brand-name">开屏卫士</span>
+    </div>
+    <span class="ver-chip" id="ver-chip">v?</span>
+  </header>
+
+  <!-- v7.0.0：顶部更新横幅已整体移除（用户实锤：每次检查更新出现两个提示信息——
+       只保留我的页手动「检查更新」一条路径，下载也只能从它发起）。 -->
+
+  <main id="main">
+
+    <!-- ───────── 首页 ───────── -->
+    <section class="page active" id="page-home">
+
+      <div class="battery-banner" id="battery-banner" style="display:none">
+        <span>加入电池白名单，守护更稳</span>
+        <button class="link-btn" id="btn-battery">去设置</button>
+      </div>
+
+      <!-- 守护状态 -->
+      <div class="hero-card" id="hero-card">
+        <div class="hero-mascot" id="hero-mascot"></div>
+        <div class="hero-status">
+          <div class="hero-title" id="hero-title">检查中</div>
+          <div class="hero-sub" id="hero-sub">无障碍跳过服务</div>
+        </div>
+        <div class="hero-actions" id="hero-actions">
+          <button class="btn btn-primary btn-block" id="btn-enable">开启服务</button>
+          <button class="btn btn-primary btn-block" id="btn-revive" style="display:none">一键恢复</button>
+          <button class="btn btn-primary btn-block" id="btn-resume" style="display:none">恢复防护</button>
+          <button class="btn btn-ghost btn-block" id="btn-pause" style="display:none">暂停防护</button>
+          <div class="hero-tip" id="hero-tip">开启一次，持续守护</div>
+        </div>
+      </div>
+
+      <!-- v5.8.0 保活体检（简化版）：一行状态，只列待处理项——怎么简单怎么来 -->
+      <div class="card" id="ka-card" style="display:none">
+        <div class="row-between">
+          <div class="card-title">保活体检</div>
+          <span class="chip" id="ka-chip">体检中</span>
+        </div>
+        <div id="ka-list" style="margin-top:8px"></div>
+      </div>
+
+      <!-- 战绩 -->
+      <div class="card stats-card">
+        <div class="stat">
+          <div class="num" id="st-auto">0</div>
+          <div class="lbl">跳过广告</div>
+        </div>
+        <div class="stat">
+          <div class="num" id="st-popup">0</div>
+          <div class="lbl">关闭弹窗</div>
+        </div>
+        <div class="stat">
+          <div class="num" id="st-manual">0</div>
+          <div class="lbl">拦截应用</div>
+        </div>
+      </div>
+
+      <!-- 开关 -->
+      <div class="card switch-card">
+        <div class="switch-row">
+          <span class="sw-name">弹窗广告屏蔽</span>
+          <label class="switch"><input type="checkbox" id="toggle-popup"><span class="slider"></span></label>
+        </div>
+        <div class="switch-row">
+          <div>
+            <span class="sw-name">订阅自动同步</span>
+            <div class="sub-note" style="margin:2px 0 0">每日后台自动同步社区订阅规则——关闭后仍使用当前已导入规则</div>
+          </div>
+          <label class="switch"><input type="checkbox" id="toggle-learning" checked><span class="slider"></span></label>
+        </div>
+      </div>
+
+      <!-- v4.3.0 应用白名单（v7.15.6：去掉搜索框与手动添加行，默认只显示
+           5 款应用 + 展开全部；v8.0.6：搜索框回归 + 应用图标 + 加载就绪态） -->
+      <div class="card" id="wl-card">
+        <div class="row-between">
+          <div>
+            <div class="card-title">应用白名单</div>
+            <div class="sub-note" style="margin-top:4px">白名单内应用不扫描、不点击、不打扰</div>
+          </div>
+          <span class="chip" id="wl-count">0</span>
+        </div>
+        <div class="wl-search-row"><input type="search" id="wl-search" class="wl-search" placeholder="搜索应用" aria-label="搜索应用" autocomplete="off"></div>
+        <div class="wl-list" id="wl-list"><div class="empty">加载中…</div></div>
+      </div>
+    </section>
+
+    <!-- ───────── 帮助（v7.15.0：底栏新增——订阅页已移除，id667 订阅每日后台自动导入）───────── -->
+    <section class="page" id="page-help">
+
+      <!-- 动态状态行（app.js renderHelpDynamic 刷新） -->
+      <div class="card" id="help-status-card">
+        <div class="row-between">
+          <div class="card-title">卫士状态</div>
+          <span class="chip chip-green" id="help-status-chip">实时</span>
+        </div>
+        <div id="help-status"></div>
+      </div>
+
+      <!-- 快速上手 -->
+      <div class="card">
+        <div class="card-title">快速上手</div>
+        <div class="help-group">
+          <div class="help-row"><b>开启服务</b><span>点「首页 → 开启服务」直达系统开关页。系统会显示 10 秒安全确认（防诈设计，属正常），等待后确认即可。</span></div>
+          <div class="help-row"><b>持续守护</b><span>开启一次即可：开屏广告露头即点、软件内弹窗/插屏自动关闭，日常零操作。</span></div>
+          <div class="help-row"><b>免重复开启</b><span>退出 App、清理后台、重启手机后都会自动恢复，无需重新开启，也无需再去系统设置。</span></div>
+        </div>
+      </div>
+
+      <!-- 固定后台（核心指引） -->
+      <div class="card">
+        <div class="row-between">
+          <div class="card-title">请把卫士固定在后台（很重要）</div>
+          <span class="chip" style="background:#FEF3C7;color:#92400E">必读</span>
+        </div>
+        <div class="sub-note" style="margin-top:6px">后台被清理是「息屏或切应用回来，第一条广告拦不住」的主要原因。三步加固：</div>
+        <div class="help-group">
+          <div class="help-row"><b>1 · 最近任务加锁</b><span>打开多任务界面，找到开屏卫士卡片，下拉加锁（或长按选「锁定」）——厂商清理后台不再清掉卫士。</span></div>
+          <div class="help-row"><b>2 · 电池白名单</b><span>首页「保活体检」里有直达引导：允许卫士后台运行，省电策略不再杀服务。</span></div>
+          <div class="help-row"><b>3 · 通知权限</b><span>允许通知——万一服务被系统关闭，通知栏会一键恢复（点按即回，全程不去系统设置）。</span></div>
+        </div>
+        <div class="sub-note">若卫士短暂掉线：打开卫士首页会自动恢复（也可以从通知栏一键恢复），无需任何手动设置。</div>
+      </div>
+
+      <!-- 常见问题 -->
+      <div class="card">
+        <div class="card-title">常见问题</div>
+        <div class="help-group">
+          <div class="help-row"><b>息屏或切应用回来，第一个广告没拦住？</b><span>卫士后台被清理所致（见上方「固定后台」）。新版已在亮屏/解锁瞬间自动补扫，但后台被杀仍需恢复——按三步加固即可根治。</span></div>
+          <div class="help-row"><b>进入 App 弹出的提示是什么？</b><span>开屏广告拦截提示（知道了 / 12 小时不再提示 / 去上传日志）——需强制观看 5 秒后按钮才可操作。选「12 小时不再提示」静音 12 小时，升级新版本后会再提醒一次。</span></div>
+          <div class="help-row"><b>检查更新失败或下载慢？</b><span><b style="color:#C2410C">检查更新失败请开启 GitHub 加速器（如 Watt Toolkit）后重试</b>——不开梯子也能恢复；下载内置多条备用通道自动切换（CDN 直链优先），也可到 GitHub Releases 页手动下载安装。</span></div>
+          <div class="help-row"><b>订阅规则还要手动导入吗？</b><span>不用。社区订阅每日后台自动导入（失败自动重试 + 内置快照兜底），无需任何操作。</span></div>
+        </div>
+      </div>
+
+      <!-- 日志与隐私 -->
+      <div class="card">
+        <div class="card-title">日志与隐私</div>
+        <div class="help-group">
+          <div class="help-row"><b>数据仅存本机</b><span>联网只用于日志提交与版本更新，无账号、无云端。</span></div>
+          <div class="help-row"><b>自动提交</b><span>引擎日志每 8 小时自动提交一次（一日 3 次），也可在「我的 → 引擎日志」手动上传。</span></div>
+          <div class="help-row"><b>自动脱敏</b><span>上传前手机号/身份证/邮箱/地址自动打码，只保留定位问题所需的技术信息。</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ───────── 版本（v7.15.7：底栏新增——当前版本与版本记录从「我的」抽出
+         独立成页，用户指令：卫士使用报告与引擎日志留在「我的」）───────── -->
+    <section class="page" id="page-version">
+
+      <div class="card">
+        <div class="row-between">
+          <div class="kv" style="padding:0"><span>当前版本</span><b id="ver-cur">--</b></div>
+          <button class="btn btn-ghost btn-sm" id="btn-check-update">检查更新</button>
+        </div>
+        <!-- v7.15.4：检查更新失败指引（用户指令：当前版本下方小字·醒目色） -->
+        <div style="margin-top:8px;padding:7px 10px;border-radius:10px;background:#FFF7ED;border:1px solid #FDBA74;font-size:12px;font-weight:700;color:#C2410C;line-height:1.55">检查更新失败？开启 GitHub 加速器（如 Watt Toolkit）后重试即可</div>
+        <!-- v7.0.0：新版本功能描述就地渲染（≤5 条带序号——检查更新发现新版本时
+             当场显示下一版本的功能，不再只弹版本号） -->
+        <div class="page-notes" id="page-notes" style="display:none"></div>
+        <div class="progress-wrap" id="page-progress-wrap" style="display:none">
+          <div class="progress"><div class="progress-bar" id="page-bar"></div></div>
+          <div class="progress-text" id="page-progress-text">准备中</div>
+        </div>
+        <button class="btn btn-primary btn-block" id="page-dl-btn" style="display:none;margin-top:10px">下载更新</button>
+        <div class="fb-result" id="page-dl-note" style="display:none"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">版本记录</div>
+        <!-- v6.1.0：版本描述言简意赅——1 个标题 + 1 个段落，历史版本归档 GitHub Releases -->
+        <div class="changelog" id="changelog"></div>
+        <div class="sub-note" style="margin-top:8px">历史版本归档 GitHub Releases（我的页「GitHub 仓库」可直达）</div>
+      </div>
+
+      <!-- v7.15.7（用户指令）：亮字承诺——每周根据日志问题至少迭代版本一次 -->
+      <div class="card">
+        <div class="card-title">迭代节奏</div>
+        <div class="iter-promise">每周根据日志问题<b>至少迭代版本一次</b>——你上传的引擎日志直接驱动下一版修复（未命中样本越具体，补规则越快）。</div>
+      </div>
+    </section>
+
+    <!-- ───────── 我的（v7.15.7：版本相关已迁「版本」页——卫士使用报告与引擎日志留在本页）───────── -->
+    <section class="page" id="page-me">
+
+      <!-- v7.1.0 卫士使用报告 · v7.2.0 饼图常驻 + 明细折叠（用户实锤：报告太长
+           看着难受——饼图常驻、五段明细默认收起；进入「我的」页自动静默刷新，
+           按钮只负责手动再刷新一次；数据全部来自本机，零上传零联网） -->
+      <div class="card">
+        <div class="row-between">
+          <div>
+            <div class="card-title">卫士使用报告</div>
+            <div class="sub-note" style="margin-top:4px">拦截战绩 · 订阅两源命中 · 能耗画像 · 设备画像</div>
+          </div>
+          <button class="btn btn-ghost btn-sm" id="btn-report">刷新报告</button>
+        </div>
+        <div class="log-box report-box" id="report-body"></div>
+      </div>
+
+      <!-- v6.1.0 免打扰持久模式已取消（用户实锤：高级免打扰持久模式不能在安装时
+           实现、必须连电脑执行的活太麻烦——不要了）：一键恢复 + 前台看门狗 +
+           零触摸自愈已覆盖普通用户全部场景，ADB 极客入口整体移除。 -->
+
+      <div class="card">
+        <div class="row-between">
+          <div class="card-title">引擎日志</div>
+          <div class="btn-row" style="margin:0">
+            <button class="btn btn-ghost btn-sm" id="btn-refresh-log">刷新</button>
+            <button class="btn btn-primary btn-sm" id="btn-upload-log">上传日志</button>
+          </div>
+        </div>
+        <div class="log-tabs">
+          <button class="log-chip active" id="log-chip-latest" type="button">最新</button>
+          <button class="log-chip" id="log-chip-detail" type="button">详细</button>
+          <span class="log-tab-note">简洁=触发记录 · 详细=引擎全链路（8.0.6 新增）</span>
+        </div>
+        <div class="log-box" id="real-log"></div>
+        <div class="fb-result" id="upload-log-result"></div>
+      </div>
+
+      <div class="card links-card">
+        <button class="link-row" id="link-repo">
+          <span>GitHub 仓库</span><span class="arrow">›</span>
+        </button>
+      </div>
+
+      <p class="foot-note">数据仅存本机 · 联网仅日志与更新 · 日志每 8 小时自动提交一次（一日 3 次）</p>
+    </section>
+  </main>
+
+  <!-- 底部导航（v7.15.7：新增「版本」页——当前版本/版本记录从我的页抽出） -->
+  <nav class="tabbar">
+    <button class="tabbtn active" data-page="home">
+      <svg viewBox="0 0 24 24" width="22" height="22"><path d="M4 11.5 12 4l8 7.5V20a1 1 0 0 1-1 1h-4.5v-6h-5v6H5a1 1 0 0 1-1-1z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/></svg>
+      <span>首页</span>
+    </button>
+    <button class="tabbtn" data-page="help">
+      <svg viewBox="0 0 24 24" width="22" height="22"><circle cx="12" cy="12" r="9.2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M9.4 9.2a2.7 2.7 0 1 1 3.9 2.4c-.8.4-1.3 1-1.3 1.9v.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="17.4" r="1.1" fill="currentColor"/></svg>
+      <span>帮助</span>
+    </button>
+    <button class="tabbtn" data-page="version">
+      <svg viewBox="0 0 24 24" width="22" height="22"><path d="M20.6 7.3 16.7 3.4a1.2 1.2 0 0 0-1.7 0L3.9 14.5a1.2 1.2 0 0 0-.3.6l-.9 4.6a1.2 1.2 0 0 0 1.4 1.4l4.6-.9a1.2 1.2 0 0 0 .6-.3L20.6 9a1.2 1.2 0 0 0 0-1.7z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="m14.5 5.6 3.9 3.9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      <span>版本</span>
+    </button>
+    <button class="tabbtn" data-page="me">
+      <svg viewBox="0 0 24 24" width="22" height="22"><circle cx="12" cy="8" r="3.6" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M5 20c.8-3.6 3.6-5.4 7-5.4s6.2 1.8 7 5.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      <span>我的</span>
+    </button>
+  </nav>
+</div>
+<!-- v7.0.0 界面初始化保险丝（内联零依赖）：app.js 5 秒内未完成初始化
+     （脚本早期崩溃/WebView 异常）时，把首页「检查中/加载中」占位换成
+     可操作指引——绝不出现「永久加载无反馈」的白屏态。 -->
+<script>
+setTimeout(function () {
+  if (window.__appBootOk) return;
+  var t = document.getElementById("hero-title");
+  var s = document.getElementById("hero-sub");
+  var p = document.getElementById("hero-tip");
+  if (t) t.textContent = "界面初始化未完成";
+  if (s) s.textContent = "从最近任务划掉卫士后重开（数据不受影响）";
+  if (p) p.textContent = "若仍无效：重新安装 APK 即可恢复（无需卸载，覆盖安装）";
+}, 5000);
+</script>
+<script src="app.js"></script>
+</body>
+</html>

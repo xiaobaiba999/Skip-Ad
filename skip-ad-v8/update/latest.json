@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "versionName": "8.0.6",
+  "versionCode": 80600,
+  "releaseTag": "v8.0.6",
+  "releaseName": "开屏卫士 v8.0.6",
+  "releaseNotes": "# 开屏卫士 v8.0.6 · 多品牌兼容修复版\n\n修复 Redmi/一加等设备全新安装后使用报告与引擎日志全空的确定性缺陷，小米 15 Pro（升级安装）行为不变：\n\n1. 全新安装订阅开箱即用：内置三订阅（Lin-arm / aoguai / 甘霖）装好即生效，使用报告与引擎日志恢复真实数据\n2. 应用白名单加固：真实应用名称优先（单应用解析失败仅回退包名末段）、应用图标加载、搜索框恢复、单个应用信息读取失败不再影响整列表\n3. 引擎日志双通道：新增「详细」视图（服务连接/断开、动作执行与失败原因、订阅状态、配置变更），与「最新」简洁触发记录同源关联\n4. 详细日志异步写入（不阻塞无障碍事件线程，容量 800 条自动轮转），上传日志正文附带最近 30 条详细记录\n5. 更新链路指向官方仓库（Skip-Ad）并保留 kilo 历史源回退，兼容 8.0.x 旧版本检查更新；签名与 v7.x/v8.x 一致，覆盖安装即升级",
+  "publishedAt": "2026-11-26T00:00:00Z",
+  "apkUrl": "https://github.com/xiaobaiba999/Skip-Ad/releases/download/v8.0.6/adshield-v8.0.6.apk",
+  "apkFileName": "adshield-v8.0.6.apk",
+  "apkSha256": "8ab64b46dda11d07ef78a8bcac7e8d98fa82d1ae95a2840a41b2e6dc0ce98c12",
+  "apkSize": 3570907,
+  "packageName": "com.zai.adshield",
+  "minSupportedVersionCode": 0,
+  "mandatoryUpdate": false
+}

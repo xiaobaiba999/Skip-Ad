@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Skip-Ad Guardian</string>
+    <string name="companion_a11y_label">Skip-Ad Guardian companion service (do not enable manually)</string>
+    <string name="companion_a11y_desc">Managed automatically by Skip-Ad Guardian. Do not enable manually.\n\nHelps automation work in some apps and keeps Skip-Ad Guardian running in the background.\n\nAccessibility capabilities are disabled; only the service remains running, with minimal overhead. Some apps may still detect accessibility as enabled.</string>
+    <string name="privileged_a11y_label">Skip-Ad Guardian touch optimization (do not enable manually)</string>
+    <string name="privileged_a11y_desc">Managed automatically by Skip-Ad Guardian. Do not enable manually.\n\nReads screen content and matches rules. The privileged service performs clicks and swipes to reduce touch stutter.</string>
+    <string name="a11y_desc">Automatically taps the skip or close buttons shown by apps based on built-in subscription rules.\n\nScreen content is read in memory only and never uploaded; data stays on this device.</string>
+    <string name="import_backup">Import backup</string>
+    <string name="capture_snapshot">Capture snapshot</string>
+    <string name="debug_service">Debug service</string>
+    <string name="snapshot_button">Snapshot button</string>
+    <string name="rule_match">Rule matching</string>
+    <string name="record_activity">Activity service</string>
+    <string name="record_a11y_event">Event service</string>
+</resources>

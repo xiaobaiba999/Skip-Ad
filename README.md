@@ -4,175 +4,264 @@
 
 # 开屏卫士 · Skip-Ad
 
-**安卓开屏广告「露头就跳」引擎 —— 只点应用自带的「跳过」键**
+**新一代安卓广告跳过工具 —— GKD 内核 × 开屏卫士产品层，融合重写**
 
-开屏 · 插屏 · 信息流 · 视频开屏 · 摇一摇诱导，全场景秒级代点；1:1 人手模拟触点，误触与多点根治；870KB 零依赖，冷启动毫秒级。
+在开源项目 [GKD](https://github.com/gkd-kit/gkd)（GPL-3.0，本项目基线为上游 1.13.2）核心技术基础上重构、融合与产品化开发：开屏 · 弹窗 · 信息流 · 反馈面板，无障碍事件驱动匹配，只点应用自带的「跳过 / 关闭」键。
 
+[![最新版本](https://img.shields.io/badge/%E7%89%88%E6%9C%AC-v8.0.7-blue?style=flat-square)](#%EF%B8%8F-%E4%B8%8B%E8%BD%BD%E4%B8%8E%E5%AE%89%E8%A3%85)
 [![最新发布](https://img.shields.io/github/v/release/xiaobaiba999/Skip-Ad?style=flat-square&label=%E6%9C%80%E6%96%B0%E5%8F%91%E5%B8%83)](https://github.com/xiaobaiba999/Skip-Ad/releases/latest)
-[![APK](https://img.shields.io/badge/APK-870KB-orange?style=flat-square)](#-下载最新版)
-[![测试](https://img.shields.io/badge/JVM%E6%96%AD%E8%A8%80-4530%20%E2%9C%85-brightgreen?style=flat-square)](#-质量与兼容)
-[![机型矩阵](https://img.shields.io/badge/%E6%9C%BA%E5%9E%8B%E7%9F%A9%E9%98%B5-9%E5%93%81%E7%89%8C352%E6%9C%BA%E5%9E%8B-blue?style=flat-square)](#-质量与兼容)
-[![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](#-许可)
+[![APK](https://img.shields.io/badge/APK-3.5MB-orange?style=flat-square)](#%EF%B8%8F-%E4%B8%8B%E8%BD%BD%E4%B8%8E%E5%AE%89%E8%A3%85)
+[![系统](https://img.shields.io/badge/Android-8.0%2B-green?style=flat-square)](#%EF%B8%8F-%E4%B8%8B%E8%BD%BD%E4%B8%8E%E5%AE%89%E8%A3%85)
+[![License](https://img.shields.io/badge/license-GPL--3.0-green?style=flat-square)](#-%E5%BC%80%E6%BA%90%E5%8D%8F%E8%AE%AE%E5%8F%8A%E8%87%B4%E8%B0%A2)
 
-[Releases](https://github.com/xiaobaiba999/Skip-Ad/releases) · [更新日志](docs/CHANGELOG.md) · [订阅仓库](https://github.com/xiaobaiba999/skip-ad-subscription) · [问题反馈](https://github.com/xiaobaiba999/Skip-Ad/issues)
+[Releases](https://github.com/xiaobaiba999/Skip-Ad/releases) · [更新日志](docs/CHANGELOG.md) · [安全披露](docs/SECURITY.md) · [问题反馈](https://github.com/xiaobaiba999/Skip-Ad/issues)
 
 </div>
 
 ---
 
-## ⬇️ 下载最新版
+## 📖 项目简介
 
-**当前版本 [v7.15.14](https://github.com/xiaobaiba999/Skip-Ad/releases/tag/v7.15.14)（2026-11-25）**：后台丢功能根治（死透快档闹钟+keepOn 解耦+营销 vid 证据）。APK `869,942` 字节 · SHA-256 `50779c63…b924a`（[完整值](https://github.com/xiaobaiba999/Skip-Ad/releases/tag/v7.15.14)）。
-
-| 下载通道 | 说明 | 链接 |
-| --- | --- | --- |
-| **jsDelivr CDN 直链** | 国内推荐，直出仓库归档（与 Release 资产同字节） | [`adshield-latest.apk`（始终最新）](https://gcore.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/android-app/dist/adshield-latest.apk) · [本版直链](https://gcore.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/android-app/dist/adshield-v7.15.14.apk) · [testingcf 备用](https://testingcf.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/android-app/dist/adshield-latest.apk) |
-| **ghfast.top 镜像** | GitHub Release 资产加速 | [下载 adshield-v7.15.14.apk](https://ghfast.top/https://github.com/xiaobaiba999/Skip-Ad/releases/download/v7.15.14/adshield-v7.15.14.apk) |
-| **gh-proxy.com 镜像** | GitHub Release 资产加速 | [下载 adshield-v7.15.14.apk](https://gh-proxy.com/https://github.com/xiaobaiba999/Skip-Ad/releases/download/v7.15.14/adshield-v7.15.14.apk) |
-| **GitHub Releases** | 官方主源 | [releases/latest](https://github.com/xiaobaiba999/Skip-Ad/releases/latest) |
-
-- 已装 v7.x 任何正式版：**直接覆盖安装即升级**（签名一致——无障碍授权、学习数据、订阅全部保留）；
-- 新安装：下载 → 允许「安装未知应用」→ 安装 → 首页开启无障碍服务；
-- 任一通道下载的 APK 与发布资产**同字节、同 SHA-256**，安装前 App 会自动校验。
-
-> **应用内「检查更新」失败？** 不用等——直接用上表任一直链在浏览器下载后覆盖安装即可（详见 [常见问题](#-常见问题)）。
-
-## 🎯 一屏速览
+开屏卫士 Skip-Ad 是在 GKD 项目（[github.com/gkd-kit/gkd](https://github.com/gkd-kit/gkd)，GPL-3.0，本项目基线为上游 1.13.2）核心技术基础上进行重构、融合与产品化开发的新一代安卓广告跳过工具。**8.x 系列 = GKD 内核**（选择器引擎 / 规则匹配 / 无障碍服务 / 订阅体系，GPL-3.0 原样保留）**× 开屏卫士 7.15.x 产品层**（WebView UI + AndroidApp 桥 + 使用报告 / 白名单 / 日志上传）融合重写。
 
 | | |
 | --- | --- |
-| **怎么工作** | 无障碍服务读屏定位「跳过」控件（文本 / viewId / SDK 窗指纹 / 角落图片键四通道），**0ms 露头即点**；每窗唯一广告任务 + 不可逆成功终态（关掉即封手——重复点击/误触根治）；倒计时将尽提前 0.38s 开火 |
-| **拦什么** | 开屏（含视频开屏 20s 观察窗画像）· 插屏/激励弹窗 · 信息流广告三路主动关闭 · 摇一摇/翻转诱导 · 悬浮广告球 · 视频前贴；134 款内置规则 + GKD 订阅每日自动导入（生态覆盖 600+ 款） |
-| **不碰什么** | 小程序/支付/团购容器零扫描零点击；银行/政务/相机零干预；只点应用**自带的「跳过」键**（合规红线） |
-| **隐私** | 数据仅存本机；零定位/通讯录/存储权限；更新包安装前 SHA-256 逐字节校验；APK 零明文凭据 |
-| **成本** | APK 870KB（含三源离线订阅快照）· 冷启动毫秒级 · 典型日功耗 0.05mWh 级 |
+| **怎么工作** | 无障碍服务读取屏幕节点，GKD 选择器内核按订阅规则匹配，代点应用**自带的「跳过 / 关闭」键**；无障碍事件驱动，组级规则懒编译，无规则应用早退 |
+| **拦什么** | 开屏广告 · 弹窗 · 信息流 · 反馈（评价）面板——规则全部来自 GKD 社区订阅生态 |
+| **开箱即用** | 内嵌三订阅（Lin-arm / aoguai / 甘霖），全新安装即生效，每日自动同步，离线快照兜底 |
+| **隐私** | 数据仅存本机；联网仅日志上传（双层脱敏、可关）与更新检查；更新包 SHA-256 + 大小双校验 |
+| **体积** | APK 3.5MB · Android 8.0+ · 签名证书与 v7.x 全系一致（直接覆盖升级） |
 
-## 📱 截图（真实 UI）
+## 🧬 新一代版本说明（8.x 与 7.x 的区别）
 
-<table>
-<tr>
-<td><img src="docs/screenshots/app-home.png" width="240" alt="首页：守护状态与战绩"/><br><sub><b>首页</b> — 守护状态 / 战绩 / 开关 / 应用白名单</sub></td>
-<td><img src="docs/screenshots/app-help.png" width="240" alt="帮助：快速上手与守护加固"/><br><sub><b>帮助</b> — 快速上手 / 让守护更稳 / 常见问题</sub></td>
-<td><img src="docs/screenshots/app-me.png" width="240" alt="我的：版本与日志"/><br><sub><b>我的</b> — 检查更新 / 版本记录 / 使用报告 / 引擎日志</sub></td>
-</tr>
-</table>
+| | 7.x 系列（历史） | 8.x 系列（当前主线） |
+| --- | --- | --- |
+| **引擎** | 纯 Java 自研引擎（内置规则表 + 多通道识别） | GKD 内核（选择器引擎 / 规则匹配 / 无障碍服务 / 订阅体系，GPL-3.0 原样保留） |
+| **规则生态** | 内置规则表 + GKD 订阅格式兼容导入 | GKD 社区订阅体系原生，内嵌三订阅开箱即用，每日自动同步 |
+| **产品层** | WebView 壳 UI | 7.15.14 UI 基座融合重写：WebView UI + AndroidApp 桥 + 使用报告 / 白名单 / 日志上传 |
+| **日志与诊断** | 单通道日志 | 双通道引擎日志（最新 + 详细）+ GitHub Issues 上传（双层脱敏） |
+| **开源协议** | MIT | **GPL-3.0**（因含 GKD 内核——法律要求，见[开源协议及致谢](#-开源协议及致谢)） |
+| **源码位置** | `android-app/`（历史保留） | `skip-ad-v8/` |
 
-<sub>底栏三 Tab：首页 / 帮助 / 我的；订阅后台自动导入，无手动操作。截图为 App 实际 WebView UI 渲染，战绩数字为示例。</sub>
+> 8.x 不是「换皮 GKD」，也绝不宣称全部原创：**内核能力来自 GKD**（基线为上游 1.13.2），**产品层为本项目融合开发**——来源边界见 [GKD 基础与重构说明](#-gkd-基础与重构说明)。7.x 历史版本明细见 [docs/CHANGELOG.md](docs/CHANGELOG.md)。
 
-## 🚀 快速上手
-
-1. **安装**：从上方任一通道下载 APK，覆盖安装或全新安装；
-2. **开启无障碍**：App 首页一键引导（系统弹 10 秒安全确认属正常防诈设计，开启一次即可）；
-3. **完成**：打开任意 App，开屏广告露头即跳。常被清理后台的机型（HyperOS 等）跑一遍首页「保活体检」。
-
-## 🧠 核心能力
+## ⚙️ 核心功能
 
 | 能力 | 说明 |
 | --- | --- |
-| 四通道跳过键识别 | 「跳过/Skip/推广族」文本 · viewId · SDK 广告窗 className 指纹（穿山甲/优量汇/Unity/IronSource/Mintegral 等 50+ 段）· 角落图片键（形状门防误点） |
-| 1:1 人手模拟触点 | 人手参数域（延迟/时长/微抖散布）+ 复验节奏 + dp 密度归一 + 实时人眼追踪——不同设备/分辨率零误触零多点 |
-| 广告任务状态机 | 每窗唯一任务；第一次成功后旧任务拒收一切点击（重复点击·误触根治）；失败仍安全有限重试（重试前重验广告/候选/安全闸） |
-| 设备自适应触点 | 可见交集 + 窗口钳制 + 象限轮换 + 覆盖层 Z 序判定——分屏/折叠/键盘/悬浮窗全兼容 |
-| 信息流广告三路 | P0 原因面板「直接关闭」直通 · P1X 卡片「×/关闭」直关 · P1 角标 → 中性菜单收口——绝不点广告主体 |
-| 视频开屏卫士 | 静默画像归一 → 20s 观察窗 + 轮询针，等倒计时将尽才出手 |
-| 恢复与回切 | 锁屏/解锁晚到键两针 + 横幅让路重排 + 前台回归探针（回切不发窗口事件的 ROM 整窗漏拦根治） |
-| 功耗治理 | 分级扫描预算 + 探针前置 + 息屏零唤醒 + 插屏窗级退避（2.5s→10s→30s），典型日 < 0.05mWh |
-| 习惯学习 | 手动点一次的位置/指纹，次启 P0 预拦截（广告未及呈现） |
-| 容器与守护 | 小程序/团购/支付容器零干预；银行/政务/支付：广告照拦、进程绝不杀 |
-
-## 🔗 订阅生态
-
-- **零操作**：id667 的 GKD 订阅（Lin-arm ⭐7.4k · 日更）后台每日自动导入（八通道镜像 + APK 内置离线快照双兜底，失败 1h 冷却重试）；
-- **官方订阅**：[gkd.json5](https://cdn.jsdelivr.net/gh/xiaobaiba999/skip-ad-subscription@main/dist/gkd.json5)（100% GKD 兼容，也可直接在 GKD 客户端导入）；
-- **自建订阅**：[gkd-kit/subscription-template](https://github.com/gkd-kit/subscription-template) 五分钟构建，自建源在 GKD 客户端与本卫士生态共用。
-
-## ✅ 质量与兼容
-
-- **机型矩阵**：9 品牌 + 子品牌（OPPO/vivo/小米/三星/华为/荣耀/红米/一加/iQOO 及 POCO/realme）11 组 × 32 机型 = **352 机型**，九维各 352/352（开屏命中/多点误点/屏蔽速度/bug/功耗/精准度/算法优化/信息流广告/回切开屏）；
-- **JVM 断言**：25 套件 **4530 断言**全绿（决策核心/规则引擎/触点矩阵/人手矩阵/订阅镜像/发布描述规范）+ 服务级 35 项行为场景（锁屏/回切/横幅/退避/更新存活链等真实时序复刻，双向验证：旧代码红/新代码绿）；
-- **人手模拟矩阵**：24 类真实设备几何 × 真实密度配对 × 7 档压力条件契约全绿；
-- 自测轨迹：[docs/test-reports/summary.md](docs/test-reports/summary.md)（三十五轮，每轮 `round-N.json`）。
+| 广告跳过引擎 | GKD 选择器内核 + 社区订阅规则（开屏 / 弹窗 / 信息流 / 反馈面板）；无障碍事件驱动匹配，组级规则懒编译，无规则应用早退 |
+| 内嵌三订阅 | Lin-arm / aoguai / 甘霖三套社区订阅随 APK 内嵌，开箱即用；每日自动同步，离线快照兜底（订阅作者归属在 `assets/subscriptions` 内保留） |
+| 应用白名单 | 真实应用名称 / 图标（WebP）/ 搜索；默认折叠 5 款预览，展开全部 + 置顶收起条（v8.0.7）；勾选与滚动状态保持 |
+| 卫士使用报告 | 拦截战绩累计 / 订阅两源命中 / 能耗画像（无障碍事件 / 规则扫描为真实计数，手势能耗为系数估算并明确标注）/ 设备画像 / 应用战绩 Top5 |
+| 引擎日志双通道 | 「最新」简洁触发记录 +「详细」全链路（服务连接 / 断开 / 动作执行与失败 / 订阅状态 / 配置变更）；数据库持久化（各 500 / 800 条上限），异步批量写入不阻塞无障碍线程，动作与详细记录同事务关联 |
+| 日志上传 GitHub Issues | 手动 + 自动（8h 节流 / 亮屏才传 / 无新内容不建空 Issue / 成功才计时）；双层脱敏（手机号 / 身份证 / 邮箱 / IPv4）；上传失败保留本地可重试 |
+| 版本更新 | 多源检查（jsDelivr → gcore → raw + 历史 kilo 回退）；SHA-256 + 大小双校验；下载域白名单；旧版 v7.15.x / v7.x / 8.0.x 全兼容发现 |
+| 性能与功耗设计 | 日志写入全异步化（有界队列 256 / 批 16）、内存缓存全有界（节点 LRU 4096 / 图标 LRU 160）、WebView 后台暂停 / 查询 LIMIT 下推 / 事件编码移出事件线程（v8.0.7） |
 
 ## 🏗️ 技术架构
 
-**Java 管设备，TypeScript 管规则，脚本管流水线**——引擎层 Java 8 零依赖（冷启动比 Kotlin 快 40%、APK 小约 7×）；壳 UI 用 JS；规则台/CI 用 TS（与 GKD 订阅生态同构）。选型基准见 [docs/LANGUAGE-STRATEGY.md](docs/LANGUAGE-STRATEGY.md)。
+**内核管匹配，产品层管体验**——8.x = GKD 内核（GPL-3.0）× 开屏卫士产品层融合重写：
 
 ```
-android-app/
-├─ src/com/zai/adshield/     # Java 无障碍引擎（决策阶梯 L0-L6 · 纯 JVM 可测）
-│  └─ core/                   # AdDecisionCore / RuleEngine / PowerGovernor / HumanTap …
-├─ assets/www/                # JS 壳 UI（首页/帮助/我的）
-├─ assets/subsnap/            # 三源离线订阅快照（导入兜底——永不失败）
-├─ tests/                     # JVM 断言套件（BrandFocus308 / HumanTapMatrix / FeedAdGuard …）
-└─ run-tests.sh               # 零依赖测试跑器
+开屏卫士 v8.x（skip-ad-v8/）
+│
+├─ 内核层 —— 来自 GKD（github.com/gkd-kit/gkd，基线上游 1.13.2，GPL-3.0 原样保留）
+│   ├─ 无障碍服务      事件驱动 · 屏幕节点快照 · 点击 / 手势动作执行
+│   ├─ 选择器引擎      快照选择器语法解析与节点匹配
+│   ├─ 规则匹配        订阅规则调度 · 组级懒编译 · 无规则应用早退
+│   └─ 订阅体系        订阅拉取 · 解析 · 缓存 · 规则导入
+│
+├─ 产品层 —— 开屏卫士 7.15.x 融合重写（本项目开发）
+│   ├─ WebView UI      首页 / 应用白名单 / 使用报告 / 引擎日志 / 版本 / 帮助
+│   ├─ AndroidApp 桥   WebView ↔ 无障碍服务 / 数据库 / 系统 API
+│   ├─ 卫士使用报告    拦截战绩 / 订阅两源命中 / 能耗画像 / 设备画像 / 应用 Top5
+│   ├─ 引擎日志        双通道（最新 + 详细）· 数据库持久化 · 异步批量写入
+│   └─ 日志上传 / 更新 GitHub Issues 上传（双层脱敏）· 多源更新检查（SHA-256 双校验）
+│
+└─ assets/subscriptions —— 内嵌三订阅（Lin-arm / aoguai / 甘霖，作者归属保留）
 ```
+
+**验证状态（如实标注）**：
+
+| 验证项 | 方式 | 结论 |
+| --- | --- | --- |
+| 单元测试 · gkd-db | JVM / host | 全绿 |
+| 单元测试 · gkd-app host | JVM / host | 98 测试 1 预存失败（A11yWindowReadTest——v8.0.6 基线同样失败） |
+| 单元测试 · gkd-app jvm | JVM | 459 测试 2 预存失败类（快照分享断言 + MatchNodeReader 并发时序——均在 v8.0.6 基线复现） |
+| WebView UI | 浏览器实测 | 白名单展开 / 收起 / 勾选保持 / 滚动保持 9/9 通过；上传无内容门正确；0 控制台错误 |
+| 日志上传 | E2E（真实 Issue） | 真实创建 GitHub Issue [#139](https://github.com/xiaobaiba999/Skip-Ad/issues/139) 并 GET 复验（标题一致 / open 状态） |
+| 更新兼容 | 旧版客户端逻辑复刻 | 发布链验证（发布后执行） |
+| 真机设备测试 | — | **NOT_RUN**（本环境无真机；小米 15 Pro / Redmi / 一加等真机数据本版未采集） |
+
+> 预存失败均与本版改动无关，已用 v8.0.6 基线对照验证；真机 CPU / 内存 / 功耗数据未采集，本文不做任何真机性能结论。
+
+## 🧩 GKD 基础与重构说明
+
+**哪些来自 GKD**（[github.com/gkd-kit/gkd](https://github.com/gkd-kit/gkd)，GPL-3.0，本项目基线为上游 1.13.2，原样保留）：
+
+- 选择器引擎（快照选择器语法解析与匹配）
+- 规则匹配（订阅规则调度、组级懒编译）
+- 无障碍服务（事件驱动、屏幕节点快照、点击 / 手势动作）
+- 订阅体系（订阅拉取、解析、缓存、规则导入）
+
+**哪些是本项目融合开发**：
+
+- WebView UI（首页 / 应用白名单 / 使用报告 / 引擎日志 / 版本 / 帮助）
+- AndroidApp 桥（WebView ↔ 无障碍服务 / 数据库 / 系统 API）
+- 应用白名单（真实应用名称 / 图标 / 搜索 / 折叠展开交互）
+- 卫士使用报告（拦截战绩 / 订阅两源命中 / 能耗画像 / 设备画像 / Top5）
+- 引擎日志双通道 + 日志上传 GitHub Issues（双层脱敏）
+- 版本更新链（多源检查、SHA-256 + 大小双校验、下载域白名单）
+
+**GPL-3.0 义务履行**：8.x 源码完整开源在仓库 `skip-ad-v8/` 目录，GPL-3.0 许可证文件与 GKD 来源声明保留，本 README 与 CHANGELOG 明确标注来源与边界。任何对本项目的分发同样适用 GPL-3.0。
+
+## 📱 UI 展示截图
+
+<table>
+<tr>
+<td><img src="docs/screenshots-v8/home.png" width="280" alt="首页：守护状态与战绩"/><br><sub><b>首页</b> — 守护状态 / 战绩 / 应用白名单入口</sub></td>
+<td><img src="docs/screenshots-v8/wl-expanded.png" width="280" alt="应用白名单展开"/><br><sub><b>应用白名单</b> — 真实名称 / 图标 / 搜索 / 展开全部 + 置顶收起条</sub></td>
+<td><img src="docs/screenshots-v8/report-page.png" width="280" alt="卫士使用报告"/><br><sub><b>卫士使用报告</b> — 拦截战绩 / 订阅命中 / 能耗画像 / 应用 Top5</sub></td>
+</tr>
+<tr>
+<td><img src="docs/screenshots-v8/version-page.png" width="280" alt="版本页：检查更新与版本记录"/><br><sub><b>版本</b> — 检查更新 / 版本记录</sub></td>
+<td><img src="docs/screenshots-v8/help-page.png" width="280" alt="帮助页：快速上手与常见问题"/><br><sub><b>帮助</b> — 快速上手 / 常见问题</sub></td>
+</tr>
+</table>
+
+<sub>截图为 App WebView UI 实际渲染（浏览器环境实测采集），页面数字为当时会话示例。</sub>
+
+## 🔗 规则和订阅说明
+
+- **内嵌三订阅，开箱即用**：Lin-arm / aoguai / 甘霖三套 GKD 社区订阅随 APK 内嵌，全新安装无需任何手动导入即生效；每日自动同步保持最新，网络不可用时离线快照兜底；订阅作者归属在 `assets/subscriptions` 内保留；
+- **覆盖场景**：开屏广告 · 弹窗 · 信息流 · 反馈（评价）面板——规则由 GKD 社区订阅生态持续维护；
+- **与 GKD 生态同构**：订阅体系即 GKD 社区订阅体系，社区新增规则随每日同步自动跟进。
+
+## 📊 卫士使用报告
+
+- **拦截战绩累计**：广告拦截战绩长期累计；
+- **订阅两源命中**：命中按订阅来源分列统计（两源口径）；
+- **能耗画像**：无障碍事件 / 规则扫描为**真实计数**；手势能耗为**系数估算并在页面明确标注**——绝不拿估算冒充实测；
+- **设备画像**：本机设备与系统信息画像；
+- **应用战绩 Top5**：拦截战绩最多的前 5 款应用。
+
+## 🩺 引擎日志和诊断
+
+**双通道引擎日志**：
+
+- **最新（简洁通道）**：每轮触发的简洁记录（命中 / 出手等关键事件）；
+- **详细（全链路通道）**：服务连接 / 断开、动作执行与失败、订阅状态、配置变更全链路；
+- 数据库持久化（最新 500 / 详细 800 条上限），动作与详细记录同事务关联；
+- 异步批量写入（有界队列，不阻塞无障碍线程）。
+
+**日志上传 GitHub Issues**：
+
+- 手动 + 自动（8h 节流 / 亮屏才传 / 无新内容不建空 Issue / 成功才计时）；
+- **双层脱敏**：手机号 / 身份证 / 邮箱 / IPv4 上传前双重清洗；
+- 上传失败保留本地，可重试；
+- 上传链已用真实 Issue 验证：仓库 Issues 存档 E2E 验证 [#139](https://github.com/xiaobaiba999/Skip-Ad/issues/139)（创建后 GET 复验，标题一致 / open 状态）。
+
+## 🔋 性能与功耗设计
+
+> 本版无真机 CPU / 内存 / 功耗实测数据，以下为**设计机制**描述，不做任何性能数字承诺。
+
+- **日志写入全异步化**：全部日志写入走有界队列（容量 256、批量 16）异步批量落库，绝不阻塞无障碍事件线程；
+- **内存缓存全有界**：节点缓存 LRU 4096 / 图标缓存 LRU 160，内存占用有上界；
+- **WebView 后台暂停**（v8.0.7）：App 退后台时暂停 WebView，回前台恢复；
+- **查询 LIMIT 下推**（v8.0.7）：数据查询在源头限行，避免整表拉取；
+- **事件编码移出事件线程**（v8.0.7）：无障碍事件的编码工作从事件线程剥离，事件线程更轻；
+- **无规则应用早退 + 组级规则懒编译**（GKD 内核）：无关应用零开销跳过，规则首次用到才编译。
+
+## ⬇️ 下载与安装
+
+**当前版本 [v8.0.7](https://github.com/xiaobaiba999/Skip-Ad/releases/tag/v8.0.7)（2026-11-26）** · versionName 8.0.7 · versionCode 87100 · APK `adshield-v8.0.7.apk` · 3,581,971 字节
+
+| 下载通道 | 说明 | 链接 |
+| --- | --- | --- |
+| **GitHub Releases** | 官方主源（Release 资产） | [下载 adshield-v8.0.7.apk](https://github.com/xiaobaiba999/Skip-Ad/releases/download/v8.0.7/adshield-v8.0.7.apk) |
+| **ghfast.top 镜像** | GitHub Release 资产加速 | [下载 adshield-v8.0.7.apk](https://ghfast.top/https://github.com/xiaobaiba999/Skip-Ad/releases/download/v8.0.7/adshield-v8.0.7.apk) |
+| **jsDelivr CDN 直链** | 国内推荐，直出仓库归档（与 Release 资产同字节） | [gcore 直链](https://gcore.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/android-app/dist/adshield-v8.0.7.apk) · [testingcf 备用](https://testingcf.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/android-app/dist/adshield-v8.0.7.apk) |
+
+- **完整 SHA-256**：`1ea099f5856be81dd57e76e8a9263c661d8d275d46bed9081bd2b112c62c2b14`
+- **签名证书 SHA-256**：`05ada6e3f7a4fc6bf77449611c24f51e1ef4caa0a91a5cdd02c4d877738e6f79`（与 v7.x 全系及 v8.0.4-8.0.6 一致）
+- **升级**：已装 v7.x（v7.15.x）/ 8.0.x 任何版本——**直接覆盖安装即升级**（versionCode 87100 大于旧版全部，签名一致，无障碍授权与数据保留）；
+- **全新安装**：下载 → 允许「安装未知应用」→ 安装 → 首页开启无障碍服务；内嵌三订阅开箱即用，无需手动导入规则；
+- **系统要求**：Android 8.0+（minSdk 26）；
+- 任一通道下载的 APK 与 Release 资产**同字节、同 SHA-256**，App 更新链安装前会自动做 SHA-256 + 大小双校验。
+
+> **应用内「检查更新」失败？** 不用等——直接用上表任一直链在浏览器下载后覆盖安装即可（详见 [常见问题](#-常见问题)）。
+
+## 🔄 更新方式
+
+App 内「版本页 → 检查更新」：
+
+- **更新清单**：[`update/latest.json`](update/latest.json)（GitHub raw 与 jsDelivr 四域同源）；
+- **多源检查**：jsDelivr → gcore → raw 依次回退，另保留历史 kilo 域回退兼容；
+- **双校验**：下载完成先验 SHA-256 + 文件大小，校验通过才进入安装；下载域白名单外的链接一律拒绝；
+- **旧版全兼容发现**：旧版 v7.15.x 存量 versionCode 85000-86400 只按数值比较——87100 显式抬码保证 v7.15.x / v7.x / 8.0.x 全部能发现并覆盖升级（签名一致，无障碍授权与数据保留）；
+- 更新兼容的旧版客户端逻辑复刻验证：**发布链验证**（发布后执行）；
+- 应用内检查失败：直接用[下载区](#-下载与安装)任一直链浏览器下载后覆盖安装。
 
 ## ❓ 常见问题
 
 <details open>
-<summary><b>应用内「检查更新」失败 / 提示多源均不可达？</b></summary>
+<summary><b>无障碍开关点了没反应 / 服务自动关闭？</b></summary>
 
-检查更新走 jsDelivr 四域 + GitHub 多源链，国内运营商对部分域名间歇不可达时应用内会失败。**三个自救路径（任选）**：
-
-1. **直接浏览器下载**：用[上方下载区](#-下载最新版)任一直链（CDN 直链国内通常畅通），下载后覆盖安装；
-2. **开 GitHub 加速器**（如 Watt Toolkit）后在应用内重试；
-3. 到 [Releases 页](https://github.com/xiaobaiba999/Skip-Ad/releases/latest)手动下载。
+系统弹出的 10 秒安全确认属正常防诈设计，等待后确认即可。无障碍服务被系统回收或厂商省电策略关闭时，按 App 内引导重新开启；常被杀后台的机型建议按下文「权限说明」开启电池白名单。
 </details>
 
 <details>
-<summary><b>检查更新显示「已是最新」，但 GitHub 已发新版？</b></summary>
+<summary><b>厂商杀后台，卫士经常失效？</b></summary>
 
-jsDelivr 对 `@main` 分支有源站级缓存（最长 12h），期间备用链可能仍在旧清单——不操作也无损，≤12h 自愈。急用直链：`adshield-latest.apk` 始终指向最新版。
+HyperOS / ColorOS 等厂商 ROM 默认激进省电会回收无障碍服务。按 App 内引导开启电池白名单（厂商省电对抗）+ 通知保活提醒（服务被回收时提醒）；仍频繁失效时上传日志反馈。
 </details>
 
 <details>
-<summary><b>v7.15.0~v7.15.4 点下载报「下载链接不在允许的发布通道内」？</b></summary>
+<summary><b>为什么 versionCode 从 7.x 的 85000-86400 直接跳到 87100？</b></summary>
 
-已根治：清单已撤 `cdnApkUrl` 字段，旧版重新「检查更新」拉到新清单后点下载即恢复（首渠道回到 ghfast.top 镜像）；仍失败就用直链手动安装。
+旧版 7.15.x 存量客户端比较版本只看 versionCode 数值。显式抬码到 87100 保证所有存量版本（v7.15.x / v7.x / 8.0.x）都能发现 v8.0.7 并平滑覆盖升级——跳号是刻意的兼容设计，不是版本缺失。
 </details>
 
 <details>
-<summary><b>v7.9.5/v7.9.6 检查更新报「GitHub 返回 401」？</b></summary>
+<summary><b>日志在哪里看？</b></summary>
 
-这两个版本携带的内置令牌已被吊销（安全整改，旧版无法从服务侧修复）——直接用[下载区](#-下载最新版)任一链接覆盖安装（82000 > 79600 同签名，数据全保留）。
+App 内「引擎日志」双通道：「最新」（简洁触发记录）+「详细」（服务连接 / 断开 / 动作执行与失败 / 订阅状态 / 配置变更全链路），数据库持久化（各 500 / 800 条上限）。可手动上传 GitHub Issues（双层脱敏）帮助定位问题。
 </details>
 
 <details>
-<summary><b>会不会误点、多点？</b></summary>
+<summary><b>应用内「检查更新」失败 / 提示多源不可达？</b></summary>
 
-当前运行在「激进优先」档（宁可偶发漏拦保证拦到、快速跳过），误触防线（同指纹静默/结果静默/人手耐心预算/多点防线/派发失败退避）与合规红线（银行/支付/相机/验证码/小程序容器零干预）全部在场。如遇误触，App 内「上传日志」反馈并附场景截图。
+国内运营商对部分域名间歇不可达时应用内检查会失败。直接用[下载区](#-下载与安装)任一直链（CDN 直链国内通常畅通）下载后覆盖安装，或到 [Releases 页](https://github.com/xiaobaiba999/Skip-Ad/releases/latest)手动下载。
 </details>
 
-<details>
-<summary><b>耗电与保活？</b></summary>
+## 🔐 权限说明
 
-典型日功耗 0.05mWh 级（分级扫描预算 + 息屏零唤醒 + 插屏窗级退避）；常被清理后台的机型用首页「保活体检」逐项确认。各厂商 ROM 策略差异较大，遇到问题上传日志反馈。
-</details>
+| 权限 | 用途 | 必需性 |
+| --- | --- | --- |
+| **无障碍服务** | 读取屏幕节点定位「跳过 / 关闭」键并代点——核心引擎唯一技术依赖 | 核心必需 |
+| **通知** | 保活提醒（服务被回收时提醒） | 可选 |
+| **电池白名单** | 厂商省电策略对抗（App 内引导开启） | 可选引导 |
 
-<details>
-<summary><b>需要什么权限？</b></summary>
+不申请定位 / 通讯录 / 短信等敏感权限；联网仅用于日志上传（可关闭）与更新检查。
 
-无障碍服务（读屏与代点的唯一技术依赖）+ 网络/通知/前台服务/开机自启/电池白名单。**零定位、零通讯录、零存储**；联网仅日志上传（双端脱敏，可关闭）与更新检查。
-</details>
+## 🛡️ 隐私与安全
 
-## ⚖️ 合规与边界
+- **数据仅存本机**：拦截战绩 / 使用报告 / 引擎日志全部存于本机数据库；
+- **联网仅两处**：日志上传 GitHub Issues（手动 + 自动，均先双层脱敏，可关闭）与版本更新检查——除此之外零联网；
+- **双层脱敏**：手机号 / 身份证 / 邮箱 / IPv4 在上传前双重清洗；
+- **更新链安全**：更新包 SHA-256 + 大小双校验、下载域白名单——换包 / 投毒自动拦截；
+- **上传令牌机制与历史安全披露**：见 [docs/SECURITY.md](docs/SECURITY.md)（含 GitHub 令牌历史风险与整改备案）。
 
-- 仅代点应用**自带的「跳过」控件**，不拦截、不修改、不屏蔽广告内容本身，不采集广告数据（参考「拦精灵」案司法边界）；信息流广告只代点平台自带的披露角标、原因面板「直接关闭」主按钮与关闭菜单中性项；
-- 自动提交的引擎日志已双端双重脱敏（手机号/身份证/邮箱/IP），仅含引擎运行指标与设备画像，可在设置中关闭；
-- 更新链带 SHA-256 完整性校验（镜像投毒/换包自动拦截）；v7.9.4 起 APK 零明文凭据；**请只从本仓库 Releases 或上述官方直链下载**（签名密钥随开源仓库公开为历史知情决策，二次打包渠道无法被技术手段完全排除）。
+**使用边界与免责**：本工具仅代点应用**自带的「跳过 / 关闭」控件**，不拦截、不修改、不屏蔽广告内容本身，不采集广告数据；本项目仅供学习交流与个人使用，使用者需遵守当地法律法规及所使用 App 的用户协议（部分 App 用户协议限制自动化操作，账号风险由使用者自行评估）；广告是开发者的合法收入来源，请勿用于商业用途或批量分发；本项目不提供任何明示或暗示的担保。
 
-## 📄 免责声明
+## 📜 开源协议及致谢
 
-- 本工具仅代点应用自带的「跳过」控件以跳过开屏/弹窗广告，需授权「无障碍服务」方能工作——这是唯一的技术依赖；
-- 本项目仅供学习交流与个人使用，使用者需遵守当地法律法规及所使用 App 的用户协议（部分 App 的用户协议限制自动化操作，使用本工具带来的账号风险由使用者自行评估）；
-- 广告是开发者的合法收入来源，本工具仅为个人跳过体验优化，请勿用于商业用途或批量分发；开源代码 MIT 许可，不提供任何明示或暗示的担保。
+**GPL-3.0**——8.x 系列包含来自 GKD 的内核代码（GPL-3.0），本项目整体以 GPL-3.0 分发（许可证文件随仓库保留）；对本项目的任何二次分发同样适用 GPL-3.0。
 
-## 📜 版本历史
+**致谢**：
 
-当前版本亮点、每版死因考古与修复明细见 [docs/CHANGELOG.md](docs/CHANGELOG.md) 与 [Releases](https://github.com/xiaobaiba999/Skip-Ad/releases)。
+- **[GKD](https://github.com/gkd-kit/gkd)** 及其上游作者——8.x 的选择器引擎 / 规则匹配 / 无障碍服务 / 订阅体系来自 GKD（本项目基线为上游 1.13.2），GPL-3.0 原样保留；
+- **内嵌订阅作者**——Lin-arm / aoguai / 甘霖三套社区订阅（作者归属在 `assets/subscriptions` 内保留）；
+- **7.x 历史贡献**——旧 7.x 系列（纯 Java 自研引擎）源码在仓库 `android-app/` 目录历史保留，8.x 产品层 UI 基座承自 v7.15.14。
 
-> **版本线说明**：应仓库所有者指令，v7.7.0~v7.14.0 的 Release 与 tag 已从仓库移除（版本线直接跳 v7.15.0），重构基线为 v7.6.0 激进模式版本；历史细节仍可在 CHANGELOG 与 git 历史中查证。
-
-## 许可
-
-MIT · 欢迎自由 fork 与二改
+**版本历史**：完整变更记录见 [docs/CHANGELOG.md](docs/CHANGELOG.md) 与 [Releases](https://github.com/xiaobaiba999/Skip-Ad/releases)。
