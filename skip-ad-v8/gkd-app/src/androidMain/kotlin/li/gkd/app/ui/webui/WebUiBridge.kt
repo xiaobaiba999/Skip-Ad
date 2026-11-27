@@ -21,6 +21,7 @@ import li.gkd.app.META
 import li.gkd.app.app
 import li.gkd.app.appScope
 import li.gkd.app.network.FeedbackUploader
+import li.gkd.app.upload.FeedbackReport
 import li.gkd.app.network.UpdateClient
 import li.gkd.app.record.EngineEventLogWriter
 import li.gkd.app.service.A11yService
@@ -191,7 +192,9 @@ class WebUiBridge(activity: MainActivity) {
         return "{\"ok\":false,\"reason\":\"need_toggle\"}"
     }
 
-    /** 深度拉活（后台 15s 自适应轮询；成功后暂停自动解除） */
+    /** 深度拉活（后台 15s 自适应轮询；成功后暂停自动解除）。
+     *  v8.0.8：原实现在 appScope（主调度器）里 Thread.sleep，最长阻塞主线程 15s
+     *  必致 ANR（无障碍掉线后用户打开首页即触发）。改用挂起 delay，逻辑节奏不变。 */
     @JavascriptInterface
     fun tryAutoReviveDeep(cb: String?) {
         val cbName = cb ?: return
@@ -209,12 +212,7 @@ class WebUiBridge(activity: MainActivity) {
                     return@launch
                 }
                 if (elapsed >= 15000) break
-                try {
-                    Thread.sleep(if (elapsed < 2000) 300 else 500)
-                } catch (_: InterruptedException) {
-                    Thread.currentThread().interrupt()
-                    break
-                }
+                kotlinx.coroutines.delay(if (elapsed < 2000) 300 else 500)
             }
             netCb(cbName, "{\"ok\":false,\"reason\":\"need_toggle\"}")
         }
@@ -428,6 +426,19 @@ class WebUiBridge(activity: MainActivity) {
     }
 
     // ───────── 日志上传（GitHub Issues，GitHubUploader 双重脱敏）─────────
+
+    /**
+     * v8.0.8：统一完整报告构建（与自动上传/Compose 手动上传同一构建器同一口径）。
+     * WebView 手动上传经此获取 body，消除三条上传路径内容不一致的问题。
+     */
+    @JavascriptInterface
+    fun buildLogReport(channel: String?): String =
+        runBlocking {
+            withContext(Dispatchers.IO) {
+                runCatching { FeedbackReport.build(channel ?: "手动上传") }
+                    .getOrElse { "报告构建失败：${it.message ?: it.javaClass.simpleName}" }
+            }
+        }
 
     @JavascriptInterface
     fun netPostIssueAsync(title: String?, body: String?, cb: String?) {

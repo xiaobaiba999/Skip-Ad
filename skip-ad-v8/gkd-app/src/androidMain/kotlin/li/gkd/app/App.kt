@@ -60,7 +60,9 @@ import li.gkd.app.snapshot.initVolumeSnapshotTrigger
 import li.gkd.app.subscription.EmbeddedSubscriptions
 import li.gkd.app.subscription.SubscriptionDefaults
 import li.gkd.app.subscription.SubscriptionRepository
+import li.gkd.app.matching.input.topTaskAppId
 import li.gkd.app.upload.FeedbackLogs
+import li.gkd.app.upload.FeedbackReport
 import li.gkd.app.util.AndroidStorage
 import li.gkd.app.util.AndroidTarget
 import li.gkd.app.util.AndroidToastUtils
@@ -315,6 +317,9 @@ class App : Application() {
         initVolumeSnapshotTrigger()
         initScreenEvents()
         initPrivilege()
+        // v8.0.8：统一反馈报告的平台状态注入（引擎运行态/前台应用，见 FeedbackReport.Hooks）
+        FeedbackReport.Hooks.engineRunningProvider = { A11yService.isRunning.value }
+        FeedbackReport.Hooks.foregroundAppIdProvider = { topTaskAppId }
         appScope.launchLogged(Dispatchers.IO) {
             PrivilegeUi.prepareExternalShellScript(gkdPrivilegeUiConfig.manualShellScriptPath)
         }

@@ -1,5 +1,40 @@
 # 变更记录
 
+## v8.0.8 · 2026-11-27 · 日志体系根治 / 汽水音乐误触修复 / 启动黑屏修复 / 液态柔光玻璃提示 / 异常兜底（versionCode 88000）
+
+**版本信息**：versionName 8.0.8 · versionCode **88000**（延续抬码：高于 v8.0.7 的 87100 与全部历史码，旧版 v7.15.x / v7.x / 8.0.x 全部能发现并覆盖升级）· minSdk 26（Android 8.0）
+
+**本轮交付（基于 v8.0.7 用户反馈：日志自动上传内容为空不详细 / 部分设备进入卫士 Logo 黑屏闪烁 / 汽水音乐开屏跳不过且两次误跳美团 / 底栏提示美化 / 兜底补齐）**：
+
+1. **日志体系根治（最高优先级，恢复并超越 v7.15.14 详细日志能力）**：
+   - **根因（Issue #142/#143/#150/#151 实锤）**：自动上传正文仅三段骨架 + 无规则名触发编号行（触发总数 0 时整段空白，均长 697 字 vs v7.15.14 的 4621 字）；详细引擎日志只在 WebView 手动上传出现；**匹配失败原因 / 动作失败 / 崩溃堆栈完全缺失**——`queryRules` 仅在 result=true 时回调 `completed`，动作失败的 `action_failed` 分支自 v8.0.6 起不可达（结构性缺陷）
+   - **统一报告（三通道同一构建器）**：自动上传 / Compose 手动 / WebView 手动全部走 `FeedbackReport.build()`，六节结构：基本环境（设备/引擎状态/事件计数/通道）→ 最新触发记录（30 条，经 actionLogId 关联可读消息：应用名/组名/规则名/动作/结果/耗时）→ 详细执行记录（120 条时间正序，含级别前缀与 detail）→ 异常与失败（警告错误重列 + 崩溃堆栈）→ 统计摘要（窗口计数 + 应用战绩 Top5）→ 日志说明（采集范围/口径/脱敏）；标题恢复 v7.15.14 格式（`[引擎日志][v8.0.8] brand model（8小时自动/手动上传）`，修复自动通道丢失设备信息）
+   - **新采集点（全部有界）**：匹配未命中汇总（`match_miss`：按应用 8 秒窗口聚合未命中分布与涉及规则组——直接回答「广告为什么没跳过」，命中即清窗不产生噪音）；无规则应用（`app_no_rules`：每应用 10 分钟节流）；动作失败（`action_failed` 含规则名与实测耗时 `durationMs`——修复不可达缺陷）；订阅更新失败（`subscription_update_failed` 只记异常摘要）；事件处理异常（`event_consume_failed`：Binder 层异常逐事件隔离不再终止消费循环）；引擎日志容量 800 → 1200 条
+   - **空态显式标注**：每节 runCatching，读取失败/无数据显式输出原因说明，绝不再出现无解释的空白段落
+2. **汽水音乐开屏跳不过 + 误跳美团根治（一因两果）**：
+   - **根因**：订阅 667 汽水开屏组 r0 第二分支为无文本锚点结构匹配（任意小可点击 View），普通开屏中命中广告创意区域即误点（跳转美团投放的落地页）；且全组共享 actionMaximum:1，误点耗尽配额后真「跳过」文本规则 r1 永不触发（= 跳不过 + 误跳两症状同根）。另两家订阅（86/233）全局开屏组对汽水默认生效且 actionMaximum:2，其 `text*="跳过"` 家族可命中「跳过领券」类广告文案造成二次误触
+   - **订阅补丁层（`SubscriptionPatches`）**：挂在 `RawSubscriptionParser.parse` 统一出口——种子加载/远程每日更新/用户导入全部经此，补丁跨订阅同步持久生效且幂等；667 汽水组：删除 r0 无锚点分支 + r1 增加穿山甲标准跳过键 `tt_splash_skip_btn` id 兜底 + actionMaximum 1→2；86/233 全局组：追加汽水排除项（对齐 667 作者在自家全局组显式禁用汽水的意图）
+   - **引擎加固（通用安全）**：`clickCenter`/`longClickCenter` 坐标点击前目标可见性校验（陈旧/回收节点宁可失败不误点，失败落库 action_failed 可诊断）——位于坐标错误检查之后、手势派发之前，坐标错误路径语义不变
+3. **卫士 Logo 黑屏闪烁根治（部分设备）**：根因 = postSplashScreenTheme 的 `windowBackground` 透明 + Compose 根布局无底色——首帧依赖 WebView 首个合成帧，慢机上 Chromium 初始化期间窗口真空露出黑色 Surface；深色系统下「近黑 Splash(#141218) → 恒浅绿页面」强跳变放大黑屏观感。修复：`windowBackground` 改不透明品牌色 #F2F7F3 + Splash 底色深浅色统一为页面底色 + Compose 首帧 `Box` 底色兜底——系统启动窗口/首帧/WebView 就绪三阶段颜色连续；不增加启动耗时、不掩盖黑屏（资源层根治）
+4. **底栏液态柔光玻璃提示**：规则触发提示重构为 Liquid Glass 风格——圆形品牌 Logo（应用图标裁圆）+「开屏卫士」标题 +「正在守护」状态行；多层渐变玻璃底 + 内侧高光描边 + 柔影 + 26dp 圆角；入场 260ms 底部轻浮起 + 停留 1.9s + 淡出 220ms（替换系统 Toast 动画）；纯 GradientDrawable 实现全 Android 版本通用（不依赖模糊 API——overlay 窗口无法使用背景模糊，渐变+描边+柔影即基线，无降级路径差异）；`FLAG_NOT_TOUCHABLE` 不拦截点击，系统 Toast 通道保留可切换
+5. **异常兜底七项（每项明确触发条件与策略）**：①主线程 ANR 根治——`tryAutoReviveDeep` 原在主调度器 `Thread.sleep(300/500)` 最长阻塞主线程 15s 必致 ANR，改挂起 `delay()`（节奏不变）；②数据库损坏自愈——启动 IO 探针真实查询探测，损坏则改名保留（`*.corrupt-<ts>` 可人工恢复）+ 重建 + 内嵌订阅自动重种子，替代原「App 看似正常但完全不工作」的静默失效；③事件消费循环异常隔离——Binder 层偶发 RuntimeException 不再终止整个事件消费（逐事件捕获 + 详细日志 + 继续消费后续事件）；④手势回调丢失兜底——`awaitGesture` 10s 超时防 worker 永久挂起泄漏；⑤网络显式超时——Ktor 客户端 15s 请求上限 / 10s 连接与读写（原最坏 5 源 × 10s ≈ 50s 才报失败）；⑥WebView 主帧加载失败兜底——自动重试一次 + 仍失败展示可读错误页（广告跳过不受影响），替代永久空白屏；⑦崩溃提醒不丢——启动窥探改非破坏性（原读后删会把「新崩溃」提醒与 WebView crashDump 的 pending 一并吞掉）
+6. **测试缺陷修正**：`RuntimeRecordChecks` 原断言 `listOf(2)` 与同块注释①矛盾（任何进程状态下都不可能通过——v8.0.7 期间集成测试在更早的快照分享 flaky 处失败未暴露），按文档意图修正为 `listOf(2, 1)` + 关联行取最新一条
+
+**测试与验证（如实标注）**：
+- **JVM 单测**：gkd-db + gkd-selector 全绿；gkd-app jvm 分块全绿（rule/subscription/upload/network/settings/storage/backup/logging/snapshot/crash/time/state/app/development/external/ui 共 24 包）+ 新增专项全绿（`SubscriptionPatchesTest` 4 项：汽水组补丁/全局组排除/幂等/非目标透传；节流闸）；`matchingRegression` 196 测试 1 预存 flaky（MatchNodeReaderTest 并发时序，v8.0.7 清单已记录、基线复现与本版无关）
+- **Robolectric（androidHostTest）**：98 测试 1 预存失败（A11yWindowReadTest，v8.0.7 同样失败、基线复现）；`CoordinateActionFailureTest` 初版因可见性校验位置失败——**已修复**（校验移至坐标错误检查之后），复跑通过；全量复跑 98 测试仅剩该预存失败
+- **ApplicationIntegrationTest（含新增日志体系专项）**：本环境单进程窗口上限 10 分钟、该测试需更久——**NOT_RUN**（分块覆盖其余 24 包 + 专项独立类替代覆盖纯函数部分；DB 依赖部分（统一报告/未命中聚合）已编码待真机/更快环境执行）
+- **日志上传 E2E（真实生产代码路径）**：`FeedbackUploadE2eTest` 走 `FeedbackUploader.createIssue` 真实链（内置混淆令牌内存解码→双层脱敏→Ktor 提交）真实创建 **Issue [#163](https://github.com/xiaobaiba999/Skip-Ad/issues/163)** + GET 复验（六节结构完整 / 标题一致 / open 状态）+ 脱敏实证（明文手机号与邮箱均不存在，`138****5678` / `***@example.com`）+ 15s 频控验证（立即重发被拦截）
+- **真机测试**：Xiaomi 15 Pro / Redmi / 一加——**NOT_RUN**（本环境无真机；黑屏修复/玻璃提示/汽水音乐/覆盖安装升级待真机回归）
+- **更新兼容**：versionCode 88000 > 87100（v8.0.7）> 86400（v7.15.14）等全部历史码——v7.x / v8.0.x 全部可发现可覆盖（签名一致 05ada6e3…）
+
+**下载信息**：
+
+- APK：`adshield-v8.0.8.apk` · 3577247 字节
+- SHA-256：`2e39c9962de66c77d6fe5db820ad4d270c61871c8882e15d9d8050e706c85bda`
+- 官方 Release：https://github.com/xiaobaiba999/Skip-Ad/releases/tag/v8.0.8
+- 签名证书 SHA-256：`05ada6e3f7a4fc6bf77449611c24f51e1ef4caa0a91a5cdd02c4d877738e6f79`（与历史所有正式版一致，直接覆盖升级）
+
 ## v8.0.7 · 2026-11-26 · 性能功耗优化 / Logo 阴影修复 / 能耗画像真实数据 / 日志上传官方仓 / 旧版更新兼容（versionCode 抬码 87100）
 
 **版本信息**：versionName 8.0.7 · versionCode **87100**（显式抬码：旧版 7.15.x 存量 versionCode 85000-86400 只按数值比较，87100 保证 v7.15.x / v7.x / 8.0.x 全部能发现并覆盖升级）· minSdk 26（Android 8.0）

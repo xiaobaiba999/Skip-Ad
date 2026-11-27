@@ -9,19 +9,20 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import li.gkd.app.META
 import li.gkd.app.network.AppLinks
 import li.gkd.app.network.FeedbackUploader
 import li.gkd.app.resources.*
 import li.gkd.app.ui.component.GkAlertDialog
 import li.gkd.app.ui.share.launchUi
 import li.gkd.app.upload.FeedbackLogs
+import li.gkd.app.upload.FeedbackReport
 import org.jetbrains.compose.resources.stringResource
 
 /**
  * Manual feedback issue upload, preserving the Guardian log report feature. The report is built
- * by [FeedbackLogs], sanitized on submission, and posted as a GitHub issue of the project
- * repository; automatic uploads run from the application scope.
+ * by the unified [FeedbackReport] builder (identical to the automatic channel), sanitized on
+ * submission, and posted as a GitHub issue of the project repository; automatic uploads run from
+ * the application scope.
  */
 class FeedbackUploadState(private val scope: CoroutineScope) {
     val uploadingFlow: StateFlow<Boolean>
@@ -29,15 +30,16 @@ class FeedbackUploadState(private val scope: CoroutineScope) {
 
     private val resultFlow = MutableStateFlow<FeedbackUploader.Result?>(null)
 
-    fun upload(titlePrefix: String) {
+    fun upload(@Suppress("UNUSED_PARAMETER") titlePrefix: String = "") {
         if (uploadingFlow.value) return
         uploadingFlow.value = true
         scope.launchUi {
             try {
                 val result =
                     FeedbackUploader.createIssue(
-                        "$titlePrefix ${META.appName} v${META.versionName}",
-                        FeedbackLogs.build(),
+                        // v8.0.8：与自动上传同格式的统一标题（含设备信息与版本）
+                        FeedbackLogs.issueTitle("手动上传"),
+                        FeedbackReport.build("手动上传"),
                     )
                 resultFlow.value = result
             } catch (e: CancellationException) {

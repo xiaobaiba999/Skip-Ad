@@ -9,6 +9,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import li.gkd.app.matching.diagnostics.observeActionOperation
 
 /**
@@ -47,8 +48,17 @@ private suspend fun AccessibilityService.dispatchAndAwaitGesture(
             )
         }
     if (!submitted) return GestureSegmentResult.Rejected
-    return observeActionOperation("GestureCallbackWait") { finished.await() }
+    return observeActionOperation("GestureCallbackWait") {
+        // v8.0.8：回调丢失兜底——服务中途断开时系统可能既不回调 onCompleted 也不回调
+        // onCancelled，finished.await() 将永久挂起并泄漏 worker。真实手势时长
+        // 远小于 10s（点击 <100ms / 滑动 <1s），超时按已取消处理并释放调度车道。
+        withTimeoutOrNull(GESTURE_CALLBACK_TIMEOUT_MS) { finished.await() }
+            ?: GestureSegmentResult.Cancelled
+    }
 }
+
+/** 手势回调等待上限：远超任何真实手势时长，仅用于回调丢失兜底。 */
+private const val GESTURE_CALLBACK_TIMEOUT_MS = 10_000L
 
 suspend fun AccessibilityService.awaitSwipe(
     startX: Float,

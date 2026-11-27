@@ -99,7 +99,9 @@ class AndroidMainState(
 
         mainVm.scope.launchLogged(Dispatchers.IO) {
             AndroidStorage.storage.awaitHistoryMigration(HistoryDirectory.Crash)
-            val list = FileCrashStorage.takePending()
+            // v8.0.8：窥探不删除——产品壳无 Compose 崩溃路由可消费展示，
+            // 读后删会同时吞掉启动提醒与 WebView crashDump 的 pending 数据
+            val list = FileCrashStorage.peekPending()
             withContext(Dispatchers.Main.immediate) { mainVm.showCrashReports(list) }
         }
     }

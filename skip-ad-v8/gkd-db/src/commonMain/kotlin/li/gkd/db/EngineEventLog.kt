@@ -11,8 +11,9 @@ import kotlinx.coroutines.flow.Flow
 /**
  * 详细引擎日志（v8.0.6 双通道日志体系的“详细”通道）。
  * 简洁通道 = action_log（「应用」触发「规则」）；本表记录引擎全链路技术事件
- * （服务生命周期 / 规则执行与失败原因 / 配置变更 / 订阅状态），通过
- * action_log_id 与简洁条目一一关联（同事务回填）。容量：保留最近 800 条。
+ * （服务生命周期 / 规则执行与失败原因 / 匹配未命中汇总 / 配置变更 / 订阅状态），通过
+ * action_log_id 与简洁条目一一关联（同事务回填）。容量：保留最近 1200 条
+ * （v8.0.8：800 → 1200，匹配未命中汇总按应用 8 秒窗口节流，填充速率有界）。
  */
 @Entity(tableName = "engine_event_log")
 data class EngineEventLog(
@@ -20,7 +21,7 @@ data class EngineEventLog(
     @ColumnInfo(name = "ctime") val ctime: Long,
     /** 0=info 1=warn 2=error */
     @ColumnInfo(name = "level") val level: Int = 0,
-    /** service_connected / service_disconnected / action_performed / action_failed / subscription_seeded / subscription_reenabled / subscription_state / config_changed */
+    /** service_connected / service_disconnected / action_performed / action_failed / match_miss / app_no_rules / subscription_seeded / subscription_reenabled / subscription_state / subscription_update_failed / config_changed */
     @ColumnInfo(name = "kind") val kind: String,
     @ColumnInfo(name = "app_id") val appId: String? = null,
     @ColumnInfo(name = "action_log_id") val actionLogId: Long? = null,
@@ -41,7 +42,7 @@ data class EngineEventLog(
             """
             DELETE FROM engine_event_log
             WHERE id <= (
-                    SELECT id FROM engine_event_log ORDER BY id DESC LIMIT 1 OFFSET 800
+                    SELECT id FROM engine_event_log ORDER BY id DESC LIMIT 1 OFFSET 1200
                 )
         """,
         )

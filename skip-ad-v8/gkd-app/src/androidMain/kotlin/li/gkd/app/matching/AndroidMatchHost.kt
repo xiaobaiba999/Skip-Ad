@@ -1,6 +1,7 @@
 package li.gkd.app.matching
 
 import android.graphics.Rect
+import android.os.SystemClock
 import android.util.Log
 import android.view.Display
 import android.view.accessibility.AccessibilityEvent
@@ -17,6 +18,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import li.gkd.app.META
 import li.gkd.app.data.subscription.SubscriptionState
+import li.gkd.app.logging.LogUtils
 import li.gkd.app.matching.action.ActionPerformer
 import li.gkd.app.matching.diagnostics.MatchEventBatch
 import li.gkd.app.matching.diagnostics.MatchEventDrop
@@ -64,6 +66,10 @@ import li.gkd.app.model.ActionResult
 import li.gkd.app.platform.lifecycle.MainActivityVisibility
 import li.gkd.app.priv.privilegeContextFlow
 import li.gkd.app.record.addActionLog
+import li.gkd.app.record.EngineEventLogWriter
+import li.gkd.app.record.EngineMatchMissRecorder
+import li.gkd.app.record.EngineRateGate
+import li.gkd.app.record.logActionFailure
 import li.gkd.app.rule.*
 import li.gkd.app.rule.ResolvedRule
 import li.gkd.app.service.EventService
@@ -135,7 +141,9 @@ class AndroidMatchHost(private val service: AndroidAutomationSession) {
                 if (!isActionContextCurrent(node)) {
                     throw CancellationException("action_window_changed")
                 }
-                return ActionPerformer.getAction(
+                val actionStartedAt = SystemClock.elapsedRealtime()
+                val result =
+                    ActionPerformer.getAction(
                         rule.parameters.action
                             ?: rule.parameters.position?.let {
                                 ActionPerformer.ClickCenter.action
@@ -145,6 +153,8 @@ class AndroidMatchHost(private val service: AndroidAutomationSession) {
                             },
                     )
                     .perform(node, rule.parameters, coordinator.diagnostics.enabled)
+                // v8.0.8：动作实测耗时随结果上行（详细引擎日志 durationMs）
+                return result.copy(durationMs = SystemClock.elapsedRealtime() - actionStartedAt)
             }
         }
 
@@ -347,7 +357,25 @@ class AndroidMatchHost(private val service: AndroidAutomationSession) {
             scope.launch(eventDispatcher, start = CoroutineStart.LAZY) {
                 while (true) {
                     val head = synchronized(eventDeque) { eventDeque.firstOrNull() } ?: break
-                    consumeEvent(head)
+                    // v8.0.8：单事件异常兜底——Binder 层偶发 RuntimeException
+                    // （DeadObjectException / SecurityException 等）此前会冲出消费循环
+                    // 终止事件处理；现在逐事件捕获、丢弃当前事件继续消费后续事件，
+                    // 并以 action 前缀写入详细引擎日志（不重试不循环，天然有界）。
+                    try {
+                        consumeEvent(head)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        LogUtils.e("consume event failed: ${e.javaClass.simpleName}", e)
+                        runCatching {
+                            EngineEventLogWriter.log(
+                                kind = "event_consume_failed",
+                                message = "❌ 事件处理异常（${e.javaClass.simpleName}）：${(e.message ?: "").take(120)} —— 已跳过该事件继续",
+                                level = 2,
+                                appId = head.key.appId,
+                            )
+                        }
+                    }
                 }
             }
         eventConsumer = job
@@ -515,6 +543,15 @@ class AndroidMatchHost(private val service: AndroidAutomationSession) {
                     rules.globalRules.none { it.matchActivity(appId, activityId = null) }
             ) {
                 coordinator.diagnostics.entry("source_read", "no_rules_for_app")
+                // v8.0.8：「为什么没跳过」诊断链第一环：无规则应用节流落库（每应用每 10 分钟首条）
+                if (EngineRateGate.tryAcquire("app_no_rules:$appId", 10 * 60_000L)) {
+                    EngineEventLogWriter.log(
+                        kind = "app_no_rules",
+                        message = "🧭 应用暂无规则（$appId）：引擎不对其执行扫描（若遇广告未跳过，请上传日志帮助补规则）",
+                        level = 0,
+                        appId = appId,
+                    )
+                }
                 return
             }
             coordinator.diagnostics.entry("source_read", "source_read_started")
@@ -1034,6 +1071,30 @@ class AndroidMatchHost(private val service: AndroidAutomationSession) {
                         }
                     }
                     addActionLog(rule, activityRule.topActivity, target, result)
+                },
+                // v8.0.8：规则评估结果观察点——匹配未命中按应用聚合落库（8 秒窗口），
+                // 动作失败（此前无任何日志）单独落库；纯内存操作，绝不阻塞匹配主链。
+                observed = { rule, status, matched, result ->
+                    if (result != null) {
+                        if (!result.result) {
+                            logActionFailure(rule, activityRule.topActivity, result)
+                        }
+                        EngineMatchMissRecorder.record(
+                            rule.subsItem.id,
+                            rule.g.group.name,
+                            activityRule.topActivity.appId,
+                            status,
+                            true,
+                        )
+                    } else {
+                        EngineMatchMissRecorder.record(
+                            rule.subsItem.id,
+                            rule.g.group.name,
+                            activityRule.topActivity.appId,
+                            status,
+                            matched,
+                        )
+                    }
                 },
             )
         } finally {

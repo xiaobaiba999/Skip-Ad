@@ -88,6 +88,17 @@ object FileCrashStorage {
         return records
     }
 
+    /**
+     * v8.0.8：非破坏性启动窥探（不删除 crash/temp pending 文件）。
+     * 产品壳主界面不渲染 Compose 崩溃路由，启动即 takePending（读后删）会把
+     * 「新崩溃」提醒与 WebView crashDump() 的 pending 数据一并吞掉；
+     * 启动展示改用窥探，真正的消费（读后删）留给 H5 上传路径。
+     */
+    fun peekPending(): List<CrashData> {
+        trim()
+        return load(appStorage().crashTemp)
+    }
+
     fun delete(record: CrashData): Boolean =
         directories
             .map { folder ->

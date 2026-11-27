@@ -20,6 +20,8 @@ data class ActionResult(
     val shell: Boolean = false,
     val position: Pair<Float, Float>? = null,
     val coordinateError: PositionError? = null,
+    /** v8.0.8：动作执行耗时（毫秒，perform 前后实测），随详细引擎日志记录 */
+    val durationMs: Long? = null,
 ) {
     val outcomeReason: String
         get() =

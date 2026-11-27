@@ -33,9 +33,9 @@ plugins {
 // 87100 = 首个高于历史最大 versionCode(86400) 的兼容码；versionName 与
 // versionCode 的 7.x 公式(major*10000+minor*1000+patch*100)自 8.0.7 起解耦，
 // 发布链(update_manifest.py --version-code)按显式码校验。
-extra["gkdVersionName"] = "8.0.7" + project.gitInfo.versionNameSuffix.orEmpty()
+extra["gkdVersionName"] = "8.0.8" + project.gitInfo.versionNameSuffix.orEmpty()
 
-extra["gkdVersionCode"] = 87100
+extra["gkdVersionCode"] = 88000
 
 object Cfg {
     val compileSdk

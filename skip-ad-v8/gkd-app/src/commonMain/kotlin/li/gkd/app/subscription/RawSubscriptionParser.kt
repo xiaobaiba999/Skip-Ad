@@ -27,7 +27,9 @@ import li.songe.json5.Json5ParseException
 
 object RawSubscriptionParser {
     fun parse(source: String, json5: Boolean = true): RawSubscription {
-        return Parser().parse(source, json5)
+        // v8.0.8：订阅内容补丁层唯一挂载点——种子加载/远程更新/用户导入全部经此出口，
+        // 补丁跨每日订阅同步持久生效（幂等），详见 SubscriptionPatches。
+        return SubscriptionPatches.applyTo(Parser().parse(source, json5))
     }
 
     fun parseApp(jsonObject: JsonObject): RawApp {

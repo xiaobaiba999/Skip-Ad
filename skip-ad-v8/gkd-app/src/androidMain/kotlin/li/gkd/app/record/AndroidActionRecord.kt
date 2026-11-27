@@ -1,6 +1,7 @@
 package li.gkd.app.record
 
 import android.view.accessibility.AccessibilityNodeInfo
+import kotlinx.serialization.json.Json
 import li.gkd.app.appScope
 import li.gkd.app.app.AppInfoRepository
 import li.gkd.app.data.toAttrInfo
@@ -47,7 +48,30 @@ fun addActionLog(
     }
 }
 
-/** v8.0.6 详细引擎日志：应用名优先（快照缓存），失败原因/动作类型随行 */
+/**
+ * v8.0.8：动作执行失败记录（修复 v8.0.7 及以前 failed 分支不可达的缺陷——
+ * queryRules 仅在 result=true 时回调 completed，失败结果此前完全无日志）。
+ * 只写详细通道（无 action_log 行，不污染触发统计语义），带组名/规则名/原因/耗时。
+ */
+fun logActionFailure(
+    rule: ResolvedRule,
+    topActivity: TopActivity,
+    actionResult: ActionResult,
+) {
+    val detail =
+        buildEngineDetail(rule, topActivity, actionResult)
+    EngineEventLogWriter.log(
+        kind = detail.kind,
+        message = detail.message,
+        level = detail.level,
+        appId = topActivity.appId,
+        detail = runCatching {
+            Json.encodeToString(EngineEventDetail.serializer(), detail)
+        }.getOrNull(),
+    )
+}
+
+/** v8.0.6 详细引擎日志：应用名优先（快照缓存），失败原因/动作类型随行；v8.0.8 补规则名与耗时 */
 private fun buildEngineDetail(
     rule: ResolvedRule,
     topActivity: TopActivity,
@@ -57,6 +81,7 @@ private fun buildEngineDetail(
         AppInfoRepository.snapshot?.apps?.get(topActivity.appId)?.name
             ?: shortPkg(topActivity.appId)
     val groupName = rule.g.group.name
+    val ruleName = rule.rule.name?.takeIf { it.isNotBlank() }
     val actionType = actionResult.action
     val ok = actionResult.result
     return EngineEventDetail(
@@ -64,12 +89,13 @@ private fun buildEngineDetail(
         level = if (ok) 0 else 2,
         message =
             if (ok) {
-                "⚡ 执行动作（$appName · $groupName）：$actionType · 成功"
+                "⚡ 执行动作（$appName · $groupName · ${ruleName ?: "规则"}）：$actionType · 成功"
             } else {
-                "❌ 动作失败（$appName · $groupName）：$actionType · ${actionResult.outcomeReason}"
+                "❌ 动作失败（$appName · $groupName · ${ruleName ?: "规则"}）：$actionType · ${actionResult.outcomeReason}"
             },
         actionType = actionType,
         result = ok,
+        durationMs = actionResult.durationMs,
         reason = if (ok) null else actionResult.outcomeReason,
     )
 }

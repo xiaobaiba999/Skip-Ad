@@ -4,6 +4,7 @@ import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
 import android.webkit.MimeTypeMap
+import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -11,6 +12,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -135,46 +138,82 @@ class MainActivity : ComponentActivity() {
         }
         StatusService.autoStart()
         setContent {
-            // 7.15.14 WebView UI（绿色主题底色与 style.css --bg 对齐）
-            AndroidView(
-                modifier = androidx.compose.ui.Modifier.fillMaxSize(),
-                factory = { ctx ->
-                    WebView(ctx).apply {
-                        settings.javaScriptEnabled = true
-                        settings.domStorageEnabled = true
-                        settings.allowFileAccess = true
-                        setBackgroundColor(0xFFF2F7F3.toInt())
-                        addJavascriptInterface(WebUiBridge(this@MainActivity), "AndroidApp")
-                        webViewClient = object : WebViewClient() {
-                            override fun shouldOverrideUrlLoading(
-                                view: WebView,
-                                request: WebResourceRequest,
-                            ): Boolean {
-                                val url = request.url.toString()
-                                return when {
-                                    // 内页：继续加载（唯一允许的本地来源）
-                                    url.startsWith("file:///android_asset/") -> false
-                                    // 外链：一律系统浏览器（JS 桥零远程暴露）
-                                    url.startsWith("http://") || url.startsWith("https://") -> {
-                                        try {
-                                            app.tryStartActivity(
-                                                Intent(Intent.ACTION_VIEW, request.url)
-                                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                                            )
-                                        } catch (_: Throwable) {
-                                        }
-                                        true
-                                    }
+            // v8.0.8：首帧底色兑底（与 windowBackground / WebView 底色三色一致 #F2F7F3）——
+            // WebView 首个合成帧异步就绪前，Compose 首帧即绘制品牌底色，窗口不再真空闪黑
+            Box(
+                modifier =
+                    androidx.compose.ui.Modifier
+                        .fillMaxSize()
+                        .background(androidx.compose.ui.graphics.Color(0xFFF2F7F3)),
+            ) {
+                // 7.15.14 WebView UI（绿色主题底色与 style.css --bg 对齐）
+                AndroidView(
+                    modifier = androidx.compose.ui.Modifier.fillMaxSize(),
+                    factory = { ctx ->
+                        WebView(ctx).apply {
+                            settings.javaScriptEnabled = true
+                            settings.domStorageEnabled = true
+                            settings.allowFileAccess = true
+                            setBackgroundColor(0xFFF2F7F3.toInt())
+                            addJavascriptInterface(WebUiBridge(this@MainActivity), "AndroidApp")
+                            webViewClient = object : WebViewClient() {
+                                // v8.0.8：主帧加载失败兑底：本地 asset 加载失败自动重试一次；
+                                // 仍失败则展示可读错误页（广告跳过不受影响），不再永久空白
+                                private var retried = false
 
-                                    else -> true // 其他 scheme 一律拦截
+                                override fun onReceivedError(
+                                    view: WebView,
+                                    request: WebResourceRequest,
+                                    error: WebResourceError,
+                                ) {
+                                    if (!request.isForMainFrame) return
+                                    if (!retried) {
+                                        retried = true
+                                        view.post { view.loadUrl("file:///android_asset/www/index.html") }
+                                        return
+                                    }
+                                    view.loadDataWithBaseURL(
+                                        null,
+                                        "<html><body style='background:#F2F7F3;color:#1B4332;" +
+                                            "font-family:sans-serif;padding:32px;text-align:center;'>" +
+                                            "<h3>页面加载失败</h3><p>卫士界面暂时不可用，广告跳过不受影响。<br/>" +
+                                            "请完全退出后重开；若反复出现请上传日志反馈。</p></body></html>",
+                                        "text/html",
+                                        "utf-8",
+                                        null,
+                                    )
+                                }
+
+                                override fun shouldOverrideUrlLoading(
+                                    view: WebView,
+                                    request: WebResourceRequest,
+                                ): Boolean {
+                                    val url = request.url.toString()
+                                    return when {
+                                        // 内页：继续加载（唯一允许的本地来源）
+                                        url.startsWith("file:///android_asset/") -> false
+                                        // 外链：一律系统浏览器（JS 桥零远程暴露）
+                                        url.startsWith("http://") || url.startsWith("https://") -> {
+                                            try {
+                                                app.tryStartActivity(
+                                                    Intent(Intent.ACTION_VIEW, request.url)
+                                                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                                                )
+                                            } catch (_: Throwable) {
+                                            }
+                                            true
+                                        }
+
+                                        else -> true // 其他 scheme 一律拦截
+                                    }
                                 }
                             }
+                            loadUrl("file:///android_asset/www/index.html")
+                            this@MainActivity.webView = this
                         }
-                        loadUrl("file:///android_asset/www/index.html")
-                        this@MainActivity.webView = this
-                    }
-                },
-            )
+                    },
+                )
+            }
             LaunchedEffect(Unit) {
                 MainActivityIntents.pending(intent)?.let {
                     if (!DesktopProfileExport.handle(this@MainActivity, it))

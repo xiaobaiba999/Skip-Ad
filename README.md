@@ -8,7 +8,7 @@
 
 在开源项目 [GKD](https://github.com/gkd-kit/gkd)（GPL-3.0，本项目基线为上游 1.13.2）核心技术基础上重构、融合与产品化开发：开屏 · 弹窗 · 信息流 · 反馈面板，无障碍事件驱动匹配，只点应用自带的「跳过 / 关闭」键。
 
-[![最新版本](https://img.shields.io/badge/%E7%89%88%E6%9C%AC-v8.0.7-blue?style=flat-square)](#%EF%B8%8F-%E4%B8%8B%E8%BD%BD%E4%B8%8E%E5%AE%89%E8%A3%85)
+[![最新版本](https://img.shields.io/badge/%E7%89%88%E6%9C%AC-v8.0.8-blue?style=flat-square)](#%EF%B8%8F-%E4%B8%8B%E8%BD%BD%E4%B8%8E%E5%AE%89%E8%A3%85)
 [![最新发布](https://img.shields.io/github/v/release/xiaobaiba999/Skip-Ad?style=flat-square&label=%E6%9C%80%E6%96%B0%E5%8F%91%E5%B8%83)](https://github.com/xiaobaiba999/Skip-Ad/releases/latest)
 [![APK](https://img.shields.io/badge/APK-3.5MB-orange?style=flat-square)](#%EF%B8%8F-%E4%B8%8B%E8%BD%BD%E4%B8%8E%E5%AE%89%E8%A3%85)
 [![系统](https://img.shields.io/badge/Android-8.0%2B-green?style=flat-square)](#%EF%B8%8F-%E4%B8%8B%E8%BD%BD%E4%B8%8E%E5%AE%89%E8%A3%85)
@@ -53,10 +53,11 @@
 | 内嵌三订阅 | Lin-arm / aoguai / 甘霖三套社区订阅随 APK 内嵌，开箱即用；每日自动同步，离线快照兜底（订阅作者归属在 `assets/subscriptions` 内保留） |
 | 应用白名单 | 真实应用名称 / 图标（WebP）/ 搜索；默认折叠 5 款预览，展开全部 + 置顶收起条（v8.0.7）；勾选与滚动状态保持 |
 | 卫士使用报告 | 拦截战绩累计 / 订阅两源命中 / 能耗画像（无障碍事件 / 规则扫描为真实计数，手势能耗为系数估算并明确标注）/ 设备画像 / 应用战绩 Top5 |
-| 引擎日志双通道 | 「最新」简洁触发记录 +「详细」全链路（服务连接 / 断开 / 动作执行与失败 / 订阅状态 / 配置变更）；数据库持久化（各 500 / 800 条上限），异步批量写入不阻塞无障碍线程，动作与详细记录同事务关联 |
-| 日志上传 GitHub Issues | 手动 + 自动（8h 节流 / 亮屏才传 / 无新内容不建空 Issue / 成功才计时）；双层脱敏（手机号 / 身份证 / 邮箱 / IPv4）；上传失败保留本地可重试 |
+| 引擎日志双通道 | 「最新」简洁触发记录 +「详细」全链路（服务连接 / 断开 / 动作执行与失败及实测耗时 / 匹配未命中汇总 / 无规则应用 / 订阅状态与更新失败 / 配置变更 / 事件处理异常）；数据库持久化（500 / 1200 条上限），异步批量写入不阻塞无障碍线程，动作与详细记录同事务关联（v8.0.8 恢复并超越 7.15.14 详细日志能力） |
+| 日志上传 GitHub Issues | 手动 + 自动（8h 节流 / 亮屏才传 / 无新内容不建空 Issue / 成功才计时）三通道统一报告（自动 / Compose 手动 / WebView 手动同一构建器同一口径）；双层脱敏（手机号 / 身份证 / 邮箱 / IPv4）+ 15s 频控；上传失败保留本地可重试 |
 | 版本更新 | 多源检查（jsDelivr → gcore → raw + 历史 kilo 回退）；SHA-256 + 大小双校验；下载域白名单；旧版 v7.15.x / v7.x / 8.0.x 全兼容发现 |
 | 性能与功耗设计 | 日志写入全异步化（有界队列 256 / 批 16）、内存缓存全有界（节点 LRU 4096 / 图标 LRU 160）、WebView 后台暂停 / 查询 LIMIT 下推 / 事件编码移出事件线程（v8.0.7） |
+| 稳定性与安全（v8.0.8） | 汽水音乐开屏误触根治（订阅补丁层：无锚点结构分支删除 / 穿山甲跳过键 id 兜底 / 全局组跨源排除，跨每日订阅同步持久生效）；坐标点击前目标可见性校验（陈旧节点宁可失败不误点）；启动黑屏根治（三色连续：系统启动窗 / 首帧 / WebView）；液态柔光玻璃触发提示（Logo + 正在守护）；异常兜底七项（主线程 ANR / DB 损坏自愈 / 事件循环异常隔离 / 手势回调超时 / 网络超时 / WebView 加载失败兜底 / 崩溃提醒不丢） |
 
 ## 🏗️ 技术架构
 
@@ -147,17 +148,18 @@
 
 ## 🩺 引擎日志和诊断
 
-**双通道引擎日志**：
+**双通道引擎日志**（v8.0.8 恢复并超越 7.15.14 详细日志能力）：
 
 - **最新（简洁通道）**：每轮触发的简洁记录（命中 / 出手等关键事件）；
-- **详细（全链路通道）**：服务连接 / 断开、动作执行与失败、订阅状态、配置变更全链路；
-- 数据库持久化（最新 500 / 详细 800 条上限），动作与详细记录同事务关联；
-- 异步批量写入（有界队列，不阻塞无障碍线程）。
+- **详细（全链路通道）**：服务连接 / 断开、动作执行与失败（含规则名与实测耗时）、**匹配未命中汇总**（按应用 8 秒窗口聚合：未命中分布与涉及规则组——直接回答「广告为什么没跳过」）、无规则应用、订阅状态与更新失败、配置变更、事件处理异常；
+- 数据库持久化（最新 500 / 详细 1200 条上限），动作与详细记录同事务关联（actionLogId 可串起一次处理链路）；
+- 异步批量写入（有界队列，不阻塞无障碍线程；高频事件按应用窗口聚合，动作成败等关键结果绝不采样）。
 
 **日志上传 GitHub Issues**：
 
-- 手动 + 自动（8h 节流 / 亮屏才传 / 无新内容不建空 Issue / 成功才计时）；
-- **双层脱敏**：手机号 / 身份证 / 邮箱 / IPv4 上传前双重清洗；
+- **三通道统一报告**（v8.0.8）：自动上传、Compose 手动上传、WebView 手动上传使用同一构建器同一口径，六节结构（基本环境 / 最新触发记录 / 详细执行记录 / 异常与失败 / 统计摘要 / 日志说明），标题带设备信息与版本；
+- 手动 + 自动（8h 节流 / 亮屏才传 / 无新内容不建空 Issue / 成功才计时）+ 15s 客户端频控；
+- **双层脱敏**：手机号 / 身份证 / 邮箱 / IPv4 上传前双重清洗（发布链真实 Issue E2E 实证）；
 - 上传失败保留本地，可重试；
 - 上传链已用真实 Issue 验证：仓库 Issues 存档 E2E 验证 [#139](https://github.com/xiaobaiba999/Skip-Ad/issues/139)（创建后 GET 复验，标题一致 / open 状态）。
 
@@ -174,17 +176,17 @@
 
 ## ⬇️ 下载与安装
 
-**当前版本 [v8.0.7](https://github.com/xiaobaiba999/Skip-Ad/releases/tag/v8.0.7)（2026-11-26）** · versionName 8.0.7 · versionCode 87100 · APK `adshield-v8.0.7.apk` · 3,581,971 字节
+**当前版本 [v8.0.8](https://github.com/xiaobaiba999/Skip-Ad/releases/tag/v8.0.8)（2026-11-27）** · versionName 8.0.8 · versionCode 88000 · APK `adshield-v8.0.8.apk` · 3577247 字节
 
 | 下载通道 | 说明 | 链接 |
 | --- | --- | --- |
-| **GitHub Releases** | 官方主源（Release 资产） | [下载 adshield-v8.0.7.apk](https://github.com/xiaobaiba999/Skip-Ad/releases/download/v8.0.7/adshield-v8.0.7.apk) |
-| **ghfast.top 镜像** | GitHub Release 资产加速 | [下载 adshield-v8.0.7.apk](https://ghfast.top/https://github.com/xiaobaiba999/Skip-Ad/releases/download/v8.0.7/adshield-v8.0.7.apk) |
-| **jsDelivr CDN 直链** | 国内推荐，直出仓库归档（与 Release 资产同字节） | [gcore 直链](https://gcore.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/android-app/dist/adshield-v8.0.7.apk) · [testingcf 备用](https://testingcf.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/android-app/dist/adshield-v8.0.7.apk) |
+| **GitHub Releases** | 官方主源（Release 资产） | [下载 adshield-v8.0.8.apk](https://github.com/xiaobaiba999/Skip-Ad/releases/download/v8.0.8/adshield-v8.0.8.apk) |
+| **ghfast.top 镜像** | GitHub Release 资产加速 | [下载 adshield-v8.0.8.apk](https://ghfast.top/https://github.com/xiaobaiba999/Skip-Ad/releases/download/v8.0.8/adshield-v8.0.8.apk) |
+| **jsDelivr CDN 直链** | 国内推荐，直出仓库归档（与 Release 资产同字节） | [gcore 直链](https://gcore.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/android-app/dist/adshield-v8.0.8.apk) · [testingcf 备用](https://testingcf.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/android-app/dist/adshield-v8.0.8.apk) |
 
-- **完整 SHA-256**：`1ea099f5856be81dd57e76e8a9263c661d8d275d46bed9081bd2b112c62c2b14`
+- **完整 SHA-256**：`2e39c9962de66c77d6fe5db820ad4d270c61871c8882e15d9d8050e706c85bda`
 - **签名证书 SHA-256**：`05ada6e3f7a4fc6bf77449611c24f51e1ef4caa0a91a5cdd02c4d877738e6f79`（与 v7.x 全系及 v8.0.4-8.0.6 一致）
-- **升级**：已装 v7.x（v7.15.x）/ 8.0.x 任何版本——**直接覆盖安装即升级**（versionCode 87100 大于旧版全部，签名一致，无障碍授权与数据保留）；
+- **升级**：已装 v7.x（v7.15.x）/ 8.0.x 任何版本——**直接覆盖安装即升级**（versionCode 88000 大于旧版全部，签名一致，无障碍授权与数据保留）；
 - **全新安装**：下载 → 允许「安装未知应用」→ 安装 → 首页开启无障碍服务；内嵌三订阅开箱即用，无需手动导入规则；
 - **系统要求**：Android 8.0+（minSdk 26）；
 - 任一通道下载的 APK 与 Release 资产**同字节、同 SHA-256**，App 更新链安装前会自动做 SHA-256 + 大小双校验。
@@ -198,7 +200,7 @@ App 内「版本页 → 检查更新」：
 - **更新清单**：[`update/latest.json`](update/latest.json)（GitHub raw 与 jsDelivr 四域同源）；
 - **多源检查**：jsDelivr → gcore → raw 依次回退，另保留历史 kilo 域回退兼容；
 - **双校验**：下载完成先验 SHA-256 + 文件大小，校验通过才进入安装；下载域白名单外的链接一律拒绝；
-- **旧版全兼容发现**：旧版 v7.15.x 存量 versionCode 85000-86400 只按数值比较——87100 显式抬码保证 v7.15.x / v7.x / 8.0.x 全部能发现并覆盖升级（签名一致，无障碍授权与数据保留）；
+- **旧版全兼容发现**：旧版 v7.15.x 存量 versionCode 85000-86400 只按数值比较——88000 抬码保证 v7.15.x / v7.x / 8.0.x 全部能发现并覆盖升级（签名一致，无障碍授权与数据保留）；
 - 更新兼容的旧版客户端逻辑复刻验证：**发布链验证**（发布后执行）；
 - 应用内检查失败：直接用[下载区](#-下载与安装)任一直链浏览器下载后覆盖安装。
 
@@ -217,9 +219,9 @@ HyperOS / ColorOS 等厂商 ROM 默认激进省电会回收无障碍服务。按
 </details>
 
 <details>
-<summary><b>为什么 versionCode 从 7.x 的 85000-86400 直接跳到 87100？</b></summary>
+<summary><b>为什么 versionCode 从 7.x 的 85000-86400 跳到 87100 再到 88000？</b></summary>
 
-旧版 7.15.x 存量客户端比较版本只看 versionCode 数值。显式抬码到 87100 保证所有存量版本（v7.15.x / v7.x / 8.0.x）都能发现 v8.0.7 并平滑覆盖升级——跳号是刻意的兼容设计，不是版本缺失。
+旧版 7.15.x 存量客户端比较版本只看 versionCode 数值。v8.0.7 显式抬码 87100（跨 7.15.x 存量段 85000-86400），8.0.8 延续抬码 88000——所有存量版本（v7.15.x / v7.x / 8.0.x）都能发现新版本并平滑覆盖升级——跳号是刻意的兼容设计，不是版本缺失。
 </details>
 
 <details>

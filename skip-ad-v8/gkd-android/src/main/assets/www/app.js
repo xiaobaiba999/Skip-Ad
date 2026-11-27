@@ -1342,29 +1342,40 @@ async function doUploadLog() {
 
   setUploadPhase(btn, "收集日志…");
 
-  // ① 四类内容收集（应用版本 / 设备信息 / 拦截日志 / 异常堆栈）
+  // ① 设备信息 / 崩溃堆栈（标题与统一构建兜底仍需 JS 侧数据）
   let dev = {}, crash = "";
   try { dev = JSON.parse(AndroidApp.deviceInfo()); } catch (e) {}
-  await new Promise(r => setTimeout(r, 250)); // 阶段可感知（收集<->脱敏间隔）
   try { crash = AndroidApp.crashDump() || ""; } catch (e) { crash = ""; }
-  setUploadPhase(btn, "本地脱敏…");
 
+  /* v8.0.8：统一完整报告——与自动上传/Compose 手动上传同一构建器（Kotlin
+   * FeedbackReport.build）同一口径：基本环境/最新触发记录/详细执行记录/异常
+   * 与失败/统计摘要/日志说明 六节。JS 只负责标题与提交，body 单一事实来源。 */
   const title = "[引擎日志][v" + appVer() + "] " + (dev.brand || "") + " " + (dev.model || "设备") + "（手动上传）";
-  const bodyLines = [
-    "## 设备",
-    "- " + (dev.brand || "") + " " + (dev.model || "") + " · " + (dev.os || "") + " · SDK " + (dev.sdk || "?"),
-    "- 应用版本：v" + appVer() + "（build " + appCode() + "） · 环境：Android APK · 手动上传",
-    "",
-    "## 状态",
-    engineProfile(),
-  ];
-  if (crash) {
-    bodyLines.push("", "## 上次崩溃堆栈（自动附带，已读后即删）", "```", crash.trim(), "```");
-  } else {
-    bodyLines.push("", "## 上次崩溃堆栈", "（无——本次开机周期内进程未崩溃）");
+  let body = "";
+  try {
+    body = AndroidApp.buildLogReport("手动上传") || "";
+  } catch (e) {
+    body = "";
+  }
+  if (!body) {
+    // 兜底：统一构建桥不可用时回退旧拼装（不因报告构建失败而无法上传）
+    const bodyLines = [
+      "## 设备",
+      "- " + (dev.brand || "") + " " + (dev.model || "") + " · " + (dev.os || "") + " · SDK " + (dev.sdk || "?"),
+      "- 应用版本：v" + appVer() + "（build " + appCode() + "） · 环境：Android APK · 手动上传",
+      "",
+      "## 状态",
+      engineProfile(),
+    ];
+    if (crash) {
+      bodyLines.push("", "## 上次崩溃堆栈（自动附带，已读后即删）", "```", crash.trim(), "```");
+    } else {
+      bodyLines.push("", "## 上次崩溃堆栈", "（无——本次开机周期内进程未崩溃）");
+    }
+    body = bodyLines.join("\n");
   }
   // ② 本地脱敏（第一层；Java Net.postIssue 提交前还会再脱敏一次）
-  const body = maskText(bodyLines.join("\n"));
+  body = maskText(body);
 
   setUploadPhase(btn, "提交中…");
   /* v7.15.0：异步桥（后台线程直发 GitHub Issue——卡死根治 + 超时快失败） */

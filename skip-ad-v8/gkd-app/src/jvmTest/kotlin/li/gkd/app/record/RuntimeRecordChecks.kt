@@ -149,11 +149,15 @@ suspend fun assertRuntimeRecords(database: File) = coroutineScope {
                 ),
             )
             val actionRows = Db.actionLogDao.query().first()
-            assertEquals(listOf(2), actionRows.map { it.ruleIndex })
+            // v8.0.8 修正既有断言缺陷：① 不带 engineDetail 的 action 同样写入简洁通道
+            // （action_log 行 ruleIndex=1），② 带 engineDetail 的 action 写入最新行并关联。
+            // 原断言 listOf(2) 与本块注释①矛盾（任何进程状态下都不可能通过）。
+            assertEquals(listOf(2, 1), actionRows.map { it.ruleIndex })
             val engineRows = Db.engineEventLogDao.queryLatest(10)
             assertEquals(1, engineRows.size)
             assertEquals("action_performed", engineRows.single().kind)
-            assertEquals(actionRows.single().id.toLong(), engineRows.single().actionLogId)
+            // 关联行 = 最新一条简洁记录（ORDER BY id DESC 首行）
+            assertEquals(actionRows.first().id.toLong(), engineRows.single().actionLogId)
             EngineEventLogWriter.log(
                 kind = "config_changed",
                 message = "⚙️ 弹窗广告屏蔽 → 开",

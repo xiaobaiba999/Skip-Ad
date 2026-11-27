@@ -97,6 +97,12 @@ sealed class ActionPerformer(val action: String) {
             coordinateBoundsFailure(action, position, "position")?.let {
                 return it
             }
+            // v8.0.8：坐标点击前目标校验——节点在匹配与执行之间可能被回收/不可见
+            // （陈旧 bounds 会点到屏幕其他区域）。宁可失败不误点（失败会落库 action_failed）。
+            // 位于坐标计算/越界检查之后：纯计算无副作用，拦截点在真正派发前。
+            if (!node.isVisibleToUser) {
+                return ActionResult(action = action, result = false)
+            }
             TrackService.addXyPosition(x, y)
             val durationMillis = ViewConfiguration.getTapTimeout().toLong()
             return ActionResult(
@@ -177,6 +183,10 @@ sealed class ActionPerformer(val action: String) {
             // 某些系统的 ViewConfiguration.getLongPressTimeout() 返回 300 , 这将导致触发普通的 click 事件
             coordinateBoundsFailure(action, position, "position")?.let {
                 return it
+            }
+            // v8.0.8：同 ClickCenter 的目标可见性校验（位于派发前，坐标错误路径优先）
+            if (!node.isVisibleToUser) {
+                return ActionResult(action = action, result = false)
             }
             TrackService.addXyPosition(x, y)
             return ActionResult(

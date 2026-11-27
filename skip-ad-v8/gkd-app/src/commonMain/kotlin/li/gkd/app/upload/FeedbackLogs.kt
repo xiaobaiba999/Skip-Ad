@@ -1,9 +1,6 @@
 package li.gkd.app.upload
 
 import java.security.MessageDigest
-import java.time.Instant
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -13,11 +10,8 @@ import li.gkd.app.logging.LogUtils
 import li.gkd.app.network.FeedbackUploader
 import li.gkd.app.settings.SettingsRepository
 import li.gkd.app.settings.FileSettingsStorage
-import li.gkd.app.state.EngineRuntimeCounters
 import li.gkd.app.storage.appStorage
-import li.gkd.app.subscription.SubscriptionRepository
 import li.gkd.db.Db
-import li.gkd.db.SubscriptionIds
 
 /** Shared feedback report building and auto-upload bookkeeping. */
 object FeedbackLogs {
@@ -33,11 +27,19 @@ object FeedbackLogs {
         data class Failed(val message: String) : AutoUploadOutcome
     }
 
+    /**
+     * v8.0.8：统一 Issue 标题（修复 v8.0.7 自动通道丢失设备信息的问题，对齐 7.15.14）。
+     * 例：`[引擎日志][v8.0.8] Xiaomi 15 Pro（8小时自动）`。
+     */
+    fun issueTitle(channel: String): String {
+        val device = runCatching { currentDeviceInfo() }.getOrNull()
+        val deviceText =
+            if (device != null) "${device.brand} ${device.model}".trim() else "未知设备"
+        return "[引擎日志][v${META.versionName}] $deviceText（$channel）"
+    }
+
     private val storage by lazy { FileSettingsStorage(appStorage().store) }
     private val stateJson = Json { ignoreUnknownKeys = true }
-
-    private val timestampFormat =
-        DateTimeFormatter.ofPattern("MM-dd HH:mm:ss").withZone(ZoneId.systemDefault())
 
     private fun readAutoUploadState(): AutoUploadState {
         val text = storage.read(STATE_FILE) ?: return AutoUploadState()
@@ -56,53 +58,24 @@ object FeedbackLogs {
             SettingsRepository.settings.value.enableAutoLogUpload &&
                 System.currentTimeMillis() - readAutoUploadState().at >= AUTO_UPLOAD_INTERVAL_MS
 
-    /** Diagnostics snapshot; masking runs again on submission as defense in depth. */
-    suspend fun build(): String = buildString {
-        appendLine("### 设备与应用")
-        appendLine("- 应用: ${META.appName} v${META.versionName} (${META.versionCode})")
-        appendLine("- 通道: ${META.channel}")
-        val device = currentDeviceInfo()
-        appendLine(
-            "- 设备: ${device.brand} ${device.model} (${device.device}), Android ${device.release} (SDK ${device.sdkInt})",
-        )
-        appendLine("- 触发总数: ${SettingsRepository.actionCount.value}")
-        // 能耗画像（与 WebView 端 engineProfile() 能耗行对齐）：真实计数 + 旧版系数估算
-        val events = EngineRuntimeCounters.eventCount()
-        val scans = EngineRuntimeCounters.scanCount()
-        // 能耗估算系数沿用旧版 7.15.14 PowerGovernor（事件×0.22 + 扫描×0.72 µWh，非实测）
-        val microWh = events * 22 / 100 + scans * 72 / 100
-        appendLine("- 能耗画像(进程本次启动以来):事件 $events · 扫描 $scans · 手势能耗估算 $microWh µWh(系数估算,非实测)")
-        appendLine()
-        appendLine("### 订阅状态")
-        runCatching {
-            val snapshot = SubscriptionRepository.awaitSnapshot()
-            snapshot.subscriptions.values
-                .sortedBy { it.id }
-                .forEach { subs ->
-                    val state = if (SubscriptionIds.isLocal(subs.id)) "本地" else "远程"
-                    appendLine("- [$state] ${subs.name} v${subs.version} (id=${subs.id})")
-                }
-        }
-        appendLine()
-        appendLine("### 最近触发记录（最多 30 条）")
-        runCatching {
-            Db.actionLogDao.queryLatest(30L).forEach { log ->
-                val time = timestampFormat.format(Instant.ofEpochMilli(log.ctime))
-                appendLine("- $time ${log.appId} group=${log.groupKey} rule=${log.ruleIndex}")
-            }
-        }
-    }
+    /**
+     * v8.0.8：统一完整报告（与手动上传同一构建器同一口径）。
+     * 内容：基本环境/最新触发记录/详细执行记录/异常与失败/统计摘要/日志说明 六节。
+     */
+    suspend fun build(): String = FeedbackReport.build("8小时自动")
 
     /**
-     * 报告内容签名（稳定哈希）：触发总数:最新动作日志时间戳:详细日志条数。
+     * 报告内容签名（稳定哈希）：触发总数:最新动作时间:详细日志条数:最新详细时间。
      * 任一变化即视为有新内容；与上次成功上传一致则跳过（不建空 Issue）。
+     * v8.0.8：加入详细通道最新时间戳（匹配未命中/服务状态等非动作事件也能触发新内容判定）。
      */
     private suspend fun reportSignature(): String {
         val latestActionTime =
             runCatching { Db.actionLogDao.queryLatest(1L).firstOrNull()?.ctime ?: 0L }
                 .getOrDefault(0L)
-        val detailCount = runCatching { Db.engineEventLogDao.count().first() }.getOrDefault(0)
-        val raw = "${SettingsRepository.actionCount.value}:$latestActionTime:$detailCount"
+        val detail = runCatching { Db.engineEventLogDao.queryLatest(1).firstOrNull() }.getOrNull()
+        val raw =
+            "${SettingsRepository.actionCount.value}:$latestActionTime:${detail?.id ?: 0}:${detail?.ctime ?: 0L}"
         return runCatching {
             MessageDigest.getInstance("SHA-256").digest(raw.toByteArray(Charsets.UTF_8))
                 .joinToString("") { "%02x".format(it) }
@@ -119,7 +92,7 @@ object FeedbackLogs {
         }
         val result =
             try {
-                FeedbackUploader.createIssue("自动日志 ${META.appName} v${META.versionName}", report)
+                FeedbackUploader.createIssue(issueTitle("8小时自动"), report)
             } catch (e: Exception) {
                 LogUtils.e("auto feedback upload failed", e)
                 return AutoUploadOutcome.Failed(e.message ?: e.toString())

@@ -1,16 +1,22 @@
 <resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="NewApi">
 
+    <!-- v8.0.8：不透明品牌底色（修复部分设备进入卫士时 Logo 短暂黑屏闪烁）。
+         根因：postSplashScreenTheme 的 windowBackground 为透明 + Compose 根布局
+         无底色，首帧依赖 WebView 首个合成帧；慢机上 WebView 初始化期间窗口真空
+         露出黑色 Surface。改为与 WebView 页面底色 (#F2F7F3) 一致的不透明色，
+         系统启动窗口、首帧、WebView 就绪三阶段颜色连续，无黑帧无跳变。 -->
     <style name="AppLightTheme" parent="android:Theme.Material.Light.NoActionBar">
-        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowBackground">#F2F7F3</item>
     </style>
 
     <style name="AppNightTheme" parent="android:Theme.Material.NoActionBar">
-        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowBackground">#F2F7F3</item>
     </style>
 
     <style name="SplashScreenLightTheme" parent="Theme.SplashScreen">
-        <!-- Match Material3 lightColorScheme().background. -->
-        <item name="windowSplashScreenBackground">#FEF7FF</item>
+        <!-- v8.0.8：Splash 底色统一为页面底色（页面恒浅色无深色模式，深色系统下
+             近黑 Splash → 浅绿页面的强跳变正是「黑屏闪烁」观感的放大器） -->
+        <item name="windowSplashScreenBackground">#F2F7F3</item>
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:windowLightNavigationBar">true</item>
         <item name="windowSplashScreenAnimatedIcon">@mipmap/gkd_black</item>
@@ -19,13 +25,13 @@
     </style>
 
     <style name="SplashScreenNightTheme" parent="Theme.SplashScreen">
-        <!-- Match Material3 darkColorScheme().background. -->
-        <item name="windowSplashScreenBackground">#141218</item>
-        <item name="android:windowLightStatusBar">false</item>
-        <item name="android:windowLightNavigationBar">false</item>
-        <item name="windowSplashScreenAnimatedIcon">@mipmap/gkd_white</item>
+        <!-- v8.0.8：夜间 Splash 与浅色版完全一致（页面恒浅色；浅底配深色图标） -->
+        <item name="windowSplashScreenBackground">#F2F7F3</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/gkd_black</item>
         <item name="windowSplashScreenAnimationDuration">1000</item>
-        <item name="postSplashScreenTheme">@style/AppNightTheme</item>
+        <item name="postSplashScreenTheme">@style/AppLightTheme</item>
     </style>
 
     <style name="TransparentTheme">

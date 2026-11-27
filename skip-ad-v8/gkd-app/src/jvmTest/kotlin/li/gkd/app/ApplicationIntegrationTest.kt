@@ -57,6 +57,7 @@ import li.gkd.app.subscription.SubscriptionDefaults
 import li.gkd.app.subscription.SubscriptionJson
 import li.gkd.app.subscription.SubscriptionRepository
 import li.gkd.app.subscription.SubscriptionResult
+import li.gkd.app.upload.assertFeedbackReport
 import li.gkd.app.subscription.assertCategorySaveResults
 import li.gkd.app.subscription.assertUpdateErrorDismissal
 import li.gkd.app.ui.MainViewModel
@@ -188,6 +189,8 @@ class ApplicationIntegrationTest {
                             profileDir,
                         )
                     assertRuntimeRecords(appStorage().database)
+                    // v8.0.8：日志体系专项（统一报告/未命中聚合/节流闸/订阅补丁）
+                    assertFeedbackReport()
                     LogArchiveChecks().apply {
                         diagnosticQueueKeepsLatestEvidenceAcrossQueuedAndInFlightWrites()
                         archiveContainsMaterialsAndExpiredCacheIsCleanedByMaintenance()

@@ -628,6 +628,15 @@ object SubscriptionRepository {
                                 throw e
                             } catch (e: Exception) {
                                 setUpdateError(entry.subsItem.id, e)
+                                // v8.0.8：订阅更新失败落库详细通道（诊断「规则为什么一直是旧版」），
+                                // 只记异常摘要不记堆栈（堆栈过长且敏感）
+                                runCatching {
+                                    EngineEventLogWriter.log(
+                                        kind = "subscription_update_failed",
+                                        message = "⚠️ 订阅更新失败（id=${entry.subsItem.id}）：${(e.message ?: e.javaClass.simpleName).take(120)}",
+                                        level = 1,
+                                    )
+                                }
                                 val operation =
                                     "Subscription update failed subsId=${entry.subsItem.id}"
                                 val failure = e as? SubscriptionException
