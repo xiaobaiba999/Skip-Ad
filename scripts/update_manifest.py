@@ -16,17 +16,25 @@ Release 发布（release.published）或手动触发（workflow_dispatch）时�
   2. Release 存在 .apk 资产（取首个）
   3. APK 包名 == --expect-package（防错仓/换包）
   4. APK versionName == tag 去掉 v 前缀（三段式同名同码）
-  5. APK versionCode == tag 三段公式 major*10000+minor*1000+patch*100
-     （v7.1.0 起项目公式；v7.10.0 统一规则：非三段 tag（历史 plus 系）
-     一律硬失败拒绝生成——Release 正文 versionCode 元数据行不再作为
-     回退定码来源，仅作一致性校验）
-     【v8.0.7 起显式抬码】--version-code N 显式指定（见 main 内闸门：
-     必须等于 APK 实际 versionCode、高于公式值、高于历史存量最大码
-     86400，且 Release 正文必须携带一致的 versionCode 元数据行）
+  5. 【v8.1.0 工作流版定码规则】versionCode 唯一真值来源 = APK 实际
+     versionCode（apk_meta 解析 AndroidManifest.xml）——不再依赖 tag
+     公式猜测定码（run 45857895571/45974347469/45990612818 三连失败的
+     根因：tag 公式 80700/80800/80900 ≠ APK 显式抬码 87100/88000/88100）。
+     tag 公式值降级为一致性下界：
+     · 公式路径（历史 v7.x 同名同码）：vc == 公式值 → 放行；
+    · 抬码路径（v8.0.7+ 跨 7.15.x 存量段 85000-86400）：
+       vc > 公式值 且 vc > 86400 且 Release 正文携带一致元数据行
+       「versionCode: N」（可考古）→ 放行；
+     · 其余（vc < 公式值降码 / 抬码未跨存量段）→ 硬失败拒绝。
+     --version-code 显式参数保留（工作流从 APK 读出后透传；必须 ==
+     APK 实际码——拒绝传参与 APK 不一致的静默偏差）。
   6. APK 实算 SHA256 == 资产 digest（GitHub API 官方值；资产无 digest
      时记录实算值并通过——大小校验仍硬性）
   7. APK 实测文件大小 == 资产 size
-  8. 陈旧守卫：仓库现有清单 versionCode >= 新 versionCode → 不覆盖
+  8. 【新增·签名闸】APK Signing Block（v2/v3）签名者 X.509 证书
+     SHA-256 指纹 == --expect-cert-sha256（与历史正式版本同一签名；
+     无签名块/指纹不一致 → 拒绝——防错签发不了覆盖升级）
+  9. 陈旧守卫：仓库现有清单 versionCode >= 新 versionCode → 不覆盖
      （同码同内容 → 幂等 SKIP；同码不同内容 → 冲突失败）
 
 exit 0 = 生成/幂等 SKIP（stdout 标记）；2 = 校验失败；3 = 陈旧 SKIP；
@@ -35,7 +43,9 @@ exit 0 = 生成/幂等 SKIP（stdout 标记）；2 = 校验失败；3 = 陈旧 S
 用法：
   python3 scripts/update_manifest.py --release-json rel.json --apk app.apk \
       [--repo-manifest update/latest.json] [--out update/latest.json] \
-      [--expect-package com.zai.adshield]
+      [--expect-package com.zai.adshield] \
+      [--expect-cert-sha256 05ada6e3f7a4fc6bf77449611c24f51e1ef4caa0a91a5cdd02c4d877738e6f79] \
+      [--version-code N（APK 实际码，工作流透传）]
 """
 import argparse
 import hashlib
@@ -45,6 +55,7 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from apk_cert import apk_cert_sha256  # noqa: E402
 from apk_meta import apk_meta  # noqa: E402
 
 SCHEMA_VERSION = 1
@@ -52,6 +63,14 @@ EXIT_OK = 0
 EXIT_INVALID = 2
 EXIT_STALE_SKIP = 3
 EXIT_VC_CONFLICT = 4
+
+# 历史正式签名证书 SHA-256 指纹（v7.9.x-v8.0.9 全部一致，2026-11-27 实测）：
+# 错签 APK 无法覆盖升级历史版本（Android 拒绝不同签名覆盖安装）——发布链
+# 必须在生成清单前核验同一签名。
+DEFAULT_EXPECT_CERT_SHA256 = "05ada6e3f7a4fc6bf77449611c24f51e1ef4caa0a91a5cdd02c4d877738e6f79"
+# v7.15.x 存量段最大 versionCode（7.15.14 = 86400）：抬码必须跨过此段，
+# 否则 7.15.x 存量用户永远发现不了新版本（数值比较只认码大小）。
+LEGACY_MAX_VC = 86400
 
 
 def version_code_of_tag(tag):
@@ -99,11 +118,13 @@ def main(argv):
     ap.add_argument("--repo-manifest", default=None, help="仓库现有清单（陈旧守卫；缺省跳过守卫）")
     ap.add_argument("--out", default=None, help="输出路径（缺省只校验不写文件）")
     ap.add_argument("--expect-package", default="com.zai.adshield")
+    ap.add_argument("--expect-cert-sha256", default=DEFAULT_EXPECT_CERT_SHA256,
+                    help="APK 签名证书 SHA-256 指纹（默认历史正式签名；"
+                         "不一致 = 错签，覆盖升级必被 Android 拒绝）")
     ap.add_argument("--version-code", type=int, default=None,
-                    help="显式 versionCode（v8.0.7 起版本命名与码解耦："
-                         "旧版 7.15.x 存量 85000-86400 只按 versionCode 数值比较，"
-                         "公式码 80700 < 86400 会让存量旧版永远发现不了新版本；"
-                         "显式码必须 == APK 实际码且 > 公式值与历史最大码）")
+                    help="显式 versionCode（工作流从 APK 读出后透传；"
+                         "必须 == APK 实际码——真值永远来自 APK 本身，"
+                         "本参数仅拒绝传参与 APK 不一致的静默偏差）")
     args = ap.parse_args(argv)
 
     with open(args.release_json, "r", encoding="utf-8") as f:
@@ -139,36 +160,40 @@ def main(argv):
     if not vn:
         fail(EXIT_INVALID, "APK versionName 缺失")
 
-    # ── 4/5. tag ↔ APK 同名同码（三段公式；plus 系回退正文元数据行）──
+    # ── 4/5. tag ↔ APK 同名同码（真值 = APK 实际值；公式值为一致性下界）──
     tag_vn = re.sub(r"^v", "", tag)
     derived = version_code_of_tag(tag)
     notes_vc = version_code_of_notes(rel.get("body") or "")
     if derived is not None:
         if vn != tag_vn:
             fail(EXIT_INVALID, "APK versionName %r != tag %r（三段式同名同码红线）" % (vn, tag_vn))
-        if vc != derived:
-            # v8.0.7 起显式抬码闸：允许 --version-code 显式解耦（跨 86400 存量段），
-            # 但闸门三重：①显式码必须给出（拒绝静默偏差）②必须等于 APK 实际码
-            # ③必须高于公式值与历史最大码 86400（只升不降），且 Release 正文
-            # 必须携带一致的 versionCode 元数据行（幂等可考古）。
-            if args.version_code is None:
-                fail(EXIT_INVALID, "APK versionCode %d != tag 公式值 %d（major*10000+minor*1000+patch*100）；"
-                     "如为显式抬码（v8.0.7+ 兼容 7.15.x 存量），必须显式传 --version-code %d"
-                     % (vc, derived, vc))
-            if args.version_code != vc:
-                fail(EXIT_INVALID, "--version-code %d != APK 实际 versionCode %d（显式码必须与 APK 一致）"
-                     % (args.version_code, vc))
-            if vc <= derived:
-                fail(EXIT_INVALID, "显式 versionCode %d <= 公式值 %d（抬码只升不降；如需同名同码请勿传 --version-code）"
-                     % (vc, derived))
-            if vc <= 86400:
-                fail(EXIT_INVALID, "显式 versionCode %d <= 历史存量最大码 86400（v7.15.14）——抬码必须跨过 7.15.x 存量段，"
-                     "否则旧版 7.15.x（85000-86400）永远发现不了新版本" % vc)
+        # ── 定码闸（v8.1.0 工作流版）：versionCode 唯一真值 = APK 实际码 ──
+        # 历史（run 29/30/31 三连失败根因）：旧逻辑要求 vc == tag 公式值，
+        # 否则必须显式 --version-code——工作流从未透传，公式闸把 v8.0.7+
+        # 抬码版全部拒之门外（80700/80800/80900 ≠ 87100/88000/88100）。
+        # 新规则：
+        #   A. 公式路径（历史同名同码）：vc == derived → 放行
+        #   B. 抬码路径（v8.0.7+）：vc > derived 且 vc > 86400（跨 7.15.x
+        #      存量段）且正文元数据行一致 → 放行
+        #   C. 其余（vc < derived 降码 / 抬码未跨存量段 / 正文行不一致）
+        #      → 硬失败拒绝（只升不降，防回退发版）
+        if args.version_code is not None and args.version_code != vc:
+            fail(EXIT_INVALID, "--version-code %d != APK 实际 versionCode %d（显式码必须与 APK 一致）"
+                 % (args.version_code, vc))
+        if vc == derived:
+            print("ℹ 公式定码：tag %s → versionCode %d（历史同名同码路径）" % (tag, vc))
+        elif vc > derived and vc > LEGACY_MAX_VC:
             if notes_vc != vc:
-                fail(EXIT_INVALID, "显式抬码模式下 Release 正文必须携带一致元数据行（versionCode: %d），实为 %r"
+                fail(EXIT_INVALID, "抬码模式下 Release 正文必须携带一致元数据行（versionCode: %d），实为 %r"
                      % (vc, notes_vc))
-            print("ℹ 显式抬码：tag %s 公式码 %d → versionCode %d（跨 7.15.x 存量段 85000-86400，兼容旧客户端数值比较）"
-                  % (tag, derived, vc))
+            print("ℹ 显式抬码：tag %s 公式码 %d → versionCode %d（跨 7.15.x 存量段 85000-%d，兼容旧客户端数值比较）"
+                  % (tag, derived, vc, LEGACY_MAX_VC))
+        elif vc > derived:
+            fail(EXIT_INVALID, "APK versionCode %d > 公式值 %d 但未跨历史存量最大码 %d（抬码必须跨过 7.15.x 存量段，"
+                 "否则旧版 7.15.x（85000-%d）永远发现不了新版本）" % (vc, derived, LEGACY_MAX_VC, LEGACY_MAX_VC))
+        else:
+            fail(EXIT_INVALID, "APK versionCode %d < tag 公式值 %d（降码拒绝——versionCode 只升不降，"
+                 "否则已装高码用户将无法覆盖升级）" % (vc, derived))
         if notes_vc and notes_vc != vc:
             fail(EXIT_INVALID, "Release 正文 versionCode %d != APK versionCode %d" % (notes_vc, vc))
     else:
@@ -192,7 +217,23 @@ def main(argv):
     if asset_size and actual_size != asset_size:
         fail(EXIT_INVALID, "APK 实测大小 %d != 资产 size %d" % (actual_size, asset_size))
 
-    # ── 8. 陈旧守卫（旧版本 Release 不覆盖新版本清单）──
+    # ── 8. 签名证书闸（v8.1.0 工作流版新增）──
+    # APK Signing Block（v2/v3）签名者证书 SHA-256 必须与历史正式签名
+    # 一致——错签 APK 生成清单后，全体用户「发现更新→下载→安装」必然被
+    # Android 拒绝（不同签名不可覆盖），属发布事故；在清单产出前拦截。
+    expect_cert = (args.expect_cert_sha256 or "").lower()
+    if expect_cert:
+        certs = apk_cert_sha256(args.apk)
+        if not certs:
+            fail(EXIT_INVALID, "APK 无 Signing Block（仅 v1 JAR 签名或未签名）——正式 Release 必须携带 v2+ 签名")
+        for scheme, fps in sorted(certs.items()):
+            for fp in fps:
+                if fp != expect_cert:
+                    fail(EXIT_INVALID, "APK %s 签名证书指纹 %s != 期望 %s（错签——Android 将拒绝覆盖升级）"
+                         % (scheme, fp, expect_cert))
+        print("ℹ 签名闸：v2/v3 证书指纹 %s… == 历史正式签名（覆盖升级可用）" % expect_cert[:16])
+
+    # ── 9. 陈旧守卫（旧版本 Release 不覆盖新版本清单）──
     if args.repo_manifest and os.path.isfile(args.repo_manifest):
         try:
             with open(args.repo_manifest, "r", encoding="utf-8") as f:

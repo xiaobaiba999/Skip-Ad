@@ -170,6 +170,42 @@ async function main() {
     console.log(`  ✗ v8.0.7 客户端：全部源不可达（检查失败，绝不误报「已是最新」）`);
   }
 
+  // ── v8.0.x 族矩阵补齐（v8.0.4 / v8.0.6 / v8.0.8；首源成功即返回）──
+  // 源码实体（2026-11-27 核实）：
+  //   · v8.0.7 / v8.0.8：git tag 真实代码（UpdateClient+AppLinks 逐字节相同——
+  //     diff 确认），下述首源决策即真实历史行为。
+  //   · v8.0.4 / v8.0.6：源码从未入库（v8.0.7 才开源；无 tag 无 commit）——
+  //     APK 元数据真实（apk_meta 实测 package/versionName/versionCode），
+  //     决策逻辑由同族 v8.0.7 tag 真实代码代表（v8.0.x 全系同款
+  //     「首源成功即返回 + 同 5 源」），行内标注「族代表」。
+  const v80xFamily = [
+    { name: "v8.0.4", code: 80400, real: false },
+    { name: "v8.0.6", code: 80600, real: false },
+    { name: "v8.0.8", code: 88000, real: true },
+  ];
+  for (const fam of v80xFamily) {
+    const firstHit = await (async () => {
+      for (const url of V807_SOURCES) {
+        const r = await fetchJson(url);
+        if (r.ok && validManifest(r.json)) {
+          return { source: url, code: r.json.versionCode, name: r.json.versionName };
+        }
+      }
+      return null;
+    })();
+    if (firstHit) {
+      const found = firstHit.code > fam.code;
+      const src = fam.real ? "真实 tag 代码" : "同族代表(源码未入库)";
+      console.log(
+        `  ${found ? "✓" : "✗"} ${fam.name} 客户端（${fam.code}，首源成功即返回·${src}）：` +
+          `命中 ${firstHit.name}/${firstHit.code} @ ${firstHit.source.replace("https://", "")}` +
+          (found ? " → 发现更新" : " → 误判「已是最新」"),
+      );
+    } else {
+      console.log(`  ✗ ${fam.name} 客户端：全部源不可达（检查失败，绝不误报「已是最新」）`);
+    }
+  }
+
   // ── v7.15.14 客户端（真实历史逻辑：raw → jsdelivr 四域梯度 → @tag → API，合流取最大）──
   const v71514Verdict = await (async () => {
     let best = null;
