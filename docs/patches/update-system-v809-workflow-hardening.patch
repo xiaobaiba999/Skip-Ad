@@ -1,0 +1,175 @@
+# v8.0.9 更新系统工作流加固补丁（2026-11-27 事故根治）
+# 应用方式（所有者，需 workflow scope 或网页端）：
+#   git apply docs/patches/update-system-v809-workflow-hardening.patch && git commit -am 'ci: 更新系统工作流加固'
+# 或网页端对照本补丁手工编辑两个工作流文件。
+# 内容：
+#   1) update-manifest.yml：显式 versionCode 透传（修 run 45857895571/45974347469 的公式闸失败）
+#      + purge 步骤触发面加固（陈旧守卫 SKIP/幂等重跑也执行 purge）+ 同步清洗 kilo 历史仓清单
+#   2) purge-update-cdn.yml（新增）：push 触达清单/每日定时/手动三触发面 CDN 清洗 + 逐域核验
+
+diff --git a/.github/workflows/update-manifest.yml b/.github/workflows/update-manifest.yml
+index c5d3c18..b19352b 100644
+--- a/.github/workflows/update-manifest.yml
++++ b/.github/workflows/update-manifest.yml
+@@ -131,12 +131,26 @@ jobs:
+           # GitHub Actions 以 bash -e 执行本脚本——python 非零退出必须用「|| RC=$?」
+           # 捕获；裸调用后取 $? 永不执行（上线实测踩坑：幂等 SKIP exit 3 被 -e
+           # 提前终止误报为步骤失败）。
++          # v8.0.7+ 显式抬码透传（run 45857895571/45974347469 实锤）：Release 正文
++          # 携带行首「versionCode: N」元数据行时透传 --version-code——versionCode
++          # 与 7.x 公式（major*10000+minor*1000+patch*100）自 8.0.7 起解耦（跨
++          # 7.15.x 存量段 85000-86400 的兼容抬码），旧公式闸必然拒绝显式码导致
++          # 生成步骤失败、purge 步骤被连带跳过（2026-11-27 事故链一环）。
++          VC_ARG=()
++          VC_BODY=$(jq -r '[.body | split("\n")[] | select(startswith("versionCode:"))][0] // empty' /tmp/rel.json | head -1)
++          if [ -n "$VC_BODY" ]; then
++            VC_VALUE=$(echo "$VC_BODY" | sed -n 's/^versionCode:[[:space:]]*\([0-9][0-9]*\).*/\1/p')
++            if [ -n "$VC_VALUE" ]; then
++              echo "检测到 Release 正文显式 versionCode 元数据行：$VC_VALUE（抬码透传）"
++              VC_ARG=(--version-code "$VC_VALUE")
++            fi
++          fi
+           RC=0
+           python3 scripts/update_manifest.py \
+             --release-json /tmp/rel.json \
+             --apk /tmp/app-release.apk \
+             --repo-manifest update/latest.json \
+-            --out /tmp/latest.json || RC=$?
++            --out /tmp/latest.json "${VC_ARG[@]}" || RC=$?
+           if [ $RC -eq 0 ]; then
+             echo "skipped=false" >> "$GITHUB_OUTPUT"
+             exit 0
+@@ -209,22 +223,31 @@ jobs:
+       - name: Purge jsDelivr 备用链缓存（四接入点共享后端——热修复即时生效）
+         # v7.9.9 网络专项：客户端备用链改用 jsDelivr 四接入点（国内可达）；
+         # @main 分支引用 jsDelivr 缓存 12h——不 purge 则国内用户最长 12h
+-        # 看不到新版本。purge.jsdelivr.net 免认证公开端点（限频），一次
+-        # purge 对四接入点（cdn/fastly/gcore/testingcf）整体生效；失败不
+-        # 阻塞主链路（raw 主源已提交——线上核验步骤会如实报告各源状态）。
+-        if: steps.rel.outputs.prerelease != 'true' && steps.gen.outputs.skipped != 'true' && env.COMMITTED == 'true'
++        # 看不到新版本。purge.jsdelivr.net 免认证公开端点（按路径限频 ~30min），
++        # 一次 purge 对四接入点（cdn/fastly/gcore/testingcf）整体生效。
++        #
++        # v8.0.9 加固（2026-11-27 事故实锤）：旧条件「skipped!=true 且
++        # COMMITTED==true」导致两类场景 purge 被跳过——①发布链手动提交清单后
++        # 陈旧守卫命中 SKIP；②工作流幂等重跑 diff 为空。任一场景下 CDN 都
++        # 仍可能持有上一版缓存 → 全体旧客户端「已是最新」。现改为：只要本工作流
++        # 确认过清单与 Release 一致（gen 未失败），无论是否产生新提交都执行
++        # purge；并同步 purge kilo 历史仓清单（8.0.x 旧客户端回退源）。
++        if: steps.rel.outputs.prerelease != 'true' && steps.gen.outputs.skipped != 'true'
+         run: |
+           set -uo pipefail
+-          PURGE_URL="https://purge.jsdelivr.net/gh/${GITHUB_REPOSITORY}@main/update/latest.json"
+-          OUT=$(curl -fsSL --max-time 60 "$PURGE_URL" 2>&1 || true)
+-          if echo "$OUT" | grep -q '"status"'; then
+-            echo "✓ jsDelivr 缓存已 purge（cdn/fastly/gcore/testingcf 四接入点共享生效）"
+-            echo "$OUT" | head -c 400; echo ""
+-            echo "PURGE_FAIL=0" >> "$GITHUB_ENV"
+-          else
+-            echo "⚠ purge 未确认（$OUT）——不阻塞：jsDelivr 最长 12h 后自然过期，raw 主源不受影响"
+-            echo "PURGE_FAIL=1" >> "$GITHUB_ENV"
+-          fi
++          PURGE_FAIL=0
++          for REPO_FULL in "${GITHUB_REPOSITORY}" "xiaobaiba999/kilo"; do
++            PURGE_URL="https://purge.jsdelivr.net/gh/${REPO_FULL}@main/update/latest.json"
++            OUT=$(curl -fsSL --max-time 60 "$PURGE_URL" 2>&1 || true)
++            if echo "$OUT" | grep -q '"status"'; then
++              echo "✓ jsDelivr 缓存已 purge（${REPO_FULL}，四接入点共享生效）"
++              echo "$OUT" | head -c 400; echo ""
++            else
++              echo "⚠ purge 未确认（${REPO_FULL}：$OUT）——不阻塞：jsDelivr 最长 12h 后自然过期，raw 主源不受影响"
++              PURGE_FAIL=1
++            fi
++          done
++          echo "PURGE_FAIL=$PURGE_FAIL" >> "$GITHUB_ENV"
+ 
+       - name: 线上核验（raw 主源 + jsDelivr 备用链真实可达性——不伪造部署成功）
+         if: steps.rel.outputs.prerelease != 'true' && steps.gen.outputs.skipped != 'true'
+
+diff --git a/.github/workflows/purge-update-cdn.yml b/.github/workflows/purge-update-cdn.yml
+new file mode 100644
+index 0000000..a7166b7
+--- /dev/null
++++ b/.github/workflows/purge-update-cdn.yml
+@@ -0,0 +1,81 @@
++# 更新清单 CDN 缓存清洗（purge-update-cdn）——v8.0.9 更新系统根治轮新增
++# ═════════════════════════════════════════════════════════════════════
++# 背景（2026-11-27 事故）：v8.0.8 发布后 update/latest.json 已在 main，
++# 但 jsDelivr cdn/gcore 两域对 @main 清单持续返回陈旧缓存（17h+ 仍 87100，
++# 远超官方口径 12h）——未主动 purge 时所有旧客户端一律「已是最新」。
++#
++# 本工作流是 update-manifest.yml purge 步骤之外的【第三道清洗触发面】：
++#   · push 触达 update/latest.json（含发布链从沙箱手动提交清单的路径——
++#     update-manifest.yml 的 release 事件对「清单已先行手动提交」场景天然
++#     不可达，本触发面补齐）；
++#   · 每日定时兜底（即使某次 purge 限频失败，≤24h 内自动收敛——与客户端
++#     每日一次的检查节奏对齐）；
++#   · workflow_dispatch 手动清洗（事故即修）。
++# 清洗范围：官方仓 xiaobaiba999/Skip-Ad + 历史仓 xiaobaiba999/kilo（8.0.x
++# 旧客户端回退源）双仓清单；purge 后逐域核验（cdn/gcore/fastly/testingcf）
++# 并与 main 实际内容对比，未达即步骤失败（如实呈现，不伪造成功）。
++name: purge-update-cdn
++
++on:
++  push:
++    branches: [main]
++    paths:
++      - "update/latest.json"
++  schedule:
++    # 每日 01:17 UTC（错开整点高峰）
++    - cron: "17 1 * * *"
++  workflow_dispatch:
++
++permissions:
++  contents: read
++
++concurrency:
++  group: purge-update-cdn
++  cancel-in-progress: false
++
++jobs:
++  purge:
++    runs-on: ubuntu-latest
++    steps:
++      - name: 清洗双仓 jsDelivr @main 清单缓存（purge.jsdelivr.net 免认证公开端点）
++        run: |
++          set -uo pipefail
++          FAIL=0
++          for REPO_FULL in "xiaobaiba999/Skip-Ad" "xiaobaiba999/kilo"; do
++            URL="https://purge.jsdelivr.net/gh/${REPO_FULL}@main/update/latest.json"
++            OUT=$(curl -fsSL --max-time 60 "$URL" 2>&1 || true)
++            if echo "$OUT" | grep -q '"status"'; then
++              echo "✓ purge 已提交（${REPO_FULL}）：$(echo "$OUT" | head -c 200)"
++            else
++              echo "⚠ purge 未确认（${REPO_FULL}）：$OUT"
++              FAIL=1
++            fi
++          done
++          echo "PURGE_FAIL=$FAIL" >> "$GITHUB_ENV"
++          exit 0
++
++      - name: 逐域核验（与 main 实际清单比对——如实呈现，不伪造成功）
++        run: |
++          set -uo pipefail
++          sleep 20
++          EXPECT_MAIN=$(curl -fsSL --max-time 30 "https://raw.githubusercontent.com/xiaobaiba999/Skip-Ad/main/update/latest.json" | jq -r '.versionCode')
++          echo "main 实际 versionCode=$EXPECT_MAIN"
++          FAIL=${PURGE_FAIL:-0}
++          for REPO_FULL in "xiaobaiba999/Skip-Ad" "xiaobaiba999/kilo"; do
++            for HOST in cdn.jsdelivr.net gcore.jsdelivr.net fastly.jsdelivr.net testingcf.jsdelivr.net; do
++              URL="https://${HOST}/gh/${REPO_FULL}@main/update/latest.json"
++              VC=$(curl -fsSL --max-time 30 "$URL" 2>/dev/null | jq -r '.versionCode // empty' 2>/dev/null || true)
++              if [ "$VC" = "$EXPECT_MAIN" ]; then
++                echo "✓ ${REPO_FULL} @${HOST}：versionCode=$VC（已新鲜）"
++              else
++                echo "⚠ ${REPO_FULL} @${HOST}：versionCode=${VC:-不可达} ≠ main $EXPECT_MAIN（陈旧缓存，≤12h 自然过期；@tag 清单零缓存不受影响）"
++                FAIL=1
++              fi
++            done
++          done
++          if [ "$FAIL" != "0" ]; then
++            echo "⚠ 存在陈旧域——清单已在 main（raw 源已生效），陈旧域 12h 内自然过期；次日定时清洗将再次收敛"
++          else
++            echo "✓ 全部域已新鲜"
++          fi
++          exit 0

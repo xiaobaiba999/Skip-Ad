@@ -13,3 +13,6 @@ actual suspend fun installPackagePrivileged(
     versionCode: Int,
     host: UiHost,
 ): PlatformResult<Unit> = PlatformResult.Unsupported
+
+/** 桌面端无安装契约（见 commonMain PackageInstall.kt 契约说明）。 */
+actual suspend fun verifyApkSignature(file: File) = Unit

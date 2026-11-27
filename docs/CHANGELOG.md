@@ -1,5 +1,46 @@
 # 变更记录
 
+## v8.0.9 · 2026-11-27 · 更新系统根治（v8.0.7 检测不到 v8.0.8 事故修复）（versionCode 88100）
+
+**版本信息**：versionName 8.0.9 · versionCode **88100**（延续抬码：高于 v8.0.8 的 88000 与全部历史码）· minSdk 26（Android 8.0）
+
+**事故（本轮唯一主题）**：v8.0.8 发布后，已安装 v8.0.7 的用户在 App 内检查更新**检测不到 v8.0.8**（持续 17 小时+）。
+
+**真实根因（三因一果，全部实证）**：
+
+1. **CDN 陈旧缓存**：jsDelivr `cdn.jsdelivr.net` 与 `gcore.jsdelivr.net` 两域对 `@main` 更新清单持续返回 v8.0.7 的陈旧缓存（versionCode 87100，17h+ 未过期——远超官方口径 12h；同时刻 `fastly.jsdelivr.net` / `testingcf.jsdelivr.net` / `raw.githubusercontent.com` 已新鲜 88000）；
+2. **客户端架构回归（缺陷本体）**：v8.0.x 重写时丢失 7.15.x 传承的「多源合流」架构——`UpdateClient.fetchUpdate()` 按序取**首个成功源**即返回，无跨源版本比较 → 陈旧的首源（87100 ≤ 自身 87100）掩盖了后续源上的新鲜 88000，全体用户被判「已是最新」（7.15.x 时代 `UpdateManifest.java` 的多源取最大 + @tag 探测 + API 兜底正是为此设计）；
+3. **发布链 purge 缺位**：`update-manifest.yml` 工作流的 purge 步骤被两处条件连带跳过——发布流程手动提交清单后陈旧守卫命中 SKIP，且生成步骤因 versionCode 公式闸失败（88000 ≠ 公式 80800，run 45974347469 实锤 exit 2）→ CDN 缓存无人清洗。
+
+**修复（客户端 + 服务端 + 发布链三层）**：
+
+1. **客户端多源合流解析（`UpdateResolution`，结构性根治）**：
+   - @main 链七源探测（jsDelivr 四域 + kilo 域 + 双仓 raw——国内可达源优先），**任一源返回 versionCode > 当前即立即返回**（快路径语义不变）；单源返回 versionCode ≤ 当前**绝不单独构成「已是最新」结论**；
+   - **@tag 不可变键探测链**（7.15.x 传承）：候选 tag（下一补丁 + 下两 minor）的 jsDelivr @tag 清单——tag 指向固定 commit、零源站分支缓存，**发布即新鲜**（不依赖任何 purge）；
+   - **GitHub Releases API 匿名兜底**：versionCode 自 Release 正文 `versionCode: N` 行提取（显式抬码后 tag 公式不可用；无该行的正文按 7.15.x 契约视为通道不可用）；
+   - **诚实失败语义**：全部通道失败 → 抛出最后一次失败（UI 明确报「检查更新失败：原因」+ 可随时手动重试），绝不伪装「已是最新」；至少一个有效清单且 ≤ 当前 → 诚实的「暂无更新」；
+   - 更新检查专用短超时客户端（6s 请求 / 5s 连接读写）+ 清单请求 `Cache-Control: no-cache`（防 ISP 透明代理缓存）；
+   - APK 下载镜像链（清单新增 `apkMirrors` 字段，旧客户端自动忽略）：首源失败按序回退（gcore CDN 仓库 dist 归档），每次尝试均走同一 SHA-256 校验。
+2. **App 内更新体验补齐**：下载失败对话框新增「重试」按钮（保留目标版本重走完整镜像链 + 校验）；安装前**签名证书预校验**（`verifyApkSignature`：APK 签名与当前运行版不一致 → 提前明确报错 + 删档，优于晦涩的系统级失败；API 28+/26-27 双分支）；手动检查失败提示带明确原因前缀。
+3. **服务端即时修复（对已装 v8.0.7/v8.0.8 立即生效，无需重装）**：jsDelivr purge（CDN 清单已清洗回 88000——v8.0.7 客户端已恢复发现 v8.0.8，真实线上复验通过）；
+4. **发布链固化**：新增 `scripts/purge-update-cdn.mjs`（发布后必跑：自动等待 purge 限频窗口 + 双仓清洗 + 逐域验证）与 `scripts/verify-update-sources.mjs`（全部真实源核验 + 三代客户端决策逻辑复验：v8.0.7 首源逻辑 / v7.15.14 多源合流 / v8.0.9 全链）；工作流加固补丁归档（`docs/patches/update-system-v809-workflow-hardening.patch`：公式闸显式 versionCode 透传 + purge 触发面三重化 + 新增 purge-update-cdn.yml——发布令牌无 workflow scope 无法自行推送，需所有者应用）。
+
+**测试与验证（如实标注）**：
+
+- **JVM 专项（`UpdateClientResolutionTest` 12 项全绿）**：v8.0.7 缺陷忠实复现（逐字复刻 tag v8.0.7 生产逻辑 + 本地多源服务器：陈旧首源 → 误判已最新）；新逻辑同场景发现更新；主源不可达回退；@tag 链救援；API 兜底救援；全源失败抛错（不伪装已最新）；已是最新需全通道探测（计数断言）；发现更新早退出（零多余请求）；候选 tag 集；API 解析（无 versionCode 行/无资产 → 通道不可用）；下载镜像链回退 + 全失败删档。
+- **network 包全部测试**：全绿（含既有 `NetworkFailureLoggingTest` / `LocalNetworkUrlsTest` / `UpdateClientResolutionTest`）。
+- **Robolectric（androidHostTest）**：98 项 1 预存失败（A11yWindowReadTest，v8.0.7/v8.0.8 同样失败、基线复现与本版无关）；零新增失败。
+- **真实线上源核验（`verify-update-sources.mjs`，purge 后）**：cd n/gcore/fastly/testingcf + kilo 三域 + GitHub API——v8.0.7 客户端逻辑复验「发现更新」通过（首源 cdn.jsdelivr 已新鲜 88000）；v7.15.14 客户端逻辑复验通过；v8.0.9 全链复验通过；gcore 域未入 purge 名单自然过期中（≤12h，仅第二源，不影响发现）。
+- **真机测试**：**NOT_RUN**（本环境无真机；覆盖安装/安装权限引导/下载中断重试/签名预校验弹窗待真机回归）。
+- **ApplicationIntegrationTest 全段**：**NOT_RUN**（同 v8.0.7/v8.0.8：单进程 10 分钟窗口限制）——更新系统新增断言以独立专项类全绿替代。
+
+**下载信息**：
+
+- APK：`adshield-v8.0.9.apk` · 3580923 字节
+- SHA-256：`6839e6dcf40422e7aca83617188751a67f7cd8746bb873418d205f2f588fcb93`
+- 官方 Release：https://github.com/xiaobaiba999/Skip-Ad/releases/tag/v8.0.9
+- 签名证书 SHA-256：`05ada6e3f7a4fc6bf77449611c24f51e1ef4caa0a91a5cdd02c4d877738e6f79`（与历史所有正式版一致，直接覆盖升级）
+
 ## v8.0.8 · 2026-11-27 · 日志体系根治 / 汽水音乐误触修复 / 启动黑屏修复 / 液态柔光玻璃提示 / 异常兜底（versionCode 88000）
 
 **版本信息**：versionName 8.0.8 · versionCode **88000**（延续抬码：高于 v8.0.7 的 87100 与全部历史码，旧版 v7.15.x / v7.x / 8.0.x 全部能发现并覆盖升级）· minSdk 26（Android 8.0）

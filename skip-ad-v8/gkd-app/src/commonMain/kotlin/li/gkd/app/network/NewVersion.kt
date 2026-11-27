@@ -13,13 +13,16 @@ data class NewVersion(
     val releaseTag: String? = null,
     val releaseNotes: String? = null,
     val apkUrl: String = "",
+    // v8.0.9：下载镜像链（首源失败按序回退；全部走同一 SHA-256 校验）。
+    // 旧清单无此字段 → 空列表（解析默认值，向前向后兼容）。
+    val apkMirrors: List<String> = emptyList(),
     val apkSha256: String? = null,
     val apkSize: Long = 0,
     val packageName: String? = null,
 ) {
     /**
-     * Guards against broken or poisoned manifests before anything is offered to the user:
-     * positive version code, non-empty name, HTTPS download URL, and matching package identity.
+     * Guards against broken or poisoned manifests before anything is offered to the user: positive
+     * version code, non-empty name, HTTPS download URL, and matching package identity.
      */
     fun validated(packageName: String): NewVersion {
         require(versionCode > 0) { "invalid versionCode: $versionCode" }

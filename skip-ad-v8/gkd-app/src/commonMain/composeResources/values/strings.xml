@@ -312,7 +312,7 @@
     <string name="download_abort">Cancel download</string>
     <string name="download_complete">Download complete</string>
     <string name="download_directory_create_failed">Failed to create download directory</string>
-    <string name="download_failed">Download failed</string>
+    <string name="download_failed">Download failed</string>    <string name="download_retry">Retry</string>
     <string name="download_file_create_failed">Failed to create download file</string>
     <string name="download_file_open_failed">Failed to open downloaded file</string>
     <string name="dynamic_colors">Dynamic colors</string>
@@ -978,11 +978,11 @@
     <string name="update_installed_description">The new version is installed. Reopen the app.</string>
     <string name="update_install_failed">Installation failed</string>
     <string name="update_install_failed_status">Installation failed, status code: %1$s</string>
-    <string name="update_install_invalid_apk">APK does not match this app or the target version</string>
+    <string name="update_install_invalid_apk">APK does not match this app or the target version</string>    <string name="update_signature_mismatch">Update package signature does not match this app; the file was removed. Please check for updates again.</string>
     <string name="update_success">Updated</string>
     <string name="update_time_description">Updated %1$s</string>
     <string name="update_version_ignored">Version ignored</string>
-    <string name="updates_none">No updates available</string>
+    <string name="updates_none">No updates available</string>    <string name="update_check_failed">Update check failed: %1$s</string>
     <string name="upload_abort">Cancel upload</string>
     <string name="upload_cancelled">Upload cancelled</string>
     <string name="upload_busy">An upload is already in progress. Try again later.</string>

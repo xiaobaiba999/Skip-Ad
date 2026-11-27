@@ -244,3 +244,49 @@ actual suspend fun installPackagePrivileged(
             if (restartPrepared) PrivilegeOwnerLifecycle.setUpdateInstallationActive(false)
         }
     }
+
+/** v8.0.9：安装前签名预校验（见 commonMain PackageInstall.kt 契约说明）。 */
+actual suspend fun verifyApkSignature(file: File) =
+    withContext(Dispatchers.IO) {
+        val manager = app.packageManager
+        // API 28+ 走 signingInfo；API 26-27 走 deprecated signatures（minSdk=26 双分支）。
+        val archiveInfo =
+            if (AndroidTarget.P) {
+                manager.getPackageArchiveInfo(
+                    file.absolutePath,
+                    PackageManager.GET_SIGNING_CERTIFICATES,
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                manager.getPackageArchiveInfo(file.absolutePath, PackageManager.GET_SIGNATURES)
+            }
+        val archiveCerts =
+            archiveInfo?.let { info ->
+                if (AndroidTarget.P) {
+                    info.signingInfo?.apkContentsSigners
+                } else {
+                    @Suppress("DEPRECATION") info.signatures
+                }
+            }
+        val currentInfo =
+            if (AndroidTarget.P) {
+                manager.getPackageInfo(app.packageName, PackageManager.GET_SIGNING_CERTIFICATES)
+            } else {
+                @Suppress("DEPRECATION")
+                manager.getPackageInfo(app.packageName, PackageManager.GET_SIGNATURES)
+            }
+        val currentCerts =
+            if (AndroidTarget.P) {
+                currentInfo.signingInfo?.apkContentsSigners
+            } else {
+                @Suppress("DEPRECATION") currentInfo.signatures
+            }
+        if (archiveCerts.isNullOrEmpty() || currentCerts.isNullOrEmpty()) {
+            throw SecurityException(getString(Res.string.update_signature_mismatch))
+        }
+        val archiveSet = archiveCerts.map { it.toCharsString() }.toSet()
+        val currentSet = currentCerts.map { it.toCharsString() }.toSet()
+        if (archiveSet != currentSet) {
+            throw SecurityException(getString(Res.string.update_signature_mismatch))
+        }
+    }

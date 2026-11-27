@@ -59,6 +59,8 @@ fun GkUpgradeDialogs(
     onBackup: () -> Unit,
     onCancelDownload: () -> Unit,
     onDismissDownload: () -> Unit,
+    // v8.0.9：下载失败一键重试（保留失败版本，重新走完整镜像链 + SHA-256 校验）。
+    onRetryDownload: (() -> Unit)? = null,
     onInstall: () -> Unit,
     installCapability: PackageInstallCapability,
     installState: UpdateInstallState,
@@ -127,6 +129,14 @@ fun GkUpgradeDialogs(
                         )
                     },
                     onDismissRequest = { onDismissDownload() },
+                    dismissButton =
+                        onRetryDownload?.let { retry ->
+                            {
+                                TextButton(onClick = retry) {
+                                    Text(text = stringResource(Res.string.download_retry))
+                                }
+                            }
+                        },
                     confirmButton = {
                         TextButton(
                             onClick = {

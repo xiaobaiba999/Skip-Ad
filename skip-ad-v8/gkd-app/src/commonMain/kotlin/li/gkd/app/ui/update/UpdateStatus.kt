@@ -25,7 +25,6 @@ import kotlinx.serialization.json.Json
 import li.gkd.app.META
 import li.gkd.app.backup.BackupManager
 import li.gkd.app.error.displayMessage
-import li.gkd.app.model.findOption
 import li.gkd.app.network.NewVersion
 import li.gkd.app.network.UpdateClient
 import li.gkd.app.network.isNetworkRequestAllowed
@@ -35,9 +34,9 @@ import li.gkd.app.platform.PlatformResult
 import li.gkd.app.platform.installPackagePrivileged
 import li.gkd.app.platform.privilegedPackageInstallCapability
 import li.gkd.app.platform.requestPackageInstall
+import li.gkd.app.platform.verifyApkSignature
 import li.gkd.app.resources.*
 import li.gkd.app.settings.FileSettingsStorage
-import li.gkd.app.settings.SettingsRepository
 import li.gkd.app.storage.FileExports
 import li.gkd.app.storage.StorageMaintenance
 import li.gkd.app.storage.appStorage
@@ -79,6 +78,9 @@ class UpdateStatus(
     private var lastCheckTime = 0L
     private val ignoreMutex = Mutex()
 
+    // v8.0.9：下载失败时保留目标版本——失败对话框「重试」直接重走完整镜像链。
+    private var retryableVersion: NewVersion? = null
+
     private fun readIgnored(): Set<Int> =
         storage
             .read("ignore_version_list.json")
@@ -113,7 +115,11 @@ class UpdateStatus(
                 throw e
             } catch (e: Exception) {
                 logNetworkFailure("Update check failed", e)
-                if (manual) ToastUtils.show(e.displayMessage())
+                // v8.0.9：多源全败时明确报「检查更新失败」（带原因），绝不伪装成
+                // 「已是最新版本」；手动入口随时可重试。
+                if (manual) {
+                    ToastUtils.show(getString(Res.string.update_check_failed, e.displayMessage()))
+                }
             } finally {
                 checkUpdatingFlow.value = false
             }
@@ -124,6 +130,7 @@ class UpdateStatus(
         if (installState.value is UpdateInstallState.Active) return
         if (downloadJob?.isActive == true) return
         newVersion.value = null
+        retryableVersion = version
         downloadStatus.value = UpdateDownloadState.Loading(0f)
         downloaded = null
         downloadedVersion = null
@@ -134,8 +141,16 @@ class UpdateStatus(
                 withContext(Dispatchers.IO) {
                     directory.mkdirs()
                     val transfer = currentCoroutineContext()
-                    UpdateClient.download(
-                        version.apkUrl,
+                    // v8.0.9：镜像链下载——首源失败按序回退，每次尝试均走同一
+                    // SHA-256 校验；镜像仅限清单声明的 https 域。
+                    val urls = buildList {
+                        if (version.apkUrl.isNotEmpty()) add(version.apkUrl)
+                        for (mirror in version.apkMirrors) {
+                            if (mirror.startsWith("https://")) add(mirror)
+                        }
+                    }
+                    UpdateClient.downloadFirstAvailable(
+                        urls,
                         file,
                         version.apkSize,
                         version.apkSha256,
@@ -147,6 +162,7 @@ class UpdateStatus(
                 ensureActive()
                 downloaded = file
                 downloadedVersion = version
+                retryableVersion = null
                 downloadStatus.value = UpdateDownloadState.Success
             } catch (e: CancellationException) {
                 throw e
@@ -189,6 +205,16 @@ class UpdateStatus(
         installState.value = UpdateInstallState.Active
         scope.launch {
             try {
+                // v8.0.9：安装前签名预校验——APK 签名证书必须与当前运行版一致
+                // （系统安装器最终也会拒签，但提前明确报错优于晦涩的系统失败；
+                // 不一致的包直接删档，避免坏档滞留共享缓存）。
+                try {
+                    verifyApkSignature(file)
+                } catch (e: SecurityException) {
+                    withContext(NonCancellable + Dispatchers.IO) { file.delete() }
+                    downloaded = null
+                    throw e
+                }
                 if (!manualBackupSaved && canSaveToDownloadsWithoutPermissionRequest()) {
                     try {
                         FileExports.withTemporaryFile(
@@ -247,7 +273,8 @@ class UpdateStatus(
         val capability by
             installCapability.collectAsStateWithLifecycle(PackageInstallCapability.Checking)
         val text = version?.let { value ->
-            "v${META.versionName} -> v${value.versionName}\n\n${value.releaseNotes.orEmpty()}".trimEnd()
+            "v${META.versionName} -> v${value.versionName}\n\n${value.releaseNotes.orEmpty()}"
+                .trimEnd()
         }
         GkUpgradeDialogs(
             text,
@@ -261,6 +288,10 @@ class UpdateStatus(
                 downloadJob?.cancel()
                 downloadStatus.value =
                     UpdateDownloadState.Failure(Exception(Res.string.download_abort.getSync()))
+            },
+            onRetryDownload = {
+                // v8.0.9：下载失败一键重试（保留的目标版本重走完整镜像链 + 校验）。
+                retryableVersion?.let(::startDownload)
             },
             onDismissDownload = { downloadStatus.value = null },
             installCapability = capability,

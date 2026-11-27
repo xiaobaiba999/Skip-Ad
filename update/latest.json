@@ -1,17 +1,20 @@
 {
   "schemaVersion": 1,
-  "versionName": "8.0.8",
-  "versionCode": 88000,
-  "releaseTag": "v8.0.8",
-  "releaseName": "开屏卫士 v8.0.8 · 日志体系根治 / 汽水音乐误触修复 / 启动黑屏修复 / 液态柔光玻璃提示 / 异常兜底",
-  "releaseNotes": "# 开屏卫士 v8.0.8（日志体系根治 / 汽水音乐误触修复 / 启动黑屏修复 / 液态柔光玻璃提示 / 异常兜底）\n\n> 本版基于 v8.0.7（Xiaomi 15 Pro 稳定基线）的用户反馈专项修复：日志自动上传内容为空不详细、部分设备进入卫士时 Logo 短暂黑屏、汽水音乐开屏跳不过且两次误跳美团、底栏提示美化、异常兜底补齐。核心广告跳过功能零退化。\n\n## 一、日志体系根治（恢复并超越 7.15.14 详细日志能力）\n\n**根因（Issue #142/#143/#150/#151 实锤）**：自动上传正文仅三段骨架 + 无规则名触发编号行（触发总数 0 时整段空白，均长 697 字 vs 7.15.14 的 4621 字）；详细引擎日志只在 WebView 手动上传出现；匹配失败原因 / 动作失败 / 崩溃堆栈完全缺失——`queryRules` 仅在成功时回调记录，动作失败分支自 v8.0.6 起不可达（结构性缺陷）。\n\n- **三通道统一报告**：自动上传 / Compose 手动 / WebView 手动全部走同一构建器同一口径，六节结构：基本环境（设备/引擎状态/事件计数）→ 最新触发记录（30 条，含应用名/组名/规则名/动作/结果/实测耗时）→ 详细执行记录（120 条时间正序）→ 异常与失败（警告错误重列 + 崩溃堆栈）→ 统计摘要（应用战绩 Top5）→ 日志说明（采集范围/口径/脱敏）\n- **新采集点（全部有界）**：匹配未命中汇总（按应用 8 秒窗口聚合未命中分布与涉及规则组——直接回答「广告为什么没跳过」）；无规则应用（10 分钟节流）；动作失败（含规则名与实测耗时——修复不可达缺陷）；订阅更新失败；事件处理异常；详细通道容量 800 → 1200 条\n- **空态显式标注**：读取失败 / 无数据显式输出原因说明，绝不再出现无解释的空白段落\n- **标题恢复设备信息**：`[引擎日志][v8.0.8] brand model（8小时自动/手动上传）`\n- **E2E 实证**：真实生产代码路径创建 Issue #163 + GET 复验（六节结构完整）+ 脱敏实证（明文手机号/邮箱均不存在）+ 15s 频控验证\n\n## 二、汽水音乐开屏跳不过 + 误跳美团根治（一因两果）\n\n- **根因**：订阅 667 汽水开屏组 r0 第二分支为无文本锚点结构匹配（任意小可点击 View），普通开屏中命中广告创意区域即误点（跳转美团投放的落地页）；且全组共享 actionMaximum:1，误点耗尽配额后真「跳过」文本规则 r1 永不触发（跳不过 + 误跳两症状同根）。另两家订阅（86/233）全局开屏组对汽水默认生效且 actionMaximum:2，可命中「跳过领券」类广告文案造成二次误触\n- **订阅补丁层**：挂在订阅解析统一出口——种子加载/远程每日更新/用户导入全部经此，补丁跨订阅同步持久生效且幂等：667 汽水组删除无锚点分支 + 增加穿山甲标准跳过键 `tt_splash_skip_btn` id 兜底 + actionMaximum 1→2；86/233 全局组追加汽水排除\n- **引擎加固（通用安全）**：坐标点击前目标可见性校验（陈旧/回收节点宁可失败不误点，失败落库可诊断）——位于坐标错误检查之后，坐标错误路径语义不变\n\n## 三、卫士 Logo 黑屏闪烁根治（部分设备）\n\n根因：窗口主题背景透明 + Compose 根布局无底色——首帧依赖 WebView 首个合成帧，慢机上 WebView 初始化期间窗口真空露出黑色 Surface；深色系统下「近黑 Splash → 恒浅绿页面」强跳变放大观感。修复：不透明品牌底色 + Splash 底色深浅统一 + Compose 首帧底色兜底——系统启动窗口/首帧/WebView 就绪三阶段颜色连续。资源层根治，不增加启动耗时。\n\n## 四、底栏液态柔光玻璃提示\n\n规则触发提示重构为 Liquid Glass 风格：圆形品牌 Logo + 「开屏卫士」+「正在守护」；多层渐变玻璃底 + 内侧高光描边 + 柔影 + 26dp 圆角；入场 260ms 底部轻浮起 + 停留 1.9s + 淡出 220ms；纯 GradientDrawable 实现全 Android 版本通用（无模糊 API 依赖，无降级差异）；不拦截底部点击；系统 Toast 通道保留可切换。\n\n## 五、异常兜底七项\n\n①主线程 ANR 根治（拉活轮询改挂起）；②数据库损坏自愈（启动探针：改名保留 + 重建 + 自动重种子——替代「App 看似正常但完全不工作」的静默失效）；③事件消费循环异常隔离（Binder 层异常不再终止事件处理）；④手势回调丢失 10s 超时兜底；⑤网络 15s 显式超时（原最坏约 50s）；⑥WebView 主帧加载失败自动重试 + 可读错误页；⑦崩溃启动提醒改非破坏性窥探（不再吞掉上传数据）\n\n## 测试（如实标注）\n\n- JVM 单测：gkd-db/gkd-selector 全绿；gkd-app 24 包分块全绿 + 新增专项全绿（订阅补丁 4 项/节流闸）；matchingRegression 196 项 1 预存 flaky（v8.0.7 清单已记录，基线复现）\n- Robolectric：98 项仅剩 1 预存失败（v8.0.7 同样失败、基线复现）；坐标动作测试修复后通过\n- 日志上传 E2E：真实 Issue #163 创建 + GET 复验 + 脱敏实证 + 15s 频控\n- 真机（Xiaomi 15 Pro/Redmi/一加）：NOT_RUN（本环境无真机）\n- ApplicationIntegrationTest 全段：NOT_RUN（本环境单进程窗口 10 分钟上限）——分块覆盖 + 独立专项类替代\n\n## 下载\n\n- 官方 APK：adshield-v8.0.8.apk（本页资产）· 3,577,247 字节\n- SHA-256：2e39c9962de66c77d6fe5db820ad4d270c61871c8882e15d9d8050e706c85bda\n- CDN 直链：https://gcore.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/android-app/dist/adshield-v8.0.8.apk\n- 已装 v7.x 任何正式版 / v8.0.x：直接覆盖升级（签名一致，无障碍授权/白名单/订阅/学习数据全保留）\n- 签名证书 SHA-256：05ada6e3f7a4fc6bf77449611c24f51e1ef4caa0a91a5cdd02c4d877738e6f79（与历史所有正式版一致）\n\n## 版本信息\n\n- versionName：8.0.8\nversionCode: 88000\n- 签名证书与 v7.x / v8.0.x 完全一致\n- 技术说明：本版基于 GKD 核心技术（GPL-3.0）重构融合，源码与许可证见仓库 README\n",
-  "publishedAt": "2026-11-27T09:30:54Z",
-  "apkUrl": "https://github.com/xiaobaiba999/Skip-Ad/releases/download/v8.0.8/adshield-v8.0.8.apk",
-  "apkFileName": "adshield-v8.0.8.apk",
-  "apkSha256": "2e39c9962de66c77d6fe5db820ad4d270c61871c8882e15d9d8050e706c85bda",
-  "apkSize": 3577247,
+  "versionName": "8.0.9",
+  "versionCode": 88100,
+  "releaseTag": "v8.0.9",
+  "releaseName": "开屏卫士 v8.0.9 · 更新系统根治（v8.0.7 检测不到 v8.0.8 事故修复）",
+  "releaseNotes": "# 开屏卫士 v8.0.9（更新系统根治）\n\n> 修复 2026-11-27 事故：v8.0.8 发布后已安装 v8.0.7 的用户 App 内「检查更新」检测不到 v8.0.8（持续 17 小时+）。本轮只解决更新系统，核心广告跳过行为零改动。\n\n## 真实根因（三因一果，全部实证）\n\n- **CDN 陈旧缓存**：jsDelivr cdn/gcore 两域对 `@main` 更新清单持续返回 v8.0.7 陈旧缓存（17h+ 未过期；同时刻 fastly/testingcf/raw 已新鲜）\n- **客户端架构回归（缺陷本体）**：v8.0.x 重写丢失 7.15.x 传承的多源合流架构——「首个成功源即返回」无跨源版本比较，陈旧首源掩盖新鲜后续源，全体用户误判「已是最新」\n- **发布链 purge 缺位**：update-manifest 工作流生成步骤因 versionCode 公式闸失败（88000≠公式 80800）→ purge 步骤被连带跳过，CDN 缓存无人清洗\n\n## 修复（客户端 + 服务端 + 发布链三层）\n\n1. **客户端多源合流解析（结构性根治）**：@main 七源任一新鲜即发现（jsDelivr 四域 + kilo + 双仓 raw）；单源「无更新」绝不单独构成结论；**@tag 不可变键探测链**（零分支缓存，发布即新鲜）+ **GitHub Releases API 匿名兜底**；全部源失败明确报「检查更新失败：原因」可重试，绝不伪装「已是最新」\n2. **下载镜像链**：清单新增 `apkMirrors`（gcore CDN 仓库归档），首源失败按序回退，每次尝试均走同一 SHA-256 校验\n3. **App 内体验补齐**：下载失败「重试」按钮（重走完整镜像链）；安装前**签名证书预校验**（不一致提前明确报错并删档）\n4. **服务端即时修复**：jsDelivr purge 已执行——已装 v8.0.7/v8.0.8 用户无需重装即恢复发现更新（真实线上复验通过）\n5. **发布链固化**：`purge-update-cdn.mjs`（发布后必跑）+ `verify-update-sources.mjs`（全源核验+三代客户端决策逻辑复验）+ 工作流加固补丁归档（需所有者应用：发布令牌无 workflow scope）\n\n## 测试（如实标注）\n\n- JVM 专项 12 项全绿（含 v8.0.7 缺陷忠实复现：逐字复刻 tag v8.0.7 生产逻辑 + 本地多源服务器实证误判；新逻辑同场景发现更新）；network 包全部全绿\n- Robolectric 98 项 1 预存失败（A11yWindowReadTest，v8.0.7/v8.0.8 基线复现，与本版无关）零新增\n- 真实线上源核验：v8.0.7 / v7.15.14 / v8.0.9 三代客户端决策逻辑复验全部「发现更新」\n- 真机测试 NOT_RUN（本环境无真机）\n\n## 下载\n\n- 官方 APK：adshield-v8.0.9.apk（本页资产）· 3,580,923 字节\n- SHA-256：6839e6dcf40422e7aca83617188751a67f7cd8746bb873418d205f2f588fcb93\n- CDN 直链：https://gcore.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/android-app/dist/adshield-v8.0.9.apk\n- 已装 v7.x 任何正式版 / v8.0.x：直接覆盖升级（签名一致，无障碍授权/白名单/订阅/学习数据全保留）\n- 签名证书 SHA-256：05ada6e3f7a4fc6bf77449611c24f51e1ef4caa0a91a5cdd02c4d877738e6f79（与历史所有正式版一致）\n\n## 版本信息\n\n- versionName：8.0.9\nversionCode: 88100\n- 签名证书与 v7.x / v8.0.x 完全一致\n- 技术说明：本版基于 GKD 核心技术（GPL-3.0）重构融合，源码与许可证见仓库 README\n",
+  "publishedAt": "2026-11-27T11:22:48Z",
+  "apkUrl": "https://github.com/xiaobaiba999/Skip-Ad/releases/download/v8.0.9/adshield-v8.0.9.apk",
+  "apkFileName": "adshield-v8.0.9.apk",
+  "apkSha256": "6839e6dcf40422e7aca83617188751a67f7cd8746bb873418d205f2f588fcb93",
+  "apkSize": 3580923,
   "packageName": "com.zai.adshield",
   "minSupportedVersionCode": 0,
   "mandatoryUpdate": false,
-  "manifestUpdatedAt": "2026-11-27T09:30:54Z"
+  "apkMirrors": [
+    "https://gcore.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/android-app/dist/adshield-v8.0.9.apk"
+  ],
+  "manifestUpdatedAt": "2026-11-27T11:22:48Z"
 }
