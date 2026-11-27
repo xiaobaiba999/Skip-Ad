@@ -13,5 +13,8 @@
   "packageName": "com.zai.adshield",
   "minSupportedVersionCode": 0,
   "mandatoryUpdate": false,
-  "manifestUpdatedAt": "2026-11-27T18:46:22Z"
+  "manifestUpdatedAt": "2026-11-27T18:46:22Z",
+  "apkMirrors": [
+    "https://gcore.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/android-app/dist/adshield-v8.1.0.apk"
+  ]
 }
