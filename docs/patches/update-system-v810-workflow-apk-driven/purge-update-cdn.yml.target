@@ -1,0 +1,129 @@
+# 更新清单 CDN 清洗与全源核验（purge-update-cdn）——v8.1.0 发布链根治
+# ═══════════════════════════════════════════════════════════════════
+# 背景（2026-11-27 事故）：清单经「人工/非工作流路径」提交到 main 时
+# （事故热修复即如此），update-manifest.yml 的 release 触发面不会运行
+# ——purge 步骤被跳过，jsDelivr 四接入点对 @main 清单的 12h 缓存无人
+# 清洗——旧客户端拿到陈旧清单误判「已是最新」，或全部源失败报
+# Connection reset。本工作流补齐三个触发面：
+#   · push 触达 update/latest.json（任何路径提交的清单——含人工热修复）
+#   · 每日定时（UTC 01:17 / 北京 09:17——错峰避开整点）兜底清洗
+#   · workflow_dispatch 手动（限频下 purge 失败的重试通道）
+#
+# 清洗对象：本仓 + kilo 历史仓（8.0.x 旧客户端回退源）双清单。
+# 核验方式：绝不只看 purge 返回成功——逐域实际 GET（cdn/fastly/gcore/
+# testingcf 四接入点 + raw 主源 + kilo 双源），校验 versionCode 与 main
+# 仓库清单一致，结果如实汇总（SUMMARY 输出生效比例）。
+#
+# 凭据：仅 Actions 自带 GITHUB_TOKEN；purge.jsdelivr.net 免认证公开端点。
+name: purge-update-cdn
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'update/latest.json'
+  schedule:
+    - cron: '17 1 * * *'  # 每日 UTC 01:17（北京 09:17）
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: purge-update-cdn
+  cancel-in-progress: false
+
+jobs:
+  purge-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出 main（读取仓库清单真值）
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: 读取清单期望值（versionCode / SHA256 = 核验基准）
+        id: expect
+        run: |
+          set -euo pipefail
+          EXPECT_VC=$(jq -r '.versionCode' update/latest.json)
+          EXPECT_VN=$(jq -r '.versionName' update/latest.json)
+          EXPECT_SHA=$(jq -r '.apkSha256' update/latest.json)
+          echo "vc=$EXPECT_VC" >> "$GITHUB_OUTPUT"
+          echo "vn=$EXPECT_VN" >> "$GITHUB_OUTPUT"
+          echo "sha=$EXPECT_SHA" >> "$GITHUB_OUTPUT"
+          echo "期望：versionName=$EXPECT_VN versionCode=$EXPECT_VC SHA256=${EXPECT_SHA:0:16}…"
+
+      - name: Purge jsDelivr 双仓清单（本仓 + kilo 历史仓）
+        id: purge
+        run: |
+          set -uo pipefail
+          PURGE_FAIL=0
+          for PURGE_URL in \
+            "https://purge.jsdelivr.net/gh/${GITHUB_REPOSITORY}@main/update/latest.json" \
+            "https://purge.jsdelivr.net/gh/xiaobaiba999/kilo@main/update/latest.json"; do
+            OUT=$(curl -fsSL --max-time 60 "$PURGE_URL" 2>&1 || true)
+            if echo "$OUT" | grep -q '"status"'; then
+              echo "✓ purged: $PURGE_URL"
+              echo "$OUT" | head -c 300; echo ""
+            else
+              echo "⚠ purge 未确认（$PURGE_URL）：$OUT"
+              PURGE_FAIL=1
+            fi
+            # purge.jsdelivr.net 按路径限频——双仓间隔 20s
+            sleep 20
+          done
+          echo "fail=$PURGE_FAIL" >> "$GITHUB_OUTPUT"
+
+      - name: 全源实际 GET 核验（purge 后缓存回源最长需几分钟）
+        id: verify
+        env:
+          EXPECT_VC: ${{ steps.expect.outputs.vc }}
+          EXPECT_SHA: ${{ steps.expect.outputs.sha }}
+        run: |
+          set -uo pipefail
+          # purge 后 CDN 边缘回源存在分钟级延迟——先等 120s 再开始核验。
+          sleep 120
+          URLS=(
+            "https://cdn.jsdelivr.net/gh/${GITHUB_REPOSITORY}@main/update/latest.json"
+            "https://fastly.jsdelivr.net/gh/${GITHUB_REPOSITORY}@main/update/latest.json"
+            "https://gcore.jsdelivr.net/gh/${GITHUB_REPOSITORY}@main/update/latest.json"
+            "https://testingcf.jsdelivr.net/gh/${GITHUB_REPOSITORY}@main/update/latest.json"
+            "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/update/latest.json"
+            "https://cdn.jsdelivr.net/gh/xiaobaiba999/kilo@main/update/latest.json"
+            "https://raw.githubusercontent.com/xiaobaiba999/kilo/main/update/latest.json"
+          )
+          OK=0; TOTAL=0; FAILED_LIST=""
+          for URL in "${URLS[@]}"; do
+            TOTAL=$((TOTAL+1))
+            VC=$(curl -fsSL --max-time 30 "$URL" 2>/dev/null | jq -r '.versionCode // empty' 2>/dev/null || true)
+            SHA=$(curl -fsSL --max-time 30 "$URL" 2>/dev/null | jq -r '.apkSha256 // empty' 2>/dev/null || true)
+            if [ "$VC" = "$EXPECT_VC" ] && [ "$SHA" = "$EXPECT_SHA" ]; then
+              echo "✓ $URL → versionCode=$VC（新鲜）"
+              OK=$((OK+1))
+            else
+              echo "⚠ $URL → versionCode=${VC:-不可达}（陈旧/不可达；期望 $EXPECT_VC）"
+              FAILED_LIST="$FAILED_LIST
+            - $URL（versionCode=${VC:-不可达}）"
+            fi
+          done
+          echo "ok=$OK" >> "$GITHUB_OUTPUT"
+          echo "total=$TOTAL" >> "$GITHUB_OUTPUT"
+          echo "$FAILED_LIST" > /tmp/failed.txt || true
+
+      - name: 结果汇总（如实报告——不伪造全绿）
+        run: |
+          set -uo pipefail
+          echo "══════════ purge-update-cdn 结果 ══════════"
+          echo "清单真值   : main → ${{ steps.expect.outputs.vn }} / ${{ steps.expect.outputs.vc }}"
+          echo "purge     : $([ '${{ steps.purge.outputs.fail }}' = '0' ] && echo '双仓均确认' || echo '存在未确认（见上方日志）')"
+          echo "全源核验   : 生效 ${{ steps.verify.outputs.ok }}/${{ steps.verify.outputs.total }}"
+          if [ -s /tmp/failed.txt ]; then
+            echo "未生效源   :"
+            cat /tmp/failed.txt
+            echo ""
+            echo "说明：gcore 接入点不在 jsDelivr purge providers（CF/FY）覆盖内——"
+            echo "其 @main 缓存 s-maxage=12h，最长 12h 自然回源；其余源应已生效。"
+          fi
+          echo "══════════════════════════════════════════"
