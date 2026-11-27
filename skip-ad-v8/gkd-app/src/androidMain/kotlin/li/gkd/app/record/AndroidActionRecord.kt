@@ -71,7 +71,7 @@ fun logActionFailure(
     )
 }
 
-/** v8.0.6 详细引擎日志：应用名优先（快照缓存），失败原因/动作类型随行；v8.0.8 补规则名与耗时 */
+/** v8.0.6 详细引擎日志：应用名优先（快照缓存），失败原因/动作类型随行；v8.0.8 补规则名与耗时；v8.1.0 补订阅来源与失败细分 */
 private fun buildEngineDetail(
     rule: ResolvedRule,
     topActivity: TopActivity,
@@ -97,6 +97,9 @@ private fun buildEngineDetail(
         result = ok,
         durationMs = actionResult.durationMs,
         reason = if (ok) null else actionResult.outcomeReason,
+        // v8.1.0：订阅来源与版本（失败行与成功行对齐，服务端统计可直接按订阅分组）
+        subsId = rule.subsItem.id,
+        subsVersion = rule.rawSubs.version,
     )
 }
 

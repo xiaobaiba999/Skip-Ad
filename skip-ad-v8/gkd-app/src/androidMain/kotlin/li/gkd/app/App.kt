@@ -29,7 +29,6 @@ import android.view.WindowManager
 import android.view.accessibility.AccessibilityManager
 import android.view.inputmethod.InputMethodManager
 import androidx.core.content.ContextCompat
-import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.NonCancellable
@@ -293,7 +292,14 @@ class App : Application() {
             LogUtils.e("UncaughtExceptionHandler", t, e)
             appScope.launchLogged(Dispatchers.IO) {
                 try {
-                    delay(1500.milliseconds)
+                    // v8.0.9：去掉崩溃自愈处理器的 delay(1500ms) 冻帧展示
+                    // （v8.0.7 GKD 内核重构继承的时序）——异常捕获后立即走重启
+                    // 流程。根因：崩溃 Activity 最后一帧冻屏 1.5 秒后才以
+                    // CLEAR_TASK 新任务窗口切入，旧帧与新窗口叠加 → 崩溃后
+                    // 「残影/叠帧」。崩溃报告落盘（recorder.record）与重启闸
+                    // （CrashRestartGuard 60 秒 3 次上限）均在进入协程前已同步
+                    // 完成，无等待日志落盘的需求；文件日志由 finally 里的
+                    // LogUtils.close() 同步落盘后才 killProcess，时序不变
                     if (allowRestart && MainActivityVisibility.isVisible) {
                         startLaunchActivity()
                         PrivilegeOwnerLifecycle.prepareAppRestart()

@@ -33,12 +33,18 @@ object EngineMatchMissRecorder {
         val statuses = LinkedHashMap<String, Int>()
         val groups = LinkedHashSet<String>()
 
+        // v8.1.0：首个 not_matched 样本（规则名 + 选择器原文截断）
+        var sampleRule: String? = null
+        var sampleSelector: String? = null
+
         fun reset(now: Long, appId: String?) {
             startMs = now
             scans = 0
             lastAppId = appId
             statuses.clear()
             groups.clear()
+            sampleRule = null
+            sampleSelector = null
         }
     }
 
@@ -53,6 +59,8 @@ object EngineMatchMissRecorder {
         appId: String?,
         status: String,
         matched: Boolean,
+        sampleRuleName: String? = null,
+        sampleSelector: String? = null,
     ) {
         val key = appId ?: return
         val now = System.currentTimeMillis()
@@ -77,6 +85,12 @@ object EngineMatchMissRecorder {
             window.scans++
             window.statuses.merge(status, 1, Int::plus)
             window.groups.add("${subsName(ruleSubsId)}·${groupName ?: "?"}")
+            // v8.1.0：首个 not_matched 轮次保留关键样本（规则名+选择器原文）——
+            // 「聚合但保留关键样本」：服务端可据此直接写新规则，不必猜选择器。
+            if (status == "not_matched" && window.sampleRule == null && sampleRuleName != null) {
+                window.sampleRule = sampleRuleName
+                window.sampleSelector = sampleSelector
+            }
         }
     }
 
@@ -99,7 +113,8 @@ object EngineMatchMissRecorder {
         val groups = w.groups.joinToString(" / ").take(200)
         EngineEventLogWriter.log(
             kind = "match_miss",
-            message = "❓ 规则未命中（$appId）：${w.scans} 轮评估未命中 · 组[$groups] · $distribution ——上传日志可帮我们补规则",
+            message = "❓ 规则未命中（$appId）：${w.scans} 轮评估未命中 · 组[$groups] · $distribution" +
+                (w.sampleRule?.let { " · 样本[$it]" } ?: "") + " ——上传日志可帮我们补规则",
             level = 0,
             appId = appId,
             detail = json.encodeToString(
@@ -109,6 +124,8 @@ object EngineMatchMissRecorder {
                     scans = w.scans,
                     statuses = w.statuses,
                     groups = w.groups.toList(),
+                    sampleRule = w.sampleRule,
+                    sampleSelector = w.sampleSelector?.take(160),
                 ),
             ),
         )
@@ -130,4 +147,6 @@ private data class MatchMissDetail(
     val scans: Int,
     val statuses: Map<String, Int>,
     val groups: List<String>,
+    val sampleRule: String? = null,
+    val sampleSelector: String? = null,
 )

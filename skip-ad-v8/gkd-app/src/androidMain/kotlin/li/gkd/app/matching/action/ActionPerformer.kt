@@ -82,6 +82,8 @@ sealed class ActionPerformer(val action: String) {
                     observeActionOperation("AccessibilityNodeInfo.performAction:CLICK") {
                         node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
                     },
+                // v8.1.0：节点拒绝点击（不可点击/已失效）——类 8/10 细分
+                failureKind = "node_action_rejected",
             )
         }
     }
@@ -101,10 +103,11 @@ sealed class ActionPerformer(val action: String) {
             // （陈旧 bounds 会点到屏幕其他区域）。宁可失败不误点（失败会落库 action_failed）。
             // 位于坐标计算/越界检查之后：纯计算无副作用，拦截点在真正派发前。
             if (!node.isVisibleToUser) {
-                return ActionResult(action = action, result = false)
+                return ActionResult(action = action, result = false, failureKind = "node_invisible")
             }
             TrackService.addXyPosition(x, y)
             val durationMillis = ViewConfiguration.getTapTimeout().toLong()
+            val gestureService = a11yGestureFallback()
             return ActionResult(
                 action = action,
                 result =
@@ -113,8 +116,7 @@ sealed class ActionPerformer(val action: String) {
                             privilege.tap(x, y, durationMillis)
                         }
                     }
-                        ?: run {
-                            val service = a11yGestureFallback() ?: return@run false
+                        ?: if (gestureService != null) {
                             val gestureDescription = GestureDescription.Builder()
                             val path = Path()
                             path.moveTo(x, y)
@@ -125,9 +127,14 @@ sealed class ActionPerformer(val action: String) {
                                     durationMillis,
                                 ),
                             )
-                            service.awaitGesture(gestureDescription.build())
+                            gestureService.awaitGesture(gestureDescription.build())
+                        } else {
+                            false
                         },
                 position = x to y,
+                // v8.1.0：无特权通道且无障碍手势回退缺失——类 10 细分
+                failureKind =
+                    if (privilegeContextFlow.value == null && gestureService == null) "gesture_unavailable" else null,
             )
         }
     }
@@ -166,6 +173,8 @@ sealed class ActionPerformer(val action: String) {
                                 delay(LongClickCenter.LONG_DURATION.milliseconds)
                             }
                         },
+                // v8.1.0：节点拒绝长按（不可长按/已失效）——类 8/10 细分
+                failureKind = "node_action_rejected",
             )
         }
     }
@@ -186,18 +195,23 @@ sealed class ActionPerformer(val action: String) {
             }
             // v8.0.8：同 ClickCenter 的目标可见性校验（位于派发前，坐标错误路径优先）
             if (!node.isVisibleToUser) {
-                return ActionResult(action = action, result = false)
+                return ActionResult(action = action, result = false, failureKind = "node_invisible")
             }
             TrackService.addXyPosition(x, y)
+            val privilege = privilegeContextFlow.value
+            val gestureService = a11yGestureFallback()
             return ActionResult(
                 action = action,
                 result =
-                    privilegeContextFlow.value?.let { privilege ->
+                    privilege?.let { p ->
                         observeActionOperation("PrivilegedLongPress") {
-                            privilege.tap(x, y, LONG_DURATION)
+                            p.tap(x, y, LONG_DURATION)
                         }
-                    } ?: (a11yGestureFallback()?.awaitSwipe(x, y, x, y, LONG_DURATION) == true),
+                    } ?: (gestureService?.awaitSwipe(x, y, x, y, LONG_DURATION) == true),
                 position = x to y,
+                // v8.1.0：无特权通道且无障碍手势回退缺失——类 10 细分
+                failureKind =
+                    if (privilege == null && gestureService == null) "gesture_unavailable" else null,
             )
         }
     }
@@ -256,6 +270,7 @@ sealed class ActionPerformer(val action: String) {
                     ?: return ActionResult(
                         action = action,
                         result = false,
+                        failureKind = "swipe_arg_missing",
                     )
             val screenSize = ScreenUtils.getSize()
             val startP = swipeArg.start.calc(rect, "swipeArg.start", captureInputs, screenSize)

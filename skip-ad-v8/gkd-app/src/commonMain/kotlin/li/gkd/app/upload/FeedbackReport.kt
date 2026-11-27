@@ -8,6 +8,7 @@ import li.gkd.app.META
 import li.gkd.app.app.AppInfoRepository
 import li.gkd.app.crash.FileCrashStorage
 import li.gkd.app.data.currentDeviceInfo
+import li.gkd.app.record.EngineEventLogWriter
 import li.gkd.app.record.EngineMatchMissRecorder
 import li.gkd.app.settings.SettingsRepository
 import li.gkd.app.state.EngineRuntimeCounters
@@ -49,6 +50,9 @@ object FeedbackReport {
     suspend fun build(channel: String): String {
         // 冲刷未到期的匹配未命中窗口：上传前必须能看到最近一次未命中
         runCatching { EngineMatchMissRecorder.flushAll() }
+        // v8.1.0：落库屏障——确保刚冲刷的窗口（及在途批次）已写库后再查询，
+        // 修复「上传报告里缺最近一次未命中」的竞态（最长等待 2s，超时不阻塞上传）。
+        runCatching { EngineEventLogWriter.drain() }
         return buildString {
             section1Environment(channel)
             section2LatestActions()
@@ -187,7 +191,14 @@ object FeedbackReport {
                 val matchMiss = kindCounts["match_miss"] ?: 0
                 val actionFailed = kindCounts["action_failed"] ?: 0
                 val actionOk = kindCounts["action_performed"] ?: 0
+                // v8.1.0：新增诊断类的可见性（失败原因分类链）
+                val filtered = kindCounts["rule_filtered"] ?: 0
+                val noEffect = kindCounts["action_no_effect"] ?: 0
+                val gated = kindCounts["query_gated"] ?: 0
                 appendLine("- 详细窗口($DETAIL_ROWS 条内): 动作成功 $actionOk · 动作失败 $actionFailed · 匹配未命中汇总 $matchMiss · 记录共 ${rows.size} 条")
+                if (filtered + noEffect + gated > 0) {
+                    appendLine("- 失败原因链: 规则未参与评估 $filtered · 点击后广告疑似仍在 $noEffect · 引擎闸门拦截 $gated")
+                }
                 val actions = Db.actionLogDao.queryLatest(500L)
                 if (actions.isEmpty()) {
                     appendLine("- 应用战绩: 暂无触发")
@@ -211,6 +222,7 @@ object FeedbackReport {
         appendLine("## 6. 日志说明")
         appendLine("- 采集范围: 详细引擎日志表(上限 1200 条,本次取最近 $DETAIL_ROWS 条) + 触发记录表(上限 500 条,本次取 $LATEST_ACTIONS 条) + 崩溃存档(≤20 份,非删除式读取)")
         appendLine("- 统计口径: 「进程本次启动」计数为本次进程生命周期累计;「窗口」指本次上传所取日志条数范围;能耗口径与 7.15.14 一致(系数估算,非实测)")
+        appendLine("- 失败诊断链: 规则未参与评估(停用/不兼容/版本门槛/页面不适用) · 规则未命中(含首个未命中样本) · 动作失败(细分节点不可见/拒绝点击/手势缺失) · 点击后广告疑似仍在(代理信号) · 引擎闸门拦截")
         appendLine("- 脱敏说明: 手机号/身份证/邮箱/IPv4 在提交前后双层脱敏;屏幕内容不会上传;订阅与规则数据仅含包名/类名/选择器文本")
     }
 

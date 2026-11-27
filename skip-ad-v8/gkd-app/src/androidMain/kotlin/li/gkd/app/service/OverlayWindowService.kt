@@ -271,7 +271,12 @@ abstract class OverlayWindowService(
             onDestroyed { ThreadUtils.runMainOrPost(1000) { aliveSize-- } }
             onDestroyed { savePosition() }
             attachView()
-            onDestroyed { app.windowManager.removeView(view) }
+            // v8.0.9：退出摘除改 removeViewImmediate——removeView 是异步的，
+            // 配合 windowAnimations(Animation_Dialog) 会先播关窗动画再摘除；
+            // 动画期间进程死亡时窗口最后帧残留（悬浮层残影）。immediate 直接
+            // 摘除（关窗动画不再播放，无中间态可残留）；savePosition 等其它
+            // 销毁钩子保持不变
+            onDestroyed { app.windowManager.removeViewImmediate(view) }
         }
     }
 

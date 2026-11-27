@@ -721,6 +721,16 @@ function renderHelpDynamic() {
  *   到点自动解锁，绝不永久卡死）。 */
 const TIP_12H_MS = 12 * 60 * 60 * 1000;
 const TIP_HOLD_MS = 5000; // v7.15.8（用户指令）：强制观看 5 秒才可操作（v7.15.7 为 3 秒）
+/* ═══ v8.0.9 观闸计时纯函数（绝对时间基准，与 DOM/定时器解耦）═══
+ * 根因：原实现 interval 递减计数——MainActivity.onPause →
+ * pauseTimers() 冻结页面全部 JS 定时器，用户在观闸期内退出 App
+ * 时倒计时冻结、三按钮永滞禁用 → 再进入时「旧遮罩叠加」。改为
+ * Date.now() 绝对时刻基准：interval 只负责刷新显示，任何一次重算
+ * （tick / visibilitychange）都用真实时钟收敛，冻结期照样流逝。 */
+function tipUnlockAt(now) { return now + TIP_HOLD_MS; }
+function tipHoldLeftMs(unlockAt, now) { return Math.max(0, unlockAt - now); }
+/* v8.0.9：弹窗关闭即拆除观闸计时器与监听（防 interval/listener 滞留） */
+let splashTipCleanup = null;
 function tipDismissUntil() { return +store.get("tipDismissUntil", 0) || 0; }
 function tipPinVer() { return String(store.get("tipPinVer", "")); }
 function tipDue() {
@@ -730,6 +740,9 @@ function tipDue() {
 function closeSplashTip() {
   const m = $("#splash-tip-modal");
   if (m) m.remove();
+  /* v8.0.9：同步拆掉观闸 interval 与 visibilitychange 监听（防滞留；
+   * 解锁后 interval 已自清，重复 clear/remove 均无害） */
+  if (splashTipCleanup) { splashTipCleanup(); splashTipCleanup = null; }
 }
 function showSplashTip() {
   if ($("#splash-tip-modal")) return;
@@ -755,24 +768,38 @@ function showSplashTip() {
     + '</div></div>';
   document.body.appendChild(wrap);
   /* ═══ v7.15.7 观闸 / v7.15.8 强制 5 秒：三按钮禁用 + 倒计时行，到点解锁 ═══
-   * 计时器自清（到点 clearInterval），节点移除后回调零副作用
-   * （detached 节点上 remove/disable 均无害）；观闸期内遮罩点击
-   * 同样让路（所有关闭通道封 5 秒——「强制观看」语义）。 */
+   * v8.0.9：计时改绝对时间基准（见 tipUnlockAt/tipHoldLeftMs 注释）——
+   * interval 只负责刷新显示，倒计时不再随 pauseTimers 冻结；
+   * visibilitychange 回前台立即重算（已到 0 则立即解锁）；
+   * 节点移除后回调零副作用（detached 节点上 remove/disable 均无害）；
+   * 观闸期内遮罩点击同样让路（所有关闭通道封 5 秒——「强制观看」语义）。 */
   const holdEl = wrap.querySelector("#tip-hold");
   const btns = wrap.querySelectorAll(".tip-btn");
   let holdDone = false;
-  let holdLeft = Math.ceil(TIP_HOLD_MS / 1000);
-  const holdTimer = setInterval(() => {
-    holdLeft--;
-    if (holdLeft > 0) {
-      if (holdEl) holdEl.textContent = "请阅读提示（" + holdLeft + "s）";
-      return;
-    }
-    clearInterval(holdTimer);
+  const unlockAt = tipUnlockAt(Date.now());
+  const unlockHold = () => {
+    if (holdDone) return;
     holdDone = true;
+    clearInterval(holdTimer);
     if (holdEl) holdEl.remove();
     btns.forEach(b => { b.disabled = false; });
-  }, 1000);
+  };
+  const refreshHold = () => {
+    const leftMs = tipHoldLeftMs(unlockAt, Date.now());
+    if (leftMs <= 0) { unlockHold(); return; }
+    if (holdEl) holdEl.textContent = "请阅读提示（" + Math.ceil(leftMs / 1000) + "s）";
+  };
+  const holdTimer = setInterval(refreshHold, 1000);
+  /* v8.0.9：回前台立即重算剩余并刷新按钮态（观闸期内退 App 再回来，
+   * 不再依赖被冻结的 interval——若已到 0 立即解锁） */
+  const onVisChange = () => {
+    if (document.visibilityState === "visible") refreshHold();
+  };
+  document.addEventListener("visibilitychange", onVisChange);
+  splashTipCleanup = () => {
+    clearInterval(holdTimer);
+    document.removeEventListener("visibilitychange", onVisChange);
+  };
   wrap.addEventListener("click", (ev) => {
     if (!holdDone) return; // 观闸期（原生 disabled 已挡按钮，此为遮罩/双保险）
     const act = ev.target.getAttribute && ev.target.getAttribute("data-act");
@@ -1569,6 +1596,7 @@ $("#link-repo").addEventListener("click", () => openUrl("https://github.com/xiao
 
 /* ══════════ Toast ══════════ */
 let toastTimer = null;
+let toastRemoveTimer = null;
 function toast(msg) {
   let t = $("#toast");
   if (!t) {
@@ -1577,10 +1605,20 @@ function toast(msg) {
     t.style.cssText = "position:fixed;left:50%;bottom:96px;transform:translateX(-50%);background:#0c2015;color:#fff;padding:9px 20px;border-radius:999px;font-size:13.5px;z-index:99;opacity:0;transition:opacity .2s;pointer-events:none;max-width:80vw;";
     document.body.appendChild(t);
   }
+  /* v8.0.9：新一轮 toast 复用节点前撤销上轮待执行的移除（防复用中被移除） */
+  if (toastRemoveTimer) { clearTimeout(toastRemoveTimer); toastRemoveTimer = null; }
   t.textContent = msg;
   t.style.opacity = "1";
   if (toastTimer) clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { t.style.opacity = "0"; }, 2200);
+  toastTimer = setTimeout(() => {
+    t.style.opacity = "0";
+    /* v8.0.9：淡出动画（.2s transition）结束后移除节点——防 toast 节点
+     * 永久滞留 DOM 叠加（旧悬浮层残影源之一）；260ms > 200ms 动画 + 调度余量 */
+    toastRemoveTimer = setTimeout(() => {
+      t.remove();
+      toastRemoveTimer = null;
+    }, 260);
+  }, 2200);
 }
 
 /* ══════════ 启动 ══════════ */

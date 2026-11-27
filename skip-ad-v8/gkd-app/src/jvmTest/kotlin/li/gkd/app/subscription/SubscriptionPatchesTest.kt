@@ -106,4 +106,38 @@ class SubscriptionPatchesTest {
         assertFalse(EngineRateGate.tryAcquire(key, 60_000), "窗口内节流")
         assertTrue(EngineRateGate.tryAcquire("$key-b", 60_000), "独立 key 不互相影响")
     }
+
+    /**
+     * v8.0.10：对内置 667（上游 Lin-arm v646）真实内容核对补丁 1 的适配与幂等。
+     * v646 的 com.luna.music key=0 开屏组结构与 v644 同构（r0 双分支含「第三方应用/
+     * 扭动手机」锚点分支与无锚点结构分支、r1 纯文本跳过规则、actionMaximum:1）。
+     */
+    @Test
+    fun lunaSplashPatchAppliesToBundledV646Content() {
+        val sub = RawSubscriptionParser.parse(BundledSubscriptionAssets.read(667L))
+        assertEquals(646, sub.version, "内置 667 应为上游 v646")
+        val luna = sub.apps.first { it.id == "com.luna.music" }
+        val group = luna.groups.first { it.key == 0 }
+        assertTrue(group.name.startsWith("开屏"), "v646 汽水开屏组名不变：${group.name}")
+        assertEquals(2, group.actionMaximum, "v646 内容 actionMaximum 1→2 仍生效")
+        val r0 = group.rules.first { it.key == 0 }
+        assertEquals(1, r0.anyMatches?.size, "v646 r0 只保留锚点分支")
+        assertTrue(
+            r0.anyMatches!!.first().let { it.contains("第三方应用") || it.contains("扭动手机") },
+            "v646 r0 保留分支带广告文案锚点",
+        )
+        val r1 = group.rules.first { it.key == 1 }
+        assertEquals(null, r1.matches, "v646 r1 matches 转 anyMatches")
+        assertEquals(2, r1.anyMatches?.size, "v646 r1 文本 + 穿山甲 id 兜底两分支")
+        assertTrue(
+            r1.anyMatches!!.any { it.contains("tt_splash_skip_btn") },
+            "v646 r1 保留穿山甲跳过键 id 兜底",
+        )
+        // 幂等：补丁后序列化再解析，行为不变
+        val reparsed = RawSubscriptionParser.parse(SubscriptionJson.toJson5String(sub))
+        val regroup = reparsed.apps.first { it.id == "com.luna.music" }.groups.first { it.key == 0 }
+        assertEquals(2, regroup.actionMaximum)
+        assertEquals(1, regroup.rules.first { it.key == 0 }.anyMatches?.size)
+        assertEquals(2, regroup.rules.first { it.key == 1 }.anyMatches?.size)
+    }
 }

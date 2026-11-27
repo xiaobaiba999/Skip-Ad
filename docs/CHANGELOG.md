@@ -1,5 +1,62 @@
 # 变更记录
 
+## v8.1.0 · 2026-11-27 · 订阅覆盖根治（667 截断修复）· 失败诊断链（13 类分类）· 卫士进出残影根治 · 液态柔光玻璃提示重制（versionCode 88200）
+
+**版本信息**：versionName 8.1.0 · versionCode **88200**（延续抬码：高于 v8.0.9 的 88100 与全部历史码，旧版 v7.15.x / v8.0.x 全部能发现并覆盖升级）· minSdk 26（Android 8.0）
+
+**本轮四大专项（用户任务驱动：规则覆盖 / 失败诊断 / 残影 / 玻璃提示）**：
+
+### 一、内置订阅 667 截断根治（新装用户 Lin-arm 规则零覆盖事故）
+
+- **缺陷（本轮最大发现）**：内置 `assets/subscriptions/667.json5` 为**截断损坏文件**——954,368 字节（恰好 932 KiB）vs 上游 Lin-arm v644 完整版 1,396,696 字节，在 `com.netease.gl` 条目中途截断、JSON5 非法。v8.0.7/8/9 全部 APK 均内置此坏文件：**新装/清数据用户 667 订阅完全不入库**（种子解析失败被静默 catch），仅剩 86+233 ≈ 682 款应用规则；连带 `WebUiState.builtinStats` 因 667 是 seeds[0] 解析异常导致 86/233 统计也显示 0。已装用户不受影响（远端日更字节赢）。
+- **修复**：667.json5 替换为上游 **Lin-arm v646 完整版**（1,404,195 字节，与 `gkd-subscription-667.pages.dev` 官方 dist 逐字节一致，sha256 `01d58bd1…`）——**1013 款应用 / 2547 规则组 / 5142 条规则**全量入库（vs 截断版 0）；`WebUiState.builtinStats` 的 try/catch 收窄到 per-seed 循环体内（坏种子不再连累其它种子统计）。
+- **语法兼容性实测**：对 v646 全部 4,471 条选择器串做全量语法+类型审计（复刻 gkd-selector 0.6.1 解析器白名单）——`next/linksTo/props` 0 处使用，`vid=`/`+(n,m)`/`parent.childCount.minus()`/`prev/getPrev`/`versionCode` 对象全部支持；**`BundledSubscriptionAssetsTest`（新增 JVM 测试）对 667 全部 2544 应用组 + 3 全局组逐组跑真实 `RuleGroupCompilation.compile` 双闸——0 失败**。
+- **构建期防再发闸**：`BundledSubscriptionAssetsTest`（字节下限 + JSON5 解析 + 全组编译三重校验，任何一步失败 fail build）+ `scripts/validate-subscriptions.mjs`（发布链独立校验：字节数/尾部完整性/UTF-8 BOM，实测对截断版正确 FAIL）。
+
+### 二、失败诊断日志体系（「为什么广告没跳过」决策链补全）
+
+13 类失败原因分类现状（基于 111 个真实用户 Issue 的 `parse-feedback-reports.mjs` 解析，5033 个评估单元实证）→ 本轮补齐：
+
+- **`rule_filtered`（新增 kind，补类 2/3/4/5 盲区）**：`EngineRuleFilterRecorder` 在前台快照变化时输出被静默过滤的规则——不兼容组（编译失败）/ 已停用组 / 版本门槛过滤规则数 / 当前 Activity 不适用规则数。此前这些规则在进入评估前就消失，日志零痕迹。
+- **`action_no_effect`（新增 kind，补类 11）**：`EngineActionEffectTracker` 代理信号——成功点击后 8s 窗口内同一 (规则, Activity) 仍持续被评估 ≥3 轮 → 「点击后广告疑似仍在」（60s 节流；Activity 切换自动失效）。
+- **`query_gated`（新增 kind，补类 12）**：引擎闸门拦截（service_not_effective / screen_not_interactive / matching_disabled）首次落库（每原因 60s 一条）——此前只在调试通道可见。
+- **动作失败细分（类 7/8/10）**：`ActionResult.failureKind` 枚举（node_invisible / node_action_rejected / gesture_unavailable / swipe_arg_missing），`ActionPerformer` 各失败点赋值，随 `action_failed` 的 reason 字段落库。
+- **match_miss 关键样本**：8 秒聚合窗口保留首个 `not_matched` 轮次的规则名 + 选择器原文（截 160 字符）——服务端可据此直接写新规则。
+- **订阅来源结构化**：`EngineEventDetail` 新增 `subsId`/`subsVersion` 字段（失败行与成功行对齐，不再只埋在 message 文本里）。
+- **上传前落库屏障**：`EngineEventLogWriter.drain()`（报告构建前等队列与在途批次写完，2s 超时不阻塞上传）——修复「上传报告里缺最近一次未命中」竞态。
+- **报告可见性**：第 5 节新增「失败原因链」行（rule_filtered / action_no_effect / query_gated 计数），第 6 节说明失败诊断链。
+- **服务端配套（新增 `scripts/parse-feedback-reports.mjs`）**：Issue 报告六节结构化解析 → 13 类映射（不可区分类别显式置 null 不编造）→ `reports/issue-parse/{issues,records}.jsonl` + `stats.md`；对全部 111 个开放 Issue 实跑：**Top 失败 App = 淘宝 2869 轮（#167）· 杂志阅读 1369 · 网易云音乐 1305 · nova 1125 · 小米商城 734 · 汽水音乐 373**；失败类别分布 not_matched 83.3% / node 类 5.9% / 限流 6.6% / 倒计时 1.7%；`docs/RULE-ITERATION-2026-11-27.md` 给出下一轮规则迭代清单（含三套订阅覆盖核查）。
+
+### 三、卫士进入/退出残影根治（生命周期审计 + 7 处修复）
+
+- **WebView 首帧门控**（进入残影根因）：主界面 WebView 创建即 VISIBLE，SurfaceView 首帧未就绪时部分 OEM 打洞 Surface 复用旧 buffer → 闪现上一帧/残影。移植 WebViewPage 已验证的 `INVISIBLE → onPageCommitVisible → VISIBLE` 门控（`onPageFinished` 兜底防卡死），背景色链（splash/windowBackground/首帧）保持 v8.0.8 连续。
+- **WebView 销毁协议**（退出残影根因）：`onDestroy` 在 WebView 仍 attach 时调用 `destroy()` + 先于 `super` + 无 `isFinishing` 判断 → Surface 注销时序错乱残留。新 `WebViewRelease` 协议（先 detach → removeJavascriptInterface → stopLoading → destroy）+ `AndroidView.onRelease` 接管 + `onDestroy` 仅 `isFinishing` 兜底；深色模式重建路径不再销毁 WebView。
+- **玻璃提示三处移除脆弱点**（「退出后仍显示旧悬浮层」根因）：addView 全程 try-catch（a11y wm 垂死 BadToken 不再崩溃，回退应用 wm → 系统 Toast）；兜底移除定时器无条件注册（不随退场动画异常丢失）；同刻至多一个玻璃视图（新提示先强制移除旧视图）。
+- **H5 开屏弹窗倒计时绝对时间**：`pauseTimers()` 冻结全部 JS 定时器导致 5s 观闸弹窗滞留未解锁态 → 再进入「旧遮罩叠加」。改为 `Date.now()` 基准 + `visibilitychange` 重算；弹窗关闭移除节点；H5 toast 淡出后移除节点。
+- **崩溃自愈 1.5s 冻帧消除**：未捕获异常后不再保留冻帧 1.5 秒才重启（日志落盘在进协程前同步完成，直接重启）；消除「旧帧+新窗口」叠加观感。
+- **OverlayWindowService 摘除改 immediate**（关窗动画期间进程死亡残留）；**TrackService addView 包 try-catch**（权限被撤不再崩溃）；**WebUiBridge 销毁后 evaluateJavascript 实例身份+异常双闸防护**。
+
+### 四、液态柔光玻璃提示重制（HyperOS 柔光玻璃 / OriginOS / ColorOS 通用化实现）
+
+- **四层静态玻璃材质**（替代 v8.0.8 单层 GradientDrawable）：磨砂渐变底（TL_BR 深浅色各自材质）+ 顶部柔光内反射（垂直弧光）+ 边缘细腻高光描边（1.2dp 玻璃壁厚感）+ 品牌绿弱着色；柔和投影（elevation 12dp）；深浅色双材质。背景模糊评估结论：overlay 窗口跨窗模糊不可用（`backgroundBlurRadius` 非公开 API / `setBlurBehindRadius` 需全屏 FLAG_BLUR_BEHIND）——四层静态磨砂即视觉基线，全 Android 版本一致无降级差异，零每帧开销。
+- **动画规格**：入场 280ms（上浮 26dp + 透明度 0→1 + 缩放 0.96→1.0，Decelerate 1.15）→ 停留 1.9s（呼吸圆点守护状态微动画，1.6s 周期 35%→100% 透明度，无位移无复杂装饰）→ 退场 240ms（淡出 + 轻微缩小 0.97 + 完全移除）。
+- **内容结构**：左圆形品牌 Logo（缓存单例）+ 右「开屏卫士」标题（sans-serif-medium 15sp）+「正在守护」状态行（11sp + 呼吸圆点）；`FLAG_NOT_TOUCHABLE` 不拦截触摸；显示失败回退系统 Toast（显示永不失败）。
+- **性能红线**：不截图、不每帧绘制、不引入高耗电模糊；Logo 位图缓存单例；退场动画与呼吸动画在移除前全部 cancel。
+
+### 测试与验证（如实标注）
+
+- **JVM（jvmTest）**：`BundledSubscriptionAssetsTest` 3 项全绿（667 全量 2547 组编译 0 失败）· `SubscriptionPatchesTest` 5 项全绿（含汽水音乐补丁对 v646 真实内容的适配断言 + 幂等）· `EngineRuleFilterRecorderTest` 6 项全绿 · `EngineActionEffectTrackerTest` 5 项全绿 · record/subscription/matching/ui/rule/storage/network/logging/backup/upload/time/state/settings 各包逐包全绿（近 500 项）· 全量单跑复验 `UpdateClientResolutionTest` 12/12 全绿。
+- **Robolectric（androidHostTest）**：101 项 1 预存失败（A11yWindowReadTest，v8.0.7/v8.0.8/v8.0.9 基线同样失败，与本版无关；含基线工作树对照复现）；新增 `WebViewReleaseProtocolTest`（detach 先于 destroy 顺序协议）全绿；零新增失败。
+- **环境敏感项（2 核沙箱如实标注）**：全量套件并发跑时 `MatchNodeReaderTest` 2 项 + `UpdateClientResolutionTest` 2 项 + `ApplicationIntegrationTest` 1 项在负载下失败——**基线工作树（ab120b2）对照复现或单独跑全绿**，与本版改动无关；`ApplicationIntegrationTest` 单跑超 10 分钟窗口限制（同 v8.0.7/8/9 口径 NOT_RUN）。
+- **APK 元数据实测**：versionName 8.1.0 · versionCode 88200 · 包名 com.zai.adshield · v2/v3 签名证书 SHA-256 `05ada6e3…` 与历史全部正式版一致。
+- **真机测试**：**NOT_RUN**（本环境无真机；首帧门控效果 / 退出 Surface 残留 / 玻璃提示观感 / 667 订阅加载 1013 款待真机回归）。
+
+**下载信息**：
+
+- APK：`adshield-v8.1.0.apk`（本 Release 资产 + `android-app/dist/` 仓库归档）
+- 签名证书 SHA-256：`05ada6e3f7a4fc6bf77449611c24f51e1ef4caa0a91a5cdd02c4d877738e6f79`（与历史所有正式版一致，直接覆盖升级）
+- versionCode: 88200
+
 ## 发布链修复 · 2026-11-27 · update-manifest APK 驱动定码 + 签名闸 + CDN 清洗触发面（main 直接上线，无需发版）
 
 **背景（run 45857895571 / 45974347469 / 45990612818 三连 failure）**：update-manifest 工作流用 tag 公式猜测定码（major*10000+minor*1000+patch*100 → 80700/80800/80900），而 APK 实际显式抬码 87100/88000/88100（跨 7.15.x 存量段 85000-86400）→ 公式闸拒绝 → 生成步骤 failure → purge 步骤被连带跳过 → CDN 陈旧缓存无人清洗（2026-11-27 事故链上游）。

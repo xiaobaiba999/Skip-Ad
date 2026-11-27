@@ -3,6 +3,7 @@ package li.gkd.app
 import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
+import android.view.View
 import android.webkit.MimeTypeMap
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
@@ -42,6 +43,7 @@ import li.gkd.app.ui.share.ActivityImeController
 import li.gkd.app.ui.share.ActivityResultRequests
 import li.gkd.app.ui.theme.installThemedSplashScreen
 import li.gkd.app.ui.webui.WebUiBridge
+import li.gkd.app.ui.webui.WebViewRelease
 import li.gkd.app.util.AndroidTarget
 import li.gkd.app.util.ToastUtils
 import li.gkd.app.util.mapState
@@ -155,6 +157,12 @@ class MainActivity : ComponentActivity() {
                             settings.domStorageEnabled = true
                             settings.allowFileAccess = true
                             setBackgroundColor(0xFFF2F7F3.toInt())
+                            // v8.0.9 首帧门控（移植 WebViewPage.android.kt 模式）：
+                            // 创建即 VISIBLE 时，SurfaceView 首个合成帧就绪前会闪现
+                            // 旧 buffer（上一会话残留帧）→ 进入残影。先 INVISIBLE，
+                            // onPageCommitVisible 置 VISIBLE；门控期间由 v8.0.8 的
+                            // Compose Box #F2F7F3 背景兑底，背景色链三色一致无真空帧
+                            visibility = View.INVISIBLE
                             addJavascriptInterface(WebUiBridge(this@MainActivity), "AndroidApp")
                             webViewClient = object : WebViewClient() {
                                 // v8.0.8：主帧加载失败兑底：本地 asset 加载失败自动重试一次；
@@ -169,7 +177,17 @@ class MainActivity : ComponentActivity() {
                                     if (!request.isForMainFrame) return
                                     if (!retried) {
                                         retried = true
-                                        view.post { view.loadUrl("file:///android_asset/www/index.html") }
+                                        // v8.0.9：post 排队期间 WebView 可能已被销毁
+                                        // （onRelease/退出）——仅当仍是当前存活实例时
+                                        // 重试；destroy 后 loadUrl 会抛异常
+                                        view.post {
+                                            try {
+                                                if (this@MainActivity.webViewOrNull() === view) {
+                                                    view.loadUrl("file:///android_asset/www/index.html")
+                                                }
+                                            } catch (_: Throwable) {
+                                            }
+                                        }
                                         return
                                     }
                                     view.loadDataWithBaseURL(
@@ -182,6 +200,21 @@ class MainActivity : ComponentActivity() {
                                         "utf-8",
                                         null,
                                     )
+                                }
+
+                                // v8.0.9 首帧门控解除：主帧首个合成帧已提交，
+                                // 此刻置 VISIBLE（进入残影根治的另一半）
+                                override fun onPageCommitVisible(view: WebView, url: String?) {
+                                    view.visibility = View.VISIBLE
+                                }
+
+                                // v8.0.9 首帧门控兜底：个别 WebView 版本/错误页路径
+                                // 不回调 onPageCommitVisible——加载完成仍未显式时
+                                // 在此解除，防门控卡死
+                                override fun onPageFinished(view: WebView, url: String?) {
+                                    if (view.visibility != View.VISIBLE) {
+                                        view.visibility = View.VISIBLE
+                                    }
                                 }
 
                                 override fun shouldOverrideUrlLoading(
@@ -212,6 +245,12 @@ class MainActivity : ComponentActivity() {
                             this@MainActivity.webView = this
                         }
                     },
+                    onRelease = { view ->
+                        // v8.0.9 销毁协议（组合离开时执行）：先 detach 再 destroy，
+                        // 根治退出时 Surface 残留残影；与 onDestroy 兜底共用
+                        // releaseWebViewSafely（幂等去重）
+                        this@MainActivity.releaseWebViewSafely(view)
+                    },
                 )
             }
             LaunchedEffect(Unit) {
@@ -238,15 +277,32 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        webView?.let { wv ->
-            try {
-                wv.removeJavascriptInterface("AndroidApp")
-                wv.destroy()
-            } catch (_: Throwable) {
-            }
+        // v8.0.9 兜底销毁：主路径是 AndroidView.onRelease（组合 dispose 时执行
+        // 完整销毁协议）；此处仅在真正退出（isFinishing）且 webView 仍存活
+        // （onRelease 未跑——组合未及 dispose 的极端时序）时兜底执行同一协议。
+        // 重建路径（非 isFinishing）不动 WebView：视树重建自然走 onRelease/
+        // 新建 factory，过早 destroy 反而破坏恢复
+        if (isFinishing) {
+            webView?.let { releaseWebViewSafely(it) }
+        }
+        super.onDestroy()
+    }
+
+    /**
+     * v8.0.9 WebView 释放入口（AndroidView.onRelease 主路径 + onDestroy 兜底共用）：
+     * · 幂等去重：仅当 view 仍是当前注册实例（webView === view）时执行，
+     *   两路径先后到达只释放一次；
+     * · 顺序协议见 [WebViewRelease]（先 detach 再 destroy——destroy 时 WebView
+     *   仍 attach 会致 Surface 注销时序错乱，退出残影）；
+     * · 释放后置空 webView 字段（WebUiBridge.netCb 的存活校验依赖此语义）。
+     */
+    private fun releaseWebViewSafely(view: WebView) {
+        if (webView !== view) return
+        try {
+            WebViewRelease.run(view, "AndroidApp")
+        } catch (_: Throwable) {
         }
         webView = null
-        super.onDestroy()
     }
 
     private fun fixTransparentNavigationBar() {

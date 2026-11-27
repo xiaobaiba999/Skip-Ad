@@ -66,6 +66,7 @@ import li.gkd.app.model.ActionResult
 import li.gkd.app.platform.lifecycle.MainActivityVisibility
 import li.gkd.app.priv.privilegeContextFlow
 import li.gkd.app.record.addActionLog
+import li.gkd.app.record.EngineActionEffectTracker
 import li.gkd.app.record.EngineEventLogWriter
 import li.gkd.app.record.EngineMatchMissRecorder
 import li.gkd.app.record.EngineRateGate
@@ -936,6 +937,17 @@ class AndroidMatchHost(private val service: AndroidAutomationSession) {
                 else -> return false
             }
         coordinator.diagnostics.entry(source, reason, runId)
+        // v8.1.0：引擎闸门落库（类 12 频控/服务闸门）——之前只在调试通道可见，
+        // 用户侧「广告为什么没被处理」的常见原因（服务无效/黑屏/开关关闭）首次可诊断。
+        // 每原因 60 秒最多一条，绝不刷库。
+        if (EngineRateGate.tryAcquire("query_gated:$reason", 60_000L)) {
+            EngineEventLogWriter.log(
+                kind = "query_gated",
+                message = "⏸️ 扫描未执行（$reason）——引擎闸门拦截，广告不会被处理",
+                level = 0,
+                appId = AndroidForegroundState.currentRule.topActivity.appId,
+            )
+        }
         return true
     }
 
@@ -1070,10 +1082,19 @@ class AndroidMatchHost(private val service: AndroidAutomationSession) {
                                 AndroidToastUtils.showAction(rule, work.id)
                         }
                     }
+                    // v8.1.0：动作后效果追踪锚点（类 11「点击成功但广告没关闭」代理信号）
+                    if (result.result) {
+                        EngineActionEffectTracker.onActionSuccess(
+                            rule,
+                            activityRule.topActivity.appId,
+                            activityRule.topActivity.activityId,
+                        )
+                    }
                     addActionLog(rule, activityRule.topActivity, target, result)
                 },
                 // v8.0.8：规则评估结果观察点——匹配未命中按应用聚合落库（8 秒窗口），
                 // 动作失败（此前无任何日志）单独落库；纯内存操作，绝不阻塞匹配主链。
+                // v8.1.0：补 not_matched 关键样本（规则名+选择器原文）与动作后效果追踪。
                 observed = { rule, status, matched, result ->
                     if (result != null) {
                         if (!result.result) {
@@ -1093,7 +1114,28 @@ class AndroidMatchHost(private val service: AndroidAutomationSession) {
                             activityRule.topActivity.appId,
                             status,
                             matched,
+                            sampleRuleName =
+                                if (status == "not_matched") {
+                                    rule.rule.name ?: "规则${rule.index}"
+                                } else {
+                                    null
+                                },
+                            sampleSelector =
+                                if (status == "not_matched") {
+                                    rule.rule.matches.orEmpty().firstOrNull()
+                                        ?: rule.rule.anyMatches.orEmpty().firstOrNull()
+                                } else {
+                                    null
+                                },
                         )
+                        // v8.1.0：动作后效果追踪（同一规则+Activity 持续命中 → 代理信号）
+                        if (matched || status == "ActionLimitReached" || status == "Cooldown") {
+                            EngineActionEffectTracker.onObserved(
+                                rule,
+                                activityRule.topActivity.appId,
+                                activityRule.topActivity.activityId,
+                            )
+                        }
                     }
                 },
             )

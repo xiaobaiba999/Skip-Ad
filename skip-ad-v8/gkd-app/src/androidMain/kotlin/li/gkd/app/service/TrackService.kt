@@ -33,6 +33,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import li.gkd.app.app
+import li.gkd.app.logging.LogUtils
 import li.gkd.app.model.ScreenSize
 import li.gkd.app.notif.NotificationCatalog
 import li.gkd.app.priv.toHidden
@@ -122,7 +123,13 @@ class TrackService : LifecycleHookService(), SavedStateRegistryOwner {
 
         fun removeView() {
             subScope.cancel()
-            app.windowManager.removeView(view)
+            // v8.0.9：容错摘除——addView 失败（权限被撤，removed 已置位）或窗口
+            // 已被系统摘除时，removeView 对未 attach 视图抛 IllegalArgumentException；
+            // 清理路径不再崩溃（对齐 onDestroyed 清理的容错语义）
+            try {
+                app.windowManager.removeView(view)
+            } catch (_: IllegalArgumentException) {
+            }
             removed = true
         }
 
@@ -155,8 +162,17 @@ class TrackService : LifecycleHookService(), SavedStateRegistryOwner {
                 layoutParams.y + layoutParams.height,
             )
             if (!connected) {
+                // v8.0.9：悬浮窗权限被撤时 addView 抛 BadTokenException 等——
+                // 记日志跳过并标记 removed（后续 getRect/setAlpha/动画全部走
+                // 惰性路径），服务不再崩溃（对齐同文件 onDestroyed 清理容错）
+                try {
+                    app.windowManager.addView(view, layoutParams)
+                } catch (e: Exception) {
+                    LogUtils.e("TrackService 悬浮层 addView 失败（悬浮窗权限被撤？已跳过）", e)
+                    removed = true
+                    return
+                }
                 connected = true
-                app.windowManager.addView(view, layoutParams)
                 subScope.launch { resizeFlow.collect { syncRotation() } }
             } else {
                 app.windowManager.updateViewLayout(view, layoutParams)

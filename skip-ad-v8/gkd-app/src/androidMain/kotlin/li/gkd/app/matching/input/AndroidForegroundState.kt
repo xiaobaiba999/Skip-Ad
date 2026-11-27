@@ -5,6 +5,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import li.gkd.app.appScope
+import li.gkd.app.app.AppInfoRepository
 import li.gkd.app.data.subscription.SubscriptionState
 import li.gkd.app.logging.LogUtils
 import li.gkd.app.matching.AndroidAutomationSessions
@@ -17,6 +18,7 @@ import li.gkd.app.matching.diagnostics.MatchPageObservation
 import li.gkd.app.matching.diagnostics.MatchStage
 import li.gkd.app.matching.retainUnaffectedExecution
 import li.gkd.app.record.AppVisitInput
+import li.gkd.app.record.EngineRuleFilterRecorder
 import li.gkd.app.record.RuntimeRecordRepository
 import li.gkd.app.rule.RuleSummary
 import li.gkd.app.rule.TopActivity
@@ -329,6 +331,16 @@ object AndroidForegroundState {
                 }
             }
             foregroundRulesFlow.value = newActivityRule
+            // v8.1.0：规则过滤诊断（类 2/4/5 盲区）——停用组/不兼容组/版本门槛/
+            // Activity 不匹配的规则首次可诊断（内部自备节流，无规则时零开销）。
+            runCatching {
+                EngineRuleFilterRecorder.onSnapshot(
+                    topActivity.appId,
+                    topActivity.activityId,
+                    ruleSummary,
+                    AppInfoRepository.snapshot?.apps?.get(topActivity.appId),
+                )
+            }
             val firstConfirmation = !rulesOnly && confirmedPage !== page
             if (!rulesOnly) confirmedPage = page
             if (MatchingRuntime.coordinator.diagnostics.enabled) {

@@ -279,8 +279,10 @@ object WebUiState {
         var apps = 0
         var rules = 0
         var maxVersion = 0
-        try {
-            for (seed in EmbeddedSubscriptions.seeds) {
+        // v8.0.10 修复：try 收窄到单个种子——任一种子损坏（截断/非法 JSON5）只跳过该
+        // 种子的统计，不再连累其余种子（曾因 667 截断导致 86/233 统计也显示 0）
+        for (seed in EmbeddedSubscriptions.seeds) {
+            try {
                 val text = app.assets.open("subscriptions/${seed.id}.json5")
                     .bufferedReader().use { it.readText() }
                 val sub = RawSubscriptionParser.parse(text)
@@ -288,8 +290,8 @@ object WebUiState {
                 maxVersion = maxOf(maxVersion, sub.version)
                 sub.globalGroups.forEach { rules += it.rules.size }
                 sub.apps.forEach { a -> a.groups.forEach { rules += it.rules.size } }
+            } catch (_: Throwable) {
             }
-        } catch (_: Throwable) {
         }
         val v = BuiltinStats(apps, rules, maxVersion)
         builtinMemo = v

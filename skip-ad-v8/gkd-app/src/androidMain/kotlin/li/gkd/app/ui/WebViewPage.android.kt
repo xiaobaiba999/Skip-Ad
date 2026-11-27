@@ -3,6 +3,7 @@ package li.gkd.app.ui
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.view.View
+import android.view.ViewGroup
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
@@ -79,8 +80,17 @@ actual fun WebViewPage(
     DisposableEffect(webView, lifecycle) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_RESUME -> webView?.onResume()
-                Lifecycle.Event.ON_PAUSE -> webView?.onPause()
+                // v8.0.9：补 pauseTimers/resumeTimers（对齐 MainActivity 语义：
+                // 退后台冻结全局 JS 定时器省电，回前台恢复；两调用需成对，
+                // Chromium 内部为全局计数）
+                Lifecycle.Event.ON_RESUME -> {
+                    webView?.resumeTimers()
+                    webView?.onResume()
+                }
+                Lifecycle.Event.ON_PAUSE -> {
+                    webView?.onPause()
+                    webView?.pauseTimers()
+                }
                 else -> Unit
             }
         }
@@ -157,6 +167,11 @@ actual fun WebViewPage(
                     view.removeJavascriptInterface("gkd")
                     view.webChromeClient = null
                     view.webViewClient = WebViewClient()
+                    // v8.0.9：先从视图树 detach 再 destroy（对齐 MainActivity/
+                    // WebViewRelease 销毁协议——destroy 时仍 attach 会致 Surface
+                    // 注销时序错乱、退出残影。当前 Android 上此页不可达，防未来
+                    // 接回时复发）
+                    (view.parent as? ViewGroup)?.removeView(view)
                     view.destroy()
                 },
             )

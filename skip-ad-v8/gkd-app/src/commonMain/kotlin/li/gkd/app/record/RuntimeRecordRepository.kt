@@ -48,6 +48,9 @@ data class EngineEventDetail(
     val result: Boolean? = null,
     val durationMs: Long? = null,
     val reason: String? = null,
+    /** v8.1.0：订阅来源结构化字段（失败行与成功行对齐——不再只埋在 message 文本里） */
+    val subsId: Long? = null,
+    val subsVersion: Int? = null,
 )
 
 /**

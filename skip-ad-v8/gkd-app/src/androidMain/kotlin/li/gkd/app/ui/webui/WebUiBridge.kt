@@ -57,10 +57,22 @@ class WebUiBridge(activity: MainActivity) {
         val a = activityRef.get() ?: return
         a.webViewOrNull()?.let { wv ->
             a.runOnUiThread {
-                wv.evaluateJavascript(
-                    "window.__netCb && window.__netCb(${WebUiState.jsonStr(cb)}, ${json})",
-                    null,
-                )
+                // v8.0.9：销毁防护——runOnUiThread 排队期间 WebView 可能已被
+                // AndroidView.onRelease / onDestroy 兜底销毁，destroy 后
+                // evaluateJavascript 抛 IllegalStateException（崩溃源）。
+                // 仅当仍是当前注册实例时求值（releaseWebViewSafely 释放后置空
+                // MainActivity.webView，webViewOrNull() 即失效）；destroy 后
+                // evaluateJavascript 的 IllegalStateException 由 catch 兜底
+                // （WebView 无公开 isDestroyed API，以实例身份 + 异常双闸防护）。
+                if (a.webViewOrNull() === wv) {
+                    try {
+                        wv.evaluateJavascript(
+                            "window.__netCb && window.__netCb(${WebUiState.jsonStr(cb)}, ${json})",
+                            null,
+                        )
+                    } catch (_: IllegalStateException) {
+                    }
+                }
             }
         }
     }

@@ -4,6 +4,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import li.gkd.app.logging.LogUtils
 import li.gkd.db.Db
@@ -25,6 +26,9 @@ object EngineEventLogWriter {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     @Volatile private var started = false
     private var written = 0L
+
+    /** v8.1.0：已入队待写计数（drain 屏障用）。 */
+    private val pending = java.util.concurrent.atomic.AtomicLong(0)
 
     fun start() {
         if (started) return
@@ -49,6 +53,8 @@ object EngineEventLogWriter {
                         }
                     } catch (e: Exception) {
                         LogUtils.w("engine event log write failed", e)
+                    } finally {
+                        pending.addAndGet(-batch.size.toLong())
                     }
                 }
             }
@@ -75,10 +81,28 @@ object EngineEventLogWriter {
                 message = message,
                 detail = detail,
             )
+        pending.incrementAndGet()
         if (queue.trySend(entry).isSuccess) return
         val dropped = queue.tryReceive().getOrNull()
+        if (dropped != null) pending.decrementAndGet()
         if (dropped == null || dropped.level < level) {
             queue.trySend(entry)
+        } else {
+            pending.decrementAndGet() // 溢出丢弃：同样脱离待写集
+        }
+    }
+
+    /**
+     * v8.1.0：上传前落库屏障——等待队列与在途批次全部写库（或超时）。
+     * 修复 v8.0.8 缺口：flushAll 只是入队，报告随后的查库可能读不到刚入队的
+     * 最新窗口（消费协程批处理延迟）——「上传前确保最新触发记录已落库」。
+     */
+    suspend fun drain(timeoutMs: Long = 2000L) {
+        start()
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (pending.get() > 0) {
+            if (System.currentTimeMillis() >= deadline) return
+            delay(25)
         }
     }
 }
