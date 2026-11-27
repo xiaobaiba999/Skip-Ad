@@ -1,20 +1,17 @@
 {
   "schemaVersion": 1,
-  "versionName": "8.0.9",
-  "versionCode": 88100,
-  "releaseTag": "v8.0.9",
-  "releaseName": "开屏卫士 v8.0.9 · 更新系统根治（v8.0.7 检测不到 v8.0.8 事故修复）",
-  "releaseNotes": "# 开屏卫士 v8.0.9（更新系统根治）\n\n> 修复 2026-11-27 事故：v8.0.8 发布后已安装 v8.0.7 的用户 App 内「检查更新」检测不到 v8.0.8（持续 17 小时+）。本轮只解决更新系统，核心广告跳过行为零改动。\n\n## 真实根因（三因一果，全部实证）\n\n- **CDN 陈旧缓存**：jsDelivr cdn/gcore 两域对 `@main` 更新清单持续返回 v8.0.7 陈旧缓存（17h+ 未过期；同时刻 fastly/testingcf/raw 已新鲜）\n- **客户端架构回归（缺陷本体）**：v8.0.x 重写丢失 7.15.x 传承的多源合流架构——「首个成功源即返回」无跨源版本比较，陈旧首源掩盖新鲜后续源，全体用户误判「已是最新」\n- **发布链 purge 缺位**：update-manifest 工作流生成步骤因 versionCode 公式闸失败（88000≠公式 80800）→ purge 步骤被连带跳过，CDN 缓存无人清洗\n\n## 修复（客户端 + 服务端 + 发布链三层）\n\n1. **客户端多源合流解析（结构性根治）**：@main 七源任一新鲜即发现（jsDelivr 四域 + kilo + 双仓 raw）；单源「无更新」绝不单独构成结论；**@tag 不可变键探测链**（零分支缓存，发布即新鲜）+ **GitHub Releases API 匿名兜底**；全部源失败明确报「检查更新失败：原因」可重试，绝不伪装「已是最新」\n2. **下载镜像链**：清单新增 `apkMirrors`（gcore CDN 仓库归档），首源失败按序回退，每次尝试均走同一 SHA-256 校验\n3. **App 内体验补齐**：下载失败「重试」按钮（重走完整镜像链）；安装前**签名证书预校验**（不一致提前明确报错并删档）\n4. **服务端即时修复**：jsDelivr purge 已执行——已装 v8.0.7/v8.0.8 用户无需重装即恢复发现更新（真实线上复验通过）\n5. **发布链固化**：`purge-update-cdn.mjs`（发布后必跑）+ `verify-update-sources.mjs`（全源核验+三代客户端决策逻辑复验）+ 工作流加固补丁归档（需所有者应用：发布令牌无 workflow scope）\n\n## 测试（如实标注）\n\n- JVM 专项 12 项全绿（含 v8.0.7 缺陷忠实复现：逐字复刻 tag v8.0.7 生产逻辑 + 本地多源服务器实证误判；新逻辑同场景发现更新）；network 包全部全绿\n- Robolectric 98 项 1 预存失败（A11yWindowReadTest，v8.0.7/v8.0.8 基线复现，与本版无关）零新增\n- 真实线上源核验：v8.0.7 / v7.15.14 / v8.0.9 三代客户端决策逻辑复验全部「发现更新」\n- 真机测试 NOT_RUN（本环境无真机）\n\n## 下载\n\n- 官方 APK：adshield-v8.0.9.apk（本页资产）· 3,580,923 字节\n- SHA-256：6839e6dcf40422e7aca83617188751a67f7cd8746bb873418d205f2f588fcb93\n- CDN 直链：https://gcore.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/android-app/dist/adshield-v8.0.9.apk\n- 已装 v7.x 任何正式版 / v8.0.x：直接覆盖升级（签名一致，无障碍授权/白名单/订阅/学习数据全保留）\n- 签名证书 SHA-256：05ada6e3f7a4fc6bf77449611c24f51e1ef4caa0a91a5cdd02c4d877738e6f79（与历史所有正式版一致）\n\n## 版本信息\n\n- versionName：8.0.9\nversionCode: 88100\n- 签名证书与 v7.x / v8.0.x 完全一致\n- 技术说明：本版基于 GKD 核心技术（GPL-3.0）重构融合，源码与许可证见仓库 README\n",
-  "publishedAt": "2026-11-27T11:22:48Z",
-  "apkUrl": "https://github.com/xiaobaiba999/Skip-Ad/releases/download/v8.0.9/adshield-v8.0.9.apk",
-  "apkFileName": "adshield-v8.0.9.apk",
-  "apkSha256": "6839e6dcf40422e7aca83617188751a67f7cd8746bb873418d205f2f588fcb93",
-  "apkSize": 3580923,
+  "versionName": "8.1.0",
+  "versionCode": 88200,
+  "releaseTag": "v8.1.0",
+  "releaseName": "开屏卫士 v8.1.0 · 订阅覆盖根治（667 截断修复）· 失败诊断链 · 卫士残影根治 · 液态柔光玻璃提示",
+  "releaseNotes": "# 开屏卫士 v8.1.0 · 订阅覆盖根治 / 失败诊断链 / 卫士进出残影根治 / 液态柔光玻璃提示重制\n\n> 本轮四大专项：①新装用户 Lin-arm 规则零覆盖事故根治（内置 667 订阅截断修复）②「为什么广告没跳过」13 类失败诊断链 ③卫士进入/退出残影生命周期根治 ④液态柔光玻璃提示重制。核心广告跳过行为零回退。\n\n## 一、内置订阅 667 截断根治（本轮最大发现）\n\n- **缺陷**：内置 `667.json5`（Lin-arm v644）是截断损坏文件——954,368 字节 vs 完整版 1,396,696 字节，JSON5 非法 → **新装用户 667 订阅完全不入库**（仅剩 86+233 ≈ 682 款应用规则）；连带内置统计显示 0/0。v8.0.7/8/9 全部受影响，已装用户不受影响（远端日更字节赢）\n- **修复**：替换为上游 **Lin-arm v646 完整版**（与官方 dist 逐字节一致）——**1013 款应用 / 2547 规则组 / 5142 条规则**\n- **语法兼容实测**：v646 全部 4,471 条选择器过真实引擎编译双闸（`BundledSubscriptionAssetsTest`）——0 失败；构建期三重校验闸防再发（截断版实测正确 FAIL）\n\n## 二、失败诊断链（13 类失败原因分类）\n\n- **新增 `rule_filtered`**：停用组 / 不兼容组 / 版本门槛 / Activity 不适用四类过滤盲区首次可诊断（此前这些规则在评估前静默消失，日志零痕迹）\n- **新增 `action_no_effect`**：「点击后广告疑似仍在」代理信号（成功点击后 8s 窗口内同规则同页面仍持续命中评估）\n- **新增 `query_gated`**：引擎闸门拦截（服务无效/黑屏/开关关闭）落库\n- **动作失败细分**：node_invisible / node_action_rejected / gesture_unavailable / swipe_arg_missing\n- **match_miss 关键样本**：未命中聚合窗口保留首个规则名+选择器原文——服务端可直接据此写新规则\n- **上传前落库屏障**：报告构建前等队列写完（修复缺最近窗口竞态）+ 订阅来源 subsId/subsVersion 结构化\n- **服务端解析器** `parse-feedback-reports.mjs`：111 个真实 Issue 实跑统计（5033 评估单元）——Top 未命中：淘宝 2869 轮 / 杂志阅读 1369 / 网易云音乐 1305 / 小米商城 734 / 汽水音乐 373\n\n## 三、卫士进入/退出残影根治\n\n- **WebView 首帧门控**（进入残影）：移植 `INVISIBLE → onPageCommitVisible → VISIBLE`，SurfaceView 旧 buffer 不再闪现\n- **WebView 销毁协议**（退出残影）：`WebViewRelease` 先 detach 再 destroy + `AndroidView.onRelease` 接管 + 深色重建路径不销毁\n- **玻璃提示移除加固**：addView 全程保护（垂死 wm 不再崩溃，回退应用 wm→系统 Toast）+ 兜底移除无条件注册 + 同刻至多一层\n- **H5 开屏弹窗**：倒计时改绝对时间基准（pauseTimers 冻结不再滞留旧遮罩）+ 弹窗关闭移除节点\n- **崩溃自愈**：去除 1.5s 冻帧（旧帧+新窗口叠加消除）；OverlayWindowService 改 immediate 摘除；TrackService/WebUiBridge 防护\n\n## 四、液态柔光玻璃提示重制\n\n- **四层静态玻璃材质**：磨砂渐变底 + 顶部柔光内反射 + 边缘细腻高光描边 + 品牌绿弱着色 · 柔和投影 · 深浅色双材质（HyperOS 柔光玻璃 / OriginOS / ColorOS 视觉方向的通用化实现，不依赖专有 API）\n- **动画**：入场 280ms 上浮+透明度+缩放 0.96→1.0 → 停留 1.9s（呼吸圆点守护状态微动画）→ 退场 240ms 淡出+轻微缩小+完全移除\n- **性能**：不截图 / 不每帧绘制 / 无高耗电模糊；Logo 缓存单例；不拦截触摸；显示失败回退系统 Toast\n\n## 测试（如实标注）\n\n- JVM：新专项 14 项全绿 + 各包逐包全绿（近 500 项）；667 全量 2547 组真实编译 0 失败\n- Robolectric：101 项 1 预存失败（A11yWindowReadTest，v8.0.7/8/9 基线同样失败）零新增\n- 环境敏感项：MatchNodeReader 等在 2 核沙箱负载下失败——基线工作树对照复现，与本版无关\n- 真机测试：NOT_RUN（本环境无真机；首帧门控/退出残留/玻璃观感/1013 款订阅加载待真机回归）\n\n## 下载\n\n- APK：adshield-v8.1.0.apk（本页资产）· 3,684,307 字节\n- SHA-256：bdde12960acfd866255e840511a6ec42641b4e8094677ef2b8f75d6913acdc9b\n- CDN 直链：https://gcore.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/android-app/dist/adshield-v8.1.0.apk\n- 已装 v7.x 任何正式版 / v8.0.x：直接覆盖升级（签名一致，无障碍授权/白名单/订阅/学习数据全保留）\n- 签名证书 SHA-256：05ada6e3f7a4fc6bf77449611c24f51e1ef4caa0a91a5cdd02c4d877738e6f79（与历史所有正式版一致）\n\n## 版本信息\n\n- versionName：8.1.0\nversionCode: 88200\n- 签名证书与 v7.x / v8.0.x 完全一致\n",
+  "publishedAt": "2026-11-27T18:46:22Z",
+  "apkUrl": "https://github.com/xiaobaiba999/Skip-Ad/releases/download/v8.1.0/adshield-v8.1.0.apk",
+  "apkFileName": "adshield-v8.1.0.apk",
+  "apkSha256": "bdde12960acfd866255e840511a6ec42641b4e8094677ef2b8f75d6913acdc9b",
+  "apkSize": 3684307,
   "packageName": "com.zai.adshield",
   "minSupportedVersionCode": 0,
   "mandatoryUpdate": false,
-  "apkMirrors": [
-    "https://gcore.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/android-app/dist/adshield-v8.0.9.apk"
-  ],
-  "manifestUpdatedAt": "2026-11-27T11:22:48Z"
+  "manifestUpdatedAt": "2026-11-27T18:46:22Z"
 }
