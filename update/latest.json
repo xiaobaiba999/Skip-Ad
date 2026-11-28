@@ -1,20 +1,25 @@
 {
   "schemaVersion": 1,
-  "versionName": "8.1.0",
-  "versionCode": 88200,
-  "releaseTag": "v8.1.0",
-  "releaseName": "开屏卫士 v8.1.0 · 订阅覆盖根治（667 截断修复）· 失败诊断链 · 卫士残影根治 · 液态柔光玻璃提示",
-  "releaseNotes": "# 开屏卫士 v8.1.0 · 订阅覆盖根治 / 失败诊断链 / 卫士进出残影根治 / 液态柔光玻璃提示重制\n\n> 本轮四大专项：①新装用户 Lin-arm 规则零覆盖事故根治（内置 667 订阅截断修复）②「为什么广告没跳过」13 类失败诊断链 ③卫士进入/退出残影生命周期根治 ④液态柔光玻璃提示重制。核心广告跳过行为零回退。\n\n## 一、内置订阅 667 截断根治（本轮最大发现）\n\n- **缺陷**：内置 `667.json5`（Lin-arm v644）是截断损坏文件——954,368 字节 vs 完整版 1,396,696 字节，JSON5 非法 → **新装用户 667 订阅完全不入库**（仅剩 86+233 ≈ 682 款应用规则）；连带内置统计显示 0/0。v8.0.7/8/9 全部受影响，已装用户不受影响（远端日更字节赢）\n- **修复**：替换为上游 **Lin-arm v646 完整版**（与官方 dist 逐字节一致）——**1013 款应用 / 2547 规则组 / 5142 条规则**\n- **语法兼容实测**：v646 全部 4,471 条选择器过真实引擎编译双闸（`BundledSubscriptionAssetsTest`）——0 失败；构建期三重校验闸防再发（截断版实测正确 FAIL）\n\n## 二、失败诊断链（13 类失败原因分类）\n\n- **新增 `rule_filtered`**：停用组 / 不兼容组 / 版本门槛 / Activity 不适用四类过滤盲区首次可诊断（此前这些规则在评估前静默消失，日志零痕迹）\n- **新增 `action_no_effect`**：「点击后广告疑似仍在」代理信号（成功点击后 8s 窗口内同规则同页面仍持续命中评估）\n- **新增 `query_gated`**：引擎闸门拦截（服务无效/黑屏/开关关闭）落库\n- **动作失败细分**：node_invisible / node_action_rejected / gesture_unavailable / swipe_arg_missing\n- **match_miss 关键样本**：未命中聚合窗口保留首个规则名+选择器原文——服务端可直接据此写新规则\n- **上传前落库屏障**：报告构建前等队列写完（修复缺最近窗口竞态）+ 订阅来源 subsId/subsVersion 结构化\n- **服务端解析器** `parse-feedback-reports.mjs`：111 个真实 Issue 实跑统计（5033 评估单元）——Top 未命中：淘宝 2869 轮 / 杂志阅读 1369 / 网易云音乐 1305 / 小米商城 734 / 汽水音乐 373\n\n## 三、卫士进入/退出残影根治\n\n- **WebView 首帧门控**（进入残影）：移植 `INVISIBLE → onPageCommitVisible → VISIBLE`，SurfaceView 旧 buffer 不再闪现\n- **WebView 销毁协议**（退出残影）：`WebViewRelease` 先 detach 再 destroy + `AndroidView.onRelease` 接管 + 深色重建路径不销毁\n- **玻璃提示移除加固**：addView 全程保护（垂死 wm 不再崩溃，回退应用 wm→系统 Toast）+ 兜底移除无条件注册 + 同刻至多一层\n- **H5 开屏弹窗**：倒计时改绝对时间基准（pauseTimers 冻结不再滞留旧遮罩）+ 弹窗关闭移除节点\n- **崩溃自愈**：去除 1.5s 冻帧（旧帧+新窗口叠加消除）；OverlayWindowService 改 immediate 摘除；TrackService/WebUiBridge 防护\n\n## 四、液态柔光玻璃提示重制\n\n- **四层静态玻璃材质**：磨砂渐变底 + 顶部柔光内反射 + 边缘细腻高光描边 + 品牌绿弱着色 · 柔和投影 · 深浅色双材质（HyperOS 柔光玻璃 / OriginOS / ColorOS 视觉方向的通用化实现，不依赖专有 API）\n- **动画**：入场 280ms 上浮+透明度+缩放 0.96→1.0 → 停留 1.9s（呼吸圆点守护状态微动画）→ 退场 240ms 淡出+轻微缩小+完全移除\n- **性能**：不截图 / 不每帧绘制 / 无高耗电模糊；Logo 缓存单例；不拦截触摸；显示失败回退系统 Toast\n\n## 测试（如实标注）\n\n- JVM：新专项 14 项全绿 + 各包逐包全绿（近 500 项）；667 全量 2547 组真实编译 0 失败\n- Robolectric：101 项 1 预存失败（A11yWindowReadTest，v8.0.7/8/9 基线同样失败）零新增\n- 环境敏感项：MatchNodeReader 等在 2 核沙箱负载下失败——基线工作树对照复现，与本版无关\n- 真机测试：NOT_RUN（本环境无真机；首帧门控/退出残留/玻璃观感/1013 款订阅加载待真机回归）\n\n## 下载\n\n- APK：adshield-v8.1.0.apk（本页资产）· 3,684,307 字节\n- SHA-256：bdde12960acfd866255e840511a6ec42641b4e8094677ef2b8f75d6913acdc9b\n- CDN 直链：https://gcore.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/android-app/dist/adshield-v8.1.0.apk\n- 已装 v7.x 任何正式版 / v8.0.x：直接覆盖升级（签名一致，无障碍授权/白名单/订阅/学习数据全保留）\n- 签名证书 SHA-256：05ada6e3f7a4fc6bf77449611c24f51e1ef4caa0a91a5cdd02c4d877738e6f79（与历史所有正式版一致）\n\n## 版本信息\n\n- versionName：8.1.0\nversionCode: 88200\n- 签名证书与 v7.x / v8.0.x 完全一致\n",
-  "publishedAt": "2026-11-27T18:46:22Z",
-  "apkUrl": "https://github.com/xiaobaiba999/Skip-Ad/releases/download/v8.1.0/adshield-v8.1.0.apk",
-  "apkFileName": "adshield-v8.1.0.apk",
-  "apkSha256": "bdde12960acfd866255e840511a6ec42641b4e8094677ef2b8f75d6913acdc9b",
-  "apkSize": 3684307,
+  "versionName": "8.1.1",
+  "versionCode": 88300,
+  "releaseTag": "v8.1.1",
+  "releaseName": "开屏卫士 v8.1.1 · 日志准确性根治 · 断点续传多源下载 · 意见反馈双入口",
+  "releaseNotes": "# 开屏卫士 v8.1.1 · 日志准确性根治 / 断点续传多源下载 / 意见反馈双入口\n\n> 本轮六大专项：①「已跳过却记为未命中」日志事故根治（eventId 状态机）②更新 APK 下载断点续传 + 多源自动切换 + 失败原因分类 ③意见反馈双入口（底栏反馈页 + 开屏提示反馈小按钮）④匹配热路径提速 ⑤玻璃提示五层材质 ⑥订阅源审计（保留三订阅，全部最新上游版）。核心广告跳过行为零回退。\n\n## 一、日志准确性根治（「已跳过却记为未命中」事故）\n\n- **根因**：广告已命中、动作已执行、广告已消失后，应用内容页的后续 not_matched 评估轮次会开启【新的】miss 窗口（8 秒聚合）——上传报告对该应用同时出现「已执行动作」与「规则未命中」，结论与事实相反\n- **修复**：跳过结果状态机——动作成功后 12s 抑制窗内该应用的未命中轮次一律不记；8s 观察窗内采集证据（同规则不再命中 / 页面切换 → **splash_dismissed**「已确认广告消失」；无后续证据 → **result_unknown**「结果未确认」诚实标注；同规则再次命中 → action_no_effect 链）\n- **eventId 贯穿**：每次成功动作生成唯一 ID，动作行与结果确认行精确串联——服务端不再靠时间戳猜\n- 报告新增「跳过结果链」与「匹配性能画像」（事件→动作 p50/p95 · 扫描→命中 p50/p95）\n\n## 二、更新下载断点续传与多源自动切换（中国大陆弱网专项）\n\n- **根因（代码级实测）**：整体超时 15s 上限——弱网下 3.7MB@250KB/s ≈ 15s 必死且无续传（「下载到一半失败」直接根因）；无 Range 续传——失败从 0 重来；无失败分类——统一显示「下载失败」\n- **断点续传**：HTTP Range 续传 + ETag 一致性校验（跨源仅同 ETag 证据可拼接）；下载中断后从断点继续不从头来；取消/中断保留断点\n- **多源自动切换**：GitHub 主源 + 四域 jsDelivr 仓库 dist 归档镜像（同字节同源）+ ghfast/gh-proxy 兜底——连接失败/超时/停滞（15s 窗口速度过低）/HTTP 异常/校验失败自动换源；镜像链由服务端清单声明（改镜像不发新版客户端）\n- **失败分类明示**：连接被重置 / DNS 解析失败 / 超时 / TLS / 传输中断 / 大小不符 / SHA-256 校验失败——逐类显示，不再只有「下载失败」\n- **下载页富进度**：速度 · 已下载/总大小 · 当前源（序号）· 断点续传标识 · 正在切换源（含原因）· 正在校验文件 · 预计剩余\n- **安全闸全保留**：大小 + SHA-256 + 签名证书（05ada6e3…）三闸验收，校验失败拒绝安装\n\n## 三、意见反馈双入口\n\n- **底栏新增「反馈」页**：7 类反馈（功能建议/广告没跳过/跳过太慢/误触误跳/更新下载问题/界面问题/其他）+ 标题/描述/相关应用包名；草稿自动保存——提交失败保留可重试\n- **开屏卫士提示旁「反馈」小按钮**：仅自身小区域可触摸（玻璃卡片仍全量触摸穿透，不影响跳过动作与提示时长）；点击直达反馈页并自动预填最近跳过的应用\n- **隐私**：诊断日志默认不带，勾选才附带；手机号/身份证/邮箱/IPv4 双重脱敏；不采集屏幕内容/账号/聊天内容；反馈自动附上下文（版本/订阅来源/最近跳过结果——含已确认消失/未确认状态）\n\n## 四、匹配热路径提速\n\n- 同窗口同规则 identity 去重（广告动画期高频评估轮次零字符串分配）；效果追踪键改引用相等（不再每轮构建规则标识串）；延迟画像纯内存采样\n- 性能红线保持：无 IO/无截图/无全量扫描/纯内存\n\n## 五、液态玻璃升级（开源调研实测结论）\n\n- 调研四个开源玻璃项目（android-liquid-glass / liquid-glass / PrismalAGSL / blur-engine）——全部为应用窗口内玻璃，无法采样悬浮窗背后的其他 App 内容（OS 边界）；SDK 复核确认跨窗真模糊公开通道不可用\n- 五层材质升级：磨砂渐变底 + 顶部柔光内反射 + **斜向柔光高光带（新，轻微折射感）** + 边缘高光描边 + 品牌绿弱着色；零每帧开销，不截图不 OCR\n\n## 六、订阅源审计（2026-11-28 实测数据）\n\n- Lin-arm 667：7745★ · 当天仍在更新 · 1013 款/3917 规则（主订阅，各项最优）\n- ganlinte 233：942★ · 610 款 · **52 款 667 缺失应用**（保留）；aoguai 86：1173★ · **1 款独有**（保留）\n- 决策：保留三订阅（不为形式要求损害覆盖率）；内置版本全部为最新上游（667=v646 / 86=v89 / 233=v72，三源并集 1065 款）\n\n## 测试（如实标注）\n\n- JVM 新专项 27 项全绿（跳过结果状态机 12 + 下载引擎 15）；全部包绿；预存环境敏感项与基线工作树对照同样失败（MatchNodeReader 2 项 · 快照分享并发 1 项，与本版无关）\n- androidHostTest：101 项 1 预存失败（A11yWindowReadTest，v8.0.7 起基线同败）零新增\n- 中国大陆真实网络下载测试：NOT_RUN（发布环境在境外；断点续传/换源逻辑经 15 项可控引擎测试覆盖）\n- 真机测试：NOT_RUN（本环境无真机；六项专项待真机回归）\n\n## 下载\n\n- APK：adshield-v8.1.1.apk（本页资产）· 3,696,819 字节\n- SHA-256：d2341763a9c12ad3a3b30f045aef2328f44f37ed86dc363b4392d4a49e06e80f\n- CDN 直链：https://cdn.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/android-app/dist/adshield-v8.1.1.apk\n- 已装 v7.x 任何正式版 / v8.0.x / v8.1.0：直接覆盖升级（签名一致，无障碍授权/白名单/订阅/学习数据全保留）\n- 签名证书 SHA-256：05ada6e3f7a4fc6bf77449611c24f51e1ef4caa0a91a5cdd02c4d877738e6f79（与历史所有正式版一致）\n\n## 版本信息\n\n- versionName：8.1.1\n- versionCode: 88300\n- 签名证书与 v7.x / v8.0.x / v8.1.0 完全一致\n",
+  "publishedAt": "2026-11-28T06:30:00Z",
+  "apkUrl": "https://github.com/xiaobaiba999/Skip-Ad/releases/download/v8.1.1/adshield-v8.1.1.apk",
+  "apkFileName": "adshield-v8.1.1.apk",
+  "apkSha256": "d2341763a9c12ad3a3b30f045aef2328f44f37ed86dc363b4392d4a49e06e80f",
+  "apkSize": 3696819,
   "packageName": "com.zai.adshield",
   "minSupportedVersionCode": 0,
   "mandatoryUpdate": false,
-  "manifestUpdatedAt": "2026-11-27T18:46:22Z",
+  "manifestUpdatedAt": "2026-11-28T06:30:00Z",
   "apkMirrors": [
-    "https://gcore.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/android-app/dist/adshield-v8.1.0.apk"
+    "https://gcore.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/android-app/dist/adshield-v8.1.1.apk",
+    "https://cdn.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/android-app/dist/adshield-v8.1.1.apk",
+    "https://fastly.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/android-app/dist/adshield-v8.1.1.apk",
+    "https://testingcf.jsdelivr.net/gh/xiaobaiba999/Skip-Ad@main/android-app/dist/adshield-v8.1.1.apk",
+    "https://ghfast.top/https://github.com/xiaobaiba999/Skip-Ad/releases/download/v8.1.1/adshield-v8.1.1.apk",
+    "https://gh-proxy.com/https://github.com/xiaobaiba999/Skip-Ad/releases/download/v8.1.1/adshield-v8.1.1.apk"
   ]
 }
