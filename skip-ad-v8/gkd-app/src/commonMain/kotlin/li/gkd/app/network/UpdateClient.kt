@@ -213,27 +213,28 @@ object UpdateClient {
         expectedSha256: String?,
         progress: (Float) -> Unit,
     ) {
-        NetworkClients.client
-            .prepareGet(url) {
-                expectSuccess = true
-                onDownload { received, _ -> if (size > 0) progress(received.toFloat() / size) }
-            }
-            .execute { response -> response.bodyAsChannel().copyAndClose(file.writeChannel()) }
-        val expected = expectedSha256?.takeIf { it.isNotBlank() }
-        if (expected != null) {
-            val actual = file.sha256()
-            if (!actual.equals(expected, ignoreCase = true)) {
-                file.delete()
-                throw IllegalStateException(
-                    "update checksum mismatch: expected $expectedSha256, got $actual",
-                )
-            }
-        }
+        // v8.1.1：单一地址下载改走断点续传引擎（无整体超时；停滞/中断可断点重试）。
+        // 语义与 v8.0.x 保持兼容：成功后 SHA-256 校验，失败删档；进度终点归一。
+        UpdateDownloader.download(
+            source = KtorDownloadSource(NetworkClients.downloadClient),
+            urls = listOf(url),
+            target = file,
+            fingerprint = "single:$url:${expectedSha256.orEmpty()}:$size",
+            expectedSha256 = expectedSha256,
+            expectedSize = size,
+            progress = { p -> if (size > 0) progress((p.received.toFloat() / size).coerceIn(0f, 1f)) },
+            logFailure = { operation, e -> logNetworkFailure(operation, e) },
+        )
+        // v8.1.1：成功后进度归一（传输中的进度发射按 250ms 节流，终点显式归一）
+        if (size > 0) progress(1f)
     }
 
     /**
      * v8.0.9：下载镜像链——首源失败按序回退（github.com Release 资产墙内可达性 不稳定；gcore CDN 仓库 dist 归档与 Release
      * 资产同字节同源），每次尝试 都走同一 SHA-256 校验；全部失败抛最后一次异常（已删档）。
+     *
+     * v8.1.1：内核升级为断点续传多源引擎（Range + ETag + 停滞闸 + 失败自动切换 + 完整性闸），
+     * 对外语义不变；中断后保留 .part 断点，重试从断点继续。
      */
     suspend fun downloadFirstAvailable(
         urls: List<String>,
@@ -256,31 +257,49 @@ object UpdateClient {
         logFailure: (String, Exception) -> Unit,
     ) {
         require(urls.isNotEmpty()) { "no download url provided" }
-        var lastError: Exception? = null
-        for (url in urls) {
-            try {
-                download(url, file, size, expectedSha256, progress)
-                return
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                lastError = e
-                logFailure("Update download source failed: $url", e)
-            }
-        }
-        throw lastError ?: IllegalStateException("no download source available")
+        UpdateDownloader.download(
+            source = KtorDownloadSource(NetworkClients.downloadClient),
+            urls = urls,
+            target = file,
+            fingerprint = "mirror:${expectedSha256.orEmpty()}:$size",
+            expectedSha256 = expectedSha256,
+            expectedSize = size,
+            progress = { p ->
+                if (size > 0) progress((p.received.toFloat() / size).coerceIn(0f, 1f))
+            },
+            logFailure = logFailure,
+        )
+        // v8.1.1：成功后进度归一（兼容旧断言口径）
+        if (size > 0) progress(1f)
     }
-}
 
-private fun File.sha256(): String {
-    val digest = MessageDigest.getInstance("SHA-256")
-    inputStream().use { input ->
-        val buffer = ByteArray(64 * 1024)
-        while (true) {
-            val read = input.read(buffer)
-            if (read < 0) break
-            digest.update(buffer, 0, read)
-        }
+    /**
+     * v8.1.1：更新下载富状态入口（UpdateStatus 专用）。
+     *
+     * 返回校验通过（大小 + SHA-256）并已原子落位的文件；富进度含
+     * 速度/已下载/当前源/切换中/校验中状态；取消保留断点，重试从断点继续。
+     */
+    suspend fun downloadResumable(
+        version: NewVersion,
+        target: File,
+        progress: (DownloadProgress) -> Unit,
+    ): File {
+        val urls =
+            buildList {
+                if (version.apkUrl.startsWith("https://")) add(version.apkUrl)
+                for (mirror in version.apkMirrors) {
+                    if (mirror.startsWith("https://")) add(mirror)
+                }
+            }
+        return UpdateDownloader.download(
+            source = KtorDownloadSource(NetworkClients.downloadClient),
+            urls = urls,
+            target = target,
+            fingerprint = "v${version.versionCode}:${version.apkSha256.orEmpty()}:${version.apkSize}",
+            expectedSha256 = version.apkSha256,
+            expectedSize = version.apkSize,
+            progress = progress,
+            logFailure = { operation, e -> logNetworkFailure(operation, e) },
+        )
     }
-    return digest.digest().joinToString("") { byte -> "%02x".format(byte) }
 }

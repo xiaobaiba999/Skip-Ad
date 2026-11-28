@@ -1,8 +1,8 @@
 package li.gkd.app.network
 
 import com.sun.net.httpserver.HttpServer
-import io.ktor.client.plugins.ResponseException
 import java.io.File
+import java.io.IOException
 import java.net.InetSocketAddress
 import java.net.URI
 import java.util.concurrent.CountDownLatch
@@ -57,10 +57,12 @@ suspend fun assertUpdateClient(directory: File) {
     try {
         val url = "http://127.0.0.1:${server.address.port}/version.json"
         // HTTP error bodies must fail before creating an installable-looking APK.
+        // v8.1.1：断点续传引擎以 expectSuccess=false 自行解析状态码 →
+        // DownloadHttpStatusException（摘要「HTTP N」与旧口径一致）。
         for (status in listOf(403, 404, 503)) {
             val failedFile = directory.resolve("error-$status.apk")
             val error =
-                assertFailsWith<ResponseException> {
+                assertFailsWith<IOException> {
                     UpdateClient.download(
                         URI(url).resolve("/error-$status").toString(),
                         failedFile,
@@ -68,12 +70,11 @@ suspend fun assertUpdateClient(directory: File) {
                         null,
                     ) {}
                 }
-            assertEquals(status, error.response.status.value)
+            assertTrue(error.message.orEmpty().startsWith("HTTP $status"))
             assertEquals("HTTP $status", networkFailureSummary(error))
             assertFalse(failedFile.exists())
-            // 旧版此处同时校验 UpdateClient.fetch 错误面——fetch 已被多源
-            // manifestSources 重构收敛进 fetchUpdate()，错误面语义由 download
-            // 路径同源覆盖（同一 NetworkClients.client）
+            assertFalse(File(failedFile.path + ".part").exists(), "HTTP 错误不得残留 .part")
+            assertFalse(File(failedFile.path + ".part.meta").exists(), "HTTP 错误不得残留 .meta")
             logNetworkFailure("http-status-log-check-$status", error)
         }
         logNetworkFailure(
@@ -99,8 +100,11 @@ suspend fun assertUpdateClient(directory: File) {
         assertTrue(bytes.contentEquals(file.readBytes()))
         assertEquals(1f, progress)
         // The first half must reach disk while the server is still withholding the second half.
+        // v8.1.1：断点续传引擎写入 .part（原子落位——半成品绝不冒充正式档）；
+        // 增量落盘仍可观测（.part 长度增长），不整包入内存。
         coroutineScope {
             val streamedFile = directory.resolve("stream.apk")
+            val streamedPart = File(streamedFile.path + ".part")
             val download =
                 async(Dispatchers.IO) {
                     UpdateClient.download(
@@ -112,9 +116,10 @@ suspend fun assertUpdateClient(directory: File) {
                 }
             try {
                 withTimeout(5_000) {
-                    while (streamedFile.length() == 0L) delay(10)
+                    while (streamedPart.length() == 0L) delay(10)
                 }
                 assertFalse(download.isCompleted)
+                assertFalse(streamedFile.exists(), "完成前不得出现正式档（原子落位）")
             } finally {
                 finishStreaming.countDown()
             }

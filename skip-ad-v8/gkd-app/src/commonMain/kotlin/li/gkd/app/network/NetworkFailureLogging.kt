@@ -16,6 +16,7 @@ import li.songe.codeorigin.CallSite
 fun networkFailureSummary(error: Throwable): String? =
     when (error) {
         is ResponseException -> "HTTP ${error.response.status.value}"
+        is DownloadHttpStatusException -> "HTTP ${error.code}"
         is HttpRequestTimeoutException,
         is SocketTimeoutException -> "network timeout"
         is UnknownHostException -> "DNS resolution failed"

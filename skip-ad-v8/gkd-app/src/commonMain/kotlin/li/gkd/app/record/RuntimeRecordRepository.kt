@@ -51,6 +51,13 @@ data class EngineEventDetail(
     /** v8.1.0：订阅来源结构化字段（失败行与成功行对齐——不再只埋在 message 文本里） */
     val subsId: Long? = null,
     val subsVersion: Int? = null,
+    /**
+     * v8.1.1：一次规则触发的唯一关联 ID（匹配→动作→结果确认贯穿）。
+     * action_performed / action_failed / splash_dismissed / result_unknown /
+     * action_no_effect 行据此精确串联；encodeDefaults=false → 旧行无此字段，
+     * 服务端按可选字段解析（新旧格式互兼容）。
+     */
+    val eventId: String? = null,
 )
 
 /**

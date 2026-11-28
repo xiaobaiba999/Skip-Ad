@@ -25,6 +25,7 @@ import kotlinx.serialization.json.Json
 import li.gkd.app.META
 import li.gkd.app.backup.BackupManager
 import li.gkd.app.error.displayMessage
+import li.gkd.app.network.DownloadFailures
 import li.gkd.app.network.NewVersion
 import li.gkd.app.network.UpdateClient
 import li.gkd.app.network.isNetworkRequestAllowed
@@ -141,22 +142,35 @@ class UpdateStatus(
                 withContext(Dispatchers.IO) {
                     directory.mkdirs()
                     val transfer = currentCoroutineContext()
-                    // v8.0.9：镜像链下载——首源失败按序回退，每次尝试均走同一
-                    // SHA-256 校验；镜像仅限清单声明的 https 域。
-                    val urls = buildList {
-                        if (version.apkUrl.isNotEmpty()) add(version.apkUrl)
-                        for (mirror in version.apkMirrors) {
-                            if (mirror.startsWith("https://")) add(mirror)
+                    // v8.1.1：断点续传多源下载（Range + ETag + 停滞闸 + 失败自动切换；
+                    // 取消保留断点，重试从断点继续；完整性全过才落位）。
+                    UpdateClient.downloadResumable(version, file) { p ->
+                        if (transfer.isActive) {
+                            if (p.verifying) {
+                                downloadStatus.value = UpdateDownloadState.Verifying
+                                return@downloadResumable
+                            }
+                            val fraction =
+                                if (p.total > 0) {
+                                    (p.received.toFloat() / p.total).coerceIn(0f, 1f)
+                                } else {
+                                    0f
+                                }
+                            downloadStatus.value =
+                                UpdateDownloadState.Loading(
+                                    progress = fraction,
+                                    receivedBytes = p.received,
+                                    totalBytes = p.total,
+                                    bytesPerSecond = p.bytesPerSecond,
+                                    sourceLabel = p.sourceLabel,
+                                    sourceIndex = p.sourceIndex,
+                                    sourceCount = p.sourceCount,
+                                    resuming = p.resuming,
+                                    switchingFrom = p.switchingFrom,
+                                    switchingTo = p.switchingTo,
+                                    switchingReason = p.switchingReason,
+                                )
                         }
-                    }
-                    UpdateClient.downloadFirstAvailable(
-                        urls,
-                        file,
-                        version.apkSize,
-                        version.apkSha256,
-                    ) {
-                        if (transfer.isActive)
-                            downloadStatus.value = UpdateDownloadState.Loading(it.coerceIn(0f, 1f))
                     }
                 }
                 ensureActive()
@@ -167,10 +181,9 @@ class UpdateStatus(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                downloadStatus.value = UpdateDownloadState.Failure(e)
-            } finally {
-                if (downloaded == null)
-                    withContext(NonCancellable + Dispatchers.IO) { file.delete() }
+                // v8.1.1：失败原因分类（Connection reset / DNS / 超时 / 校验失败…）
+                downloadStatus.value =
+                    UpdateDownloadState.Failure(e, DownloadFailures.classify(e))
             }
         }
     }
@@ -273,7 +286,10 @@ class UpdateStatus(
         val capability by
             installCapability.collectAsStateWithLifecycle(PackageInstallCapability.Checking)
         val text = version?.let { value ->
-            "v${META.versionName} -> v${value.versionName}\n\n${value.releaseNotes.orEmpty()}"
+            // v8.1.1：下载前明确文件大小（大文件决策依据；未知时不误导）
+            val sizeLine =
+                if (value.apkSize > 0) "\n\nAPK 大小：${"%.1f MB".format(value.apkSize / (1024.0 * 1024))}" else ""
+            "v${META.versionName} -> v${value.versionName}$sizeLine\n\n${value.releaseNotes.orEmpty()}"
                 .trimEnd()
         }
         GkUpgradeDialogs(

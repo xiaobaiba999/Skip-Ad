@@ -313,6 +313,8 @@
     <string name="download_complete">Download complete</string>
     <string name="download_directory_create_failed">Failed to create download directory</string>
     <string name="download_failed">Download failed</string>    <string name="download_retry">Retry</string>
+    <string name="download_verifying">Verifying download</string>
+    <string name="download_verifying_description">Verifying file integrity (size + SHA-256). This happens automatically; large files may take a few seconds.</string>
     <string name="download_file_create_failed">Failed to create download file</string>
     <string name="download_file_open_failed">Failed to open downloaded file</string>
     <string name="dynamic_colors">Dynamic colors</string>

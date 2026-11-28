@@ -20,9 +20,15 @@ import li.gkd.app.MainActivity
 import li.gkd.app.META
 import li.gkd.app.app
 import li.gkd.app.appScope
+import li.gkd.app.network.DownloadFailures
 import li.gkd.app.network.FeedbackUploader
-import li.gkd.app.upload.FeedbackReport
+import li.gkd.app.network.KtorDownloadSource
+import li.gkd.app.network.NetworkClients
 import li.gkd.app.network.UpdateClient
+import li.gkd.app.network.UpdateDownloader
+import li.gkd.app.network.logNetworkFailure
+import li.gkd.app.upload.FeedbackReport
+import li.gkd.app.upload.UserFeedback
 import li.gkd.app.record.EngineEventLogWriter
 import li.gkd.app.service.A11yService
 import li.gkd.app.settings.SettingsRepository
@@ -473,22 +479,118 @@ class WebUiBridge(activity: MainActivity) {
         }
     }
 
+    // ───────── v8.1.1 用户意见反馈（底栏入口 + 开屏提示入口共用统一仓库）─────────
+
+    /** 反馈页环境上下文：最近跳过结果 + 可选预填相关应用。 */
+    @JavascriptInterface
+    fun feedbackContextAsync(cb: String?) {
+        val cbName = cb ?: return
+        appScope.launch {
+            val json =
+                runCatching {
+                    val snapshot = UserFeedback.lastSkipSnapshot()
+                    buildString {
+                        append("{\"ok\":true")
+                        append(",\"lastSkip\":").append(
+                            if (snapshot == null) "null" else WebUiState.jsonStr(snapshot),
+                        )
+                        append(",\"types\":[")
+                        UserFeedback.TYPES.forEachIndexed { i, t ->
+                            if (i > 0) append(",")
+                            append(WebUiState.jsonStr(t))
+                        }
+                        append("]")
+                        append("}")
+                    }
+                }.getOrElse { "{\"ok\":false,\"error\":${WebUiState.jsonStr(it.message ?: "上下文异常")}}" }
+            netCb(cbName, json)
+        }
+    }
+
+    /**
+     * 提交意见反馈（payload：{type,title,description,appPackage,includeLogs}）。
+     * 隐私闸：includeLogs 仅在用户勾选时才附带完整诊断报告（未勾选绝不上传）。
+     */
+    @JavascriptInterface
+    fun submitFeedbackAsync(payload: String?, cb: String?) {
+        val cbName = cb ?: return
+        val input =
+            payload?.let { UserFeedback.parsePayload(it) }
+                ?: run {
+                    netCb(cbName, "{\"ok\":false,\"error\":\"反馈内容解析失败\"}")
+                    return
+                }
+        appScope.launch {
+            val json =
+                try {
+                    withContext(Dispatchers.IO) { UserFeedback.submit(input) }.let { r ->
+                        when (r) {
+                            is FeedbackUploader.Result.Success ->
+                                "{\"ok\":true,\"number\":${r.number},\"url\":${WebUiState.jsonStr(r.url)}}"
+
+                            is FeedbackUploader.Result.Failure ->
+                                "{\"ok\":false,\"error\":${WebUiState.jsonStr(r.message)},\"fallbackUrl\":" +
+                                    (r.fallbackUrl?.let { WebUiState.jsonStr(it) } ?: "null") + "}"
+                        }
+                    }
+                } catch (e: Throwable) {
+                    "{\"ok\":false,\"error\":${WebUiState.jsonStr(e.message ?: "提交异常")}}"
+                }
+            netCb(cbName, json)
+        }
+    }
+
+    /**
+     * v8.1.1 开屏卫士提示「反馈」入口直达：MainActivity 收到 open_feedback
+     * 深链后经此推送 H5 页切换（JS 侧 window.__onFeedbackEntry 钩子）。
+     */
+    fun pushFeedbackEntry(appPackage: String?) {
+        val a = activityRef.get() ?: return
+        a.runOnUiThread {
+            a.webViewOrNull()?.let { wv ->
+                if (a.webViewOrNull() === wv) {
+                    try {
+                        wv.evaluateJavascript(
+                            "window.__onFeedbackEntry && window.__onFeedbackEntry(" +
+                                "{\"app\":${WebUiState.jsonStr(appPackage.orEmpty())}})",
+                            null,
+                        )
+                    } catch (_: IllegalStateException) {
+                    }
+                }
+            }
+        }
+    }
+
     // ───────── 应用内更新（三源清单 + SHA-256 校验 + 页内进度）─────────
 
-    /** 检查更新：UpdateClient 三源清单 → 7.15.14 页面格式（含镜像通道） */
+    /** 检查更新：UpdateClient 多源清单 → 7.15.14 页面格式（含镜像通道）
+     *
+     * v8.1.1：镜像链改为【清单声明优先】（apkMirrors——服务端可控，改镜像
+     * 不必发新版客户端）；清单无镜像时回退 v8.0.9 客户端本地拼装（ghfast/
+     * gh-proxy 代理）。全部镜像同字节同源（仓库 dist 归档 / GitHub 代理），
+     * 下载侧 SHA-256 + 签名双闸验收。 */
     @JavascriptInterface
     fun netGetUpdateAsync(cb: String?) {
         val cbName = cb ?: return
         appScope.launch {
             val json = try {
                 val v = UpdateClient.fetchUpdate()
-                val mirrors = buildList {
-                    if (v.apkUrl.isNotEmpty()) {
-                        add(v.apkUrl)
-                        add("https://ghfast.top/${v.apkUrl}")
-                        add("https://gh-proxy.com/${v.apkUrl}")
+                val mirrors =
+                    if (v.apkMirrors.isNotEmpty()) {
+                        buildList {
+                            if (v.apkUrl.isNotEmpty()) add(v.apkUrl)
+                            addAll(v.apkMirrors)
+                        }
+                    } else {
+                        buildList {
+                            if (v.apkUrl.isNotEmpty()) {
+                                add(v.apkUrl)
+                                add("https://ghfast.top/${v.apkUrl}")
+                                add("https://gh-proxy.com/${v.apkUrl}")
+                            }
+                        }
                     }
-                }
                 buildString {
                     append("{\"ok\":true,\"hasRelease\":true")
                     append(",\"tag\":").append(WebUiState.jsonStr(v.releaseTag ?: ""))
@@ -521,11 +623,11 @@ class WebUiBridge(activity: MainActivity) {
         }
     }
 
-    /** 页内下载：UpdateClient.download（SHA-256 流式校验，失败自动删档） */
+    /** 页内下载（v8.1.1：多源断点续传引擎；urls 为 JSON 数组）。 */
     @JavascriptInterface
-    fun startUpdateDownload(url: String?, fileName: String?, digest: String?, sizeBytes: Long): String {
-        if (url.isNullOrBlank()) return "{\"ok\":false,\"error\":\"下载链接为空\"}"
-        return UpdateDownload.start(url, digest, sizeBytes)
+    fun startUpdateDownload(urlsJson: String?, digest: String?, sizeBytes: Long): String {
+        if (urlsJson.isNullOrBlank()) return "{\"ok\":false,\"error\":\"下载链接为空\"}"
+        return UpdateDownload.start(urlsJson, digest, sizeBytes)
     }
 
     @JavascriptInterface
@@ -562,51 +664,106 @@ class WebUiBridge(activity: MainActivity) {
 }
 
 /**
- * 页内更新下载状态机（7.15.14 Downloader 同构：start/progress/install 三段）。
- * 下载走 GKD UpdateClient.download —— SHA-256 逐字节校验后落盘，失败即删档。
+ * 页内更新下载状态机（v8.1.1 重构：断点续传多源引擎驱动）。
+ * 下载走 UpdateDownloader——Range 续传 + ETag 一致性 + 停滞闸 + 失败自动切换；
+ * 全部源同字节同源（Release / 仓库 dist 归档 / GitHub 代理），SHA-256 + 大小
+ * 完整性闸全过后原子落位；取消/中断保留 .part 断点，重试从断点继续。
  */
 private object UpdateDownload {
-    @Volatile var state: String = "idle" // idle/running/done/failed
+    @Volatile var state: String = "idle" // idle/running/verifying/done/failed
     @Volatile var bytes: Long = 0
     @Volatile var total: Long = 0
+    @Volatile var speed: Long = 0
+    @Volatile var sourceLabel: String = ""
+    @Volatile var sourceIndex: Int = 0
+    @Volatile var sourceCount: Int = 0
+    @Volatile var resuming: Boolean = false
+    @Volatile var switching: String = ""
     @Volatile var err: String = ""
 
     fun targetFile(): File = File(appStorage().sharedCache, "adshield-update.apk")
 
     @Synchronized
-    fun start(url: String, digest: String?, sizeBytes: Long): String {
-        if (state == "running") return "{\"ok\":false,\"error\":\"已有下载任务进行中\"}"
+    fun start(urlsJson: String, digest: String?, sizeBytes: Long): String {
+        if (state == "running" || state == "verifying") {
+            return "{\"ok\":false,\"error\":\"已有下载任务进行中\"}"
+        }
+        val urls =
+            runCatching {
+                kotlinx.serialization.json.Json.decodeFromString<List<String>>(urlsJson)
+            }.getOrNull().orEmpty().filter { it.startsWith("https://") }
+        if (urls.isEmpty()) return "{\"ok\":false,\"error\":\"下载链接为空\"}"
         state = "running"
         bytes = 0
         total = sizeBytes
+        speed = 0
+        sourceLabel = ""
+        sourceIndex = 0
+        sourceCount = urls.size
+        resuming = false
+        switching = ""
         err = ""
         val sha = digest?.removePrefix("sha256:")?.takeIf { it.isNotBlank() }
         val file = targetFile()
         appScope.launch {
             try {
-                UpdateClient.download(
-                    url = url,
-                    file = file,
-                    size = if (sizeBytes > 0) sizeBytes else -1,
+                UpdateDownloader.download(
+                    source = KtorDownloadSource(NetworkClients.downloadClient),
+                    urls = urls,
+                    target = file,
+                    fingerprint = "webui:$sha:$sizeBytes",
                     expectedSha256 = sha,
-                ) { progress ->
-                    // progress ∈ (0,1]
-                    bytes = ((sizeBytes.takeIf { it > 0 } ?: 0L) * progress).toLong()
-                }
+                    expectedSize = sizeBytes,
+                    progress = { p ->
+                        if (p.verifying) {
+                            state = "verifying"
+                        } else {
+                            state = "running"
+                            bytes = p.received
+                            total = p.total.takeIf { it > 0 } ?: total
+                            speed = p.bytesPerSecond
+                            sourceLabel = p.sourceLabel
+                            sourceIndex = p.sourceIndex
+                            resuming = p.resuming
+                            switching =
+                                if (p.switchingTo != null) {
+                                    "${p.switchingFrom.orEmpty()} → ${p.switchingTo}：${p.switchingReason.orEmpty()}"
+                                } else {
+                                    ""
+                                }
+                        }
+                    },
+                    logFailure = { op, e -> logNetworkFailure(op, e) },
+                )
                 state = "done"
                 bytes = total.takeIf { it > 0 } ?: file.length()
             } catch (e: Throwable) {
                 state = "failed"
-                err = e.message ?: "下载失败"
-                file.delete()
+                err = DownloadFailures.classify(e)
+                logNetworkFailure(
+                    "Update download failed",
+                    (e as? Exception) ?: IllegalStateException(e.message ?: "download failed", e),
+                )
             }
         }
         return "{\"ok\":true}"
     }
 
     fun progressJson(): String {
-        val percent = if (total > 0) (bytes * 100 / total).toInt() else 0
-        return "{\"state\":\"$state\",\"bytes\":$bytes,\"total\":$total,\"percent\":$percent," +
-            "\"err\":${WebUiState.jsonStr(err)}}"
+        val percent = if (total > 0) (bytes * 100 / total).coerceIn(0, 100).toInt() else 0
+        return buildString {
+            append("{\"state\":\"").append(state).append("\"")
+            append(",\"bytes\":").append(bytes)
+            append(",\"total\":").append(total)
+            append(",\"percent\":").append(percent)
+            append(",\"speed\":").append(speed)
+            append(",\"source\":").append(WebUiState.jsonStr(sourceLabel))
+            append(",\"sourceIndex\":").append(sourceIndex)
+            append(",\"sourceCount\":").append(sourceCount)
+            append(",\"resuming\":").append(resuming)
+            append(",\"switching\":").append(WebUiState.jsonStr(switching))
+            append(",\"err\":").append(WebUiState.jsonStr(err))
+            append("}")
+        }
     }
 }

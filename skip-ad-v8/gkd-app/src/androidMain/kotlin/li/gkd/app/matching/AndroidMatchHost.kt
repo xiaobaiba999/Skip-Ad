@@ -67,9 +67,12 @@ import li.gkd.app.platform.lifecycle.MainActivityVisibility
 import li.gkd.app.priv.privilegeContextFlow
 import li.gkd.app.record.addActionLog
 import li.gkd.app.record.EngineActionEffectTracker
+import li.gkd.app.record.EngineEventIds
 import li.gkd.app.record.EngineEventLogWriter
 import li.gkd.app.record.EngineMatchMissRecorder
 import li.gkd.app.record.EngineRateGate
+import li.gkd.app.record.EngineSkipOutcomeTracker
+import li.gkd.app.record.MatchLatencyStats
 import li.gkd.app.record.logActionFailure
 import li.gkd.app.rule.*
 import li.gkd.app.rule.ResolvedRule
@@ -297,6 +300,8 @@ class AndroidMatchHost(private val service: AndroidAutomationSession) {
         // 对应旧版 7.15.14 events 口径(masterOn/effective=false 与基础丢弃
         // 路径在上方已 return,不计)。
         EngineRuntimeCounters.addEvent()
+        // v8.1.1：延迟画像锚点（事件到达→动作完成端到端口径，同上纯内存）
+        MatchLatencyStats.onEventArrived(monotonicTimeMillis())
         val a11yEvent =
             event.toA11yEvent(key, diagnosticEventId)
                 ?: run {
@@ -1007,6 +1012,8 @@ class AndroidMatchHost(private val service: AndroidAutomationSession) {
         // 直调本方法且不再经过 startQueryJob 的空规则早退;空规则应用的
         // no_rules 早退发生在调用方 startQueryJob,不真正遍历规则,不计。
         EngineRuntimeCounters.addScan()
+        // v8.1.1：延迟画像锚点（扫描→命中 p50/p95 导出用，纯内存原子操作）
+        MatchLatencyStats.onScanStarted(monotonicTimeMillis())
         work.ensureCurrent()
         if (queryBlocked("query_start", work.id)) return
         if (AndroidForegroundState.foregroundPending) {
@@ -1082,15 +1089,31 @@ class AndroidMatchHost(private val service: AndroidAutomationSession) {
                                 AndroidToastUtils.showAction(rule, work.id)
                         }
                     }
+                    // v8.1.1：事件关联 ID——一次触发贯穿匹配→动作→结果确认
+                    // （action_succeeded ≠ splash_dismissed：最终状态由观察窗证据决定）
+                    val eventId = EngineEventIds.next()
                     // v8.1.0：动作后效果追踪锚点（类 11「点击成功但广告没关闭」代理信号）
                     if (result.result) {
                         EngineActionEffectTracker.onActionSuccess(
                             rule,
                             activityRule.topActivity.appId,
                             activityRule.topActivity.activityId,
+                            eventId,
+                        )
+                        // v8.1.1：跳过结果状态机锚点（splash_dismissed / result_unknown）
+                        EngineSkipOutcomeTracker.onActionSuccess(
+                            eventId,
+                            rule,
+                            activityRule.topActivity.appId,
+                            activityRule.topActivity.activityId,
                         )
                     }
-                    addActionLog(rule, activityRule.topActivity, target, result)
+                    // v8.1.1：延迟画像采样（动作完成，天然低频）
+                    MatchLatencyStats.onActionCompleted(
+                        monotonicTimeMillis(),
+                        result.durationMs ?: -1L,
+                    )
+                    addActionLog(rule, activityRule.topActivity, target, result, eventId)
                 },
                 // v8.0.8：规则评估结果观察点——匹配未命中按应用聚合落库（8 秒窗口），
                 // 动作失败（此前无任何日志）单独落库；纯内存操作，绝不阻塞匹配主链。
@@ -1098,7 +1121,13 @@ class AndroidMatchHost(private val service: AndroidAutomationSession) {
                 observed = { rule, status, matched, result ->
                     if (result != null) {
                         if (!result.result) {
-                            logActionFailure(rule, activityRule.topActivity, result)
+                            // v8.1.1：动作失败行携带 eventId（独立生成——失败路径无 completed 回调）
+                            logActionFailure(
+                                rule,
+                                activityRule.topActivity,
+                                result,
+                                EngineEventIds.next(),
+                            )
                         }
                         EngineMatchMissRecorder.record(
                             rule.subsItem.id,
@@ -1127,6 +1156,8 @@ class AndroidMatchHost(private val service: AndroidAutomationSession) {
                                 } else {
                                     null
                                 },
+                            // v8.1.1：规则 identity 去重（重复轮次零字符串分配）
+                            ruleIdentity = System.identityHashCode(rule),
                         )
                         // v8.1.0：动作后效果追踪（同一规则+Activity 持续命中 → 代理信号）
                         if (matched || status == "ActionLimitReached" || status == "Cooldown") {
@@ -1135,6 +1166,18 @@ class AndroidMatchHost(private val service: AndroidAutomationSession) {
                                 activityRule.topActivity.appId,
                                 activityRule.topActivity.activityId,
                             )
+                        }
+                        // v8.1.1：跳过结果证据采集（无在途条目时 O(1) 早退）
+                        EngineSkipOutcomeTracker.onRuleEvaluated(
+                            rule,
+                            activityRule.topActivity.appId,
+                            activityRule.topActivity.activityId,
+                            status,
+                            matched,
+                        )
+                        if (matched) {
+                            // v8.1.1：延迟画像采样（本轮扫描首个命中）
+                            MatchLatencyStats.onMatched(monotonicTimeMillis())
                         }
                     }
                 },

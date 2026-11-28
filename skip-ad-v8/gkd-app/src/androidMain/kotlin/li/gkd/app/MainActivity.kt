@@ -134,6 +134,7 @@ class MainActivity : ComponentActivity() {
         permissionRequestHost.bind(mainVm.androidState.permissionRequests)
         mainVm.registerCurrent()
         addOnNewIntentListener {
+            if (handleFeedbackEntry(it)) return@addOnNewIntentListener
             if (!DesktopProfileExport.handle(this@MainActivity, it))
                 mainVm.androidState.handleIntent(it)
             MainActivityIntents.consume(this)
@@ -255,6 +256,10 @@ class MainActivity : ComponentActivity() {
             }
             LaunchedEffect(Unit) {
                 MainActivityIntents.pending(intent)?.let {
+                    if (handleFeedbackEntry(it)) {
+                        MainActivityIntents.consume(this@MainActivity)
+                        return@LaunchedEffect
+                    }
                     if (!DesktopProfileExport.handle(this@MainActivity, it))
                         mainVm.androidState.handleIntent(it)
                     MainActivityIntents.consume(this@MainActivity)
@@ -304,6 +309,21 @@ class MainActivity : ComponentActivity() {
         }
         webView = null
     }
+
+    /**
+     * v8.1.1 开屏卫士提示「反馈」入口：open_feedback 深链 → H5 反馈页
+     * （携带相关应用包名预填）。仅消费本应用自身的深链，其余 intent 原路分发。
+     */
+    private fun handleFeedbackEntry(intent: Intent?): Boolean {
+        if (intent?.getStringExtra("open_feedback") != "1") return false
+        val appPackage = intent.getStringExtra("app_package")
+        // WebView 就绪后推送；未就绪则由 H5 侧 feedbackContextAsync 拉取最近上下文兑底
+        runCatching { feedbackBridge.pushFeedbackEntry(appPackage) }
+        return true
+    }
+
+    /** v8.1.1 反馈桥（持活动实例引用，随 Activity 生命周期回收） */
+    private val feedbackBridge by lazy { WebUiBridge(this) }
 
     private fun fixTransparentNavigationBar() {
         // 修复在浅色主题下导航栏背景不透明的问题

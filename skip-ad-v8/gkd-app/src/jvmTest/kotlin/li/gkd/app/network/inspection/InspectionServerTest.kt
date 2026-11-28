@@ -437,7 +437,7 @@ suspend fun assertInspectionProtocol(layout: AppStorageLayout, repository: Subsc
         )
         val saved = repository.awaitSnapshot().subscriptions.getValue(SubscriptionIds.LOCAL_HTTP)
         assertEquals(0, saved.version)
-        assertEquals("@gkd-kit/inspect", saved.author)
+        assertEquals("@adshield/inspect", saved.author) // v8.0.7 应用更名后生产值（基线同败——预存失配修复）
         assertTrue(layout.subscription.resolve("${SubscriptionIds.LOCAL_HTTP}.json").isFile)
         // Invalid subscription input must not replace the previous committed subscription.
         val subscriptionFile = layout.subscription.resolve("${SubscriptionIds.LOCAL_HTTP}.json")

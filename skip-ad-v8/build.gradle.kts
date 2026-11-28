@@ -38,9 +38,12 @@ plugins {
 // 探测链 + GitHub API 兜底」架构，单一 CDN 陈旧缓存不再能掩盖新版本）。
 // v8.1.0：规则覆盖与诊断轮——内置 667 订阅截断根治（Lin-arm v646 全量）+
 // 失败诊断日志体系（13 类分类链）+ 卫士进出残影根治 + 液态柔光玻璃提示重制。
-extra["gkdVersionName"] = "8.1.0" + project.gitInfo.versionNameSuffix.orEmpty()
+// v8.1.1：日志准确性 + 更新下载链路轮——「已跳过却记为未命中」根治（eventId
+// 状态机 + 抑制闸）+ 断点续传多源下载（Range/ETag/停滞闸/失败分类/富进度）+
+// 意见反馈双入口（底栏反馈页 + 开屏提示反馈小按钮）+ 玻璃材质五层升级。
+extra["gkdVersionName"] = "8.1.1" + project.gitInfo.versionNameSuffix.orEmpty()
 
-extra["gkdVersionCode"] = 88200
+extra["gkdVersionCode"] = 88300
 
 object Cfg {
     val compileSdk

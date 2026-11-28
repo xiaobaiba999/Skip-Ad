@@ -10,6 +10,8 @@ import li.gkd.app.crash.FileCrashStorage
 import li.gkd.app.data.currentDeviceInfo
 import li.gkd.app.record.EngineEventLogWriter
 import li.gkd.app.record.EngineMatchMissRecorder
+import li.gkd.app.record.EngineSkipOutcomeTracker
+import li.gkd.app.record.MatchLatencyStats
 import li.gkd.app.settings.SettingsRepository
 import li.gkd.app.state.EngineRuntimeCounters
 import li.gkd.app.subscription.SubscriptionRepository
@@ -50,6 +52,8 @@ object FeedbackReport {
     suspend fun build(channel: String): String {
         // 冲刷未到期的匹配未命中窗口：上传前必须能看到最近一次未命中
         runCatching { EngineMatchMissRecorder.flushAll() }
+        // v8.1.1：跳过结果状态机冲刷（在途 splash_dismissed / result_unknown 先落库）
+        runCatching { EngineSkipOutcomeTracker.settleAll() }
         // v8.1.0：落库屏障——确保刚冲刷的窗口（及在途批次）已写库后再查询，
         // 修复「上传报告里缺最近一次未命中」的竞态（最长等待 2s，超时不阻塞上传）。
         runCatching { EngineEventLogWriter.drain() }
@@ -195,10 +199,18 @@ object FeedbackReport {
                 val filtered = kindCounts["rule_filtered"] ?: 0
                 val noEffect = kindCounts["action_no_effect"] ?: 0
                 val gated = kindCounts["query_gated"] ?: 0
+                // v8.1.1：跳过结果状态机（已确认消失/无法确认）
+                val dismissed = kindCounts["splash_dismissed"] ?: 0
+                val unknown = kindCounts["result_unknown"] ?: 0
                 appendLine("- 详细窗口($DETAIL_ROWS 条内): 动作成功 $actionOk · 动作失败 $actionFailed · 匹配未命中汇总 $matchMiss · 记录共 ${rows.size} 条")
                 if (filtered + noEffect + gated > 0) {
                     appendLine("- 失败原因链: 规则未参与评估 $filtered · 点击后广告疑似仍在 $noEffect · 引擎闸门拦截 $gated")
                 }
+                if (dismissed + unknown > 0) {
+                    appendLine("- 跳过结果链: 已确认广告消失 $dismissed · 结果未确认 $unknown（eventId 关联动作行）")
+                }
+                // v8.1.1：匹配链路延迟画像（p50/p95，无样本时省略）
+                MatchLatencyStats.summaryText()?.let { appendLine("- $it") }
                 val actions = Db.actionLogDao.queryLatest(500L)
                 if (actions.isEmpty()) {
                     appendLine("- 应用战绩: 暂无触发")
@@ -223,6 +235,8 @@ object FeedbackReport {
         appendLine("- 采集范围: 详细引擎日志表(上限 1200 条,本次取最近 $DETAIL_ROWS 条) + 触发记录表(上限 500 条,本次取 $LATEST_ACTIONS 条) + 崩溃存档(≤20 份,非删除式读取)")
         appendLine("- 统计口径: 「进程本次启动」计数为本次进程生命周期累计;「窗口」指本次上传所取日志条数范围;能耗口径与 7.15.14 一致(系数估算,非实测)")
         appendLine("- 失败诊断链: 规则未参与评估(停用/不兼容/版本门槛/页面不适用) · 规则未命中(含首个未命中样本) · 动作失败(细分节点不可见/拒绝点击/手势缺失) · 点击后广告疑似仍在(代理信号) · 引擎闸门拦截")
+        appendLine("- 跳过结果状态机(v8.1.1): 动作成功后 8s 观察窗内——同规则不再命中或页面切换 → splash_dismissed；无后续证据 → result_unknown；同规则再次命中 → action_no_effect 链。同一 eventId 贯穿动作行与结果行")
+        appendLine("- 性能口径: p50/p95 为最近 64 个样本的分布，事件→动作为「事件到达→动作完成」粗口径（含排队），扫描→命中为单轮扫描内首个命中耗时")
         appendLine("- 脱敏说明: 手机号/身份证/邮箱/IPv4 在提交前后双层脱敏;屏幕内容不会上传;订阅与规则数据仅含包名/类名/选择器文本")
     }
 

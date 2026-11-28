@@ -1,5 +1,62 @@
 # 变更记录
 
+## v8.1.1 · 2026-11-28 · 日志准确性根治 + 更新下载断点续传 + 意见反馈双入口（versionCode 88300）
+
+**版本信息**：versionName 8.1.1 · versionCode **88300**（显式抬码：高于 v8.1.0 的 88200 与全部历史码）· minSdk 26（Android 8.0）
+
+**本轮六大专项（用户任务驱动：日志准确性 / 跳过速度 / 更新下载 / 意见反馈 / 液态玻璃 / 订阅审计）**：
+
+### 一、日志准确性根治——「已跳过却记为未命中」事故修复
+
+- **根因（本轮第一优先级）**：广告已命中、动作已执行、广告已消失后，应用内容页的后续 `not_matched` 评估轮次会开启【新的】miss 窗口（8 秒聚合），上传报告对该应用同时出现 `action_performed` 与 `match_miss`——用户与服务端读到的最终结论与事实相反。
+- **修复**：`EngineSkipOutcomeTracker`（跳过结果状态机）——动作成功后 12s 抑制窗内该应用的未命中轮次一律不记（「已经匹配并执行动作的事件绝不回写为 match_miss」）；8s 观察窗内采集证据：同规则不再命中（targetGone）或页面切换（pageSwitched）→ `splash_dismissed`（已确认广告消失）；无后续证据 → `result_unknown`（诚实状态，不猜）；同规则再次命中 → 走 action_no_effect 链。
+- **eventId 贯穿**：每次成功动作生成唯一 ID（`EngineEventIds`），`action_performed` / `splash_dismissed` / `result_unknown` / `action_no_effect` 行精确串联——服务端不再靠时间戳猜两行日志是否同一次触发。
+- **报告可见性**：第 5 节新增「跳过结果链」行（已确认消失/结果未确认计数）+ 匹配性能画像（事件→动作 p50/p95、扫描→命中 p50/p95，最近 64 样本环形缓冲）。
+- **状态词汇（9 类）**：match_miss / rule_filtered / matched·action_started·action_succeeded / action_failed / action_no_effect / splash_dismissed（新增）/ result_unknown（新增）/ query_gated。
+- **测试**：`EngineSkipOutcomeTrackerTest` 12 项全绿（命中且成功跳过无 miss / 命中但动作失败 / 点了没关掉 / 无证据 / 真未命中 / 页面切换证据 / 重复触发 / 迟到证据不推翻 / 多应用并发隔离 / 跨应用证据隔离 / 抑制窗边界 / 有界淘汰）。
+
+### 二、匹配热路径提速（跳过速度优化）
+
+- **根因分析（如实）**：v8.1.0 未引入新的主链阻塞（ActionPerformer 仅加 failureKind 注解）；用户感知变慢主要来自 667 订阅截断修复后规则量从 ~682 款升到 1013 款（覆盖面换来的评估量）+ 既有记录器的高频字符串分配。
+- **热路径瘦身**：① `EngineMatchMissRecorder` 同窗口同规则 identity 去重——重复评估轮次零字符串分配（广告动画期高频轮次原先每轮构建组名）；② `EngineActionEffectTracker` 键改 `executionIdentity`（引用相等）——不再每轮构建 `matchIdentity()` 字符串；③ 新增 `MatchLatencyStats` 延迟画像（纯内存环形缓冲，动作完成时采样，事件热路径零开销）。
+- **性能红线保持**：纯内存操作、无 IO、无截图/OCR、无全量节点扫描；抑制窗 12s 保证后续真未命中正常记录。
+
+### 三、更新下载断点续传与多源自动切换（中国大陆弱网专项）
+
+- **根因（实测代码级）**：① `NetworkClients.client` 的 requestTimeout 15s【整体上限】——弱网下 3.7MB@250KB/s ≈ 15s 必死且无续传（「下载到一半失败」直接根因）；② 无 Range 续传——失败后从 0 重来；③ 无失败分类——Connection reset / DNS / 超时统一显示「下载失败」；④ 无停滞检测。
+- **`UpdateDownloader`（新引擎）**：HTTP Range 续传 + ETag 一致性三闸（跨源仅同 ETag 证据可拼接，否则从头）+ 信任前沿 `.meta`（进程死亡残留截断）+ 停滞闸（15s 窗口不足 64KB 主动换源）+ 完整性闸（大小 + SHA-256 全过才原子落位）+ 取消/中断保留断点（重试从断点继续）+ 失败自动切换下一源（连接失败/超时/停滞/HTTP 异常/校验失败）。
+- **失败分类（7.7）**：`DownloadFailures.classify` 沿异常链识别——连接被重置（网络链路中断）/ DNS 解析失败 / 连接/读取超时 / TLS 失败 / 传输中断（服务器提前断开）/ 大小不符 / SHA-256 校验失败——UI 逐类明示。
+- **下载客户端**：`NetworkClients.downloadClient`（无整体 requestTimeout；连接 10s / 读写 20s 逐段）；`close()` 后 lazy 槽位重建——同进程复用已关闭客户端抛 JobCancellationException 的根治（全量测试顺序发现的真缺陷）。
+- **镜像链改为清单声明**：`apkMirrors` 由服务端清单控制（改镜像不发新版客户端）；v8.1.1 清单声明 GitHub 主源 + 四域 jsDelivr dist 归档镜像 + ghfast/gh-proxy 兜底——全部同字节同源，SHA-256 + 大小 + 签名安装三闸验收。
+- **富下载 UI**：速度 / 已下载/总大小 / 当前源（序号）/ 断点续传标识 / 正在切换源（含分类原因）/ 正在校验文件 / 预计剩余——不再只有一个无限转圈；H5 版本页 + Compose 更新弹窗双端对齐。
+- **测试**：`UpdateDownloaderTest` 15 场景全绿（reset 换源 / 中断续传 / ETag 不符不拼接 / 跨源无证据不拼接 / 服务端忽略 Range / 慢滴停滞换源 / 大小不符 / SHA 不符换源 / 用户取消保断点 / 切换通知 / 校验中状态 / 指纹不符 / 404 换源 / 分类器）+ 既有兼容测试按新语义更新全绿。
+
+### 四、意见反馈双入口（底栏反馈页 + 开屏提示反馈小按钮）
+
+- **底栏「反馈」页（H5 第 5 页）**：7 类反馈（功能建议/广告没跳过/跳过太慢/误触误跳/更新下载问题/界面问题/其他）+ 标题/描述/相关应用包名 + 诊断日志【默认不带，勾选才附带】；草稿 localStorage 持久化——提交失败保留草稿并可重试。
+- **开屏卫士提示「反馈」小按钮**：独立可触摸小窗（仅自身小区域）——玻璃卡片仍全量 FLAG_NOT_TOUCHABLE 穿透，不影响跳过动作/提示时长；点击深链拉起卫士反馈页并预填最近跳过的应用包名。
+- **统一后端仓库 `UserFeedback`**：两处入口共用；环境上下文自动附加（版本/订阅来源与版本/最近跳过结果/设备）；隐私闸——includeLogs 仅勾选才附带完整诊断报告，未勾选绝不上传；手机号/身份证/邮箱/IPv4 双重脱敏。
+- **反馈上下文（自动附带）**：最近跳过快照含结果状态（已确认广告消失/结果未确认/点击后广告疑似仍在）——日志准确性专项的直接收益。
+
+### 五、开屏提示液态玻璃升级（开源调研 + SDK 复核）
+
+- **开源调研（真实核验）**：vvccwang/android-liquid-glass（MIT，1★，Kyant0 Backdrop 库指南）/ ntvien/liquid-glass（Apache-2.0，1★，Compose）/ styropyr0/PrismalAGSL（MIT，58★，AGSL）/ MrSluffy/blur-engine（Apache-2.0，2★）——四者全部为【应用窗口内】玻璃（Compose graphicsLayer/AGSL/Backdrop 采样自身窗口内容）；悬浮窗叠在其他 App 之上，无一是跨窗背景（OS 边界）。
+- **SDK 复核（android-37 android.jar 实测）**：`backgroundBlurRadius` 非公开字段；`setBlurBehindRadius` 需 FLAG_BLUR_BEHIND（全屏模糊，不适用于小卡片）——静态多层磨砂即唯一诚实实现（不截图不 OCR 不伪造背景采样）。
+- **五层材质升级**：磨砂渐变底 + 顶部柔光内反射 + **斜向柔光高光带（新，轻微折射感）** + 边缘高光描边 + 品牌绿弱着色；深浅色双材质；入场/停留/退场动画与 v8.1.0 一致。
+
+### 六、订阅源审计与系统修复
+
+- **订阅源真实对比（2026-11-28 实测）**：Lin-arm 667（7745★/239 fork，当天仍在提交，1013 款/3063 组/3917 规则，无 LICENSE）/ ganlinte 233（942★/24 fork，末次提交 2026-09-24，610 款/1453 组/1324 规则，MIT）/ aoguai 86（1173★/17 fork，末次提交 2026-11-08，72 款/507 组/643 规则，GPL-3.0）。**决策：保留三订阅**——Lin-arm 为主订阅（每项指标最优）；233 有 52 款 667 缺失应用、86 有 1 款独有——按「不允许为形式要求损害覆盖率」原则全部保留；内置版本全部为最新上游（667=v646 / 86=v89 / 233=v72），三源并集 1065 款。
+- **NetworkClients 复用根治**：`close()` 后 lazy 重建（同进程重启/测试顺序下复用已关闭客户端的 JobCancellationException 根因）。
+- **预存失配修复**：`InspectionServerTest` 期望 `@gkd-kit/inspect`（v8.0.7 更名前旧值）vs 生产值 `@adshield/inspect`——基线同败，本轮修正测试期望。
+
+### 测试（如实标注）
+
+- **JVM（逐包全量）**：新专项 27 项全绿（SkipOutcome 12 + Downloader 15）；全部包绿——upload/backup/subscription/settings/record/ui/rule/state/development/storage/logging/time/app.app/app.snapshot/app.network/根类。
+- **预存环境敏感项（基线工作树对照同样失败，与本版无关）**：`MatchNodeReaderTest` 2 项（2 核沙箱负载敏感，v8.1.0 发布记录已同一对照复现）；`ApplicationIntegrationTest` 快照分享并发断言（基线同点失败）。
+- **androidHostTest（Robolectric）**：101 项 1 预存失败（A11yWindowReadTest，v8.0.7/8/9/8.1.0 基线同样失败）零新增。
+- **真机测试**：NOT_RUN（本环境无真机；六项专项全部待真机回归，尤其断点续传实网验证）。
+
 ## v8.1.0 · 2026-11-27 · 订阅覆盖根治（667 截断修复）· 失败诊断链（13 类分类）· 卫士进出残影根治 · 液态柔光玻璃提示重制（versionCode 88200）
 
 **版本信息**：versionName 8.1.0 · versionCode **88200**（延续抬码：高于 v8.0.9 的 88100 与全部历史码，旧版 v7.15.x / v8.0.x 全部能发现并覆盖升级）· minSdk 26（Android 8.0）

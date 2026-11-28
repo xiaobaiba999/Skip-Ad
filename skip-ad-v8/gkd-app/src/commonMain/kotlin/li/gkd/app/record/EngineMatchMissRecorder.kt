@@ -18,6 +18,13 @@ import li.gkd.db.SubscriptionIds
  * · 追踪的应用数有界（24），超出淘汰最旧；
  * · flushAll() 在报告构建前调用，保证最近一个未到期窗口也能进上传。
  *
+ * v8.1.1 两项升级：
+ * · 【误判根治】跳过成功后抑制窗内该应用的未命中轮次一律不记——v8.1.0 及以前，
+ *   跳过成功后应用内容页的 not_matched 评估会开启新窗口，上传报告出现与事实
+ *   相反的 match_miss（「已跳过却记为未命中」事故）。
+ * · 【热路径瘦身】同窗口内同一规则的重复轮次不再重复构建组名字符串与样本
+ *   （identity 去重）——广告动画期的高频评估轮次不再产生每轮字符串分配。
+ *
  * 写入经 EngineEventLogWriter（非阻塞有界队列），绝不影响匹配主链路。
  */
 object EngineMatchMissRecorder {
@@ -26,12 +33,24 @@ object EngineMatchMissRecorder {
 
     private val json = Json { encodeDefaults = false }
 
+    /** v8.1.1 测试注入点（生产恒为 null → EngineEventLogWriter.log）。 */
+    @Volatile
+    internal var sinkForTest: ((kind: String, message: String, level: Int, appId: String?, detail: String?) -> Unit)? = null
+
+    private fun emit(kind: String, message: String, level: Int, appId: String, detail: String?) {
+        sinkForTest?.invoke(kind, message, level, appId, detail)
+            ?: EngineEventLogWriter.log(kind, message, level, appId, null, detail)
+    }
+
     private class Window {
         var startMs = 0L
         var scans = 0
         var lastAppId: String? = null
         val statuses = LinkedHashMap<String, Int>()
         val groups = LinkedHashSet<String>()
+
+        // v8.1.1：同窗口已计入的规则 identity（去重——重复轮次零字符串分配）
+        val seenRules = HashSet<Int>()
 
         // v8.1.0：首个 not_matched 样本（规则名 + 选择器原文截断）
         var sampleRule: String? = null
@@ -43,6 +62,7 @@ object EngineMatchMissRecorder {
             lastAppId = appId
             statuses.clear()
             groups.clear()
+            seenRules.clear()
             sampleRule = null
             sampleSelector = null
         }
@@ -61,15 +81,20 @@ object EngineMatchMissRecorder {
         matched: Boolean,
         sampleRuleName: String? = null,
         sampleSelector: String? = null,
+        ruleIdentity: Int? = null,
+        nowMs: Long = System.currentTimeMillis(),
     ) {
         val key = appId ?: return
-        val now = System.currentTimeMillis()
+        val now = nowMs
         synchronized(this) {
             if (matched) {
                 // 命中：丢弃该应用窗口，成功由 action 通道记录
                 windows.remove(key)
                 return
             }
+            // v8.1.1 误判根治：跳过成功后的抑制窗内，该应用的未命中轮次一律不记。
+            // 「已经匹配并执行动作的事件不能被后续未命中事件覆盖为 match_miss」。
+            if (EngineSkipOutcomeTracker.suppressMiss(key, now)) return
             if (windows.size > MAX_TRACKED_APPS) {
                 val oldest = windows.keys.firstOrNull() ?: return
                 flushLocked(oldest, windows.remove(oldest)!!)
@@ -84,12 +109,16 @@ object EngineMatchMissRecorder {
             }
             window.scans++
             window.statuses.merge(status, 1, Int::plus)
-            window.groups.add("${subsName(ruleSubsId)}·${groupName ?: "?"}")
-            // v8.1.0：首个 not_matched 轮次保留关键样本（规则名+选择器原文）——
-            // 「聚合但保留关键样本」：服务端可据此直接写新规则，不必猜选择器。
-            if (status == "not_matched" && window.sampleRule == null && sampleRuleName != null) {
-                window.sampleRule = sampleRuleName
-                window.sampleSelector = sampleSelector
+            // v8.1.1：同窗口同一规则去重（首个轮次计入组名与样本，重复轮次只计扫描数）
+            val firstSeen = ruleIdentity == null || window.seenRules.add(ruleIdentity)
+            if (firstSeen) {
+                window.groups.add("${subsName(ruleSubsId)}·${groupName ?: "?"}")
+                // v8.1.0：首个 not_matched 轮次保留关键样本（规则名+选择器原文）——
+                // 「聚合但保留关键样本」：服务端可据此直接写新规则，不必猜选择器。
+                if (status == "not_matched" && window.sampleRule == null && sampleRuleName != null) {
+                    window.sampleRule = sampleRuleName
+                    window.sampleSelector = sampleSelector
+                }
             }
         }
     }
@@ -111,7 +140,7 @@ object EngineMatchMissRecorder {
         val distribution =
             w.statuses.entries.joinToString(" · ") { (status, count) -> "$status×$count" }
         val groups = w.groups.joinToString(" / ").take(200)
-        EngineEventLogWriter.log(
+        emit(
             kind = "match_miss",
             message = "❓ 规则未命中（$appId）：${w.scans} 轮评估未命中 · 组[$groups] · $distribution" +
                 (w.sampleRule?.let { " · 样本[$it]" } ?: "") + " ——上传日志可帮我们补规则",
@@ -129,6 +158,11 @@ object EngineMatchMissRecorder {
                 ),
             ),
         )
+    }
+
+    /** 测试复位。 */
+    fun resetForTest() {
+        synchronized(this) { windows.clear() }
     }
 
     private fun subsName(subsId: Long): String {

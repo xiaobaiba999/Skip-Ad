@@ -59,7 +59,7 @@ class EngineActionEffectTrackerTest {
         installSink()
         var now = 1_000L
         val r = rule()
-        EngineActionEffectTracker.onActionSuccess(r, "app.test", ".AdActivity", now)
+        EngineActionEffectTracker.onActionSuccess(r, "app.test", ".AdActivity", now = now)
         repeat(3) { now += 100; EngineActionEffectTracker.onObserved(r, "app.test", ".AdActivity", now) }
         assertEquals(1, logged.size)
         assertEquals("action_no_effect", logged.first())
@@ -70,7 +70,7 @@ class EngineActionEffectTrackerTest {
         installSink()
         var now = 1_000L
         val r = rule()
-        EngineActionEffectTracker.onActionSuccess(r, "app.test", ".AdActivity", now)
+        EngineActionEffectTracker.onActionSuccess(r, "app.test", ".AdActivity", now = now)
         repeat(2) { now += 100; EngineActionEffectTracker.onObserved(r, "app.test", ".AdActivity", now) }
         assertTrue(logged.isEmpty(), "两轮观察不足以判定")
     }
@@ -80,7 +80,7 @@ class EngineActionEffectTrackerTest {
         installSink()
         var now = 1_000L
         val r = rule()
-        EngineActionEffectTracker.onActionSuccess(r, "app.test", ".AdActivity", now)
+        EngineActionEffectTracker.onActionSuccess(r, "app.test", ".AdActivity", now = now)
         repeat(5) { now += 100; EngineActionEffectTracker.onObserved(r, "app.test", ".Main", now) }
         assertTrue(logged.isEmpty(), "Activity 已切换（广告可能已随页面关闭）")
     }
@@ -90,7 +90,7 @@ class EngineActionEffectTrackerTest {
         installSink()
         var now = 1_000L
         val r = rule()
-        EngineActionEffectTracker.onActionSuccess(r, "app.test", ".AdActivity", now)
+        EngineActionEffectTracker.onActionSuccess(r, "app.test", ".AdActivity", now = now)
         now += 9_000 // 超过 8s 效果窗口
         repeat(5) { now += 100; EngineActionEffectTracker.onObserved(r, "app.test", ".AdActivity", now) }
         assertTrue(logged.isEmpty(), "窗口外观察不计（页面可能已自然变化）")
@@ -101,11 +101,11 @@ class EngineActionEffectTrackerTest {
         installSink()
         var now = 1_000L
         val r = rule()
-        EngineActionEffectTracker.onActionSuccess(r, "app.test", ".AdActivity", now)
+        EngineActionEffectTracker.onActionSuccess(r, "app.test", ".AdActivity", now = now)
         repeat(5) { now += 100; EngineActionEffectTracker.onObserved(r, "app.test", ".AdActivity", now) }
         assertEquals(1, logged.size)
         // 新一轮成功+观察（60s 节流内）不再落库
-        EngineActionEffectTracker.onActionSuccess(r, "app.test", ".AdActivity", now)
+        EngineActionEffectTracker.onActionSuccess(r, "app.test", ".AdActivity", now = now)
         repeat(5) { now += 100; EngineActionEffectTracker.onObserved(r, "app.test", ".AdActivity", now) }
         assertEquals(1, logged.size)
     }

@@ -313,6 +313,8 @@
     <string name="download_complete">下载完毕</string>
     <string name="download_directory_create_failed">创建下载目录失败</string>
     <string name="download_failed">下载失败</string>    <string name="download_retry">重试</string>
+    <string name="download_verifying">正在校验文件</string>
+    <string name="download_verifying_description">正在校验文件完整性（大小 + SHA-256），自动完成，大文件可能需要几秒</string>
     <string name="download_file_create_failed">创建下载文件失败</string>
     <string name="download_file_open_failed">打开下载文件失败</string>
     <string name="dynamic_colors">动态配色</string>

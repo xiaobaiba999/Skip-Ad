@@ -40,19 +40,19 @@ $("#brand-logo").innerHTML = mascotImg(30, "on", true);
 /* ═══ v8.0.7 版本记录（7.15.14 UI × GKD 内核融合版）═══
  * versionCode 87100：跨 86400 段递增（8.0.4-8.0.6 与旧版 7.15.x 存量都收到更新提示） */
 const CURRENT_RELEASE = {
-  version: "8.0.7",
-  versionCode: 87100,
-  date: "2026-11-26",
-  title: "性能与功耗优化版（后台零轮询 · 白名单置顶收起 · 能耗画像真实数据）",
+  version: "8.1.1",
+  versionCode: 88300,
+  date: "2026-11-28",
+  title: "日志准确性 + 更新下载链路版（断点续传 · 多源切换 · 意见反馈双入口）",
   features: [
-    "性能守卫：周期定时器退后台自动暂停（回前台即恢复刷新），后台零空转更省电",
-    "应用白名单展开态新增置顶「收起」条（列表任何位置一键收起，不必滚到底）；重渲染签名守卫——数据没变不动 DOM，滚动位置/勾选状态/搜索焦点零丢失",
-    "能耗画像真实数据：事件/扫描为进程本次启动以来真实计数，手势能耗按系数估算并明确标注（新引擎无探针机制，不再伪造 0）",
-    "日志上传目标官方仓 Skip-Ad +「无内容」门：引擎尚无任何记录时不发起空上传",
-    "修复品牌 Logo 阴影；更新链路兼容 8.0.4-8.0.6 与旧版 7.15.x 存量（跨 86400 段升级）",
+    "日志准确性根治：「已跳过却记为未命中」修复——每次触发唯一 eventId 贯穿匹配→动作→结果确认；跳过成功后同应用不再产生 match_miss 误报；新增 splash_dismissed（已确认广告消失）/ result_unknown（结果未确认）状态",
+    "更新下载断点续传：Range 续传 + ETag 一致性校验，下载中断后从断点继续不从头来；下载失败自动切换可信备用源（GitHub + 四域 CDN 镜像）；速度停滞 15 秒自动换源",
+    "下载失败原因分类：连接被重置 / DNS 解析失败 / 超时 / 校验失败逐类明示，不再统一显示「下载失败」；下载页显示速度/已下载/当前源/预计剩余",
+    "意见反馈双入口：底栏新增「反馈」页（7 类反馈 + 诊断日志可选附带）；开屏卫士提示旁新增「反馈」小按钮——遇到问题一键直达",
+    "下载超时根治：整体超时上限移除（弱网大 APK 中途必死根因）；匹配热路径去重提速；玻璃提示五层材质升级（斜向柔光高光带）",
   ],
-  summary: "v8.0.7 性能与功耗优化 + Logo 阴影修复 + 白名单收起 + 能耗画像真实数据 + 日志上传官方仓",
-  notes: "性能定时器后台守卫；白名单展开态置顶收起与重渲染保护；能耗画像真实数据；日志上传目标官方仓 Skip-Ad；更新兼容 7.15.x 存量",
+  summary: "v8.1.1 日志准确性根治 + 断点续传多源下载 + 失败分类 + 意见反馈双入口 + 玻璃材质升级",
+  notes: "eventId 状态机；match_miss 抑制闸；Range/ETag 断点续传；停滞闸与失败分类；反馈页与开屏提示反馈入口；五层玻璃材质",
 };
 
 /* v7.0.0 新版功能描述（规范：≤5 个标题、带序号；检查更新发现新版本时就地渲染
@@ -114,6 +114,7 @@ $$(".tabbtn").forEach(b => b.addEventListener("click", () => {
   const pg = b.dataset.page;
   if (pg === "home") { refreshHome(); renderWhitelist(true); }
   if (pg === "help") renderHelpDynamic();
+  if (pg === "feedback") initFeedbackPage(); /* v8.1.1：反馈页 */
   if (pg === "me") { renderLog(); renderReport(); } // v7.2.0：进入我的页静默刷新使用报告（饼图常驻，零 toast）；v7.15.7：版本相关已迁「版本」页
 }));
 
@@ -955,35 +956,27 @@ async function fetchLatest() {
 }
 
 function beginChannel() {
-  const url = dl.channels[dl.idx];
+  /* v8.1.1：多源断点续传引擎（原生侧一次接收全部通道：Range 续传 + ETag
+   * 一致性 + 停滞闸 + 失败自动切换 + SHA-256/大小完整性闸；取消/中断保留
+   * 断点，重试从断点继续）。JS 侧不再逐通道启动/换道（原生引擎内完成）。
+   * digest/size（GitHub API HTTPS 元数据）随任务交给原生侧——安装前
+   * 原生引擎流式比对 SHA-256；镜像通道投毒/共享盘换包在下载完成时被拦。 */
+  const urls = (dl.channels || []).filter(u => /^https:/.test(u));
+  if (!urls.length) { toast("没有可用下载通道"); return; }
   try {
-    /* v7.3.0 安全：digest/size（GitHub API HTTPS 元数据）随下载任务交给原生侧
-     * ——安装前 Downloader 会流式计算 SHA-256 比对；镜像通道投毒/共享盘换包
-     * 在安装前被拦下并自动删除。 */
-    const r = JSON.parse(AndroidApp.startUpdateDownload(url, dl.fileName, dl.digest, dl.size));
+    const r = JSON.parse(AndroidApp.startUpdateDownload(JSON.stringify(urls), dl.digest, dl.size));
     if (r.ok) {
-      /* v7.3.0 修复：按钮选择器与真实按钮 id 对齐（#page-dl-btn——旧
-       * 前缀拼装选择器永不命中，下载完成后按钮从不翻转「立即安装」） */
       const btn = $("#page-dl-btn");
       if (btn) { btn.textContent = "下载中…"; btn.disabled = true; }
       const wrap = $("#page-progress-wrap");
       if (wrap) wrap.style.display = "";
       dl.lastBytes = -1;
-      dl.lastMoveAt = Date.now();
       startProgressPoll();
     } else {
-      /* ═══ v7.15.5 渠道启动被拒自动换道（死局根治）═══
-       * 死因（用户实锤：v7.15.1/v7.15.3 点下载报「下载链接不在允许的
-       * 发布通道内」）：旧版此处只 toast 不换道——首渠道被白名单拒/
-       * 系统下载器拒后整条链直接死局，后面的 ghfast/gh-proxy/github
-       * 全部没机会上场。现在与「下载失败/无进展」同一换道语义：
-       * 启动被拒 → 自动切下一渠道；全部渠道都拒才如实报错。 */
-      if (!switchChannel("渠道启动被拒（" + (r.error || "未知") + "）")) {
-        toast(r.error || "启动下载失败");
-      }
+      toast(r.error || "启动下载失败");
     }
   } catch (e) {
-    if (!switchChannel("渠道启动失败")) toast("启动下载失败");
+    toast("启动下载失败");
   }
 }
 
@@ -1014,15 +1007,19 @@ function startProgressPoll() {
     try {
       const d = JSON.parse(AndroidApp.updateProgress());
       const bar = $("#page-bar"), txt = $("#page-progress-text");
-      if (d.state === "running" || d.state === "paused") {
+      /* v8.1.1：富进度——百分比/大小/速度/当前源/续传/换源/校验中 */
+      if (d.state === "running") {
         bar.style.width = d.percent + "%";
-        txt.textContent = d.percent + "% · " + (d.bytes / 1048576).toFixed(1) + " / " + (d.total / 1048576).toFixed(1) + " MB";
-        if (d.bytes !== dl.lastBytes) { dl.lastBytes = d.bytes; dl.lastMoveAt = Date.now(); }
-        else if (Date.now() - dl.lastMoveAt > 30000) {
-          if (switchChannel("下载长时间无进展")) return;
-          dl.lastMoveAt = Date.now();
-        }
-      } else if (d.state === "done") {
+        let line = d.percent + "% · " + (d.bytes / 1048576).toFixed(1) + " / " + (d.total / 1048576).toFixed(1) + " MB";
+        if (d.speed > 1024) line += " · " + (d.speed / 1048576).toFixed(2) + " MB/s";
+        if (d.resuming) line += " · 断点续传";
+        if (d.source) line += "\n当前源：" + d.source + (d.sourceCount > 1 ? "（" + (d.sourceIndex + 1) + "/" + d.sourceCount + "）" : "");
+        txt.style.whiteSpace = "pre-line";
+        txt.textContent = line;
+      } else if (d.state === "verifying") {
+        bar.style.width = "100%";
+        txt.textContent = "正在校验文件（大小 + SHA-256）…";
+      } else if (d.done || d.state === "done") {
         clearInterval(ubTimer); ubTimer = null;
         bar.style.width = "100%";
         txt.textContent = "下载完成（已验 SHA-256），点击安装即覆盖升级";
@@ -1030,8 +1027,8 @@ function startProgressPoll() {
         if (btn) { btn.textContent = "立即安装"; btn.disabled = false; btn.dataset.phase = "install"; }
       } else if (d.state === "failed") {
         clearInterval(ubTimer); ubTimer = null;
-        if (switchChannel("下载失败")) return;
-        txt.textContent = "下载失败，可稍后重试";
+        txt.textContent = "下载失败：" + (d.err || "未知原因") + "\n已保留断点，点「重新下载」从断点继续（不从头来）";
+        txt.style.whiteSpace = "pre-line";
         const btn = $("#page-dl-btn");
         if (btn) { btn.textContent = "重新下载"; btn.disabled = false; btn.dataset.phase = "download"; }
       }
@@ -1664,3 +1661,146 @@ function toast(msg) {
   // app.js 早期崩溃时不再「检查中/加载中」永久占位，给出可操作指引）
   window.__appBootOk = true;
 })();
+
+/* ══════════════════════════════════════════════════════════════════
+ * v8.1.1 意见反馈页（底栏第 5 页 + 开屏卫士提示旁小按钮共用）
+ * 两处入口共用同一后端仓库（AndroidApp.submitFeedbackAsync →
+ * UserFeedback → FeedbackUploader），草稿存 localStorage：
+ * 提交失败草稿保留，下次进入自动恢复；诊断日志仅勾选才附带。
+ * ══════════════════════════════════════════════════════════════════ */
+const FB_TYPES = ["功能建议", "广告没跳过", "跳过太慢", "误触误跳", "更新下载问题", "界面问题", "其他"];
+const FB_DRAFT_KEY = "feedback_draft_v1";
+let fbInited = false;
+let fbSubmitting = false;
+
+function fbDraft() {
+  try { return JSON.parse(store.get(FB_DRAFT_KEY, "{}") || "{}"); } catch (e) { return {}; }
+}
+
+function fbSaveDraft() {
+  const d = {
+    type: ($("#fb-type-chips .fb-chip.active") || {}).textContent || FB_TYPES[0],
+    title: $("#fb-title").value.trim(),
+    desc: $("#fb-desc").value,
+    app: $("#fb-app").value.trim(),
+    logs: $("#fb-logs").checked,
+  };
+  if (d.title || d.desc) store.set(FB_DRAFT_KEY, JSON.stringify(d));
+  else store.set(FB_DRAFT_KEY, "");
+}
+
+function fbRestoreDraft() {
+  const d = fbDraft();
+  if (!d || !d.title) return;
+  $("#fb-title").value = d.title || "";
+  $("#fb-desc").value = d.desc || "";
+  if (d.app) $("#fb-app").value = d.app;
+  $("#fb-logs").checked = !!d.logs;
+}
+
+function fbPickType(t) {
+  $$("#fb-type-chips .fb-chip").forEach(c => c.classList.toggle("active", c.textContent === t));
+}
+
+function initFeedbackPage() {
+  if (!fbInited) {
+    fbInited = true;
+    /* 类型 chips（静态渲染，与后端 TYPES 一致） */
+    const chips = $("#fb-type-chips");
+    chips.innerHTML = FB_TYPES.map((t, i) =>
+      '<button type="button" class="fb-chip' + (i === 0 ? " active" : "") + '">' + t + '</button>').join("");
+    chips.addEventListener("click", (ev) => {
+      const c = ev.target.closest(".fb-chip");
+      if (!c) return;
+      fbPickType(c.textContent);
+      fbSaveDraft();
+    });
+    /* 输入即存草稿 */
+    ["#fb-title", "#fb-desc", "#fb-app"].forEach(sel => {
+      $(sel).addEventListener("input", fbSaveDraft);
+    });
+    $("#fb-logs").addEventListener("change", fbSaveDraft);
+    fbRestoreDraft();
+    $("#fb-submit").addEventListener("click", () => { void submitFeedback(); });
+  }
+  /* 每次进入刷新环境上下文（最近跳过结果——从开屏提示进入时最有用） */
+  void refreshFbContext();
+}
+
+async function refreshFbContext() {
+  const box = $("#fb-context");
+  if (!HAS_BRIDGE) { box.style.display = "none"; return; }
+  try {
+    const r = await netCall("feedbackContextAsync");
+    if (r && r.ok && r.lastSkip) {
+      box.textContent = "最近跳过：" + r.lastSkip;
+      box.style.display = "";
+    } else {
+      box.style.display = "none";
+    }
+  } catch (e) { box.style.display = "none"; }
+}
+
+async function submitFeedback() {
+  if (fbSubmitting) return;
+  const type = ($("#fb-type-chips .fb-chip.active") || {}).textContent || "其他";
+  const title = $("#fb-title").value.trim();
+  const desc = $("#fb-desc").value.trim();
+  const app = $("#fb-app").value.trim();
+  const logs = $("#fb-logs").checked;
+  const result = $("#fb-result");
+  result.style.display = "";
+  if (!title) {
+    result.className = "fb-result err";
+    result.textContent = "请先写一句标题（一句话说清问题就行）";
+    return;
+  }
+  if (!HAS_BRIDGE) {
+    result.className = "fb-result err";
+    result.textContent = "仅 APK 内可提交——可到 GitHub Issues 页留言";
+    return;
+  }
+  fbSubmitting = true;
+  const btn = $("#fb-submit");
+  btn.disabled = true;
+  btn.textContent = "提交中…";
+  fbSaveDraft();
+  try {
+    const payload = JSON.stringify({ type: type, title: title, description: desc, appPackage: app || null, includeLogs: logs });
+    const r = await netCall("submitFeedbackAsync", payload);
+    if (r && r.ok) {
+      result.className = "fb-result ok";
+      result.textContent = "提交成功（Issue #" + r.number + "）——感谢反馈，我们会跟进";
+      store.set(FB_DRAFT_KEY, "");
+      $("#fb-title").value = ""; $("#fb-desc").value = ""; $("#fb-logs").checked = false;
+      showUploadDoneModal(r.number);
+    } else {
+      result.className = "fb-result err";
+      result.textContent = "提交失败：" + ((r && r.error) || "网络异常") + "。草稿已保留，稍后再试即可"
+        + (r && r.fallbackUrl ? "；也可到 GitHub 页手动提交" : "");
+    }
+  } catch (e) {
+    result.className = "fb-result err";
+    result.textContent = "提交失败：网络异常。草稿已保留，稍后再试即可";
+  }
+  btn.disabled = false;
+  btn.textContent = "提交反馈";
+  fbSubmitting = false;
+}
+
+/* v8.1.1 开屏卫士提示「反馈」小按钮直达：原生侧深链推送
+ * （MainActivity open_feedback → AndroidApp 桥 → 此钩子）。
+ * 切到反馈页 + 预填最近跳过的应用包名。 */
+window.__onFeedbackEntry = function (payload) {
+  try {
+    const pkg = payload && payload.app;
+    gotoPage("feedback");
+    initFeedbackPage();
+    if (pkg) {
+      $("#fb-app").value = pkg;
+      fbSaveDraft();
+    }
+    const t = $("#fb-title");
+    if (t && !t.value) setTimeout(() => t.focus(), 250);
+  } catch (e) {}
+};

@@ -2,6 +2,7 @@ package li.gkd.app.util
 
 import android.animation.ValueAnimator
 import android.content.Context
+import android.content.Intent
 import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -33,9 +34,11 @@ import androidx.core.graphics.toColorInt
 import com.hjq.toast.Toaster
 import com.hjq.toast.style.WhiteToastStyle
 import li.gkd.app.app
+import li.gkd.app.MainActivity
 import li.gkd.app.matching.MatchingRuntime
 import li.gkd.app.matching.diagnostics.MatchStage
 import li.gkd.app.permission.PermissionStates
+import li.gkd.app.record.EngineSkipOutcomeTracker
 import li.gkd.app.rule.ResolvedRule
 import li.gkd.app.service.A11yService
 import li.gkd.app.settings.SettingsRepository.actionCount
@@ -213,7 +216,15 @@ object AndroidToastUtils {
     private const val STATUS_PULSE_PERIOD_MS = 1600L
     private const val STATUS_PULSE_MIN_ALPHA = 0.35f
 
-    /** 四层玻璃材质。 */
+    /**
+     * 玻璃材质（v8.1.1 五层：磨砂底 + 顶部内反射 + 斜向柔光高光带 +
+     * 边缘高光描边 + 品牌绿弱着色）。
+     *
+     * 开源调研实测（v8.1.1）：android-liquid-glass / liquid-glass / PrismalAGSL /
+     * blur-engine 四项目全部为应用窗口内玻璃（Compose graphicsLayer/AGSL/Backdrop），
+     * 无法采样悬浮窗背后的其他 App 内容（OS 边界）——静态多层磨砂即唯一
+     * 诚实实现（不截图不 OCR 不伪造背景采样，零每帧成本）。
+     */
     private fun glassBackground(): LayerDrawable {
         val density = app.resources.displayMetrics.density
         val highlightStroke = (1.2f * density).toInt()
@@ -252,7 +263,19 @@ object AndroidToastUtils {
                         }
                     cornerRadius = glassRadius
                 },
-                // 层3：边缘细腻高光描边（内侧一圈微亮线，玻璃壁厚感）
+                // 层3：v8.1.1 斜向柔光高光带（对角微光，轻微折射感——静态零成本）
+                GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    orientation = GradientDrawable.Orientation.TL_BR
+                    colors =
+                        intArrayOf(
+                            0x00FFFFFF.toInt(),
+                            0x2CFFFFFF.toInt(),
+                            0x00FFFFFF.toInt(),
+                        )
+                    cornerRadius = glassRadius
+                },
+                // 层4：边缘细腻高光描边（内侧一圈微亮线，玻璃壁厚感）
                 GradientDrawable().apply {
                     shape = GradientDrawable.RECTANGLE
                     cornerRadius = glassRadius
@@ -261,7 +284,7 @@ object AndroidToastUtils {
                         if (darkTheme) 0x30FFFFFF else 0x70FFFFFF,
                     )
                 },
-                // 层4：品牌绿弱着色（玻璃透出的底色感）
+                // 层5：品牌绿弱着色（玻璃透出的底色感）
                 GradientDrawable().apply {
                     shape = GradientDrawable.RECTANGLE
                     orientation = GradientDrawable.Orientation.BL_TR
@@ -314,9 +337,84 @@ object AndroidToastUtils {
         val view: View,
         val pulseDot: View,
         val windowManager: WindowManager,
+        /** v8.1.1：反馈小按钮（可独立移除；为空表示未附着）。 */
+        var feedbackChip: View? = null,
     )
 
     @Volatile private var attachedGlass: GlassLayer? = null
+
+    // ═══ v8.1.1 意见反馈入口（开屏提示旁的小按钮）═══
+    //
+    // 设计约束（任务 4.3 铁律）：
+    // · 独立小窗，仅自身小区域可触摸——玻璃卡片仍全量 FLAG_NOT_TOUCHABLE 穿透，
+    //   不影响跳过动作/不拦截其他内容；
+    // · 生命周期与玻璃提示完全同步（presentGlass 附着 / exitGlass、
+    //   removeAttachedGlass 同步移除）——不延长提示停留、不阻塞提示消失；
+    // · 纯 toast 派发线程内创建（无障碍事件热路径零新开销）；
+    // · 点击 → open_feedback 深链拉起卫士反馈页（携带最近跳过应用包名预填）。
+    private val chipRadius = 15.dp.px
+
+    /** 反馈小按钮材质（小号玻璃：磨砂底 + 边缘高光）。 */
+    private fun chipBackground(): LayerDrawable {
+        val density = app.resources.displayMetrics.density
+        val highlightStroke = (1f * density).toInt()
+        return LayerDrawable(
+            arrayOf(
+                GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    orientation = GradientDrawable.Orientation.TL_BR
+                    colors =
+                        if (darkTheme) {
+                            intArrayOf(0xE6162018.toInt(), 0xCC12201A.toInt())
+                        } else {
+                            intArrayOf(0xE6F4FAF5.toInt(), 0xD8E9F3EC.toInt())
+                        }
+                    cornerRadius = chipRadius
+                },
+                GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    cornerRadius = chipRadius
+                    setStroke(highlightStroke, if (darkTheme) 0x2EFFFFFF else 0x64FFFFFF)
+                },
+            ),
+        )
+    }
+
+    /** 反馈小按钮（点击 → 卫士反馈页）。 */
+    private fun buildFeedbackChip(): View =
+        TextView(app).apply {
+            val density = app.resources.displayMetrics.density
+            fun dp(v: Float) = (v * density).toInt()
+            text = "反馈"
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            typeface =
+                android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
+            setTextColor(if (darkTheme) 0xFFD9EBDE.toInt() else 0xFF2F5A41.toInt())
+            gravity = Gravity.CENTER
+            background = chipBackground()
+            setPadding(dp(18f), dp(7f), dp(18f), dp(7f))
+            layoutParams =
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                )
+            elevation = 8.dp.px
+            setOnClickListener {
+                runCatching {
+                    val intent =
+                        Intent(app, MainActivity::class.java).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                            putExtra("open_feedback", "1")
+                            EngineSkipOutcomeTracker.lastSkipAppId()?.let { pkg ->
+                                putExtra("app_package", pkg)
+                            }
+                        }
+                    app.startActivity(intent)
+                }
+                // 点击即收起提示（反馈已拉起，避免遮挡）
+                removeAttachedGlass()
+            }
+        }
 
     private fun buildGlassView(): Pair<View, View> {
         val dark = darkTheme
@@ -410,6 +508,12 @@ object AndroidToastUtils {
         }
         // 残影根治①：同一时刻至多一个玻璃视图——新提示先强制移除旧视图
         removeAttachedGlass()
+        // v8.1.1 调研定论（android-37 android.jar 实测核验）：跨窗真模糊公开通道
+        // 不可用——backgroundBlurRadius 非公开字段；setBlurBehindRadius 需
+        // FLAG_BLUR_BEHIND（全屏模糊，不适用于小卡片）。四项开源玻璃项目均为
+        // 应用窗口内实现（Compose graphicsLayer/AGSL/Backdrop），无法采样
+        // 悬浮窗背后其他 App 内容。静态多层磨砂+斜向柔光高光带即为唯一诚实
+        // 实现（不截图不 OCR 不伪造背景采样）。
         val (view, pulseDot) = buildGlassView()
         val layoutParams =
             WindowManager.LayoutParams().apply {
@@ -431,10 +535,10 @@ object AndroidToastUtils {
                 height = WindowManager.LayoutParams.WRAP_CONTENT
                 gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
                 y = toastYOffset
-                // 背景模糊评估结论（v8.1.0）：WindowManager.LayoutParams 的
-                // backgroundBlurRadius / setBlurBehindRadius 在 overlay 场景不
-                // 可用（后者需 FLAG_BLUR_BEHIND 全屏模糊，前者非公开 API）——
-                // 四层静态磨砂玻璃即视觉基线，全 Android 版本一致，无降级差异。
+                // 背景模糊评估结论（v8.1.0 实测 + v8.1.1 android-37 复核）：
+                // 跨窗真实模糊公开通道不可用——backgroundBlurRadius 非公开
+                // 字段；blurBehindRadius 需 FLAG_BLUR_BEHIND（全屏模糊，不适用
+                // 小卡片）。静态多层磨砂玻璃即视觉基线，全 Android 版本一致。
             }
         // 残影根治②：addView 全程保护——a11y wm 垂死（BadToken）不再崩溃；
         // a11y wm 失败回退应用 wm，再失败回退系统 Toast（显示永不失败）。
@@ -463,6 +567,34 @@ object AndroidToastUtils {
         wm: WindowManager,
     ) {
         attachedGlass = GlassLayer(view, pulseDot, wm)
+        // v8.1.1：反馈小按钮（独立小窗——失败静默，绝不影响主提示）
+        runCatching {
+            val chip = buildFeedbackChip()
+            val chipParams =
+                WindowManager.LayoutParams().apply {
+                    type =
+                        if (wm === app.windowManager) {
+                            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                        } else {
+                            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
+                        }
+                    format = PixelFormat.TRANSLUCENT
+                    flags =
+                        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+                            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+                    packageName = app.packageName
+                    width = WindowManager.LayoutParams.WRAP_CONTENT
+                    height = WindowManager.LayoutParams.WRAP_CONTENT
+                    gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+                    y = toastYOffset + (56.dp.px + 6.dp.px).toInt()
+                }
+            wm.addView(chip, chipParams)
+            chip.alpha = 0f
+            chip.animate().alpha(1f).setDuration(GLASS_ENTER_MS).start()
+            attachedGlass?.feedbackChip = chip
+        }
         // 液态柔光入场：底部轻浮起 + 透明度 0→1 + 缩放 0.96→1.0（Decelerate）
         view.alpha = 0f
         view.translationY = 26.dp.px
@@ -509,6 +641,7 @@ object AndroidToastUtils {
     private fun exitGlass() {
         val layer = attachedGlass ?: return
         attachedGlass = null
+        removeFeedbackChip(layer)
         val view = layer.view
         val wm = layer.windowManager
         (layer.pulseDot.tag as? ValueAnimator)?.cancel()
@@ -540,10 +673,30 @@ object AndroidToastUtils {
     private fun removeAttachedGlass() {
         val layer = attachedGlass ?: return
         attachedGlass = null
+        removeFeedbackChip(layer)
         (layer.pulseDot.tag as? ValueAnimator)?.cancel()
         layer.pulseDot.tag = null
         layer.view.animate().cancel()
         runCatching { layer.windowManager.removeViewImmediate(layer.view) }
+    }
+
+    /** 反馈小按钮随玻璃提示同步移除（任何异常都不影响主提示移除）。 */
+    private fun removeFeedbackChip(layer: GlassLayer) {
+        val chip = layer.feedbackChip ?: return
+        layer.feedbackChip = null
+        chip.setOnClickListener(null)
+        runCatching {
+            chip
+                .animate()
+                .alpha(0f)
+                .setDuration(120L)
+                .withEndAction { runCatching { layer.windowManager.removeViewImmediate(chip) } }
+                .start()
+        }
+        // 兜底：动画异常也必须移除（不阻塞不残留）
+        ThreadUtils.runMainOrPost(180) {
+            runCatching { layer.windowManager.removeViewImmediate(chip) }
+        }
     }
 
     /** 无障碍/悬浮窗通道全部不可用时的可靠回退（系统 Toast）。 */

@@ -17,6 +17,7 @@ fun addActionLog(
     topActivity: TopActivity,
     target: AccessibilityNodeInfo,
     actionResult: ActionResult,
+    eventId: String? = null,
 ) {
     val input =
         ActionRecordInput(
@@ -30,7 +31,8 @@ fun addActionLog(
             ruleKey = rule.key,
             time = System.currentTimeMillis(),
             // v8.0.6：详细引擎日志（与简洁条目同事务关联，actionLogId 回填）
-            engineDetail = buildEngineDetail(rule, topActivity, actionResult),
+            // v8.1.1：eventId 随行（同一次触发的结果确认行可精确串联）
+            engineDetail = buildEngineDetail(rule, topActivity, actionResult, eventId),
         )
     appScope.launchLogged { RuntimeRecordRepository.recordAction(input) }
     // Logging must not turn a completed action into a failure.
@@ -57,9 +59,10 @@ fun logActionFailure(
     rule: ResolvedRule,
     topActivity: TopActivity,
     actionResult: ActionResult,
+    eventId: String? = null,
 ) {
     val detail =
-        buildEngineDetail(rule, topActivity, actionResult)
+        buildEngineDetail(rule, topActivity, actionResult, eventId)
     EngineEventLogWriter.log(
         kind = detail.kind,
         message = detail.message,
@@ -71,11 +74,12 @@ fun logActionFailure(
     )
 }
 
-/** v8.0.6 详细引擎日志：应用名优先（快照缓存），失败原因/动作类型随行；v8.0.8 补规则名与耗时；v8.1.0 补订阅来源与失败细分 */
+/** v8.0.6 详细引擎日志：应用名优先（快照缓存），失败原因/动作类型随行；v8.0.8 补规则名与耗时；v8.1.0 补订阅来源与失败细分；v8.1.1 补 eventId */
 private fun buildEngineDetail(
     rule: ResolvedRule,
     topActivity: TopActivity,
     actionResult: ActionResult,
+    eventId: String? = null,
 ): EngineEventDetail {
     val appName =
         AppInfoRepository.snapshot?.apps?.get(topActivity.appId)?.name
@@ -100,6 +104,8 @@ private fun buildEngineDetail(
         // v8.1.0：订阅来源与版本（失败行与成功行对齐，服务端统计可直接按订阅分组）
         subsId = rule.subsItem.id,
         subsVersion = rule.rawSubs.version,
+        // v8.1.1：事件关联 ID（可选——旧调用方不传则省略）
+        eventId = eventId,
     )
 }
 

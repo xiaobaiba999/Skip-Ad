@@ -41,9 +41,29 @@ sealed interface UpdateInstallState {
 }
 
 sealed interface UpdateDownloadState {
-    data class Loading(val progress: Float) : UpdateDownloadState
+    /**
+     * v8.1.1：富下载状态（速度/已下载/当前源/续传/切换中）——旧调用方仅传 progress，
+     * 其余字段默认值向后兼容。
+     */
+    data class Loading(
+        val progress: Float,
+        val receivedBytes: Long = 0,
+        val totalBytes: Long = 0,
+        val bytesPerSecond: Long = 0,
+        val sourceLabel: String = "",
+        val sourceIndex: Int = 0,
+        val sourceCount: Int = 0,
+        val resuming: Boolean = false,
+        val switchingFrom: String? = null,
+        val switchingTo: String? = null,
+        val switchingReason: String? = null,
+    ) : UpdateDownloadState
 
-    data class Failure(val exception: Exception) : UpdateDownloadState
+    /** v8.1.1：正在校验（大小 + SHA-256）——不再伪装成「下载中」。 */
+    data object Verifying : UpdateDownloadState
+
+    /** v8.1.1：失败带已分类原因（Connection reset / DNS / 超时 / 校验失败…）。 */
+    data class Failure(val exception: Exception, val reason: String? = null) : UpdateDownloadState
 
     data object Success : UpdateDownloadState
 }
@@ -100,9 +120,58 @@ fun GkUpgradeDialogs(
                 GkAlertDialog(
                     title = { Text(text = stringResource(Res.string.image_downloading)) },
                     text = {
-                        LinearProgressIndicator(
-                            progress = { downloadStatusVal.progress },
-                        )
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            LinearProgressIndicator(
+                                progress = { downloadStatusVal.progress },
+                            )
+                            val received = downloadStatusVal.receivedBytes
+                            val total = downloadStatusVal.totalBytes
+                            if (total > 0) {
+                                Text(
+                                    text = "${formatBytes(received)} / ${formatBytes(total)}",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                            }
+                            val speed = downloadStatusVal.bytesPerSecond
+                            if (speed > 0) {
+                                val eta =
+                                    if (total > received && speed > 1_024) {
+                                        " · 预计剩余 ${formatDuration((total - received) / speed)}"
+                                    } else {
+                                        ""
+                                    }
+                                Text(
+                                    text = "${formatBytes(speed)}/s$eta",
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            }
+                            // 当前下载源（含序号）与续传标识
+                            if (downloadStatusVal.sourceLabel.isNotEmpty()) {
+                                val sourceLine =
+                                    buildString {
+                                        append(downloadStatusVal.sourceLabel)
+                                        if (downloadStatusVal.sourceCount > 1) {
+                                            append("（${downloadStatusVal.sourceIndex + 1}/${downloadStatusVal.sourceCount}）")
+                                        }
+                                        if (downloadStatusVal.resuming) append(" · 断点续传中")
+                                    }
+                                Text(
+                                    text = sourceLine,
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            }
+                            // 正在切换源（含分类原因）
+                            val switching = downloadStatusVal.switchingTo
+                            if (switching != null) {
+                                Text(
+                                    text =
+                                        "正在切换下载源：${downloadStatusVal.switchingFrom.orEmpty()} → $switching\n" +
+                                            "原因：${downloadStatusVal.switchingReason.orEmpty()}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.tertiary,
+                                )
+                            }
+                        }
                     },
                     onDismissRequest = {},
                     confirmButton = {
@@ -117,15 +186,26 @@ fun GkUpgradeDialogs(
                 )
             }
 
+            UpdateDownloadState.Verifying -> {
+                GkAlertDialog(
+                    title = { Text(text = stringResource(Res.string.download_verifying)) },
+                    text = {
+                        Text(text = stringResource(Res.string.download_verifying_description))
+                    },
+                    onDismissRequest = {},
+                )
+            }
+
             is UpdateDownloadState.Failure -> {
                 GkAlertDialog(
                     title = { Text(text = stringResource(Res.string.download_failed)) },
                     text = {
                         Text(
                             text =
-                                downloadStatusVal.exception.let {
-                                    it.message ?: it.toString()
-                                },
+                                downloadStatusVal.reason
+                                    ?: downloadStatusVal.exception.let {
+                                        it.message ?: it.toString()
+                                    },
                         )
                     },
                     onDismissRequest = { onDismissDownload() },
@@ -234,6 +314,19 @@ fun GkUpgradeDialogs(
         }
     }
 }
+
+private fun formatBytes(bytes: Long): String =
+    when {
+        bytes >= 1024L * 1024 -> "%.1f MB".format(bytes / (1024.0 * 1024))
+        bytes >= 1024 -> "%d KB".format(bytes / 1024)
+        else -> "$bytes B"
+    }
+
+private fun formatDuration(seconds: Long): String =
+    when {
+        seconds >= 60 -> "${seconds / 60}分${seconds % 60}秒"
+        else -> "${seconds}秒"
+    }
 
 @Composable
 private fun UpdateDialogTitle(

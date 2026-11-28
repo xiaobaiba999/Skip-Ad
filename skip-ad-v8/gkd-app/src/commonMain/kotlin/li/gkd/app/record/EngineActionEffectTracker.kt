@@ -14,6 +14,12 @@ import li.gkd.app.rule.ResolvedRule
  *
  * 节流：每 (规则, Activity) 60 秒最多一条；追踪表有界（64 条，淘汰最旧）。
  * 纯内存操作 + 非阻塞写入，绝不影响匹配主链路。
+ *
+ * v8.1.1：
+ * · 键改为 executionIdentity（引用相等）——不再每轮构建 matchIdentity() 字符串
+ *   （广告在屏期间的高频命中轮次零字符串分配）；
+ * · action_no_effect 行携带 eventId，与 action_performed 行精确关联
+ *   （retentionExecution 跨订阅快照保留 state，8 秒窗口内键稳定）。
  */
 object EngineActionEffectTracker {
     private const val EFFECT_WINDOW_MS = 8_000L
@@ -32,22 +38,26 @@ object EngineActionEffectTracker {
         var activityId: String? = null
         var groupName = ""
         var ruleName = ""
+        var eventId = ""
         var successAt = 0L
         var observeCount = 0
         /** 初始化为远过去：首个判定不受节流闸影响（时钟纪元前永不命中）。 */
         var lastLoggedAt = -LOG_GATE_MS
     }
 
-    private val entries = LinkedHashMap<String, Entry>()
+    private val entries = LinkedHashMap<Any, Entry>()
 
     /** completed 回调接线：动作成功后记录时间锚点。纯内存 O(1)。 */
     fun onActionSuccess(
         rule: ResolvedRule,
         appId: String,
         activityId: String?,
+        eventId: String = "",
         now: Long = System.currentTimeMillis(),
     ) {
-        val key = rule.matchIdentity()
+        // v8.1.1：executionIdentity 引用键（retainExecution 跨快照保留）——
+        // 不再每轮 matchIdentity() 字符串构建。
+        val key = rule.executionIdentity
         synchronized(this) {
             val e = entries.getOrPut(key) {
                 if (entries.size >= MAX_TRACKED) entries.remove(entries.keys.first())
@@ -57,6 +67,7 @@ object EngineActionEffectTracker {
             e.activityId = activityId
             e.groupName = rule.g.group.name
             e.ruleName = rule.rule.name ?: ""
+            e.eventId = eventId
             e.successAt = now
             e.observeCount = 0
         }
@@ -73,7 +84,7 @@ object EngineActionEffectTracker {
         activityId: String?,
         now: Long = System.currentTimeMillis(),
     ) {
-        val key = rule.matchIdentity()
+        val key = rule.executionIdentity
         synchronized(this) {
             val e = entries[key] ?: return
             if (e.appId != appId || e.activityId != activityId) return
@@ -88,7 +99,9 @@ object EngineActionEffectTracker {
             e.lastLoggedAt = now
             sink(
                 "action_no_effect",
-                "🔁 点击后广告疑似仍在（${e.appId} · ${e.groupName} · ${e.ruleName.ifEmpty { "规则" }}）：成功点击后 ${since / 1000}s 内规则仍持续命中评估 ${e.observeCount} 轮 ——可能点击未生效或广告未关闭，上传日志可帮我们修正规则",
+                "🔁 点击后广告疑似仍在（${e.appId} · ${e.groupName} · ${e.ruleName.ifEmpty { "规则" }}）：成功点击后 ${since / 1000}s 内规则仍持续命中评估 ${e.observeCount} 轮" +
+                    (if (e.eventId.isNotEmpty()) " · ${e.eventId}" else "") +
+                    " ——可能点击未生效或广告未关闭，上传日志可帮我们修正规则",
                 1,
                 appId,
                 null,
